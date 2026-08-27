@@ -1,0 +1,39 @@
+# stormconsole example configuration — /etc/stormconsole/config.toml
+# Every section is optional; a missing file runs on these defaults.
+
+[general]
+name = "stormconsole"
+# theme = "storm"                    # default UI theme; a viewer's pick wins
+
+[api]
+bind = "0.0.0.0:9094"
+# auth_token = "s3cret"              # machine credential (Bearer); also admin login
+# [[api.users]]                      # any user or token being set turns auth on
+# name = "admin"
+# password = "changeme"
+
+[kubernetes]
+enabled = true
+# server = "https://192.168.8.150:6443"   # rustkube apiserver
+# token = ""                              # ServiceAccount bearer token
+# insecure_skip_tls_verify = true
+
+[fleet]
+enabled = true
+mcast_group = "239.255.42.1:5514"    # stormcast group — nodes announce by existing
+
+[logs]
+enabled = true
+mcast_group = "239.255.42.1:5514"
+db_path = "/var/stormconsole/logs.db"
+
+[stormdrive]
+enabled = true                       # endpoints come from fleet discovery
+
+[stormblock]
+enabled = true
+# url = "http://192.168.8.150:9090"
+
+[sbregistry]
+enabled = true
+# url = "http://192.168.8.150:8080"

@@ -1,0 +1,18 @@
+[package]
+name = "plugin-stormblock"
+description = "stormconsole stormblock plugin — volumes, exports, slabs, arrays from the block engine (:9090)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

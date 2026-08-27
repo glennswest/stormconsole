@@ -1,0 +1,17 @@
+[package]
+name = "plugin-logs"
+description = "stormconsole logs plugin — the fleet log collector: stormcast multicast to SQLite ring, query API, live follow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

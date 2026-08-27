@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/console-core",
+    "crates/stormconsole",
+    "crates/plugins/kubernetes",
+    "crates/plugins/fleet",
+    "crates/plugins/logs",
+    "crates/plugins/stormdrive",
+    "crates/plugins/stormblock",
+    "crates/plugins/sbregistry",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/glennswest/stormconsole"
+
+[workspace.dependencies]
+console-core = { path = "crates/console-core" }
+plugin-kubernetes = { path = "crates/plugins/kubernetes" }
+plugin-fleet = { path = "crates/plugins/fleet" }
+plugin-logs = { path = "crates/plugins/logs" }
+plugin-stormdrive = { path = "crates/plugins/stormdrive" }
+plugin-stormblock = { path = "crates/plugins/stormblock" }
+plugin-sbregistry = { path = "crates/plugins/sbregistry" }
+
+stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7" }
+axum = { version = "0.8", features = ["ws"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4"] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+thiserror = "2"
+rust-embed = "8"
+mime_guess = "2"
+futures-util = "0.3"
+
+[profile.release]
+strip = true
+lto = true
