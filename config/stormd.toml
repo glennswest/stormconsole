@@ -1,0 +1,30 @@
+# stormd supervisor config for the stormconsole container.
+[general]
+name = "stormconsole"
+log_dir = "/var/stormd/logs"
+
+[api]
+bind = "0.0.0.0:9080"
+
+[ssh]
+enabled = true
+bind = "0.0.0.0:22"
+
+[[process]]
+name = "console"
+command = "/app/stormconsole"
+args = ["--config", "/etc/stormconsole/config.toml"]
+on_failure = "restart"
+on_exit = "restart"
+restart_delay_secs = 2
+
+[process.ui]
+label = "Console"
+proxy = "http://127.0.0.1:9094"
+summary = "http://127.0.0.1:9094/api/summary"
+
+[process.liveness]
+type = "http"
+url = "http://localhost:9094/healthz"
+interval_secs = 10
+initial_delay_secs = 5

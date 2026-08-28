@@ -33,20 +33,29 @@ Version locations:
 
 ## Work plan
 
-### Phase 1 — skeleton (v0.1.x) ✦ in progress
+### Phase 1 — skeleton (v0.1.x) ✅ complete 2026-08-28
 - [x] Repo, .gitignore, GitHub (private)
 - [x] Design doc (`docs/architecture.md`)
-- [ ] Cargo workspace: `crates/console-core`, `crates/stormconsole`,
+- [x] Cargo workspace: `crates/console-core`, `crates/stormconsole`,
       `crates/plugins/*`
-- [ ] console-core: `ConsolePlugin` trait, registry, aggregated
+- [x] console-core: `ConsolePlugin` trait, registry, aggregated
       `/api/v1/components` + `/ws/components`, nav feed
-- [ ] stormconsole binary: axum server on :9094, config TOML, auth
+- [x] stormconsole binary: axum server on :9094, config TOML, auth
       (sessions + bearer, stormd-compatible), SPA embed, plugin mounting
-- [ ] web/: Svelte 5 + stormview SPA shell — nav from `/api/v1/console/nav`,
+- [x] web/: Svelte 5 + stormview SPA shell — nav from `/api/v1/console/nav`,
       themes, login, Overview (ComponentCard grid), generic list/detail
       via ComponentGrid
-- [ ] Containerfile (FROM stormdbase, stormd supervises the binary)
-- [ ] Build + test on dev.g8.lo
+- [x] Containerfile (FROM stormdbase, stormd supervises the binary) +
+      `config/stormd.toml`
+- [x] Build + test on dev.g8.lo — clean build, tests pass, live smoke of
+      /healthz, /readyz, nav, components, summary, SPA, auth (401 → login
+      → 200). musl release: 5.9 MB static binary with embedded SPA at
+      `/build/cargo/stormconsole/x86_64-unknown-linux-musl/release/stormconsole`
+      (dev uses `CARGO_TARGET_DIR=/build/cargo/stormconsole`)
+
+Notes: the stormpump session packages the console as a golden guarded on
+that binary path — one file plus /etc/stormconsole/config.toml, no
+Containerfile needed on that path.
 
 ### Phase 2 — kubernetes plugin (rustkube)
 - [ ] rustkube client (reqwest, bearer/cert auth, watch=true streaming)
