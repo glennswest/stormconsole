@@ -57,15 +57,21 @@ Notes: the stormpump session packages the console as a golden guarded on
 that binary path — one file plus /etc/stormconsole/config.toml, no
 Containerfile needed on that path.
 
-### Phase 2 — kubernetes plugin (rustkube)
-- [ ] rustkube client (reqwest, bearer/cert auth, watch=true streaming)
-- [ ] Namespace views: namespace selector, per-namespace overview
-- [ ] Workloads: pods, deployments, replicasets, statefulsets, daemonsets,
-      jobs/cronjobs — list + detail + events
-- [ ] Cluster: nodes, namespaces, PVs/PVCs, services
-- [ ] Watch-backed cache → components feed contribution
-- [ ] Pod logs — blocked on rustkube `/log` subresource and rustkube-node
-      `/containerLogs` (issues filed; interim: stormlogs / direct node)
+### Phase 2 — kubernetes plugin (rustkube) ✦ in progress 2026-08-28
+- [ ] rustkube client (reqwest, bearer auth, list + `?watch=true` NDJSON
+      streaming, reconnect with fresh list on failure) — serde_json::Value
+      based, no generated types
+- [ ] Watch-backed cache over: namespaces, nodes, pods, deployments,
+      statefulsets, daemonsets, jobs, cronjobs, services, PVCs
+- [ ] Components mapping with health derivation (pod phase/readiness,
+      deployment ready/desired, node Ready condition) and relations
+      (pod belongs_to ns + has_one node; ns has_many workloads)
+- [ ] Actions as POST routes under /api/plugins/k8s (delete pod first)
+- [ ] Events: on-demand REST `GET /api/plugins/k8s/events?namespace=`
+- [ ] UI: namespace selector (top bar, persisted), `#/k8s/:kind` list view
+      over the feed, Events view; nav items per kind
+- [ ] Pod logs — blocked on rustkube#55 and rustkube-node#34 (interim:
+      fleet logs deep link)
 
 ### Phase 3 — logs plugin
 - [ ] Embedded fleet collector: join `239.255.42.1:5514`, parse RFC 5424,
