@@ -1,8 +1,14 @@
 # Changelog
 
 ## [Unreleased]
+<!-- New unreleased changes go here -->
+
+## [v0.2.0] — 2026-08-28
 
 ### 2026-08-28
+- **chore:** Live verification on dev against a real rustkube apiserver
+  (fastetcd-backed): 10/10 kinds synced, correct health derivation,
+  delete-pod action + watch removal confirmed
 - **feat:** kubernetes plugin phase 2 — rustkube client (Value-based,
   bearer auth, NDJSON `?watch=true` streaming with ordered apply and
   re-list backoff), watch-backed cache over ns/node/pod/deploy/sts/ds/

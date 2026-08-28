@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.1.0** (bootstrap)
+Current: **0.2.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -57,7 +57,7 @@ Notes: the stormpump session packages the console as a golden guarded on
 that binary path — one file plus /etc/stormconsole/config.toml, no
 Containerfile needed on that path.
 
-### Phase 2 — kubernetes plugin (rustkube) ✦ in progress 2026-08-28
+### Phase 2 — kubernetes plugin (rustkube) ✅ complete 2026-08-28
 - [x] rustkube client (reqwest, bearer auth, list + `?watch=true` NDJSON
       streaming, reconnect with fresh list on failure) — serde_json::Value
       based, no generated types
@@ -70,8 +70,13 @@ Containerfile needed on that path.
 - [x] Events: on-demand REST `GET /api/plugins/k8s/events?namespace=`
 - [x] UI: namespace selector (top bar, persisted), `#/k8s/:kind` list view
       over the feed, Events view; nav items per kind
-- [ ] Live verification against a real rustkube (fastetcd + kube-apiserver
-      on dev)
+- [x] Live verification against a real rustkube (fastetcd + kube-apiserver
+      debug builds on dev, `--insecure --dev-anonymous-admin`): 10/10 kinds
+      synced, namespaces/deployment/service in the feed with correct health
+      (deploy 0/2 ready → error with no controllers running), delete-pod
+      action through the console worked and the watch removed the pod from
+      the feed. rustkube emits no events without controller-manager — the
+      events view shows an honest empty list.
 - [ ] Pod logs — blocked on rustkube#55 and rustkube-node#34 (interim:
       fleet logs deep link)
 
