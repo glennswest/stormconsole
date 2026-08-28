@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+<!-- New unreleased changes go here -->
+
+## [v0.1.0] — 2026-08-28
 
 ### 2026-08-28
 - **feat:** Cargo workspace — console-core (ConsolePlugin trait, nav merge,
