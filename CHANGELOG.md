@@ -1,7 +1,18 @@
 # Changelog
 
 ## [Unreleased]
-<!-- New unreleased changes go here -->
+
+### 2026-08-28
+- **feat:** kubernetes plugin phase 2 — rustkube client (Value-based,
+  bearer auth, NDJSON `?watch=true` streaming with ordered apply and
+  re-list backoff), watch-backed cache over ns/node/pod/deploy/sts/ds/
+  job/cronjob/svc/pvc, components mapping with kubectl-grade health
+  derivation and namespace/node relations, delete-pod action route,
+  events endpoint
+- **feat:** UI — namespace selector (top bar, persisted), `#/k8s/:kind`
+  list views over the feed, `#/k8s/events` table with Warning
+  highlighting and auto-refresh
+- **fix:** enable reqwest `stream` feature for watch streaming
 
 ## [v0.1.0] — 2026-08-28
 
