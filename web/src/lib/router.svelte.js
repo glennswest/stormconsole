@@ -7,6 +7,8 @@ const routes = [
   // component ids carry ':' and '/', so the grid root travels in the query:
   // #/grid?id=<component>&rel=<relation>
   { pattern: '#/grid', name: 'grid' },
+  { pattern: '#/k8s/events', name: 'k8sevents' },
+  { pattern: '#/k8s/:kind', name: 'k8slist' },
 ]
 
 function match(hash) {

@@ -1,10 +1,30 @@
 <script>
-  import { auth, feed, nav, logout } from '../stores.svelte.js'
+  import { auth, feed, nav, logout, k8sns, selectNamespace } from '../stores.svelte.js'
   import { THEMES, theme, applyTheme } from 'stormview/theme'
+
+  let namespaces = $derived(
+    feed.components
+      .filter((c) => c.kind === 'k8s-ns')
+      .map((c) => c.label)
+      .sort()
+  )
 </script>
 
 <header>
   <a class="brand" href="#/">⛈ {nav.name}</a>
+  {#if namespaces.length}
+    <select
+      class="ns-pick"
+      title="Namespace"
+      value={k8sns.selected}
+      onchange={(e) => selectNamespace(e.target.value)}
+    >
+      <option value="">All namespaces</option>
+      {#each namespaces as ns}
+        <option value={ns}>{ns}</option>
+      {/each}
+    </select>
+  {/if}
   <span class="right">
     <select
       class="theme-pick"
@@ -60,6 +80,16 @@
     transition: background 0.3s;
   }
   .live.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .ns-pick {
+    margin-left: 16px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: var(--panel-raised);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    max-width: 220px;
+  }
   .theme-pick {
     padding: 3px 6px;
     font-size: 12px;

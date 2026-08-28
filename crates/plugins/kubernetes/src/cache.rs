@@ -15,24 +15,23 @@ use tracing::{debug, warn};
 use crate::client::RkClient;
 
 /// One watched resource. `kind` is the console's short noun (also the
-/// component kind); `list_path` lists across all namespaces.
+/// component kind suffix); `list_path` lists across all namespaces.
 pub struct ResourceSpec {
     pub kind: &'static str,
     pub list_path: &'static str,
-    pub namespaced: bool,
 }
 
 pub const RESOURCES: &[ResourceSpec] = &[
-    ResourceSpec { kind: "ns", list_path: "/api/v1/namespaces", namespaced: false },
-    ResourceSpec { kind: "node", list_path: "/api/v1/nodes", namespaced: false },
-    ResourceSpec { kind: "pod", list_path: "/api/v1/pods", namespaced: true },
-    ResourceSpec { kind: "deploy", list_path: "/apis/apps/v1/deployments", namespaced: true },
-    ResourceSpec { kind: "sts", list_path: "/apis/apps/v1/statefulsets", namespaced: true },
-    ResourceSpec { kind: "ds", list_path: "/apis/apps/v1/daemonsets", namespaced: true },
-    ResourceSpec { kind: "job", list_path: "/apis/batch/v1/jobs", namespaced: true },
-    ResourceSpec { kind: "cronjob", list_path: "/apis/batch/v1/cronjobs", namespaced: true },
-    ResourceSpec { kind: "svc", list_path: "/api/v1/services", namespaced: true },
-    ResourceSpec { kind: "pvc", list_path: "/api/v1/persistentvolumeclaims", namespaced: true },
+    ResourceSpec { kind: "ns", list_path: "/api/v1/namespaces" },
+    ResourceSpec { kind: "node", list_path: "/api/v1/nodes" },
+    ResourceSpec { kind: "pod", list_path: "/api/v1/pods" },
+    ResourceSpec { kind: "deploy", list_path: "/apis/apps/v1/deployments" },
+    ResourceSpec { kind: "sts", list_path: "/apis/apps/v1/statefulsets" },
+    ResourceSpec { kind: "ds", list_path: "/apis/apps/v1/daemonsets" },
+    ResourceSpec { kind: "job", list_path: "/apis/batch/v1/jobs" },
+    ResourceSpec { kind: "cronjob", list_path: "/apis/batch/v1/cronjobs" },
+    ResourceSpec { kind: "svc", list_path: "/api/v1/services" },
+    ResourceSpec { kind: "pvc", list_path: "/api/v1/persistentvolumeclaims" },
 ];
 
 #[derive(Default)]

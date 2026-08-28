@@ -20,6 +20,25 @@ export const nav = $state({
   sections: [],
 })
 
+// The namespace selector, OpenShift's project selector: '' means all
+// namespaces. Scopes every namespaced k8s view; persists per browser.
+export const k8sns = $state({
+  selected: (() => {
+    try {
+      return localStorage.getItem('stormconsole-ns') || ''
+    } catch {
+      return ''
+    }
+  })(),
+})
+
+export function selectNamespace(ns) {
+  k8sns.selected = ns
+  try {
+    localStorage.setItem('stormconsole-ns', ns)
+  } catch {}
+}
+
 export const auth = $state({
   checked: false,
   required: false,

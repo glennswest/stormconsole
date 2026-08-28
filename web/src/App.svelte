@@ -6,6 +6,8 @@
   import Overview from './lib/views/Overview.svelte'
   import GridView from './lib/views/GridView.svelte'
   import LogsView from './lib/views/LogsView.svelte'
+  import K8sList from './lib/views/K8sList.svelte'
+  import K8sEvents from './lib/views/K8sEvents.svelte'
   import Login from './lib/views/Login.svelte'
 
   checkAuth().then(() => {
@@ -16,6 +18,8 @@
     overview: Overview,
     grid: GridView,
     logs: LogsView,
+    k8slist: K8sList,
+    k8sevents: K8sEvents,
   }
 
   let View = $derived(views[route.current.name] || Overview)
@@ -30,7 +34,7 @@
     <TopBar />
     <Sidebar />
     <main>
-      {#key route.current.name + route.current.query.toString()}
+      {#key route.current.name + (route.current.params.kind || '') + route.current.query.toString()}
         <View />
       {/key}
     </main>
