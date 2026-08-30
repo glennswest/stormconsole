@@ -6,9 +6,10 @@ rendering everything through the [stormview](https://github.com/glennswest/storm
 contract, with a pluggable architecture where every domain contributes its
 own part.
 
-- **kubernetes** — namespaces, workloads, nodes, events via
-  [rustkube](https://github.com/glennswest/rustkube) (kube-wire-compatible
-  apiserver, watch-backed cache)
+- **kubernetes** — namespaces, workloads, nodes, events, network policies
+  via [rustkube](https://github.com/glennswest/rustkube) (kube-wire-compatible
+  apiserver, watch-backed cache); **Cilium** endpoints, nodes, identities
+  and policies through its CRDs, under one Cilium card
 - **logs** — the fleet log collector: stormcast multicast
   (`239.255.42.1:5514`) → SQLite ring → query API + live follow
 - **fleet** — nodes discovered by their own announcements; drill into each
@@ -27,9 +28,11 @@ aggregates every plugin's components at `/api/v1/components` (+
 
 ## Status
 
-v0.1.0 — bootstrap. Design complete (see
-[docs/architecture.md](docs/architecture.md)); Phase 1 (skeleton) in
-progress. Work plan in [CLAUDE.md](CLAUDE.md).
+v0.4.0 — a working console on a StormCOS node with no config: rustkube
+(with Cilium), fleet nodes and services, fleet logs, stormdrive,
+stormstorage, stormblock, sbregistry, and OpenShift-style create. Design in
+[docs/architecture.md](docs/architecture.md); work plan in
+[CLAUDE.md](CLAUDE.md).
 
 ## Build
 
@@ -95,7 +98,8 @@ knows nothing about pods or volumes.
 
 - **kubernetes** — *Import YAML* (any documents, `---`-separated, like
   `oc apply -f`) and a template per kind (Pod, Deployment, StatefulSet,
-  DaemonSet, Job, CronJob, Service, PVC, Namespace). `POST
+  DaemonSet, Job, CronJob, Service, PVC, Namespace, NetworkPolicy,
+  CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy). `POST
   /api/plugins/k8s/apply` turns each document into JSON and creates it in
   the collection its `apiVersion`/`kind`/`namespace` name; every document
   gets a line in the result, a failure on one does not stop the rest, and a

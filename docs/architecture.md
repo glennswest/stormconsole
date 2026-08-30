@@ -140,6 +140,14 @@ is a thin typed layer over the standard REST paths.
 - **Actions**: delete pod (danger), scale via deployment update (rustkube
   has no `/scale` subresource yet — update the spec directly), cordon/
   uncordon and drain via eviction API.
+- **Cilium**: the agent's API is a unix socket and Hubble is gRPC, neither
+  reachable from a golden, so Cilium is read through its CRDs on the
+  apiserver — `cilium.io/v2` endpoints (state, address, identity, edge to
+  the pod), nodes, identities, network policies (selector and rule counts,
+  DELETE) — plus core NetworkPolicy, under one `k8s:cilium` card. CRD kinds
+  are optional in the watch cache: a 404 is "not installed", synced and
+  empty, re-checked each minute. Hubble flows are the next step and need
+  a relay the console can reach.
 - **Pod logs**: rustkube today has **no** `/log` subresource and
   rustkube-node has **no** `/containerLogs` endpoint, although the node
   writes CRI log files under `/var/log/pods/…`. Issues are filed (below).

@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.3.0**
+Current: **0.4.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -143,7 +143,9 @@ instances (9081–9085, 9192–9194) each serve a feed. Zero-config, node-local:
       /build/cache/sc-live/config.toml points every upstream at
       192.168.8.106). The node is under active development and reboots;
       YAML create/conflict/delete verified against a local rustkube on dev
-- [ ] Release v0.4.0; update stormpump#7
+- [x] Cilium via CRDs: endpoints/nodes/identities/policies + card,
+      creators, DELETE; optional CRD kinds synced-empty when absent
+- [x] Release v0.4.0; update stormpump#7
 - [ ] Next: cAdvisor container stats plugin (user integrating cadvisor),
       stormvm feed (:9095, FeedPlugin) + VM consoles (#2), per-node drill
       into other nodes, fleet actions

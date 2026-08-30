@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.4.0] — 2026-08-30
+
 ### 2026-08-30
 - **feat:** a working console on a node with no config — every upstream
   defaults to this node's own daemon: rustkube `https://127.0.0.1:6443`
@@ -34,6 +36,13 @@
   cards deep-link
 - **docs:** README configuration defaults table and *Creating things*,
   architecture plugin sections rewritten to what is built, example config
+- **feat:** Cilium — endpoints (state, address, identity, edge to the pod),
+  nodes, identities (namespace + labels), CiliumNetworkPolicy /
+  Clusterwide and core NetworkPolicy (selector + rule counts, DELETE
+  action) through the apiserver's `cilium.io/v2`, under a Cilium card
+  (endpoints ready, identities, nodes, policies); Networking nav items;
+  policy creators. Optional CRD kinds count as synced-empty when the CRD
+  is not served, so a cluster without Cilium stays honest
 - **chore:** `config/stormd.toml` sets `no_restart_exit_codes = [78]` — stormd
   v0.7.0 (stormd#2, done) marks the console failed once on a bad config
   instead of restarting it
