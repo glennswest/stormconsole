@@ -95,6 +95,24 @@ Containerfile needed on that path.
       parse/fallback/severity filter/summary/component metrics all correct,
       SSE delivered a live datagram end to end
 
+### Issue #3 — crash loop on StormCOS ✦ in progress 2026-08-30
+Root cause: stormpump's `build-goldens.sh` writes the console's config in
+the flat node-service shape (`listen_addr = …`, `data_dir = …`, no
+sections) that stormdrive/stormstorage use; `Config` had
+`deny_unknown_fields` and no such keys, so `toml::from_str` failed and
+`main` returned `Err` → exit 1 on every start.
+- [ ] Accept `listen_addr` and `data_dir` at top level; `logs.db_path`
+      defaults to `<data_dir>/logs.db` (`/var/lib/stormconsole`, the
+      golden's writable volume)
+- [ ] Fatal path: one line on stderr naming what failed; exit 78
+      (EX_CONFIG) for config errors, 1 for runtime errors
+- [ ] Tests: stormpump's exact file, the example file, unknown key named
+- [ ] Docs (README config section, example config, architecture), changelog
+- [ ] Build + test on dev; smoke: stormpump's config → /healthz for 15 s;
+      bad config → stderr line + exit 78
+- [ ] Release v0.3.0; close #3; file stormpump (re-enable
+      `STORMCONSOLE_START`) and stormd (non-retryable exit codes) issues
+
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence
 - [ ] Node detail: drill into that node's stormd/stormdrive/stormblock APIs
