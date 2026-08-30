@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.3.0] — 2026-08-30
+
 ### 2026-08-30
 - **fix:** #3 crash loop on StormCOS — the golden's flat node-service
   config (`listen_addr`, `data_dir`) was rejected by `deny_unknown_fields`
@@ -17,8 +19,6 @@
   file, defaults, precedence, unknown key named with its line, bad address
 - **docs:** README §Configuration, example config, architecture deployment
   note on the StormCOS golden and exit statuses
-
-## [v0.3.0] — 2026-08-28
 
 ### 2026-08-28
 - **feat:** logs plugin phase 3 — the fleet log collector: multicast join
