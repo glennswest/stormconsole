@@ -70,10 +70,11 @@ impl ConsolePlugin for StormblockPlugin {
                 &format!("{PROXY}/api/v1/volumes"),
                 vec![
                     Field::text("name", "Name").required(),
-                    Field::text("size", "Size").hint("e.g. 1G, 512M — not needed when cloning a template").required(),
+                    Field::text("size", "Size").hint("e.g. 1G, 512M — not needed when cloning a template"),
+                    Field::text("array_id", "Array id").hint("placement: an array id, or a redundancy policy, or a template — one of the three"),
                     Field::select("redundancy", "Redundancy", &["", "mirror", "mirror:3", "raid5:4+1", "raid6:4+2"])
-                        .hint("empty = none; a policy is refused when its legs cannot be placed on distinct domains"),
-                    Field::text("from_template", "From template").hint("clone a preformatted filesystem template instead of creating an empty volume"),
+                        .hint("a policy places its own extents; refused when the legs cannot land on distinct domains"),
+                    Field::text("from_template", "From template").hint("clone a preformatted filesystem template (id or name) instead of creating an empty volume"),
                 ],
             )
             .describe("A thin volume on this node's slabs")

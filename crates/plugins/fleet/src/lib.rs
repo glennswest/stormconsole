@@ -50,13 +50,14 @@ pub struct FleetPlugin {
 
 impl FleetPlugin {
     pub fn new(mcast_group: String, host: String, ports: Vec<u16>, hosts: Option<LogHosts>) -> Self {
+        let hostname = if is_loopback(&host) { local_hostname() } else { host.clone() };
         Self {
             inner: Arc::new(Inner {
                 mcast_group,
                 host,
                 ports,
                 hosts,
-                hostname: if is_loopback(&host) { local_hostname() } else { host.clone() },
+                hostname,
                 client: reqwest::Client::new(),
                 services: RwLock::new(BTreeMap::new()),
             }),

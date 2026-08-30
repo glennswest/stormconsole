@@ -206,7 +206,7 @@ async fn apply_yaml(State(inner): State<Arc<Inner>>, body: String) -> Response {
             }
         };
         match client.post_json(&path, &doc).await {
-            Ok((status, resp)) if status.is_success() => {
+            Ok((status, _)) if status.is_success() => {
                 results.push(json!({"kind": kind, "name": name, "status": status.as_u16(), "created": true}))
             }
             Ok((status, resp)) => {
