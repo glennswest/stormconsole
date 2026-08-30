@@ -236,8 +236,8 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
 }
 
 /// A DELETE against the apiserver path, through the console.
-fn delete_action(path: &str) -> stormview::Action {
-    stormview::Action {
+fn delete_action(path: &str) -> console_core::Action {
+    console_core::Action {
         id: "delete".into(),
         label: "Delete".into(),
         method: "DELETE".into(),
