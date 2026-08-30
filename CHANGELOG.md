@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-08-30
+- **docs:** filed stormpump#11 (Cilium agent metrics address, Hubble +
+  relay enablement) and stormconsole#4 (agent probe, hubble-ui proxy,
+  native flows, policy YAML edit); recorded in the integration-gaps table
+
 ## [v0.4.0] — 2026-08-30
 
 ### 2026-08-30
