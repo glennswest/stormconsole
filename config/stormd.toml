@@ -17,6 +17,9 @@ args = ["--config", "/etc/stormconsole/config.toml"]
 on_failure = "restart"
 on_exit = "restart"
 restart_delay_secs = 2
+# The console exits 78 (EX_CONFIG) for a config it cannot run on; stormd
+# >= 0.7.0 marks it failed once instead of restarting it (stormd#2).
+no_restart_exit_codes = [78]
 
 [process.ui]
 label = "Console"

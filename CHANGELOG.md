@@ -4,6 +4,9 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-08-30
+- **chore:** `config/stormd.toml` sets `no_restart_exit_codes = [78]` — stormd
+  v0.7.0 (stormd#2, done) marks the console failed once on a bad config
+  instead of restarting it
 - **docs:** record stormpump#7 and stormd#2, filed for #3's follow-through,
   in the integration-gaps table and work plan
 
