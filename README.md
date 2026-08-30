@@ -46,3 +46,31 @@ cd web && npm install && npm run build   # SPA, embedded at cargo build
 stormconsole --config /etc/stormconsole/config.toml
 # UI + API on :9094
 ```
+
+## Configuration
+
+One TOML file, every section optional; no file at all runs on defaults
+(`config/config.toml` documents them). Two shapes are accepted:
+
+```toml
+# The console's own, sectioned shape
+[api]
+bind = "0.0.0.0:9094"
+[logs]
+db_path = "/var/lib/stormconsole/logs.db"
+
+# The flat StormCOS node-service shape — what a golden writes, the same
+# two keys stormdrive and stormstorage take
+listen_addr = "0.0.0.0:9094"
+data_dir    = "/var/lib/stormconsole"
+```
+
+`listen_addr` is `[api] bind` and wins over it; the log ring lives at
+`<data_dir>/logs.db` (default `/var/lib/stormconsole`) unless `[logs]
+db_path` says otherwise. Unknown keys are errors.
+
+When the console cannot start it prints exactly one line on stderr —
+`stormconsole: fatal: config /etc/stormconsole/stormconsole.toml: line 2:
+unknown field `port` …` — and exits **78** (`EX_CONFIG`) for a config it
+cannot run on, **1** for a port it cannot bind. A supervisor reading the
+code can tell the one a restart will not fix from the one it might.

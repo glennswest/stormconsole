@@ -3,6 +3,21 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-08-30
+- **fix:** #3 crash loop on StormCOS — the golden's flat node-service
+  config (`listen_addr`, `data_dir`) was rejected by `deny_unknown_fields`
+  and the console exited 1 on every start. Both keys are now accepted;
+  `listen_addr` wins over `[api] bind`, and `[logs] db_path` defaults to
+  `<data_dir>/logs.db` (`/var/lib/stormconsole`, the golden's data volume)
+- **fix:** startup failures print one line on stderr
+  (`stormconsole: fatal: …`, naming the file and line for config errors)
+  and exit 78 (EX_CONFIG) for a bad config, 1 for a port that cannot be
+  bound — instead of anyhow's Debug dump and exit 1 for everything
+- **test:** config parsing — stormpump's exact golden file, the example
+  file, defaults, precedence, unknown key named with its line, bad address
+- **docs:** README §Configuration, example config, architecture deployment
+  note on the StormCOS golden and exit statuses
+
 ## [v0.3.0] — 2026-08-28
 
 ### 2026-08-28

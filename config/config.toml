@@ -1,5 +1,18 @@
 # stormconsole example configuration — /etc/stormconsole/config.toml
 # Every section is optional; a missing file runs on these defaults.
+#
+# The flat node-service shape is accepted too — the two lines below are the
+# whole of what a StormCOS golden writes, the same as stormdrive and
+# stormstorage take. `listen_addr` is `[api] bind` and wins over it;
+# `data_dir` is where the console writes (the log ring lives at
+# <data_dir>/logs.db unless `[logs] db_path` says otherwise).
+#
+# listen_addr = "0.0.0.0:9094"
+# data_dir    = "/var/lib/stormconsole"
+#
+# A config the console cannot run on is reported as one line on stderr
+# ("stormconsole: fatal: config <path>: line N: …") and exit status 78
+# (EX_CONFIG); a port it cannot bind exits 1. Unknown keys are errors.
 
 [general]
 name = "stormconsole"
@@ -25,7 +38,7 @@ mcast_group = "239.255.42.1:5514"    # stormcast group — nodes announce by exi
 [logs]
 enabled = true
 mcast_group = "239.255.42.1:5514"
-db_path = "/var/stormconsole/logs.db"
+# db_path = "/var/lib/stormconsole/logs.db"   # default: <data_dir>/logs.db
 
 [stormdrive]
 enabled = true                       # endpoints come from fleet discovery

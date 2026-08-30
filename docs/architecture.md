@@ -243,6 +243,21 @@ as a tab on its own stormd. Build: cross-compile
 The multicast listener needs the container on the fleet network (host or
 macvlan networking) — a bridged/NAT'd container cannot join the group.
 
+On StormCOS the console is a stormdbase golden that stormpump's
+`build-goldens.sh` stages exactly like stormdrive and stormstorage: the
+musl binary, a stormd config with an HTTP liveness probe on `/healthz`,
+and a **flat** `/etc/stormconsole/stormconsole.toml` — `listen_addr` and
+`data_dir`, nothing else — with the data volume mounted at
+`/var/lib/stormconsole`. The console accepts that shape as well as its own
+sectioned one (see README §Configuration); rejecting it was issue #3, a
+crash loop that made the node's serial console unreadable.
+
+Startup failures are one line on stderr and a distinct exit status: 78
+(`EX_CONFIG`) for a config the console cannot run on, 1 for a port it
+cannot bind. stormd archives the run's output to
+`/var/log/stormd/<name>.<run>.failed.log`, so that line is what a person
+without a shell on the node will eventually read.
+
 ## Repository layout
 
 ```
