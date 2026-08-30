@@ -23,6 +23,9 @@ pub fn parse_documents(text: &str) -> Result<Vec<Value>, String> {
 }
 
 const CLUSTER_SCOPED: &[&str] = &[
+    "CiliumClusterwideNetworkPolicy",
+    "CiliumNode",
+    "CiliumIdentity",
     "Namespace",
     "Node",
     "PersistentVolume",
@@ -48,6 +51,9 @@ fn plural(kind: &str) -> String {
         "PriorityClass" => "priorityclasses".into(),
         "RuntimeClass" => "runtimeclasses".into(),
         "PodDisruptionBudget" => "poddisruptionbudgets".into(),
+        "CiliumNetworkPolicy" => "ciliumnetworkpolicies".into(),
+        "CiliumClusterwideNetworkPolicy" => "ciliumclusterwidenetworkpolicies".into(),
+        "CiliumIdentity" => "ciliumidentities".into(),
         _ => format!("{}s", kind.to_lowercase()),
     }
 }
@@ -90,6 +96,9 @@ pub fn creators() -> Vec<Creator> {
         Creator::yaml("k8s:svc", "Service", APPLY, SERVICE).at(&["#/k8s/svc"]),
         Creator::yaml("k8s:pvc", "PersistentVolumeClaim", APPLY, PVC).at(&["#/k8s/pvc"]),
         Creator::yaml("k8s:ns", "Namespace", APPLY, NAMESPACE).at(&["#/k8s/ns"]),
+        Creator::yaml("k8s:netpol", "NetworkPolicy", APPLY, NETPOL).at(&["#/k8s/netpol"]),
+        Creator::yaml("k8s:cnp", "CiliumNetworkPolicy", APPLY, CNP).at(&["#/k8s/cnp"]),
+        Creator::yaml("k8s:ccnp", "CiliumClusterwideNetworkPolicy", APPLY, CCNP).at(&["#/k8s/ccnp"]),
     ]
 }
 
@@ -110,6 +119,12 @@ const CRONJOB: &str = "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: e
 const SERVICE: &str = "apiVersion: v1\nkind: Service\nmetadata:\n  name: example\n  namespace: default\nspec:\n  selector:\n    app: example\n  ports:\n    - port: 80\n      targetPort: 80\n";
 
 const PVC: &str = "apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: example\n  namespace: default\nspec:\n  accessModes: [\"ReadWriteOnce\"]\n  resources:\n    requests:\n      storage: 1Gi\n";
+
+const NETPOL: &str = "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: allow-same-namespace\n  namespace: default\nspec:\n  podSelector: {}\n  policyTypes: [\"Ingress\"]\n  ingress:\n    - from:\n        - podSelector: {}\n";
+
+const CNP: &str = "apiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: allow-dns-egress\n  namespace: default\nspec:\n  endpointSelector:\n    matchLabels:\n      app: example\n  egress:\n    - toEndpoints:\n        - matchLabels:\n            k8s:io.kubernetes.pod.namespace: kube-system\n            k8s:k8s-app: kube-dns\n      toPorts:\n        - ports:\n            - port: \"53\"\n              protocol: UDP\n";
+
+const CCNP: &str = "apiVersion: cilium.io/v2\nkind: CiliumClusterwideNetworkPolicy\nmetadata:\n  name: default-deny-ingress\nspec:\n  endpointSelector: {}\n  ingress:\n    - fromEndpoints:\n        - {}\n";
 
 const NAMESPACE: &str = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: example\n";
 

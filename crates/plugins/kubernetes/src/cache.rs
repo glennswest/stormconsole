@@ -19,19 +19,38 @@ use crate::client::RkClient;
 pub struct ResourceSpec {
     pub kind: &'static str,
     pub list_path: &'static str,
+    /// A CRD that may not be installed: a 404 means "none", not "broken",
+    /// and the kind counts as synced with nothing in it.
+    pub optional: bool,
+}
+
+const fn core(kind: &'static str, list_path: &'static str) -> ResourceSpec {
+    ResourceSpec { kind, list_path, optional: false }
+}
+
+const fn crd(kind: &'static str, list_path: &'static str) -> ResourceSpec {
+    ResourceSpec { kind, list_path, optional: true }
 }
 
 pub const RESOURCES: &[ResourceSpec] = &[
-    ResourceSpec { kind: "ns", list_path: "/api/v1/namespaces" },
-    ResourceSpec { kind: "node", list_path: "/api/v1/nodes" },
-    ResourceSpec { kind: "pod", list_path: "/api/v1/pods" },
-    ResourceSpec { kind: "deploy", list_path: "/apis/apps/v1/deployments" },
-    ResourceSpec { kind: "sts", list_path: "/apis/apps/v1/statefulsets" },
-    ResourceSpec { kind: "ds", list_path: "/apis/apps/v1/daemonsets" },
-    ResourceSpec { kind: "job", list_path: "/apis/batch/v1/jobs" },
-    ResourceSpec { kind: "cronjob", list_path: "/apis/batch/v1/cronjobs" },
-    ResourceSpec { kind: "svc", list_path: "/api/v1/services" },
-    ResourceSpec { kind: "pvc", list_path: "/api/v1/persistentvolumeclaims" },
+    core("ns", "/api/v1/namespaces"),
+    core("node", "/api/v1/nodes"),
+    core("pod", "/api/v1/pods"),
+    core("deploy", "/apis/apps/v1/deployments"),
+    core("sts", "/apis/apps/v1/statefulsets"),
+    core("ds", "/apis/apps/v1/daemonsets"),
+    core("job", "/apis/batch/v1/jobs"),
+    core("cronjob", "/apis/batch/v1/cronjobs"),
+    core("svc", "/api/v1/services"),
+    core("pvc", "/api/v1/persistentvolumeclaims"),
+    core("netpol", "/apis/networking.k8s.io/v1/networkpolicies"),
+    // Cilium, through its CRDs — the agent's own API is a unix socket and
+    // Hubble is gRPC, neither reachable from a golden.
+    crd("cep", "/apis/cilium.io/v2/ciliumendpoints"),
+    crd("cn", "/apis/cilium.io/v2/ciliumnodes"),
+    crd("cid", "/apis/cilium.io/v2/ciliumidentities"),
+    crd("cnp", "/apis/cilium.io/v2/ciliumnetworkpolicies"),
+    crd("ccnp", "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies"),
 ];
 
 #[derive(Default)]
@@ -137,6 +156,13 @@ pub async fn watch_resource(
                     warn!(kind = spec.kind, error = %e, "watch broke");
                 }
                 store.set_stale(spec.kind).await;
+            }
+            Err(crate::client::RkError::Status(st)) if spec.optional && st.as_u16() == 404 => {
+                // Not installed. Synced, empty; look again in a minute in
+                // case someone installs it.
+                debug!(kind = spec.kind, "CRD not served — treating as empty");
+                store.replace(spec.kind, HashMap::new()).await;
+                backoff = Duration::from_secs(60);
             }
             Err(e) => {
                 warn!(kind = spec.kind, error = %e, "list failed");

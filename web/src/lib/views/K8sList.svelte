@@ -19,8 +19,14 @@
     pvc: 'PersistentVolumeClaims',
     node: 'Nodes',
     ns: 'Namespaces',
+    netpol: 'Network policies',
+    cnp: 'Cilium network policies',
+    ccnp: 'Cilium clusterwide policies',
+    cep: 'Cilium endpoints',
+    cn: 'Cilium nodes',
+    cid: 'Cilium identities',
   }
-  const namespaced = ['pod', 'deploy', 'sts', 'ds', 'job', 'cronjob', 'svc', 'pvc']
+  const namespaced = ['pod', 'deploy', 'sts', 'ds', 'job', 'cronjob', 'svc', 'pvc', 'netpol', 'cnp', 'cep']
 
   const kind = $derived(route.current.params.kind)
   const title = $derived(titles[kind] || kind)

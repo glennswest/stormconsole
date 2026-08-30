@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use console_core::{ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Probe};
 use serde_json::{json, Value};
@@ -75,7 +75,14 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("DaemonSets", "#/k8s/ds")
                 .item("Jobs", "#/k8s/job")
                 .item("CronJobs", "#/k8s/cronjob"),
-            NavSection::new("Networking", 25).item("Services", "#/k8s/svc"),
+            NavSection::new("Networking", 25)
+                .item("Services", "#/k8s/svc")
+                .item("Network policies", "#/k8s/netpol")
+                .item("Cilium policies", "#/k8s/cnp")
+                .item("Clusterwide policies", "#/k8s/ccnp")
+                .item("Cilium endpoints", "#/k8s/cep")
+                .item("Cilium nodes", "#/k8s/cn")
+                .item("Identities", "#/k8s/cid"),
             NavSection::new("Compute", 20).item("Cluster nodes", "#/k8s/node"),
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
             NavSection::new("Observe", 30).item("Events", "#/k8s/events"),
@@ -92,6 +99,7 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/events", get(events))
             .route("/apply", post(apply_yaml))
+            .route("/raw/{*path}", delete(raw_delete))
             .with_state(self.inner.clone())
     }
 
@@ -176,6 +184,25 @@ async fn delete_pod(
             .into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()})))
             .into_response(),
+    }
+}
+
+/// DELETE any apiserver path — what a component's delete action calls.
+/// Only `/api/…` and `/apis/…` are forwarded.
+async fn raw_delete(State(inner): State<Arc<Inner>>, Path(path): Path<String>) -> Response {
+    let Some(client) = &inner.client else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
+            .into_response();
+    };
+    let path = format!("/{}", path.trim_start_matches('/'));
+    if !(path.starts_with("/api/") || path.starts_with("/apis/")) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "not an apiserver path"}))).into_response();
+    }
+    match client.delete(&path).await {
+        Ok(status) if status.is_success() => Json(json!({"deleted": path})).into_response(),
+        Ok(status) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", status.as_u16())})))
+            .into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 
