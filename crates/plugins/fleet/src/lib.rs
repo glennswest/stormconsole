@@ -36,6 +36,7 @@ struct Service {
 
 struct Inner {
     mcast_group: String,
+    host: String,
     ports: Vec<u16>,
     hosts: Option<LogHosts>,
     hostname: String,
@@ -48,10 +49,11 @@ pub struct FleetPlugin {
 }
 
 impl FleetPlugin {
-    pub fn new(mcast_group: String, ports: Vec<u16>, hosts: Option<LogHosts>) -> Self {
+    pub fn new(mcast_group: String, host: String, ports: Vec<u16>, hosts: Option<LogHosts>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 mcast_group,
+                host,
                 ports,
                 hosts,
                 hostname: local_hostname(),
@@ -227,7 +229,7 @@ impl ConsolePlugin for FleetPlugin {
                 if self.inner.services.read().await.contains_key(&port) {
                     continue;
                 }
-                let base = format!("http://127.0.0.1:{port}");
+                let base = format!("http://{}:{port}", self.inner.host);
                 if let Some(name) = probe_stormd(&self.inner.client, &base).await {
                     let feed = Arc::new(Feed::new(
                         &base,
@@ -288,6 +290,6 @@ async fn proxy(
     if !inner.services.read().await.contains_key(&port) {
         return (StatusCode::NOT_FOUND, format!("no service on port {port}")).into_response();
     }
-    let upstream = format!("http://127.0.0.1:{port}");
+    let upstream = format!("http://{}:{port}", inner.host);
     console_core::proxy::forward(&inner.client, &upstream, &method, &path, uri.query(), &headers, body).await
 }

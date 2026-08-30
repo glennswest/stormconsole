@@ -119,12 +119,25 @@ pub struct Fleet {
     /// their port + 100 (stormdrive 9192, stormstorage 9193, console 9194).
     #[serde(default = "default_stormd_ports")]
     pub stormd_ports: Vec<u16>,
+    /// Where those ports are probed; loopback on a node. Set to a node's
+    /// address to run the console elsewhere and look at that node.
+    #[serde(default = "default_stormd_host")]
+    pub stormd_host: String,
 }
 
 impl Default for Fleet {
     fn default() -> Self {
-        Self { enabled: true, mcast_group: default_group(), stormd_ports: default_stormd_ports() }
+        Self {
+            enabled: true,
+            mcast_group: default_group(),
+            stormd_ports: default_stormd_ports(),
+            stormd_host: default_stormd_host(),
+        }
     }
+}
+
+fn default_stormd_host() -> String {
+    "127.0.0.1".to_string()
 }
 
 fn default_stormd_ports() -> Vec<u16> {

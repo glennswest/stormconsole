@@ -71,6 +71,7 @@ async fn main() {
     if config.fleet.enabled {
         plugins.push(Arc::new(plugin_fleet::FleetPlugin::new(
             config.fleet.mcast_group.clone(),
+            config.fleet.stormd_host.clone(),
             config.fleet.stormd_ports.clone(),
             logs.as_ref().map(|l| l.hosts()),
         )));
