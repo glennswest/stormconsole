@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.2.0**
+Current: **0.3.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -95,22 +95,23 @@ Containerfile needed on that path.
       parse/fallback/severity filter/summary/component metrics all correct,
       SSE delivered a live datagram end to end
 
-### Issue #3 — crash loop on StormCOS ✦ in progress 2026-08-30
+### Issue #3 — crash loop on StormCOS ✅ fixed 2026-08-30
 Root cause: stormpump's `build-goldens.sh` writes the console's config in
 the flat node-service shape (`listen_addr = …`, `data_dir = …`, no
 sections) that stormdrive/stormstorage use; `Config` had
 `deny_unknown_fields` and no such keys, so `toml::from_str` failed and
 `main` returned `Err` → exit 1 on every start.
-- [ ] Accept `listen_addr` and `data_dir` at top level; `logs.db_path`
+- [x] Accept `listen_addr` and `data_dir` at top level; `logs.db_path`
       defaults to `<data_dir>/logs.db` (`/var/lib/stormconsole`, the
       golden's writable volume)
-- [ ] Fatal path: one line on stderr naming what failed; exit 78
+- [x] Fatal path: one line on stderr naming what failed; exit 78
       (EX_CONFIG) for config errors, 1 for runtime errors
-- [ ] Tests: stormpump's exact file, the example file, unknown key named
-- [ ] Docs (README config section, example config, architecture), changelog
-- [ ] Build + test on dev; smoke: stormpump's config → /healthz for 15 s;
-      bad config → stderr line + exit 78
-- [ ] Release v0.3.0; close #3; file stormpump (re-enable
+- [x] Tests: stormpump's exact file, the example file, unknown key named
+- [x] Docs (README config section, example config, architecture), changelog
+- [x] Build + test on dev (15/15); smoke: stormpump's verbatim config →
+      alive 15 s, /healthz 200, ring at /var/lib/stormconsole/logs.db;
+      unknown key → exit 78 naming file/line/key; busy port → exit 1
+- [x] Release v0.3.0; close #3; file stormpump (re-enable
       `STORMCONSOLE_START`) and stormd (non-retryable exit codes) issues
 
 ### Phase 4 — fleet/nodes plugin
