@@ -80,18 +80,20 @@ Containerfile needed on that path.
 - [ ] Pod logs — blocked on rustkube#55 and rustkube-node#34 (interim:
       fleet logs deep link)
 
-### Phase 3 — logs plugin ✦ in progress 2026-08-28
-- [ ] Collector: socket2 multicast join on `239.255.42.1:5514`, lenient
-      RFC 5424 parse (stormcast dialect; PRI → facility/severity), mpsc →
-      single writer
-- [ ] SQLite ring store (rusqlite bundled, WAL): events(ts, host, app,
-      severity, msg), pruned by row cap; live tail on a broadcast channel
-- [ ] Query API: `GET /api/plugins/logs/events?host=&min_severity=&last=
+### Phase 3 — logs plugin ✅ complete 2026-08-28
+- [x] Collector: socket2 multicast join on `239.255.42.1:5514`, lenient
+      RFC 5424 parse (stormcast dialect; PRI → facility/severity;
+      unparseable lines kept whole with source IP as host)
+- [x] SQLite ring store (rusqlite bundled, WAL): events(ts, host, app,
+      severity, msg), pruned to 200k rows; live tail on a broadcast channel
+- [x] Query API: `GET /api/plugins/logs/events?host=&min_severity=&last=
       &search=`, `GET /summary` (hosts, counts), SSE `GET /stream`
-- [ ] Components: collector health/metrics (events stored, hosts seen)
-- [ ] LogsView UI: host/severity/search filters, recent table, live follow
+- [x] Components: collector health/metrics (events stored, hosts seen)
+- [x] LogsView UI: host/severity/search filters, recent table, live follow
       via EventSource
-- [ ] Verified on dev with synthetic RFC 5424 datagrams to the group
+- [x] Verified on dev with synthetic RFC 5424 datagrams to the group:
+      parse/fallback/severity filter/summary/component metrics all correct,
+      SSE delivered a live datagram end to end
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

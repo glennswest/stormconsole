@@ -3,6 +3,18 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.3.0] — 2026-08-28
+
+### 2026-08-28
+- **feat:** logs plugin phase 3 — the fleet log collector: multicast join
+  (socket2, SO_REUSEADDR), lenient RFC 5424 parse with source-IP fallback,
+  SQLite ring store (WAL, 200k-row cap), query/summary APIs and SSE live
+  stream; collector component with events/hosts metrics
+- **feat:** fleet log viewer UI — host/severity/search filters, live
+  follow over EventSource, severity coloring
+- **chore:** Verified live on dev: synthetic stormcast datagrams parsed,
+  stored, filtered, summarized, and delivered over SSE
+
 ## [v0.2.0] — 2026-08-28
 
 ### 2026-08-28
