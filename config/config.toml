@@ -25,15 +25,20 @@ bind = "0.0.0.0:9094"
 # name = "admin"
 # password = "changeme"
 
+# Every upstream below defaults to this node's own daemon on loopback (the
+# golden runs on the host network), so a node needs none of these.
+
 [kubernetes]
 enabled = true
-# server = "https://192.168.8.150:6443"   # rustkube apiserver
+# server = "https://192.168.8.150:6443"   # default https://127.0.0.1:6443 (unverified TLS)
 # token = ""                              # ServiceAccount bearer token
-# insecure_skip_tls_verify = true
+# insecure_skip_tls_verify = true         # a configured server is verified unless set
 
 [fleet]
 enabled = true
 mcast_group = "239.255.42.1:5514"    # stormcast group — nodes announce by existing
+# stormd_host = "127.0.0.1"          # where this node's stormd instances are probed
+# stormd_ports = [9081, 9082, 9083, 9084, 9085, 9192, 9193, 9194]   # default: 9080–9089, 9180–9199
 
 [logs]
 enabled = true
@@ -41,12 +46,17 @@ mcast_group = "239.255.42.1:5514"
 # db_path = "/var/lib/stormconsole/logs.db"   # default: <data_dir>/logs.db
 
 [stormdrive]
-enabled = true                       # endpoints come from fleet discovery
+enabled = true
+# url = "http://127.0.0.1:9092"      # its stormview feed
+
+[stormstorage]
+enabled = true
+# url = "http://127.0.0.1:9093"      # its stormview feed
 
 [stormblock]
 enabled = true
-# url = "http://192.168.8.150:9090"
+# url = "http://127.0.0.1:9090"
 
 [sbregistry]
 enabled = true
-# url = "http://192.168.8.150:8080"
+# url = "http://127.0.0.1:5100"

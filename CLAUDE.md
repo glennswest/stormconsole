@@ -114,28 +114,39 @@ sections) that stormdrive/stormstorage use; `Config` had
 - [x] Release v0.3.0; close #3; file stormpump (re-enable
       `STORMCONSOLE_START`) and stormd (non-retryable exit codes) issues
 
-### Make it a console (v0.4.0) ✦ in progress 2026-08-30
+### Make it a console (v0.4.0) ✅ 2026-08-30
 Seen on sptest (192.168.8.106): every plugin idle, nothing configured, the
 storage/registry plugins still phase-1 stubs — while rustkube has 15 pods,
 stormblock 84 volumes, stormdrive/stormstorage serve feeds, and eight stormd
 instances (9081–9085, 9192–9194) each serve a feed. Zero-config, node-local:
-- [ ] console-core: `Feed` (poll an upstream `/api/v1/components`, re-prefix
+- [x] console-core: `Feed` (poll an upstream `/api/v1/components`, re-prefix
       ids/relations, route actions through the plugin proxy), `FeedPlugin`,
       `proxy::forward` + router, value helpers
-- [ ] Defaults when unset: rustkube `https://127.0.0.1:6443` (insecure —
+- [x] Defaults when unset: rustkube `https://127.0.0.1:6443` (insecure —
       stormcert self-signed, no CA mounted; sno is anonymous-admin),
       stormblock :9090, sbregistry :5100, stormdrive :9092, stormstorage :9093
-- [ ] drive + storage (new) = FeedPlugin over the node's stormdrive/stormstorage
-- [ ] sb: volumes/slabs/arrays/exports/drives → components with health,
+- [x] drive + storage (new) = FeedPlugin over the node's stormdrive/stormstorage
+- [x] sb: volumes/slabs/arrays/exports/drives → components with health,
       metrics, delete action via proxy; nav Storage → Volumes/Slabs/…
-- [ ] reg: readyz + warm-up → registry health; goldens/clones/pallets/images
+- [x] reg: readyz + warm-up → registry health; goldens/clones/pallets/images
       → components; nav Images
-- [ ] fleet: nodes from the log collector's hosts (recency health, link to
+- [x] fleet: nodes from the log collector's hosts (recency health, link to
       logs) + this node's stormd services discovered on the local port
       layout, system+process components with start/stop/restart via proxy
-- [ ] web: actions use their method (DELETE), logs view takes ?host=
-- [ ] Build on dev; run on dev against sptest's services; verify every
-      plugin shows data; docs/changelog; release v0.4.0; update stormpump#7
+- [x] web: actions use their method (DELETE), logs view takes ?host=
+- [x] Create, OpenShift-style: `Creator` contract + `/api/v1/console/
+      creators`, k8s Import YAML + per-kind templates via `/apply`,
+      stormblock/sbregistry forms, + Create menus, honest empty states
+- [x] Built + tested on dev (all green); run on dev against sptest:
+      133 components, 10/10 kinds, 84 volumes, 8 services, proxies 200.
+      Live demo while the node is up: http://dev.g8.lo:9094/ (config at
+      /build/cache/sc-live/config.toml points every upstream at
+      192.168.8.106). The node is under active development and reboots;
+      YAML create/conflict/delete verified against a local rustkube on dev
+- [ ] Release v0.4.0; update stormpump#7
+- [ ] Next: cAdvisor container stats plugin (user integrating cadvisor),
+      stormvm feed (:9095, FeedPlugin) + VM consoles (#2), per-node drill
+      into other nodes, fleet actions
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

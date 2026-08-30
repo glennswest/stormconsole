@@ -168,46 +168,75 @@ node proxy — the console does not re-store what a node already stores.
 ### fleet (nodes)
 
 There is no fleet-inventory service, by design: **nodes announce themselves
-by existing** on the multicast group. The fleet plugin derives the node set
-from log traffic (host field + source address), tracks presence/last-seen,
-and drills into a node's own daemons through the proxy (stormd :9080,
-stormdrive :9092, stormblock :9090, kubelet :10250 read endpoints).
+by existing** on the multicast group. The fleet plugin's node list is the
+log collector's host list (a `LogHosts` handle shared from the logs
+plugin), with recency as health — heard in the last two minutes is ok,
+ten is a warning, longer is an error — and each node card links to the
+logs filtered to it.
+
+This node's **services** are its stormd instances, discovered by probing
+the StormCOS port layout on loopback (control plane 9081–9085; node
+services at port + 100: stormdrive 9192, stormstorage 9193, console 9194).
+Each one's own stormview feed is folded in under `fleet:svc:<name>` —
+the system card (as kind `service`) and its processes, with start/stop/
+restart carried through `/api/plugins/fleet/proxy/{port}/…`. Mounts and
+log cards are filtered out; sixty of them per service is noise on an
+overview.
 
 CLUSTER.md calls for a **small periodic capability beacon** alongside the
 logs (cores, memory, drives, pallets booted, join state) rather than an
 inventory protocol. The beacon is the console's to define — proposed as an
 issue on stormcos (below); until it exists, capabilities come from per-node
-API calls after discovery.
+API calls after discovery. Drilling into *another* node's services, and
+the fleet actions (join, promote, demote, drain), are the remaining phase 4
+work.
 
-Fleet actions follow CLUSTER.md: join, promote, demote, drain — each a
-call against the node's own control surface, rendered as stormview actions
-with `danger` where appropriate.
+### stormdrive and stormstorage — feed plugins
 
-### stormdrive
-
-One stormdrive per storage node on :9092. The plugin fans out over the
-fleet's storage nodes, aggregates `/api/v1/drives` and summaries, and
-namespaces them per node (`drive:{node}:{id}`). Drive detail: SMART/health,
-wear, thermal, location (enclosure/bay), locate-LED toggle, test and fleet
-lifecycle actions (fleet/reserved/spare/failed) — all proxied.
+Both daemons serve the stormview components feed themselves (stormconsole#1),
+so each is a `FeedPlugin`: poll `GET {url}/api/v1/components` every 3 s,
+re-prefix ids and relation targets (`drive:…`, `storage:…`), route actions
+through the plugin's proxy, and take health and detail from the upstream's
+own `system` card. stormdrive's locate / fleet / test / designation actions
+and stormstorage's pool → node → volume graph arrive with no mapping here.
+Fleet-wide drive aggregation across nodes rides on fleet discovery later;
+one node first.
 
 ### stormblock
 
-The block engine's management API on :9090: volumes, exports, LUNs,
-fstemplates, slabs, arrays, sessions, moves. Rendered generically as
-components with `belongs_to`/`has_many` edges (array → slabs → volumes →
-exports). Storage health is the engine's own readiness — never a cached
-row.
+The block engine's management API on :9090 has no stormview feed yet (its
+UI is server-rendered), so this is the one storage plugin that maps rather
+than consumes: volumes (health from the engine's own `healthy | degraded |
+failed`; size, allocated, physical, redundancy; parent and array edges; a
+DELETE action), slabs (health from free space), arrays, exports (edge to
+their volume) and the engine's drives, all under an `sb:engine` card whose
+`has_many` relations are what the Storage nav items open. Creates: a
+volume form and an export form, posted through the proxy.
 
 ### sbregistry
 
-The image side: goldens (`/v1/goldens`), clones (`/v1/clones`), pallets
-(`/v1/pallets`), drives/images (`/v1/drives`, `/v1/images`), warm-up
-(`/v1/warmup`), plus the OCI distribution surface (`/v2/`). The console
-shows the golden/clone graph (golden `has_many` clones), pallet contents,
-and warm-up state. sbregistry does not yet serve a stormview components
-feed — issue filed; until then the plugin maps its JSON to components
+The image side on :5100: readiness and warm-up (`/readyz` — ready with a
+failed warm-up step is a warning that names the step, because a node whose
+PVC ladder was never cut works, slowly, and should say so), and goldens,
+clones (edges to their golden and their stormblock volume), pallets and
+images as components. Creates: golden and clone forms. sbregistry does not
+serve a stormview feed — issue filed; until then the plugin maps its JSON
 itself.
+
+### Creating things — the `Creator` contract
+
+OpenShift puts a **+ Create** on every list and an *Import YAML* in the
+top bar. Here the same two things are declared, not built: a plugin's
+`creators()` returns `Creator { id, label, at: [hash routes], mode: yaml |
+form, method, path, template | fields }`, the host stamps the owner and
+serves them at `/api/v1/console/creators`, and the SPA offers each one on
+the routes it names (`"*"` for everywhere). A YAML creator posts the editor
+text as `application/yaml`; a form creator posts its fields as one JSON
+object. The kubernetes plugin's `/apply` splits a YAML stream, converts
+each document to JSON and POSTs it to the collection its
+`apiVersion`/`kind`/`namespace` name (cluster-scoped kinds known, plurals
+derived with the usual exceptions), reporting per document. Empty lists
+say so and offer the create, rather than showing nothing.
 
 ## Cross-cutting services (console-core + binary)
 

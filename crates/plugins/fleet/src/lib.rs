@@ -187,12 +187,17 @@ impl ConsolePlugin for FleetPlugin {
         if !nodes.iter().any(|n| n.id == "fleet:node:local") {
             // Not heard on the group yet (or the collector is off): the
             // node still exists, because this console is running on it.
+            let remote = !is_loopback(&self.inner.host);
             nodes.push(ComponentSummary {
                 id: "fleet:node:local".into(),
                 kind: "node".into(),
                 label: self.inner.hostname.clone(),
                 health: if svc_ids.is_empty() { Health::Idle } else { Health::Ok },
-                detail: format!("this node · {} services · not yet heard on {}", svc_ids.len(), self.inner.mcast_group),
+                detail: if remote {
+                    format!("services at {} · {} found", self.inner.host, svc_ids.len())
+                } else {
+                    format!("this node · {} services · not yet heard on {}", svc_ids.len(), self.inner.mcast_group)
+                },
                 metrics: vec![Metric::new("services", svc_ids.len().to_string()).tone("muted")],
                 actions: vec![],
                 relations: if svc_ids.is_empty() { vec![] } else { vec![Relation::has_many("services", svc_ids.clone())] },

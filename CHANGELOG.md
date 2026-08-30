@@ -4,6 +4,36 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-08-30
+- **feat:** a working console on a node with no config — every upstream
+  defaults to this node's own daemon: rustkube `https://127.0.0.1:6443`
+  (unverified TLS; sno is anonymous-admin), stormblock :9090, sbregistry
+  :5100, stormdrive :9092, stormstorage :9093, stormd instances on the
+  StormCOS port layout. Verified against sptest (192.168.8.106) from dev:
+  133 components — 10/10 rustkube kinds, 84 volumes, 8 services
+- **feat:** console-core `Feed`/`FeedPlugin` (poll an upstream stormview
+  feed, re-prefix ids and relations, actions through the plugin proxy),
+  `proxy::forward` + router (method, query, content-type, body pass
+  through), `value` helpers
+- **feat:** stormdrive and stormstorage (new) are feed plugins over the
+  node's own feeds; stormblock maps volumes/slabs/arrays/exports/drives
+  with health, metrics, edges and a DELETE action; sbregistry maps
+  readiness + warm-up (a failed step is a named warning), goldens, clones,
+  pallets, images
+- **feat:** fleet — nodes from the log collector's hosts (recency health,
+  link to logs), this node's stormd services discovered on loopback with
+  their processes and start/stop/restart via proxy; `[fleet] stormd_host`
+  to look at one node from elsewhere
+- **feat:** create, the OpenShift way — `Creator` contract
+  (`/api/v1/console/creators`), kubernetes *Import YAML* + per-kind
+  templates through `POST /api/plugins/k8s/apply` (per-document results,
+  conflicts reported), stormblock volume/export and sbregistry golden/clone
+  forms; **+ Create** on every list and in the top bar; empty lists say so
+  and offer the create
+- **fix:** the UI invokes actions with the method the feed declares (a
+  stormblock delete is a DELETE); the logs view takes `?host=` so node
+  cards deep-link
+- **docs:** README configuration defaults table and *Creating things*,
+  architecture plugin sections rewritten to what is built, example config
 - **chore:** `config/stormd.toml` sets `no_restart_exit_codes = [78]` — stormd
   v0.7.0 (stormd#2, done) marks the console failed once on a bad config
   instead of restarting it
