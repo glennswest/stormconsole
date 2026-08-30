@@ -3,6 +3,7 @@
   import { auth, checkAuth, startFeed } from './lib/stores.svelte.js'
   import TopBar from './lib/components/TopBar.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
+  import CreateDialog from './lib/components/CreateDialog.svelte'
   import Overview from './lib/views/Overview.svelte'
   import GridView from './lib/views/GridView.svelte'
   import LogsView from './lib/views/LogsView.svelte'
@@ -38,6 +39,7 @@
         <View />
       {/key}
     </main>
+    <CreateDialog />
   </div>
 {/if}
 

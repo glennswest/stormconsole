@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use console_core::value::{field, human_bytes, u64_field};
-use console_core::{Action, ComponentSummary, ConsolePlugin, Health, Metric, NavSection, Relation};
+use console_core::{Action, ComponentSummary, ConsolePlugin, Creator, Field, Health, Metric, NavSection, Relation};
 use serde_json::Value;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -60,6 +60,37 @@ impl ConsolePlugin for StormblockPlugin {
             .item("Slabs", "#/grid?id=sb:engine&rel=slabs")
             .item("Arrays", "#/grid?id=sb:engine&rel=arrays")
             .item("Exports", "#/grid?id=sb:engine&rel=exports")]
+    }
+
+    fn creators(&self) -> Vec<Creator> {
+        vec![
+            Creator::form(
+                "sb:volume",
+                "Volume",
+                &format!("{PROXY}/api/v1/volumes"),
+                vec![
+                    Field::text("name", "Name").required(),
+                    Field::text("size", "Size").hint("e.g. 1G, 512M — not needed when cloning a template").required(),
+                    Field::select("redundancy", "Redundancy", &["", "mirror", "mirror:3", "raid5:4+1", "raid6:4+2"])
+                        .hint("empty = none; a policy is refused when its legs cannot be placed on distinct domains"),
+                    Field::text("from_template", "From template").hint("clone a preformatted filesystem template instead of creating an empty volume"),
+                ],
+            )
+            .describe("A thin volume on this node's slabs")
+            .at(&["#/grid?id=sb:engine&rel=volumes"]),
+            Creator::form(
+                "sb:export",
+                "Export",
+                &format!("{PROXY}/api/v1/exports"),
+                vec![
+                    Field::text("volume_id", "Volume id").required(),
+                    Field::select("protocol", "Protocol", &["nvmeof", "iscsi"]),
+                    Field::text("target_id", "Target id").hint("optional; the engine names one otherwise"),
+                ],
+            )
+            .describe("Present a volume over NVMe/TCP or iSCSI")
+            .at(&["#/grid?id=sb:engine&rel=exports"]),
+        ]
     }
 
     fn routes(&self) -> axum::Router {

@@ -39,6 +39,30 @@ export function selectNamespace(ns) {
   } catch {}
 }
 
+// What can be created, declared by plugins (/api/v1/console/creators):
+// a YAML editor with a template or a form, each posting to a plugin path.
+export const creators = $state({ list: [] })
+
+// The open create dialog, if any.
+export const create = $state({ open: null })
+
+export function openCreator(c) {
+  create.open = c
+}
+
+export function closeCreator() {
+  create.open = null
+}
+
+/// Creators offered on a hash route: those declared for it (prefix match)
+/// or everywhere ("*"). `null` means all of them (the top-bar menu).
+export function creatorsFor(hash) {
+  if (hash === null || hash === undefined) return creators.list
+  return creators.list.filter(
+    (c) => (c.at || []).includes('*') || (c.at || []).some((a) => hash.startsWith(a))
+  )
+}
+
 export const auth = $state({
   checked: false,
   required: false,
@@ -101,5 +125,9 @@ export function startFeed() {
 
   get('/api/v1/console/nav')
     .then((sections) => { nav.sections = sections })
+    .catch(() => {})
+
+  get('/api/v1/console/creators')
+    .then((list) => { creators.list = list })
     .catch(() => {})
 }

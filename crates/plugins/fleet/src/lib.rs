@@ -56,12 +56,16 @@ impl FleetPlugin {
                 host,
                 ports,
                 hosts,
-                hostname: local_hostname(),
+                hostname: if is_loopback(&host) { local_hostname() } else { host.clone() },
                 client: reqwest::Client::new(),
                 services: RwLock::new(BTreeMap::new()),
             }),
         }
     }
+}
+
+fn is_loopback(host: &str) -> bool {
+    host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
 /// The node's name as its syslog carries it (the golden shares the host

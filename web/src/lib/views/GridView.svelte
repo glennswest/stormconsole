@@ -7,19 +7,23 @@
   import ComponentGrid from 'stormview/components/ComponentGrid.svelte'
   import HealthDot from 'stormview/components/HealthDot.svelte'
   import { call } from '../api.js'
+  import CreateMenu from '../components/CreateMenu.svelte'
 
   const id = $derived(route.current.query.get('id'))
   const rel = $derived(route.current.query.get('rel'))
   const root = $derived(feed.components.find((c) => c.id === id))
 
+  // With ?rel=, an absent relation means "none yet" — an honest empty
+  // list with a way to create, not the root card standing in for it.
   const rootIds = $derived.by(() => {
     if (!root) return []
     if (rel) {
       const r = (root.relations || []).find((x) => x.name === rel)
-      if (r) return r.targets
+      return r ? r.targets : []
     }
     return [root.id]
   })
+  const hash = $derived(`#/grid?id=${id}${rel ? `&rel=${rel}` : ''}`)
 </script>
 
 <div class="content">
@@ -34,9 +38,18 @@
         <HealthDot health={root.health} />
         {root.label}
         {#if rel}<span class="rel">· {rel}</span>{/if}
+        <span class="count">{rootIds.length}</span>
       </h1>
+      <span class="tools"><CreateMenu at={hash} /></span>
     </div>
-    <ComponentGrid components={feed.components} {rootIds} invoke={(a) => call(a.method, a.path)} />
+    {#if rootIds.length === 0}
+      <div class="empty">
+        No {rel || root.label} yet.
+        <div class="empty-create"><CreateMenu at={hash} primary={true} /></div>
+      </div>
+    {:else}
+      <ComponentGrid components={feed.components} {rootIds} invoke={(a) => call(a.method, a.path)} />
+    {/if}
   {/if}
 </div>
 
@@ -52,5 +65,11 @@
     font-weight: 600;
   }
   .rel { color: var(--text-dim); font-weight: 400; }
+  .count {
+    font-size: 12px; color: var(--text-faint); background: var(--panel-raised);
+    border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-weight: 400;
+  }
+  .tools { margin-left: auto; }
+  .empty-create { margin-top: 12px; }
   .empty { color: var(--text-faint); padding: 40px; text-align: center; }
 </style>

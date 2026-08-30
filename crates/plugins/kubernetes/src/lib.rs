@@ -6,6 +6,7 @@
 //! from the same conditions kubectl reads. Actions surface as POST routes
 //! under /api/plugins/k8s so any stormview renderer can wire them.
 
+mod apply;
 mod cache;
 mod client;
 mod components;
@@ -19,7 +20,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use console_core::{ComponentSummary, ConsolePlugin, Health, NavSection, Probe};
+use console_core::{ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Probe};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -82,10 +83,15 @@ impl ConsolePlugin for KubernetesPlugin {
         ]
     }
 
+    fn creators(&self) -> Vec<Creator> {
+        apply::creators()
+    }
+
     fn routes(&self) -> Router {
         Router::new()
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/events", get(events))
+            .route("/apply", post(apply_yaml))
             .with_state(self.inner.clone())
     }
 
@@ -171,6 +177,62 @@ async fn delete_pod(
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()})))
             .into_response(),
     }
+}
+
+/// Import YAML, OpenShift-style: one or more documents, each created in
+/// its collection. Every document gets a line in the result; a failure on
+/// one does not stop the rest.
+async fn apply_yaml(State(inner): State<Arc<Inner>>, body: String) -> Response {
+    let Some(client) = &inner.client else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
+            .into_response();
+    };
+    let docs = match apply::parse_documents(&body) {
+        Ok(d) => d,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    if docs.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "no documents"}))).into_response();
+    }
+    let mut results = Vec::new();
+    let mut failed = false;
+    for doc in docs {
+        let (kind, name, path) = match apply::target(&doc) {
+            Ok(t) => t,
+            Err(e) => {
+                failed = true;
+                results.push(json!({"error": e}));
+                continue;
+            }
+        };
+        match client.post_json(&path, &doc).await {
+            Ok((status, resp)) if status.is_success() => {
+                results.push(json!({"kind": kind, "name": name, "status": status.as_u16(), "created": true}))
+            }
+            Ok((status, resp)) => {
+                failed = true;
+                let msg = resp.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+                results.push(json!({"kind": kind, "name": name, "status": status.as_u16(), "error": msg}))
+            }
+            Err(e) => {
+                failed = true;
+                results.push(json!({"kind": kind, "name": name, "error": e.to_string()}))
+            }
+        }
+    }
+    let status = if failed { StatusCode::MULTI_STATUS } else { StatusCode::CREATED };
+    let summary = results
+        .iter()
+        .map(|r| match (r.get("kind"), r.get("name"), r.get("error")) {
+            (Some(k), Some(n), None) => format!("{} {} created", k.as_str().unwrap_or(""), n.as_str().unwrap_or("")),
+            (Some(k), Some(n), Some(e)) => format!("{} {}: {}", k.as_str().unwrap_or(""), n.as_str().unwrap_or(""), e.as_str().unwrap_or("")),
+            (_, _, Some(e)) => e.as_str().unwrap_or("").to_string(),
+            _ => String::new(),
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    (status, Json(json!({"results": results, "error": if failed { Some(summary.clone()) } else { None }, "message": summary})))
+        .into_response()
 }
 
 #[derive(serde::Deserialize)]

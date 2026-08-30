@@ -50,6 +50,16 @@ impl RkClient {
         Ok(resp.json().await?)
     }
 
+    /// Create: POST a JSON object to a collection. The apiserver's status
+    /// and body come back whatever they are — a 409 is the caller's to
+    /// report, not an error here.
+    pub async fn post_json(&self, path: &str, body: &Value) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.http.post(format!("{}{}", self.base, path)).json(body).send().await?;
+        let status = resp.status();
+        let body = resp.json().await.unwrap_or(Value::Null);
+        Ok((status, body))
+    }
+
     pub async fn delete(&self, path: &str) -> Result<reqwest::StatusCode, RkError> {
         let resp = self.http.delete(format!("{}{}", self.base, path)).send().await?;
         Ok(resp.status())

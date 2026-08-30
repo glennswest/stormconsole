@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use stormview::{ComponentSummary, Health};
 use tokio_util::sync::CancellationToken;
 
+use crate::create::Creator;
 use crate::nav::NavSection;
 
 #[async_trait]
@@ -16,6 +17,11 @@ pub trait ConsolePlugin: Send + Sync {
     /// Navigation contribution; sections with the same label merge across
     /// plugins.
     fn nav(&self) -> Vec<NavSection> {
+        Vec::new()
+    }
+
+    /// What this plugin lets a user create, and how (see [`Creator`]).
+    fn creators(&self) -> Vec<Creator> {
         Vec::new()
     }
 

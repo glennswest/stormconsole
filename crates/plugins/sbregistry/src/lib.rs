@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use console_core::value::field;
-use console_core::{ComponentSummary, ConsolePlugin, Health, Metric, NavSection, Relation};
+use console_core::{ComponentSummary, ConsolePlugin, Creator, Field, Health, Metric, NavSection, Relation};
 use serde_json::Value;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -58,6 +58,34 @@ impl ConsolePlugin for SbregistryPlugin {
             .item("Clones", "#/grid?id=reg:registry&rel=clones")
             .item("Pallets", "#/grid?id=reg:registry&rel=pallets")
             .item("Images", "#/grid?id=reg:registry&rel=images")]
+    }
+
+    fn creators(&self) -> Vec<Creator> {
+        vec![
+            Creator::form(
+                "reg:golden",
+                "Golden",
+                "/api/plugins/reg/proxy/v1/goldens",
+                vec![
+                    Field::text("name", "Repository").hint("as pushed, e.g. library/nats").required(),
+                    Field::text("reference", "Tag or digest").default("latest"),
+                    Field::select("force", "Rebuild if sealed", &["false", "true"]),
+                ],
+            )
+            .describe("Cut a sealed golden template from an image in this registry")
+            .at(&["#/grid?id=reg:registry&rel=goldens"]),
+            Creator::form(
+                "reg:clone",
+                "Clone",
+                "/api/plugins/reg/proxy/v1/clones",
+                vec![
+                    Field::text("golden", "Golden").hint("golden name, image ref, digest or template name").required(),
+                    Field::text("consumer", "Consumer").hint("optional: what will hold it, to bind in one call"),
+                ],
+            )
+            .describe("A writable clone of a golden, ready to attach")
+            .at(&["#/grid?id=reg:registry&rel=clones"]),
+        ]
     }
 
     fn routes(&self) -> axum::Router {

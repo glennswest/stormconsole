@@ -34,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/summary", get(summary))
         .route("/api/v1/components", get(components))
         .route("/api/v1/console/nav", get(nav))
+        .route("/api/v1/console/creators", get(creators))
         .route("/ws/components", get(ws_components))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
@@ -55,6 +56,10 @@ async fn components(State(state): State<AppState>) -> Response {
 
 async fn nav(State(state): State<AppState>) -> Response {
     Json(state.registry.nav()).into_response()
+}
+
+async fn creators(State(state): State<AppState>) -> Response {
+    Json(state.registry.creators()).into_response()
 }
 
 async fn readyz(State(state): State<AppState>) -> Response {

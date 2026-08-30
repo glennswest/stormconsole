@@ -1,6 +1,7 @@
 <script>
   import { auth, feed, nav, logout, k8sns, selectNamespace } from '../stores.svelte.js'
   import { THEMES, theme, applyTheme } from 'stormview/theme'
+  import CreateMenu from './CreateMenu.svelte'
 
   let namespaces = $derived(
     feed.components
@@ -26,6 +27,7 @@
     </select>
   {/if}
   <span class="right">
+    <CreateMenu at={null} label="+ Create" primary={true} />
     <select
       class="theme-pick"
       title="Theme"

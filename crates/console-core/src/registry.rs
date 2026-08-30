@@ -32,6 +32,19 @@ impl Registry {
         merge(self.plugins.iter().flat_map(|p| p.nav()).collect())
     }
 
+    /// Every plugin's creators, each stamped with its owner.
+    pub fn creators(&self) -> Vec<crate::create::Creator> {
+        self.plugins
+            .iter()
+            .flat_map(|p| {
+                p.creators().into_iter().map(|mut c| {
+                    c.plugin = p.name().to_string();
+                    c
+                })
+            })
+            .collect()
+    }
+
     /// The current aggregated feed (cheap clone of an Arc).
     pub async fn components(&self) -> Arc<Vec<ComponentSummary>> {
         self.snapshot.read().await.clone()

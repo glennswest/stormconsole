@@ -5,7 +5,8 @@
   import { route } from '../router.svelte.js'
   import { feed, k8sns } from '../stores.svelte.js'
   import ComponentGrid from 'stormview/components/ComponentGrid.svelte'
-  import { post } from '../api.js'
+  import { call } from '../api.js'
+  import CreateMenu from '../components/CreateMenu.svelte'
 
   const titles = {
     pod: 'Pods',
@@ -41,15 +42,17 @@
       <span class="scope">in {k8sns.selected}</span>
     {/if}
     <span class="count">{rootIds.length}</span>
+    <span class="tools"><CreateMenu at={`#/k8s/${kind}`} /></span>
   </h1>
   {#if !feed.loaded}
     <div class="empty">Connecting…</div>
   {:else if rootIds.length === 0}
     <div class="empty">
       No {title.toLowerCase()}{k8sns.selected ? ` in ${k8sns.selected}` : ''}.
+      <div class="empty-create"><CreateMenu at={`#/k8s/${kind}`} primary={true} /></div>
     </div>
   {:else}
-    <ComponentGrid components={feed.components} {rootIds} invoke={(a) => post(a.path)} />
+    <ComponentGrid components={feed.components} {rootIds} invoke={(a) => call(a.method, a.path)} />
   {/if}
 </div>
 
@@ -72,4 +75,6 @@
     padding: 1px 8px;
   }
   .empty { color: var(--text-faint); padding: 40px; text-align: center; }
+  .empty-create { margin-top: 12px; }
+  .tools { margin-left: auto; }
 </style>
