@@ -113,7 +113,7 @@ impl Registry {
     }
 }
 
-fn severity(h: Health) -> u8 {
+pub(crate) fn severity(h: Health) -> u8 {
     match h {
         Health::Error => 0,
         Health::Warn => 1,

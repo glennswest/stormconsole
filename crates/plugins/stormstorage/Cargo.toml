@@ -1,0 +1,10 @@
+[package]
+name = "plugin-stormstorage"
+description = "stormconsole stormstorage plugin — the storage control plane's own feed (:9093)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true

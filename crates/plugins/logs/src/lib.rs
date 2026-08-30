@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 
 use parse::LogEvent;
 use store::Store;
+pub use store::HostSummary;
 
 struct Status {
     health: Health,
@@ -45,7 +46,25 @@ pub struct LogsPlugin {
 
 const RING_CAP: i64 = 200_000;
 
+/// A handle other plugins hold to ask which hosts the collector has heard
+/// from — the fleet plugin's node list is exactly this.
+#[derive(Clone)]
+pub struct LogHosts(Arc<Inner>);
+
+impl LogHosts {
+    pub async fn hosts(&self) -> Vec<HostSummary> {
+        match self.0.store.read().await.as_ref() {
+            Some(store) => store.hosts().unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+}
+
 impl LogsPlugin {
+    pub fn hosts(&self) -> LogHosts {
+        LogHosts(self.inner.clone())
+    }
+
     pub fn new(mcast_group: String, db_path: String) -> Self {
         let (tail, _) = broadcast::channel(1024);
         Self {

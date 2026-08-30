@@ -31,6 +31,8 @@ pub struct Config {
     #[serde(default)]
     pub stormdrive: Stormdrive,
     #[serde(default)]
+    pub stormstorage: Stormstorage,
+    #[serde(default)]
     pub stormblock: Stormblock,
     #[serde(default)]
     pub sbregistry: Sbregistry,
@@ -112,12 +114,21 @@ pub struct Fleet {
     /// stormcast multicast group nodes announce on.
     #[serde(default = "default_group")]
     pub mcast_group: String,
+    /// Local ports probed for stormd instances — this node's services.
+    /// The StormCOS layout: control plane 9081–9085, node services at
+    /// their port + 100 (stormdrive 9192, stormstorage 9193, console 9194).
+    #[serde(default = "default_stormd_ports")]
+    pub stormd_ports: Vec<u16>,
 }
 
 impl Default for Fleet {
     fn default() -> Self {
-        Self { enabled: true, mcast_group: default_group() }
+        Self { enabled: true, mcast_group: default_group(), stormd_ports: default_stormd_ports() }
     }
+}
+
+fn default_stormd_ports() -> Vec<u16> {
+    (9080..=9089).chain(9180..=9199).collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -148,11 +159,28 @@ pub const DEFAULT_DATA_DIR: &str = "/var/lib/stormconsole";
 pub struct Stormdrive {
     #[serde(default = "on")]
     pub enabled: bool,
+    /// This node's stormdrive, e.g. "http://127.0.0.1:9092".
+    pub url: Option<String>,
 }
 
 impl Default for Stormdrive {
     fn default() -> Self {
-        Self { enabled: true }
+        Self { enabled: true, url: None }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Stormstorage {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// The storage control plane, e.g. "http://127.0.0.1:9093".
+    pub url: Option<String>,
+}
+
+impl Default for Stormstorage {
+    fn default() -> Self {
+        Self { enabled: true, url: None }
     }
 }
 
@@ -233,6 +261,35 @@ impl Config {
         self.data_dir.as_deref().unwrap_or(DEFAULT_DATA_DIR)
     }
 
+    /// rustkube: configured, or this node's own apiserver. The golden runs
+    /// on the host network, and a StormCOS sno apiserver is on :6443.
+    pub fn kubernetes_server(&self) -> String {
+        self.kubernetes.server.clone().unwrap_or_else(|| "https://127.0.0.1:6443".to_string())
+    }
+
+    /// The node's apiserver serves a stormcert self-signed certificate and
+    /// the console golden mounts no CA, so the local default is accepted
+    /// unverified; a configured server is verified unless told otherwise.
+    pub fn kubernetes_insecure(&self) -> bool {
+        self.kubernetes.insecure_skip_tls_verify || self.kubernetes.server.is_none()
+    }
+
+    pub fn stormblock_url(&self) -> String {
+        self.stormblock.url.clone().unwrap_or_else(|| "http://127.0.0.1:9090".to_string())
+    }
+
+    pub fn sbregistry_url(&self) -> String {
+        self.sbregistry.url.clone().unwrap_or_else(|| "http://127.0.0.1:5100".to_string())
+    }
+
+    pub fn stormdrive_url(&self) -> String {
+        self.stormdrive.url.clone().unwrap_or_else(|| "http://127.0.0.1:9092".to_string())
+    }
+
+    pub fn stormstorage_url(&self) -> String {
+        self.stormstorage.url.clone().unwrap_or_else(|| "http://127.0.0.1:9093".to_string())
+    }
+
     /// The log ring's SQLite file.
     pub fn logs_db_path(&self) -> String {
         match &self.logs.db_path {
@@ -281,6 +338,25 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.bind(), "0.0.0.0:9094");
         assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.db");
         assert_eq!(c.data_dir(), DEFAULT_DATA_DIR);
+    }
+
+    #[test]
+    fn node_local_defaults_light_every_plugin() {
+        let c = Config::parse(STORMPUMP_GOLDEN).unwrap();
+        assert_eq!(c.kubernetes_server(), "https://127.0.0.1:6443");
+        assert!(c.kubernetes_insecure());
+        assert_eq!(c.stormblock_url(), "http://127.0.0.1:9090");
+        assert_eq!(c.sbregistry_url(), "http://127.0.0.1:5100");
+        assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
+        assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
+        assert!(c.fleet.stormd_ports.contains(&9085) && c.fleet.stormd_ports.contains(&9194));
+    }
+
+    #[test]
+    fn a_configured_server_is_verified_unless_told_otherwise() {
+        let c = Config::parse("[kubernetes]\nserver = \"https://k.example:6443\"\n").unwrap();
+        assert_eq!(c.kubernetes_server(), "https://k.example:6443");
+        assert!(!c.kubernetes_insecure());
     }
 
     #[test]

@@ -12,6 +12,7 @@ plugin-kubernetes.workspace = true
 plugin-fleet.workspace = true
 plugin-logs.workspace = true
 plugin-stormdrive.workspace = true
+plugin-stormstorage.workspace = true
 plugin-stormblock.workspace = true
 plugin-sbregistry.workspace = true
 

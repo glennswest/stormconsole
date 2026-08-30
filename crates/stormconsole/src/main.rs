@@ -55,35 +55,40 @@ async fn main() {
     };
     let config = Arc::new(config);
 
+    // Every upstream defaults to this node's own daemon (the golden runs on
+    // the host network), so a StormCOS node lights up with no config at all.
     let mut plugins: Vec<Arc<dyn ConsolePlugin>> = Vec::new();
     if config.kubernetes.enabled {
         plugins.push(Arc::new(plugin_kubernetes::KubernetesPlugin::new(
-            config.kubernetes.server.clone(),
+            Some(config.kubernetes_server()),
             config.kubernetes.token.clone(),
-            config.kubernetes.insecure_skip_tls_verify,
+            config.kubernetes_insecure(),
         )));
     }
+    let logs = config.logs.enabled.then(|| {
+        Arc::new(plugin_logs::LogsPlugin::new(config.logs.mcast_group.clone(), config.logs_db_path()))
+    });
     if config.fleet.enabled {
-        plugins.push(Arc::new(plugin_fleet::FleetPlugin::new(config.fleet.mcast_group.clone())));
-    }
-    if config.logs.enabled {
-        plugins.push(Arc::new(plugin_logs::LogsPlugin::new(
-            config.logs.mcast_group.clone(),
-            config.logs_db_path(),
+        plugins.push(Arc::new(plugin_fleet::FleetPlugin::new(
+            config.fleet.mcast_group.clone(),
+            config.fleet.stormd_ports.clone(),
+            logs.as_ref().map(|l| l.hosts()),
         )));
+    }
+    if let Some(logs) = logs {
+        plugins.push(logs);
     }
     if config.stormdrive.enabled {
-        plugins.push(Arc::new(plugin_stormdrive::StormdrivePlugin::new()));
+        plugins.push(Arc::new(plugin_stormdrive::plugin(&config.stormdrive_url())));
+    }
+    if config.stormstorage.enabled {
+        plugins.push(Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url())));
     }
     if config.stormblock.enabled {
-        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::new(
-            config.stormblock.url.clone(),
-        )));
+        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::new(&config.stormblock_url())));
     }
     if config.sbregistry.enabled {
-        plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(
-            config.sbregistry.url.clone(),
-        )));
+        plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
     }
 
     let registry = Arc::new(Registry::new(plugins));

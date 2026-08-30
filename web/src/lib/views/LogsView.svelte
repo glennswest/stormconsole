@@ -3,6 +3,7 @@
   // host/severity/search filters, and live follow over SSE.
   import { onMount } from 'svelte'
   import { get, timeAgo } from '../api.js'
+  import { route } from '../router.svelte.js'
 
   const SEVERITIES = [
     { v: '', label: 'All severities' },
@@ -14,7 +15,8 @@
 
   let rows = $state([])
   let hosts = $state([])
-  let host = $state('')
+  // A node card links here with ?host=; the filter starts on that node.
+  let host = $state(route.current.query.get('host') || '')
   let minSeverity = $state('')
   let search = $state('')
   let follow = $state(true)

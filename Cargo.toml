@@ -7,6 +7,7 @@ members = [
     "crates/plugins/fleet",
     "crates/plugins/logs",
     "crates/plugins/stormdrive",
+    "crates/plugins/stormstorage",
     "crates/plugins/stormblock",
     "crates/plugins/sbregistry",
 ]
@@ -23,6 +24,7 @@ plugin-kubernetes = { path = "crates/plugins/kubernetes" }
 plugin-fleet = { path = "crates/plugins/fleet" }
 plugin-logs = { path = "crates/plugins/logs" }
 plugin-stormdrive = { path = "crates/plugins/stormdrive" }
+plugin-stormstorage = { path = "crates/plugins/stormstorage" }
 plugin-stormblock = { path = "crates/plugins/stormblock" }
 plugin-sbregistry = { path = "crates/plugins/sbregistry" }
 

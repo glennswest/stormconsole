@@ -3,7 +3,7 @@
   // each plugin's components under it. Holds no model of its own.
   import { feed } from '../stores.svelte.js'
   import ComponentCard from 'stormview/components/ComponentCard.svelte'
-  import { post } from '../api.js'
+  import { call } from '../api.js'
 
   const resolveId = (id) => feed.components.find((c) => c.id === id)
 
@@ -25,9 +25,9 @@
     {#each byPlugin as group (group.card.id)}
       <h2>{group.card.label}</h2>
       <div class="grid">
-        <ComponentCard component={group.card} resolve={resolveId} invoke={(a) => post(a.path)} />
+        <ComponentCard component={group.card} resolve={resolveId} invoke={(a) => call(a.method, a.path)} />
         {#each group.items as c (c.id)}
-          <ComponentCard component={c} resolve={resolveId} invoke={(a) => post(a.path)} />
+          <ComponentCard component={c} resolve={resolveId} invoke={(a) => call(a.method, a.path)} />
         {/each}
       </div>
     {/each}

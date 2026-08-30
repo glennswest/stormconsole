@@ -7,9 +7,18 @@ export async function get(path) {
 }
 
 export async function post(path) {
-  const resp = await fetch(path, { method: 'POST' })
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
-  return resp.json()
+  return call('POST', path)
+}
+
+/// Invoke a component action exactly as the feed declares it — a
+/// stormblock delete is a DELETE, a stormd restart a POST.
+export async function call(method, path) {
+  const resp = await fetch(path, { method: method || 'POST' })
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}))
+    throw new Error(data.error || `${resp.status} ${resp.statusText}`)
+  }
+  return resp.json().catch(() => ({}))
 }
 
 export async function postJson(path, body) {
