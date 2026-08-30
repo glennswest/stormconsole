@@ -137,3 +137,6 @@ sections) that stormdrive/stormstorage use; `Config` had
 
 Tracked in `docs/architecture.md` §Integration gaps. File with `gh issue
 create` on the owning repo; never fix in this repo (Core Rule 11).
+
+2026-08-30: stormpump#7 (re-enable the console in the image, #3 fixed),
+stormd#2 (non-retryable exit codes; the console exits 78 for config errors).

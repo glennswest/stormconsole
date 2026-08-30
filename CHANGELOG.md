@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-08-30
+- **docs:** record stormpump#7 and stormd#2, filed for #3's follow-through,
+  in the integration-gaps table and work plan
+
 ## [v0.3.0] — 2026-08-30
 
 ### 2026-08-30

@@ -288,6 +288,8 @@ stormconsole/
 | stormblock-registry (sbregistry) | Serve a stormview components feed (`/api/v1/components` + `/ws/components`) for goldens/clones/pallets/warm-up | generic rendering in stormconsole and stormsh |
 | stormdrive | Serve the stormview components feed (planned in stormview README, not present in src) | fleet-wide drive aggregation without bespoke mapping |
 | stormcos | Define the node capability beacon (periodic, alongside stormcast logs: cores, memory, drives, pallets, join state) | fleet inventory without an inventory protocol |
+| stormpump | [#7](https://github.com/glennswest/stormpump/issues/7) put stormconsole back in the image — the crash loop (stormconsole#3) is fixed in v0.3.0 | the console booting on a StormCOS node at all |
+| stormd | [#2](https://github.com/glennswest/stormd/issues/2) `no_restart_exit_codes` — a process exiting 78 (EX_CONFIG) should not be restarted | a bad config failing once, loudly, instead of looping |
 
 ## Phasing
 
