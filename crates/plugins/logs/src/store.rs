@@ -386,10 +386,6 @@ impl Store {
         read().unwrap_or_default()
     }
 
-    pub fn count(&self) -> i64 {
-        self.stats().entries as i64
-    }
-
     /// Most-recent entries matching the filters, returned oldest-first.
     pub fn query(
         &self,
