@@ -3,41 +3,108 @@
    stormview supplies the palette (themes.css). This file supplies the
    *chrome*: the masthead / navigator / page-header / toolbar / table
    grammar that makes the app read as an operator console rather than a
-   dashboard, in the idiom of the OpenShift console and the ESXi host
-   client. It only ever consumes stormview tokens, so every theme keeps
+   dashboard. It only ever consumes stormview tokens, so every theme keeps
    working, and it loads after themes.css so its :root block wins.
 
-   Rules of the layer:
-   - Tight radii and near-flat elevation. Enterprise consoles separate
-     regions with a hairline, not a shadow.
-   - One accent. The active nav bar, the primary button, focus rings and
-     links are the same blue; everything else is a neutral or a state.
-   - Numbers are tabular everywhere they can be compared.
-   - 4px spacing rhythm; 20px page gutters. */
+   Two axes, deliberately independent:
+
+     theme  (data-theme, stormview) — the palette. Twelve of them.
+     style  (data-style, here)      — the chrome. Two of them.
+
+   A style is not a colour scheme. It is proportion and structure: how
+   tall the masthead is, how tight a table row is, how square a corner is,
+   whether a button shouts. Both styles therefore work on all twelve
+   palettes, and switching palette never changes the console's shape.
+
+     openshift — the OpenShift console. Comfortable density, a near-black
+                 masthead over a panel-coloured navigator, an accent rail
+                 on the active nav item, softly rounded corners, sentence
+                 case throughout.
+     esxi      — the ESXi host client (VMware Clarity). Compact density, a
+                 dark teal header, a tighter navigator tree, square
+                 corners, zebra-striped tables, uppercase button labels.
+
+   Rules that hold in both:
+   - Elevation is a hairline, not a shadow.
+   - One accent: the active nav rail, the primary button, focus rings and
+     links. Everything else is a neutral or a state.
+   - Numbers are tabular everywhere they can be compared. */
 
 :root {
-  /* Shape: 8px reads consumer, 4px reads instrument. */
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+  --sc-hairline: color-mix(in srgb, var(--border) 62%, transparent);
+
+  /* Type scale — the page title and body size are set per style. */
+  --sc-t-card: 14px;
+  --sc-t-meta: 12px;
+  --sc-t-eyebrow: 11px;
+}
+
+/* ------------------------------------------------------- style: openshift
+   The default. 8px radii read consumer; 4px reads instrument. The
+   masthead is near-black whatever the palette — OpenShift keeps its
+   masthead dark in light mode too — but blended a little toward the
+   theme's panel so it still belongs to the palette it sits on. */
+
+:root,
+[data-style='openshift'] {
   --radius: 4px;
   --radius-sm: 3px;
   --nav-h: 48px;
 
-  /* Elevation, uniform across themes: a hairline plus a whisper. */
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+  --sc-masthead: color-mix(in srgb, #151515 84%, var(--panel));
+  --sc-masthead-fg: #f5f5f5;
+  --sc-masthead-dim: #b8b8b8;
+  --sc-masthead-line: rgb(255 255 255 / 0.14);
 
-  /* Chrome surfaces derived from the theme, so all 12 themes follow.
-     The masthead sits between the panel and the ground: darker than the
-     navigator on dark themes, greyer than white on light ones. */
-  --sc-masthead: color-mix(in srgb, var(--panel) 48%, var(--bg) 52%);
   --sc-nav-w: 236px;
-  --sc-gutter: 20px;
-  --sc-hairline: color-mix(in srgb, var(--border) 62%, transparent);
+  --sc-nav-py: 6px;
+  --sc-nav-font: 13px;
+  --sc-nav-rail: 3px;
 
-  /* Type scale. */
-  --sc-t-page: 20px;   /* page title            */
-  --sc-t-card: 14px;   /* card / section title  */
+  --sc-gutter: 20px;
+  --sc-row-py: 8px;
+  --sc-row-px: 14px;
+  --sc-zebra: transparent;
+
+  --sc-t-page: 22px;
   --sc-t-body: 13px;
-  --sc-t-meta: 12px;
-  --sc-t-eyebrow: 11px;
+
+  --sc-btn-case: none;
+  --sc-btn-track: 0;
+  --sc-btn-weight: 500;
+}
+
+/* ------------------------------------------------------------ style: esxi
+   Clarity is square and dense: 2px corners, compact rows, zebra striping,
+   uppercase actions, and a dark teal header rather than a neutral one. */
+
+[data-style='esxi'] {
+  --radius: 2px;
+  --radius-sm: 2px;
+  --nav-h: 40px;
+
+  --sc-masthead: color-mix(in srgb, #10242e 84%, var(--panel));
+  --sc-masthead-fg: #eef4f7;
+  --sc-masthead-dim: #a9c0cb;
+  --sc-masthead-line: rgb(255 255 255 / 0.16);
+
+  --sc-nav-w: 212px;
+  --sc-nav-py: 3px;
+  --sc-nav-font: 12px;
+  --sc-nav-rail: 2px;
+
+  --sc-gutter: 16px;
+  --sc-row-py: 5px;
+  --sc-row-px: 12px;
+  --sc-zebra: color-mix(in srgb, var(--panel-raised) 34%, transparent);
+
+  --sc-t-page: 18px;
+  --sc-t-body: 12px;
+
+  --sc-btn-case: uppercase;
+  --sc-btn-track: 0.05em;
+  --sc-btn-weight: 600;
 }
 
 body {
@@ -197,11 +264,14 @@ select { padding-right: 24px; }
 .sc-seg button:hover:not(:disabled) { background: var(--nav-hover); color: var(--text); }
 .sc-seg button[aria-pressed='true'] { background: var(--nav-active); color: var(--text); }
 
-/* Buttons: quiet by default, one primary per view. */
+/* Buttons: quiet by default, one primary per view. Case and tracking
+   come from the style — Clarity shouts its actions, PatternFly does not. */
 button {
   border-color: var(--border-strong);
   background: var(--panel);
-  font-weight: 500;
+  font-weight: var(--sc-btn-weight);
+  text-transform: var(--sc-btn-case);
+  letter-spacing: var(--sc-btn-track);
 }
 button:hover:not(:disabled) { background: var(--nav-hover); border-color: var(--text-ghost); }
 button.sc-primary {
@@ -277,7 +347,7 @@ button.sc-primary:hover:not(:disabled) {
   justify-items: center;
   gap: 8px;
   text-align: center;
-  padding: 56px 24px;
+  padding: calc(var(--sc-gutter) * 2.4) 24px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -323,3 +393,21 @@ button.sc-primary:hover:not(:disabled) {
   :root { --sc-gutter: 14px; }
   .sc-search input[type='search'] { min-width: 0; width: 100%; }
 }
+
+/* --------------------------------------------------------- style detail
+   What the tokens cannot express on their own. */
+
+/* Clarity draws a table as a bordered grid with striped rows; PatternFly
+   draws it as rows separated by hairlines. */
+[data-style='esxi'] .sc-empty { border-radius: 0; }
+
+/* The segmented control is a single square unit in Clarity. */
+[data-style='esxi'] .sc-seg { border-radius: 0; }
+[data-style='esxi'] .sc-seg button { text-transform: none; letter-spacing: 0; }
+
+/* Counters are pills in PatternFly and square chips in Clarity. */
+[data-style='esxi'] .sc-count { border-radius: 2px; }
+
+/* The page header rule sits tight to the title in the compact style. */
+[data-style='esxi'] .sc-pagehead { padding-bottom: 10px; margin-bottom: 10px; }
+[data-style='esxi'] .sc-crumbs { margin-bottom: 4px; }

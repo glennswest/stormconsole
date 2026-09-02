@@ -4,8 +4,10 @@ import 'stormview/themes.css'
 // :root block wins on shape, elevation and type scale.
 import './lib/ui/console.css'
 import { initTheme } from 'stormview/theme'
+import { initStyle } from './lib/stores.svelte.js'
 import App from './App.svelte'
 
 initTheme()
+initStyle()
 
 export default mount(App, { target: document.getElementById('app') })

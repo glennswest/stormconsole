@@ -4,6 +4,7 @@
   // create, cluster health, appearance, session.
   import {
     auth, feed, nav, logout, k8sns, selectNamespace, prefs, rollup,
+    STYLES, applyStyle,
   } from '../stores.svelte.js'
   import { THEMES, theme, applyTheme } from 'stormview/theme'
   import CreateMenu from './CreateMenu.svelte'
@@ -79,9 +80,21 @@
     </a>
 
     <select
-      class="theme-pick"
-      aria-label="Appearance"
-      title="Appearance"
+      class="pick"
+      aria-label="Console style"
+      title="Console style — layout and density"
+      value={prefs.style}
+      onchange={(e) => applyStyle(e.target.value)}
+    >
+      {#each STYLES as s}
+        <option value={s.id}>{s.label}</option>
+      {/each}
+    </select>
+
+    <select
+      class="pick"
+      aria-label="Theme"
+      title="Theme — colours"
       value={theme.current}
       onchange={(e) => applyTheme(e.target.value)}
     >
@@ -103,7 +116,7 @@
   header {
     grid-area: top;
     background: var(--sc-masthead);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--sc-masthead-line);
     padding: 0 12px 0 8px;
     display: flex;
     align-items: center;
@@ -111,17 +124,22 @@
     gap: 10px;
     position: relative;
     z-index: 20;
+    /* Both styles put a dark bar at the top, whatever the palette below
+       it, so the masthead carries its own foreground rather than the
+       theme's — otherwise a light theme paints dark text on dark. */
+    color: var(--sc-masthead-fg);
+    color-scheme: dark;
   }
 
   .hamburger {
     background: none;
     border: none;
-    color: var(--text-dim);
+    color: var(--sc-masthead-dim);
     padding: 6px;
     display: grid;
     place-items: center;
   }
-  .hamburger:hover { background: var(--nav-hover); color: var(--text); }
+  .hamburger:hover { background: rgb(255 255 255 / 0.1); color: var(--sc-masthead-fg); }
 
   .brand {
     display: inline-flex;
@@ -129,10 +147,10 @@
     gap: 9px;
     padding: 4px 6px;
     border-radius: var(--radius-sm);
-    color: var(--text);
+    color: var(--sc-masthead-fg);
     white-space: nowrap;
   }
-  .brand:hover { text-decoration: none; background: var(--nav-hover); }
+  .brand:hover { text-decoration: none; background: rgb(255 255 255 / 0.1); }
   .mark { color: var(--brand); display: grid; place-items: center; }
   .word { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 
@@ -144,21 +162,16 @@
     gap: 8px;
     margin-left: 8px;
     padding-left: 16px;
-    border-left: 1px solid var(--border);
+    border-left: 1px solid var(--sc-masthead-line);
     height: 26px;
   }
   .scope label {
     font-size: var(--sc-t-eyebrow);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-faint);
+    color: var(--sc-masthead-dim);
   }
-  .scope select {
-    font-size: var(--sc-t-meta);
-    padding: 3px 22px 3px 8px;
-    max-width: 220px;
-    background: var(--panel);
-  }
+  .scope select { max-width: 220px; }
 
   .right {
     margin-left: auto;
@@ -173,11 +186,19 @@
     align-items: center;
     gap: 8px;
     padding: 4px 10px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sc-masthead-line);
     border-radius: 999px;
-    background: var(--panel);
+    background: rgb(255 255 255 / 0.07);
   }
-  .health:hover { text-decoration: none; border-color: var(--border-strong); }
+  .health:hover { text-decoration: none; background: rgb(255 255 255 / 0.14); }
+  /* The palette's state colours are tuned for the content ground; on a
+     near-black bar the light-theme greens and reds go muddy, so lift them
+     toward white for the masthead only. */
+  .health :global(.sc-status.ok) { color: color-mix(in srgb, var(--ok) 55%, white); }
+  .health :global(.sc-status.warn) { color: color-mix(in srgb, var(--warn-strong) 60%, white); }
+  .health :global(.sc-status.error) { color: color-mix(in srgb, var(--error) 62%, white); }
+  .health :global(.sc-status.unknown) { color: var(--sc-masthead-dim); }
+  .health :global(.mark) { background: rgb(255 255 255 / 0.1); }
   .live {
     width: 6px;
     height: 6px;
@@ -187,29 +208,38 @@
   }
   .live.on { background: var(--ok); box-shadow: 0 0 5px var(--ok); }
 
-  .theme-pick {
+  /* One control treatment for every select on the bar. */
+  header :global(select) {
     padding: 3px 22px 3px 8px;
     font-size: var(--sc-t-meta);
-    color: var(--text-dim);
-    background: var(--panel);
+    color: var(--sc-masthead-fg);
+    background: rgb(255 255 255 / 0.08);
+    border: 1px solid var(--sc-masthead-line);
+    border-radius: var(--radius-sm);
   }
+  header :global(select:hover) { background: rgb(255 255 255 / 0.14); }
 
-  .user { font-size: var(--sc-t-meta); color: var(--text-dim); font-weight: 500; }
+  .user { font-size: var(--sc-t-meta); color: var(--sc-masthead-dim); font-weight: 500; }
   .signout {
     padding: 4px 8px;
     background: none;
     border: 1px solid transparent;
-    color: var(--text-dim);
+    color: var(--sc-masthead-dim);
     display: grid;
     place-items: center;
   }
-  .signout:hover { color: var(--error); border-color: var(--error-border); background: var(--error-bg); }
+  .signout:hover {
+    color: #fff;
+    border-color: var(--error);
+    background: color-mix(in srgb, var(--error) 55%, transparent);
+  }
 
   @media (max-width: 900px) {
     .scope label, .user { display: none; }
     .scope { padding-left: 10px; margin-left: 2px; }
   }
   @media (max-width: 700px) {
-    .word, .theme-pick { display: none; }
+    .word { display: none; }
+    .pick { display: none; }
   }
 </style>

@@ -152,15 +152,37 @@ function save(key, value) {
   } catch {}
 }
 
+// The two chrome styles. Orthogonal to stormview's themes: a theme is
+// the palette, a style is the proportion and structure. Both work on all
+// twelve palettes, so picking one never constrains the other.
+export const STYLES = [
+  { id: 'openshift', label: 'OpenShift' },
+  { id: 'esxi', label: 'ESXi' },
+]
+
 export const prefs = $state({
   view: load('stormconsole-view', 'table'),
   collapsed: load('stormconsole-nav-collapsed', {}),
+  style: load('stormconsole-style', 'openshift'),
   navOpen: true,
 })
 
 export function setView(v) {
   prefs.view = v
   save('stormconsole-view', v)
+}
+
+export function applyStyle(id) {
+  const style = STYLES.some((s) => s.id === id) ? id : 'openshift'
+  prefs.style = style
+  document.documentElement.setAttribute('data-style', style)
+  save('stormconsole-style', style)
+}
+
+/// Called before the app mounts so the first paint is already in the
+/// chosen style — no flash of the default chrome.
+export function initStyle() {
+  applyStyle(load('stormconsole-style', 'openshift'))
 }
 
 export function toggleSection(label) {

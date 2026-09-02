@@ -145,19 +145,20 @@
     font-weight: 600;
     color: var(--text-dim);
     background: color-mix(in srgb, var(--panel-raised) 55%, var(--panel));
-    padding: 8px 14px;
+    padding: var(--sc-row-py) var(--sc-row-px);
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
     position: sticky;
     top: 0;
   }
   td {
-    padding: 8px 14px;
+    padding: var(--sc-row-py) var(--sc-row-px);
     border-bottom: 1px solid var(--sc-hairline);
     color: var(--text);
     vertical-align: top;
   }
   tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: var(--sc-zebra); }
   tbody tr:hover { background: var(--nav-hover); }
   .type {
     font-size: var(--sc-t-eyebrow);

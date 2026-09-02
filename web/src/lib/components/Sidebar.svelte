@@ -67,7 +67,7 @@
     background: none;
     border: none;
     border-radius: 0;
-    padding: 8px 12px 6px;
+    padding: calc(var(--sc-nav-py) + 2px) 12px 4px;
     font-size: var(--sc-t-eyebrow);
     font-weight: 700;
     text-transform: uppercase;
@@ -85,12 +85,12 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 6px 12px 6px 13px;
-    font-size: var(--sc-t-body);
+    padding: var(--sc-nav-py) 12px var(--sc-nav-py) 13px;
+    font-size: var(--sc-nav-font);
     color: var(--text-dim);
     /* The rail is always present and usually transparent, so the label
        never shifts when an item becomes active. */
-    border-left: 3px solid transparent;
+    border-left: var(--sc-nav-rail) solid transparent;
   }
   a:hover { color: var(--text); background: var(--nav-hover); text-decoration: none; }
   a.active {

@@ -264,7 +264,7 @@
 
   th {
     text-align: left;
-    padding: 8px 14px;
+    padding: var(--sc-row-py) var(--sc-row-px);
     font-size: var(--sc-t-meta);
     font-weight: 600;
     color: var(--text-dim);
@@ -282,7 +282,7 @@
   th i { font-style: normal; font-size: 9px; color: var(--accent); }
 
   td {
-    padding: 8px 14px;
+    padding: var(--sc-row-py) var(--sc-row-px);
     font-size: var(--sc-t-body);
     border-bottom: 1px solid var(--sc-hairline);
     color: var(--text);
@@ -290,6 +290,9 @@
   }
   tbody tr:last-child > td { border-bottom: none; }
   tr.clickable { cursor: pointer; }
+  /* Zebra striping is a Clarity signature; the openshift style sets the
+     token to transparent and gets hairline-separated rows instead. */
+  tbody tr:nth-child(even):not(.child) { background: var(--sc-zebra); }
   tbody tr:hover:not(.child) { background: var(--nav-hover); }
   tr.selected { background: var(--accent-bg); }
 
