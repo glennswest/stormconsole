@@ -175,7 +175,89 @@ fn is_sqlite(path: &str) -> bool {
 fn dedup_key(host: &str, app: &str, severity: u8, msg: &str) -> String {
     // \x1f (unit separator) cannot appear in a parsed syslog field, so the
     // parts can never run together into a colliding key.
-    format!("{host}\x1f{app}\x1f{severity}\x1f{msg}")
+    format!("{host}\x1f{app}\x1f{severity}\x1f{}", fingerprint(msg))
+}
+
+/// What makes two arrivals "the same line".
+///
+/// Emitters on this fleet forward a process's own log line verbatim, and
+/// tracing writes its timestamp at the front of that line — so the text
+/// carries a microsecond clock that changes on every single occurrence:
+///
+/// ```text
+/// 2026-09-02T18:26:30.258373Z  WARN plugin_logs::collector: store insert failed
+/// ```
+///
+/// Keyed on the raw text, a message repeating a thousand times a second is
+/// a thousand distinct entries and dedup does nothing at all — which is
+/// exactly what happened the first time this ran against a real node. A
+/// leading timestamp is redundant with the event's own `ts` and can never
+/// be what distinguishes two messages, so it comes off before keying. The
+/// stored text is untouched; only the key is normalised.
+fn fingerprint(msg: &str) -> &str {
+    let rest = strip_leading_timestamp(msg);
+    // Never let normalisation collapse everything into one entry.
+    if rest.is_empty() {
+        msg
+    } else {
+        rest
+    }
+}
+
+/// Strip a leading ISO-8601 / RFC 3339 timestamp and the whitespace after
+/// it. Anything that is not one is returned unchanged.
+fn strip_leading_timestamp(msg: &str) -> &str {
+    let b = msg.as_bytes();
+    let digits = |from: usize, n: usize| {
+        b.len() >= from + n && b[from..from + n].iter().all(u8::is_ascii_digit)
+    };
+    // YYYY-MM-DD
+    if !(digits(0, 4) && b.get(4) == Some(&b'-') && digits(5, 2) && b.get(7) == Some(&b'-')
+        && digits(8, 2))
+    {
+        return msg;
+    }
+    // Date and time are joined by 'T' or a space.
+    if !matches!(b.get(10), Some(b'T') | Some(b' ')) {
+        return msg;
+    }
+    // HH:MM:SS
+    if !(digits(11, 2) && b.get(13) == Some(&b':') && digits(14, 2) && b.get(16) == Some(&b':')
+        && digits(17, 2))
+    {
+        return msg;
+    }
+    let mut i = 19;
+    // Optional fractional seconds.
+    if b.get(i) == Some(&b'.') {
+        i += 1;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+    }
+    // Optional zone: Z, or ±HH:MM / ±HHMM.
+    match b.get(i) {
+        Some(b'Z') | Some(b'z') => i += 1,
+        Some(b'+') | Some(b'-') => {
+            let start = i;
+            i += 1;
+            if digits(i, 2) {
+                i += 2;
+                if b.get(i) == Some(&b':') {
+                    i += 1;
+                }
+                if digits(i, 2) {
+                    i += 2;
+                } else {
+                    i = start; // not a zone after all — leave it in place
+                }
+            } else {
+                i = start;
+            }
+        }
+        _ => {}
+    }
+    msg[i..].trim_start()
 }
 
 impl Store {
@@ -521,6 +603,60 @@ mod tests {
             facility: 16,
             msg: msg.into(),
         }
+    }
+
+    #[test]
+    fn a_leading_timestamp_never_makes_a_line_distinct() {
+        // The line that defeated the first version of this, verbatim off
+        // the wire from a node running stormconsole 0.6.
+        let a = "2026-09-02T18:26:30.258373Z  WARN plugin_logs::collector: \
+                 store insert failed error=database or disk is full";
+        let b = "2026-09-02T18:26:44.545181Z  WARN plugin_logs::collector: \
+                 store insert failed error=database or disk is full";
+        assert_eq!(fingerprint(a), fingerprint(b));
+        assert!(fingerprint(a).starts_with("WARN"));
+
+        // Every shape a fleet emitter is likely to put in front.
+        for stamp in [
+            "2026-09-02T18:26:30Z ",
+            "2026-09-02T18:26:30.1Z ",
+            "2026-09-02 18:26:30 ",
+            "2026-09-02T18:26:30+01:00 ",
+            "2026-09-02T18:26:30.123456-0500 ",
+        ] {
+            assert_eq!(fingerprint(&format!("{stamp}the same thing")), "the same thing", "{stamp}");
+        }
+    }
+
+    #[test]
+    fn normalisation_leaves_ordinary_messages_alone() {
+        assert_eq!(fingerprint("disk is full"), "disk is full");
+        // A near-miss must not be eaten.
+        assert_eq!(fingerprint("2026-09-02 is the date"), "2026-09-02 is the date");
+        assert_eq!(fingerprint("20260902T182630Z packed"), "20260902T182630Z packed");
+        // A bare timestamp is all the message there is; keep it, or every
+        // such line would collapse into one entry.
+        assert_eq!(fingerprint("2026-09-02T18:26:30Z"), "2026-09-02T18:26:30Z");
+    }
+
+    #[test]
+    fn the_flood_collapses_even_though_every_line_differs() {
+        let (s, _d) = Store::open_temp(1000, HOUR, true).unwrap();
+        for i in 0..1000 {
+            let msg = format!(
+                "2026-09-02T18:26:{:02}.{:06}Z  WARN collector: store insert failed",
+                i % 60,
+                i
+            );
+            s.insert(&ev("a", 4, &msg), 1000 + i as u64).unwrap();
+        }
+        let stats = s.stats();
+        assert_eq!(stats.entries, 1, "one entry for one repeating line");
+        assert_eq!(stats.suppressed, 999);
+        // The row shows the most recent text, not a normalised one.
+        let row = &s.query(None, None, None, 10).unwrap()[0];
+        assert_eq!(row.count, 1000);
+        assert!(row.msg.starts_with("2026-09-02T18:26:"));
     }
 
     #[test]
