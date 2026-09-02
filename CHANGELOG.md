@@ -3,6 +3,30 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.6.0] — 2026-09-02
+
+### 2026-09-02
+- **feat:** two console styles, selectable in the masthead and persisted
+  per browser. Theme and style are independent axes: a theme
+  (`data-theme`, stormview) is the palette, a style (`data-style`) is the
+  chrome — masthead height, row density, corner radius, navigator
+  tightness, whether a button shouts. Both styles work on all twelve
+  palettes, and switching palette never changes the console's shape
+  - `openshift` (default): comfortable density, a near-black masthead
+    over a panel-coloured navigator, a 3px accent rail on the active nav
+    item, 4px radii, sentence case, hairline-separated rows
+  - `esxi`: compact density, a dark teal 40px header, a tighter
+    navigator that fits its whole tree on one screen, 2px radii,
+    zebra-striped tables, uppercase action labels
+- **feat:** the masthead carries its own foreground tokens rather than
+  inheriting the theme's — both styles put a dark bar above the content
+  whatever the palette, so a light theme was painting dark text on
+  near-black. State colours in the health pill are lifted toward white
+  for the same reason
+- **refactor:** everything density-dependent (navigator, tables, page
+  header, empty states, buttons) reads from a style token, so a
+  component's scoped CSS never has to know which style is active
+
 ## [v0.5.0] — 2026-09-02
 
 ### 2026-09-02

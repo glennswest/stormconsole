@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.5.0**
+Current: **0.6.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -175,6 +175,32 @@ OpenShift console and the ESXi host client.
 - [x] Empty states that name what is missing and carry the fix
 - [x] Built and tested on dev (33/33); reviewed live against sptest
       through http://dev.g8.lo:9094/ in a dark and a light theme
+
+### Two console styles (v0.6.0) ✅ 2026-09-02
+- [x] `data-style` as an axis independent of stormview's `data-theme`:
+      `openshift` (default) and `esxi`, selectable in the masthead and
+      persisted. A style is proportion and structure, not colour, so both
+      work on all twelve palettes
+- [x] Density-dependent CSS moved onto style tokens (`--sc-row-py`,
+      `--sc-nav-py`, `--sc-nav-font`, `--sc-gutter`, `--sc-zebra`,
+      `--sc-btn-case`, …) so scoped component CSS stays style-agnostic
+- [x] The masthead owns its foreground (`--sc-masthead-fg`/`-dim`/
+      `-line`): both styles put a dark bar over the content whatever the
+      palette, so it can no longer inherit a light theme's dark text
+- [x] Reviewed live on dev in both styles × dark and light palettes
+
+### Next — fleet log pipeline (asked for 2026-09-02, deferred)
+The log path needs work; deferred deliberately, not forgotten.
+- [ ] The collector's SQLite ring fails every insert with `database or
+      disk is full` on a node with free space — SQLITE_FULL from a page
+      or size limit, not the filesystem. Found on sptest and reproduced
+      by the dev demo instance against it
+- [ ] That failure is itself logged at WARN to the multicast group, so a
+      failing collector floods the fleet and every other collector
+      re-ingests the flood. The live tail made the browser unresponsive.
+      Rate-limit or drop self-originated store failures
+- [ ] Decide the ring's real bound (rows vs bytes) and enforce it before
+      SQLite does
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

@@ -119,27 +119,56 @@ Most pages are *generic*: list pages are a `ResourceTable` (or a
 navigation. Plugins earn custom views only where generic rendering isn't
 enough — the log viewer, the YAML editor, node topology.
 
-#### The design layer
+#### The design layer: two axes
 
 `web/src/lib/ui/console.css` is the console's chrome, layered on top of
-stormview's palette and loaded after it. stormview owns *colour* — the
-twelve themes and every semantic token; the console layer owns *shape*:
-radii, elevation, the type scale, tabular numerals, focus rings, reduced
-motion, scrollbars, and the page grammar (`.sc-page`, `.sc-crumbs`,
-`.sc-pagehead`, `.sc-toolbar`, `.sc-empty`, `.sc-seg`, `.sc-status`).
+stormview's palette and loaded after it. There are two independent axes,
+and neither constrains the other:
 
-It consumes stormview tokens only, so all twelve themes keep working, and
-it derives its two chrome surfaces from them rather than hard-coding
-either: `--sc-masthead` is a blend of `--panel` and `--bg`, which lands
-darker than the navigator on dark themes and greyer than white on light
-ones.
+| axis | attribute | owner | what it controls |
+|---|---|---|---|
+| **theme** | `data-theme` | stormview | the palette — twelve of them |
+| **style** | `data-style` | this file | the chrome — two of them |
 
-The reference points are the OpenShift console and the ESXi host client.
-Concretely, that means every view opens the same way — breadcrumb, then
-title with scope and count, then a toolbar (search, state filter,
-table/card switch, result count), then the data — and every empty screen
-names what is missing, says why in one line, and carries the action that
-fixes it.
+A style is not a colour scheme. It is proportion and structure: how tall
+the masthead is, how tight a table row is, how square a corner is, how
+dense the navigator is, whether a button shouts. Both styles therefore
+work on all twelve palettes, and switching palette never changes the
+console's shape. Both selectors live in the masthead and persist per
+browser; `initStyle()` runs before mount so the first paint is already in
+the chosen style.
+
+- **`openshift`** (default) — the OpenShift console. Comfortable density
+  (8px rows, 236px navigator, 22px page title), a near-black masthead
+  over a panel-coloured navigator, a 3px accent rail on the active nav
+  item, 4px radii, sentence case throughout, rows separated by hairlines.
+- **`esxi`** — the ESXi host client (VMware Clarity). Compact density (5px
+  rows, 212px navigator, 18px page title, 40px header), a dark teal
+  header, 2px radii, zebra-striped tables, uppercase action labels. The
+  whole navigator tree fits on one screen, which is the point.
+
+Everything density-dependent reads from a token (`--sc-row-py`,
+`--sc-nav-py`, `--sc-nav-font`, `--sc-gutter`, `--sc-zebra`,
+`--sc-btn-case`, …), so a component's scoped CSS never has to know which
+style is active.
+
+Both styles put a **dark bar at the top whatever the palette below it** —
+which is what both references do in light mode too. The masthead
+therefore carries its own foreground tokens (`--sc-masthead-fg`,
+`--sc-masthead-dim`, `--sc-masthead-line`) instead of inheriting the
+theme's, and lifts the palette's state colours toward white; otherwise a
+light theme paints dark green on near-black. Its `--sc-masthead` is
+blended a little toward `--panel` so it still belongs to the palette it
+sits on.
+
+Beyond the two styles, the layer supplies the page grammar every view
+shares (`.sc-page`, `.sc-crumbs`, `.sc-pagehead`, `.sc-toolbar`,
+`.sc-empty`, `.sc-seg`, `.sc-status`), tabular numerals, focus rings,
+reduced motion and scrollbars. Concretely: every view opens the same way
+— breadcrumb, then title with scope and count, then a toolbar (search,
+state filter, table/card switch, result count), then the data — and every
+empty screen names what is missing, says why in one line, and carries the
+action that fixes it.
 
 #### stormview components, and the console's own
 

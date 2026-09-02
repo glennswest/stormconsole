@@ -206,9 +206,11 @@
   .more {
     margin-left: auto;
     font-size: var(--sc-t-meta);
-    text-transform: none;
-    letter-spacing: 0;
-    font-weight: 500;
+    /* The eyebrow above is uppercase; the button follows the style, not
+       its heading, so it matches every other action on the page. */
+    text-transform: var(--sc-btn-case);
+    letter-spacing: var(--sc-btn-track);
+    font-weight: var(--sc-btn-weight);
     padding: 3px 10px;
   }
 
