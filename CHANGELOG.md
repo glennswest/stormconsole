@@ -3,6 +3,47 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-02
+- **feat:** enterprise console chrome, in the idiom of the OpenShift
+  console and the ESXi host client. A stormconsole-local design layer
+  (`web/src/lib/ui/console.css`) sits on top of stormview's palette and
+  supplies shape: 4px radii, near-flat elevation, a type scale, tabular
+  numerals, focus rings, reduced motion, thin scrollbars. It consumes
+  stormview tokens only, so all twelve themes keep working, and stormview
+  itself is untouched
+- **feat:** masthead — brand mark and wordmark, the namespace selector set
+  off as the working scope, a live cluster-health pill (n healthy /
+  degraded / failed) beside the feed's connection state, Create as the one
+  primary button, and a navigator toggle
+- **feat:** navigator — collapsible groups (persisted per browser), a
+  stroked icon per item matched from the server's nav feed by label and
+  route, an object count on every countable route, an accent rail on the
+  active item
+- **feat:** one page grammar everywhere — breadcrumb, then title with
+  scope and count, then a toolbar (search, state filter, table/card
+  switch, result count), then the data. Table is the default view and the
+  choice persists
+- **feat:** overview — a status band showing the fleet's health as large
+  tabular counts over one proportional rule; clicking a state filters
+  everything below it. Plugin cards, then each plugin's objects capped at
+  eight with Show all
+- **feat:** `ResourceTable`, the console's own table: Status says "Ready"
+  rather than the feed's `ok`, Kind is a column only when the rows differ,
+  the header stays put over a long list, Name is first and destructive
+  actions are last, and sorting covers name, status (worst first), kind
+  and detail
+- **feat:** empty states name what is missing, say why in one line, and
+  carry the action that fixes it; failures quote what the plugin returned
+- **feat:** `StatusPill` carries a glyph as well as a colour, so state
+  survives colour blindness and greyscale
+- **fix:** the previous sticky table header never fired — it was scoped to
+  an `overflow-x` wrapper that never scrolled vertically
+- **fix:** the search field's padding lost a specificity tie with the
+  generic control rule, putting the magnifier on top of the placeholder
+- **fix:** Overview and Workloads shared one navigator glyph
+- **docs:** architecture — the design layer, and why the console keeps its
+  own table while rendering stormview's cards directly
+
 ### 2026-08-30
 - **docs:** filed stormpump#11 (Cilium agent metrics address, Hubble +
   relay enablement) and stormconsole#4 (agent probe, hubble-ui proxy,

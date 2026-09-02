@@ -304,6 +304,8 @@ button.sc-primary:hover:not(:disabled) {
   background: transparent;
   border-radius: var(--radius-sm);
   letter-spacing: 0.05em;
+  /* Wrapping the badge pushes the card title off its baseline. */
+  white-space: nowrap;
 }
 /* RelationPicker is a bare <select> inside the card; give it the same
    quiet control treatment as everything else in the chrome. */

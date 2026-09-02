@@ -110,14 +110,62 @@ as stormview's open `kind`.
 Svelte 5 + Vite, `stormview` npm package, embedded in the binary
 (rust-embed) like stormd's SPA — no node at runtime. The app shell owns:
 hash router, login (stormview `LoginPanel`, session cookies), theme picker,
-nav rendered from the nav feed, and a **namespace selector** in the top bar
-(OpenShift's project selector; the selection scopes namespaced views and
-persists per browser).
+nav rendered from the nav feed, and a **namespace selector** in the
+masthead (OpenShift's project selector; the selection scopes namespaced
+views and persists per browser).
 
-Most pages are *generic*: list pages are `ComponentGrid`/`DataGrid` over a
-feed slice (`?kind=…`), detail pages are `ComponentCard` + relation
+Most pages are *generic*: list pages are a `ResourceTable` (or a
+`ComponentCard` grid) over a feed slice, detail pages are relation
 navigation. Plugins earn custom views only where generic rendering isn't
 enough — the log viewer, the YAML editor, node topology.
+
+#### The design layer
+
+`web/src/lib/ui/console.css` is the console's chrome, layered on top of
+stormview's palette and loaded after it. stormview owns *colour* — the
+twelve themes and every semantic token; the console layer owns *shape*:
+radii, elevation, the type scale, tabular numerals, focus rings, reduced
+motion, scrollbars, and the page grammar (`.sc-page`, `.sc-crumbs`,
+`.sc-pagehead`, `.sc-toolbar`, `.sc-empty`, `.sc-seg`, `.sc-status`).
+
+It consumes stormview tokens only, so all twelve themes keep working, and
+it derives its two chrome surfaces from them rather than hard-coding
+either: `--sc-masthead` is a blend of `--panel` and `--bg`, which lands
+darker than the navigator on dark themes and greyer than white on light
+ones.
+
+The reference points are the OpenShift console and the ESXi host client.
+Concretely, that means every view opens the same way — breadcrumb, then
+title with scope and count, then a toolbar (search, state filter,
+table/card switch, result count), then the data — and every empty screen
+names what is missing, says why in one line, and carries the action that
+fixes it.
+
+#### stormview components, and the console's own
+
+The console renders `ComponentCard` from stormview directly. Cards are
+mounted inside a `.sc-cards` wrapper: stormview styles its components with
+scoped rules of one class plus one element, so selecting through a wrapper
+class out-specifies them and the console can retune shape without forking
+stormview.
+
+Tables are the exception. `ResourceTable` (`web/src/lib/components/`) is
+the console's own, because a console needs things a shared grid should not
+assume:
+
+- **Status, not health.** The table says "Ready", "Degraded", "Failed";
+  the feed's `ok`/`warn`/`error` is a wire value, not a word for an
+  operator. `StatusPill` carries a glyph as well as a colour, so state
+  survives colour blindness and greyscale.
+- **Kind is conditional.** A column that reads `k8s-pod` seventeen times
+  on a pod list is noise, so Kind appears only when the rows differ.
+- **A header that stays put.** stormview's `DataGrid` sets a sticky header
+  inside an `overflow-x` wrapper, where it can never fire; the console's
+  table bounds its own height so the header actually sticks.
+- **Name first, destructive actions last** and right-aligned.
+
+Everything else — nested relation expansion, multi-select with bulk
+lifecycle actions, sorting — matches `ComponentGrid`'s behaviour.
 
 ## Built-in plugins
 
