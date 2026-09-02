@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.7.0] — 2026-09-02
+
 ### 2026-09-02
 - **BREAKING:** the fleet log ring moved from SQLite to **redb**, and with
   it from `<data_dir>/logs.db` to `<data_dir>/logs.redb`. Nothing reads
