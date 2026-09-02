@@ -528,8 +528,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("logs.db");
         std::fs::write(&path, b"SQLite format 3\0and then some payload").unwrap();
-        let err = Store::open(path.to_str().unwrap(), 10, HOUR, true).unwrap_err();
-        let msg = err.to_string();
+        // `unwrap_err` would need Store: Debug, which a handle to a
+        // database has no business deriving.
+        let msg = match Store::open(path.to_str().unwrap(), 10, HOUR, true) {
+            Ok(_) => panic!("opened a SQLite file as a redb ring"),
+            Err(e) => e.to_string(),
+        };
         assert!(msg.contains("SQLite ring"), "{msg}");
         assert!(msg.contains("Delete it"), "{msg}");
     }
