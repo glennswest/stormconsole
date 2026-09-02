@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.4.0**
+Current: **0.5.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -149,6 +149,32 @@ instances (9081–9085, 9192–9194) each serve a feed. Zero-config, node-local:
 - [ ] Next: cAdvisor container stats plugin (user integrating cadvisor),
       stormvm feed (:9095, FeedPlugin) + VM consoles (#2), per-node drill
       into other nodes, fleet actions
+
+### Console chrome (v0.5.0) ✅ 2026-09-02
+The SPA read as a dashboard: one type size, no breadcrumbs, a flat nav,
+list pages that were a bare heading over a grid, and empty states that
+said "No pods." with nothing to do about it. Reference points: the
+OpenShift console and the ESXi host client.
+- [x] `web/src/lib/ui/console.css` — the console's design layer over
+      stormview's palette: 4px radii, near-flat elevation, a type scale,
+      tabular numerals, focus rings, reduced motion, scrollbars, and the
+      page grammar. Tokens only, so all twelve themes keep working;
+      `--sc-masthead` is derived from `--panel`/`--bg` rather than fixed
+- [x] Masthead: brand mark, namespace selector as the working scope, live
+      health pill, one primary Create, navigator toggle
+- [x] Navigator: collapsible groups, an icon per item matched from the nav
+      feed, an object count per countable route, accent rail when active
+- [x] Every view: breadcrumb → title/scope/count → toolbar → data;
+      table/card switch persisted
+- [x] Overview: status band (counts + one proportional rule) that filters
+      everything below; plugin cards; each plugin's objects capped at 8
+- [x] `ResourceTable` — the console's own table (Status not health, Kind
+      only when rows differ, a header that actually sticks, Name first).
+      stormview's `ComponentCard` still renders cards, restyled through a
+      `.sc-cards` wrapper rather than forked
+- [x] Empty states that name what is missing and carry the fix
+- [x] Built and tested on dev (33/33); reviewed live against sptest
+      through http://dev.g8.lo:9094/ in a dark and a light theme
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

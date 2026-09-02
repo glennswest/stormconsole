@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.5.0] — 2026-09-02
+
 ### 2026-09-02
 - **feat:** enterprise console chrome, in the idiom of the OpenShift
   console and the ESXi host client. A stormconsole-local design layer
