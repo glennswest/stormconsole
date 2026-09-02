@@ -158,8 +158,11 @@ table th,
   align-items: center;
 }
 .sc-search svg { position: absolute; left: 8px; color: var(--text-faint); pointer-events: none; }
-.sc-search input {
-  padding: 5px 10px 5px 28px;
+/* Type-qualified so it out-specifies the generic control rule below —
+   a plain `.sc-search input` ties with `input[type='search']` and loses
+   on source order, which puts the magnifier on top of the placeholder. */
+.sc-search input[type='search'] {
+  padding: 5px 10px 5px 30px;
   min-width: 240px;
   font-size: var(--sc-t-body);
 }
@@ -316,5 +319,5 @@ button.sc-primary:hover:not(:disabled) {
 
 @media (max-width: 860px) {
   :root { --sc-gutter: 14px; }
-  .sc-search input { min-width: 0; width: 100%; }
+  .sc-search input[type='search'] { min-width: 0; width: 100%; }
 }
