@@ -6,10 +6,10 @@
 // change, and `dot` is the honest fallback when nothing matches.
 
 export const ICONS = {
-  overview: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  overview: 'M3 3h18v6H3zM3 12h8v9H3zM14 12h7v9h-7z',
   node: 'M3 5h18v5H3zM3 14h18v5H3zM7 7.5h.01M7 16.5h.01',
   pod: 'M12 2 3 7v10l9 5 9-5V7zM3 7l9 5 9-5M12 12v10',
-  workload: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  workload: 'M3 9h18v11H3zM6 6h12M9 3h6',
   network: 'M12 3v6M5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM19 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM12 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 17v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2',
   storage: 'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3ZM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   image: 'm12 2 9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5',

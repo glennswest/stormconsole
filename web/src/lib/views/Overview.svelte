@@ -4,7 +4,7 @@
   // its own — everything here is the aggregated feed, grouped.
   import { feed, rollup, prefs, setView } from '../stores.svelte.js'
   import ComponentCard from 'stormview/components/ComponentCard.svelte'
-  import ComponentGrid from 'stormview/components/ComponentGrid.svelte'
+  import ResourceTable from '../components/ResourceTable.svelte'
   import PageHeader from '../components/PageHeader.svelte'
   import StatusPill from '../components/StatusPill.svelte'
   import EmptyState from '../components/EmptyState.svelte'
@@ -141,9 +141,7 @@
             {/each}
           </div>
         {:else}
-          <div class="sc-grid">
-            <ComponentGrid components={feed.components} rootIds={list.map((c) => c.id)} {invoke} />
-          </div>
+            <ResourceTable components={feed.components} rootIds={list.map((c) => c.id)} {invoke} />
         {/if}
       {/if}
     {/each}

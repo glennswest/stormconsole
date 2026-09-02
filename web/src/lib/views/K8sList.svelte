@@ -4,7 +4,7 @@
   // own — it adds the chrome: scope, search, state filter, table or cards.
   import { route } from '../router.svelte.js'
   import { feed, k8sns, nav, prefs, setView, idsForRoute } from '../stores.svelte.js'
-  import ComponentGrid from 'stormview/components/ComponentGrid.svelte'
+  import ResourceTable from '../components/ResourceTable.svelte'
   import ComponentCard from 'stormview/components/ComponentCard.svelte'
   import PageHeader from '../components/PageHeader.svelte'
   import Toolbar from '../components/Toolbar.svelte'
@@ -119,9 +119,7 @@
         {/each}
       </div>
     {:else}
-      <div class="sc-grid">
-        <ComponentGrid components={feed.components} rootIds={rows.map((c) => c.id)} {invoke} />
-      </div>
+      <ResourceTable components={feed.components} rootIds={rows.map((c) => c.id)} {invoke} />
     {/if}
   {/if}
 </div>

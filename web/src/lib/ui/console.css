@@ -286,39 +286,30 @@ button.sc-primary:hover:not(:disabled) {
 .sc-empty .sc-empty-action { margin-top: 6px; }
 
 /* -------------------------------------------------- stormview overrides
-   ComponentCard / DataGrid style themselves with scoped rules of one
-   class + one element. Wrapping a mount in .sc-grid or .sc-cards and
-   selecting through it beats that specificity without forking stormview. */
-
-.sc-grid .grid-wrap { box-shadow: none; }
-.sc-grid .grid-wrap th {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: var(--sc-t-meta);
-  font-weight: 600;
-  color: var(--text-dim);
-  background: color-mix(in srgb, var(--panel-raised) 55%, var(--panel));
-  padding: 8px 14px;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-.sc-grid .grid-wrap.nested th { position: static; }
-.sc-grid .grid-wrap td {
-  padding: 9px 14px;
-  border-bottom-color: var(--sc-hairline);
-  color: var(--text);
-}
-.sc-grid .grid-wrap tbody tr:last-child td { border-bottom: none; }
-.sc-grid .grid-wrap .actions-cell button { font-size: var(--sc-t-eyebrow); padding: 3px 9px; }
+   ComponentCard styles itself with scoped rules of one class plus one
+   element. Wrapping a mount in .sc-cards and selecting through it beats
+   that specificity without forking stormview. */
 
 .sc-cards .card { box-shadow: none; }
 .sc-cards .card:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--panel) 92%, var(--text) 3%); }
+/* The card's kind glyph is a bare text character that reads as a typo
+   beside a real icon set; the health dot and kind badge already say what
+   the card is. */
+.sc-cards .card .icon { display: none; }
 .sc-cards .card .kind {
   border: 1px solid var(--border);
   background: transparent;
   border-radius: var(--radius-sm);
   letter-spacing: 0.05em;
+}
+/* RelationPicker is a bare <select> inside the card; give it the same
+   quiet control treatment as everything else in the chrome. */
+.sc-cards .card select {
+  font-size: var(--sc-t-eyebrow);
+  padding: 3px 20px 3px 8px;
+  background: var(--panel-raised);
+  border-color: var(--border);
+  color: var(--text-dim);
 }
 
 /* ----------------------------------------------------------- responsive */
