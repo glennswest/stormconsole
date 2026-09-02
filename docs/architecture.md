@@ -238,8 +238,8 @@ The fleet already emits: stormcast sends RFC 5424 over UDP to multicast
 collector. The logs plugin **is** the collector:
 
 - joins the multicast group, parses RFC 5424 (stormcast dialect: severity
-  inference already done at the emitter), stores into a SQLite ring
-  (bounded by size/age, WAL, one writer);
+  inference already done at the emitter), stores into a **deduplicating
+  redb ring**;
 - query API patterned on mcastsyslog's proven shape:
   `GET /api/plugins/logs/events?host=&min_severity=&last=&search=`,
   `…/around?at=&window=`, `…/summary`, and SSE `…/stream` for follow;
@@ -249,6 +249,51 @@ collector. The logs plugin **is** the collector:
 Per-entity logs stay at their source: a node's stormd serves its own
 process logs (`:9080/api/v1/logs`), reachable through the fleet plugin's
 node proxy — the console does not re-store what a node already stores.
+
+#### The ring
+
+Three things shape the store, and all three came from watching a real node
+misbehave — sptest emitted one identical line thousands of times a second
+while its own ring returned `SQLITE_FULL` on a filesystem with 1.7 TB
+free, and the flood made the log view unusable in the browser.
+
+**redb, not SQLite.** Pure Rust, no C toolchain in the golden, and no page
+ceiling to hit while the disk is empty. The trade is that there is no
+`GROUP BY`, so the per-host and per-severity summaries the components feed
+asks for every few seconds are *maintained* by insert and prune rather
+than computed by scanning.
+
+**Dedup on arrival.** An entry is keyed by what an operator would call the
+same message — host, app, severity, text — and a repeat bumps a `count`
+and a last-seen time instead of appending. A flood of one line costs one
+entry; the viewer renders it as `×N`, and a lifetime `duplicates` counter
+on the collector component shows how much is being absorbed. `[logs]
+dedup = false` stores every arrival separately.
+
+**Two automatic bounds.** An entry is dropped when it falls outside the
+retention window (`retain_hours`, measured from *last* seen, so a line
+that keeps arriving keeps its place) or when the ring exceeds `ring_cap`
+distinct entries. A timer sweeps as well as inserts, so a quiet fleet
+still expires what it left behind.
+
+Ordering is receive order, not the wire timestamp — emitters disagree
+about clocks — and a repeat re-inserts at a fresh sequence number, which
+keeps sequence order and last-seen order identical. That is what lets
+pruning stop at the first live entry instead of walking the whole ring.
+
+Two things follow from dedup that are easy to miss. The live tail
+*updates* a row the viewer already holds rather than appending one, so a
+chattering line is one row and a rising number instead of a thousand DOM
+nodes; and repeats are throttled to at most one broadcast per second per
+line, so a flood is not a flood on the wire and in every open viewer.
+Finally, a store error is deliberately **not** logged per failure: the
+console's own warnings go out over this same multicast group, so a broken
+ring that logs every failure floods the fleet it is meant to observe. The
+fault surfaces as component health instead.
+
+The ring changed format at v0.7.0 and therefore changed filename
+(`logs.db` → `logs.redb`); the old SQLite file is inert and can be
+deleted.
 
 ### fleet (nodes)
 

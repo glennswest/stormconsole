@@ -1,7 +1,13 @@
 <script>
-  // The fleet log viewer: recent events from the collector's ring with
+  // The fleet log viewer: recent entries from the collector's ring with
   // host/severity/search filters, and live follow over SSE. The pane owns
   // the remaining height so the tail always sits at the bottom edge.
+  //
+  // The ring deduplicates on arrival, so a row is a distinct line and
+  // `count` is how many times it has arrived. The live tail therefore
+  // *updates* a row it already has rather than appending — a message
+  // repeating a thousand times a second has to cost one row and a rising
+  // number, not a thousand DOM nodes.
   import { onMount } from 'svelte'
   import { get, timeAgo } from '../api.js'
   import { route } from '../router.svelte.js'
@@ -19,6 +25,7 @@
 
   let rows = $state([])
   let hosts = $state([])
+  let ring = $state({ total: 0, received: 0, duplicates: 0 })
   // A node card links here with ?host=; the filter starts on that node.
   let host = $state(route.current.query.get('host') || '')
   let minSeverity = $state('')
@@ -36,6 +43,11 @@
     if (search) p.set('search', search)
     return p
   }
+
+  // Host, app, severity and text are what the ring calls "the same line";
+  // the viewer has to agree with it or the tail would append duplicates
+  // the store already merged.
+  const keyOf = (e) => `${e.host}\u001f${e.app}\u001f${e.severity}\u001f${e.msg}`
 
   async function refresh() {
     try {
@@ -55,6 +67,11 @@
     try {
       const s = await get('/api/plugins/logs/summary')
       hosts = s.hosts || []
+      ring = {
+        total: s.total || 0,
+        received: s.received || 0,
+        duplicates: s.duplicates || 0,
+      }
     } catch {}
   }
 
@@ -68,6 +85,15 @@
       try {
         const e = JSON.parse(m.data)
         if (search && !`${e.app} ${e.msg}`.toLowerCase().includes(search.toLowerCase())) return
+        const key = keyOf(e)
+        const at = rows.findIndex((r) => keyOf(r) === key)
+        if (at >= 0) {
+          // Seen before: refresh it where it stands. Moving it would make
+          // a chattering line strobe down the pane.
+          rows[at] = e
+          rows = rows
+          return
+        }
         rows = [...rows.slice(-999), e]
         scrollToEnd()
       } catch {}
@@ -126,7 +152,13 @@
       {/each}
     </select>
     <span class="sc-right">
-      <span class="sc-hint">{rows.length} lines</span>
+      <span class="sc-hint">
+        {rows.length} lines
+        {#if ring.duplicates}
+          · <span class="dups" title="Repeats collapsed into the lines above, over the ring's lifetime"
+            >{ring.duplicates.toLocaleString()} duplicates absorbed</span>
+        {/if}
+      </span>
       <button onclick={refresh} title="Reload the buffer"><Icon name="refresh" size={14} /></button>
     </span>
   </div>
@@ -156,6 +188,15 @@
               <td class="host">{e.host}</td>
               <td class="app">{e.app}</td>
               <td class="msg">{e.msg}</td>
+              <td class="rep">
+                {#if e.count > 1}
+                  <span
+                    class="count"
+                    title="Seen {e.count.toLocaleString()} times, first at {e.first_ts || e.ts}"
+                    >×{e.count.toLocaleString()}</span
+                  >
+                {/if}
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -189,6 +230,19 @@
   .host { color: var(--accent); white-space: nowrap; }
   .app { color: var(--text-faint); white-space: nowrap; }
   .msg { width: 100%; word-break: break-word; color: var(--text); }
+  /* The repeat count sits at the end of the line, out of the reading path
+     until there is something to say. */
+  .rep { text-align: right; white-space: nowrap; padding-right: 12px; }
+  .count {
+    font-size: var(--sc-t-eyebrow);
+    font-weight: 700;
+    color: var(--warn-strong);
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: 999px;
+    padding: 0 7px;
+  }
+  .dups { color: var(--warn-strong); }
   .sev { font-weight: 700; white-space: nowrap; letter-spacing: 0.03em; }
   tr.sev0 td.sev, tr.sev1 td.sev, tr.sev2 td.sev, tr.sev3 td.sev { color: var(--error); }
   tr.sev4 td.sev { color: var(--warn-strong); }

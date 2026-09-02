@@ -5,7 +5,7 @@
 # whole of what a StormCOS golden writes, the same as stormdrive and
 # stormstorage take. `listen_addr` is `[api] bind` and wins over it;
 # `data_dir` is where the console writes (the log ring lives at
-# <data_dir>/logs.db unless `[logs] db_path` says otherwise).
+# <data_dir>/logs.redb unless `[logs] db_path` says otherwise).
 #
 # listen_addr = "0.0.0.0:9094"
 # data_dir    = "/var/lib/stormconsole"
@@ -43,7 +43,18 @@ mcast_group = "239.255.42.1:5514"    # stormcast group — nodes announce by exi
 [logs]
 enabled = true
 mcast_group = "239.255.42.1:5514"
-# db_path = "/var/lib/stormconsole/logs.db"   # default: <data_dir>/logs.db
+# db_path = "/var/lib/stormconsole/logs.redb"  # default: <data_dir>/logs.redb
+#
+# The ring deduplicates on arrival: repeats of the same host/app/severity/
+# message collapse into one entry with a count, so a service emitting the
+# same line thousands of times a second costs one entry, not a million.
+# dedup = true
+#
+# Two bounds, whichever bites first. Both are swept on a timer as well as
+# on insert, so a fleet that goes quiet still expires what it left behind.
+# ring_cap = 200000       # most distinct entries kept; oldest go first
+# retain_hours = 168      # drop an entry this long after it was last seen
+#                         # (0 disables the age bound)
 
 [stormdrive]
 enabled = true

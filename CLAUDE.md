@@ -189,18 +189,28 @@ OpenShift console and the ESXi host client.
       palette, so it can no longer inherit a light theme's dark text
 - [x] Reviewed live on dev in both styles × dark and light palettes
 
-### Next — fleet log pipeline (asked for 2026-09-02, deferred)
-The log path needs work; deferred deliberately, not forgotten.
-- [ ] The collector's SQLite ring fails every insert with `database or
-      disk is full` on a node with free space — SQLITE_FULL from a page
-      or size limit, not the filesystem. Found on sptest and reproduced
-      by the dev demo instance against it
-- [ ] That failure is itself logged at WARN to the multicast group, so a
-      failing collector floods the fleet and every other collector
-      re-ingests the flood. The live tail made the browser unresponsive.
-      Rate-limit or drop self-originated store failures
-- [ ] Decide the ring's real bound (rows vs bytes) and enforce it before
-      SQLite does
+### Fleet log ring on redb (v0.7.0) ✅ 2026-09-02
+- [x] SQLite → redb. Pure Rust, no C toolchain in the golden, no page
+      ceiling. Fixes the `SQLITE_FULL` insert failures seen on sptest with
+      1.7 TB free. File is now `<data_dir>/logs.redb`; the old `logs.db`
+      is inert and can be deleted
+- [x] Dedup on arrival keyed on host/app/severity/message: a repeat bumps
+      `count` and last-seen instead of appending
+- [x] Duplicate counts surfaced — `×N` per line, a lifetime `duplicates`
+      metric on the collector component, `duplicates`/`received` on
+      `/summary`
+- [x] Automatic expiry on two bounds: `retain_hours` (168, from *last*
+      seen) and `ring_cap` (200000 entries), swept on a 60s timer as well
+      as on insert. `dedup = false` opts out
+- [x] The flood fix, both ends: the tail updates a row in place instead of
+      appending, and repeats broadcast at most once a second per line
+- [x] Store failures no longer log per occurrence — the console's warnings
+      go out over the group it collects from, so a broken ring was
+      flooding the fleet it observes
+- [x] Per-host/per-severity aggregates maintained on insert and prune
+      (redb has no GROUP BY, and the feed asks every few seconds)
+- [x] 39/39 tests on dev, seven new covering dedup, throttling, both
+      bounds, and aggregate bookkeeping under eviction
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

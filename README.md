@@ -11,7 +11,9 @@ own part.
   apiserver, watch-backed cache); **Cilium** endpoints, nodes, identities
   and policies through its CRDs, under one Cilium card
 - **logs** — the fleet log collector: stormcast multicast
-  (`239.255.42.1:5514`) → SQLite ring → query API + live follow
+  (`239.255.42.1:5514`) → a deduplicating redb ring → query API + live
+  follow. Repeats collapse into one entry with a count, and entries expire
+  on both an age and a size bound
 - **fleet** — nodes discovered by their own announcements; drill into each
   node's stormd/stormdrive/stormblock; join, promote, demote, drain
 - **stormdrive** — physical drives fleet-wide: SMART, wear, thermal,
@@ -60,7 +62,7 @@ One TOML file, every section optional; no file at all runs on defaults
 [api]
 bind = "0.0.0.0:9094"
 [logs]
-db_path = "/var/lib/stormconsole/logs.db"
+db_path = "/var/lib/stormconsole/logs.redb"
 
 # The flat StormCOS node-service shape — what a golden writes, the same
 # two keys stormdrive and stormstorage take
@@ -69,8 +71,26 @@ data_dir    = "/var/lib/stormconsole"
 ```
 
 `listen_addr` is `[api] bind` and wins over it; the log ring lives at
-`<data_dir>/logs.db` (default `/var/lib/stormconsole`) unless `[logs]
+`<data_dir>/logs.redb` (default `/var/lib/stormconsole`) unless `[logs]
 db_path` says otherwise. Unknown keys are errors.
+
+### The log ring
+
+`[logs]` takes three more keys, all optional:
+
+| key | default | what it does |
+|---|---|---|
+| `dedup` | `true` | Collapse repeats of the same host/app/severity/message into one entry carrying a count |
+| `ring_cap` | `200000` | Most distinct entries kept; the oldest are dropped first |
+| `retain_hours` | `168` | Drop an entry this long after it was **last** seen; `0` leaves `ring_cap` as the only bound |
+
+Both bounds are swept on a timer as well as on insert, so a fleet that
+goes quiet still expires what it left behind. A repeat refreshes an
+entry's last-seen time, so a line that keeps arriving keeps its place.
+
+Upgrading from ≤0.6: the ring changed format, so it changed filename. The
+old `logs.db` is a SQLite file that nothing reads any more and can be
+deleted.
 
 **Every upstream defaults to this node's own daemon**, so a StormCOS node
 lights up with the two-line config above and nothing else:

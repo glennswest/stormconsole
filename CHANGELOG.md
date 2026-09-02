@@ -3,6 +3,42 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-02
+- **BREAKING:** the fleet log ring moved from SQLite to **redb**, and with
+  it from `<data_dir>/logs.db` to `<data_dir>/logs.redb`. Nothing reads
+  the old file; it is inert and can be deleted. redb is pure Rust (no C
+  toolchain in the golden) and has no page ceiling to hit — the console's
+  ring had been failing every insert with `SQLITE_FULL` on a node with
+  1.7 TB free
+- **feat:** the ring deduplicates on arrival. An entry is keyed on
+  host/app/severity/message; a repeat bumps a `count` and a last-seen time
+  instead of appending a row, so a service emitting one line thousands of
+  times a second costs one entry rather than a million
+- **feat:** duplicate counts are visible — `×N` on the line in the viewer
+  (with first-seen in the tooltip), a lifetime `duplicates` counter on the
+  collector component beside `events` and `received`, and
+  `duplicates`/`received` on `GET /api/plugins/logs/summary`
+- **feat:** entries expire automatically on two bounds, whichever bites
+  first: `[logs] retain_hours` (default 168, measured from *last* seen, so
+  a line that keeps arriving keeps its place) and `[logs] ring_cap`
+  (default 200000 distinct entries). A timer sweeps every 60s as well as
+  pruning on insert, so a fleet that goes quiet still expires what it left
+  behind. `[logs] dedup = false` opts out of merging
+- **fix:** the live tail updates a row the viewer already holds instead of
+  appending one, and the collector broadcasts a repeating line at most
+  once a second. A flooding node made the log view unresponsive because
+  every duplicate crossed the wire and became a DOM node
+- **fix:** a store failure is no longer logged per occurrence. The
+  console's own warnings go out over the same multicast group it collects
+  from, so a broken ring flooded the fleet it was meant to observe; the
+  fault surfaces as component health, with the first failure and every
+  ten-thousandth logged
+- **perf:** per-host and per-severity summaries are maintained by insert
+  and prune rather than computed, since the components feed asks for them
+  every few seconds and redb has no `GROUP BY`
+- **docs:** README gains a log-ring section; architecture explains the
+  store's three constraints and what follows from dedup
+
 ## [v0.6.0] — 2026-09-02
 
 ### 2026-09-02
