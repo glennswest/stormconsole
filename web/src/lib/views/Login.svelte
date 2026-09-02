@@ -5,6 +5,6 @@
 
 <LoginPanel
   title={nav.name}
-  subtitle="stormconsole · sign in"
+  subtitle="Sign in to the StormCOS console"
   onsubmit={(username, password) => login(username, password)}
 />

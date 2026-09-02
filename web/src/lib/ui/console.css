@@ -1,0 +1,329 @@
+/* stormconsole design layer
+   ------------------------------------------------------------------
+   stormview supplies the palette (themes.css). This file supplies the
+   *chrome*: the masthead / navigator / page-header / toolbar / table
+   grammar that makes the app read as an operator console rather than a
+   dashboard, in the idiom of the OpenShift console and the ESXi host
+   client. It only ever consumes stormview tokens, so every theme keeps
+   working, and it loads after themes.css so its :root block wins.
+
+   Rules of the layer:
+   - Tight radii and near-flat elevation. Enterprise consoles separate
+     regions with a hairline, not a shadow.
+   - One accent. The active nav bar, the primary button, focus rings and
+     links are the same blue; everything else is a neutral or a state.
+   - Numbers are tabular everywhere they can be compared.
+   - 4px spacing rhythm; 20px page gutters. */
+
+:root {
+  /* Shape: 8px reads consumer, 4px reads instrument. */
+  --radius: 4px;
+  --radius-sm: 3px;
+  --nav-h: 48px;
+
+  /* Elevation, uniform across themes: a hairline plus a whisper. */
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+
+  /* Chrome surfaces derived from the theme, so all 12 themes follow.
+     The masthead sits between the panel and the ground: darker than the
+     navigator on dark themes, greyer than white on light ones. */
+  --sc-masthead: color-mix(in srgb, var(--panel) 48%, var(--bg) 52%);
+  --sc-nav-w: 236px;
+  --sc-gutter: 20px;
+  --sc-hairline: color-mix(in srgb, var(--border) 62%, transparent);
+
+  /* Type scale. */
+  --sc-t-page: 20px;   /* page title            */
+  --sc-t-card: 14px;   /* card / section title  */
+  --sc-t-body: 13px;
+  --sc-t-meta: 12px;
+  --sc-t-eyebrow: 11px;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Anything that is a measurement lines up in a column. */
+.mono,
+table td,
+table th,
+.sc-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ---------------------------------------------------------------- focus */
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ----------------------------------------------------------- scrollbars */
+
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: content-box; }
+
+/* --------------------------------------------------------------- layout */
+
+.content, .sc-page { padding: var(--sc-gutter) var(--sc-gutter) 32px; }
+
+/* ---------------------------------------------------------- page header */
+
+.sc-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sc-t-meta);
+  color: var(--text-faint);
+  margin-bottom: 6px;
+  min-height: 16px;
+}
+.sc-crumbs a { color: var(--text-dim); }
+.sc-crumbs a:hover { color: var(--accent); text-decoration: none; }
+.sc-crumbs .sep { color: var(--text-ghost); }
+
+.sc-pagehead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--sc-hairline);
+}
+.sc-pagehead h1 {
+  font-size: var(--sc-t-page);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.sc-pagehead .sc-scope {
+  font-size: var(--sc-t-body);
+  font-weight: 400;
+  color: var(--text-dim);
+}
+.sc-pagehead .sc-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* The count beside a title: a neutral counter, never a status. */
+.sc-count {
+  font-size: var(--sc-t-meta);
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- toolbar */
+
+.sc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.sc-toolbar .sc-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.sc-toolbar .sc-hint { font-size: var(--sc-t-meta); color: var(--text-faint); }
+
+.sc-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.sc-search svg { position: absolute; left: 8px; color: var(--text-faint); pointer-events: none; }
+.sc-search input {
+  padding: 5px 10px 5px 28px;
+  min-width: 240px;
+  font-size: var(--sc-t-body);
+}
+
+select, input[type='text'], input[type='search'], input[type='number'] {
+  padding: 5px 10px;
+  font-size: var(--sc-t-body);
+  background: var(--panel);
+  border-color: var(--border-strong);
+}
+select { padding-right: 24px; }
+
+/* Segmented control — the cards/table switch. */
+.sc-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.sc-seg button {
+  border: none;
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--text-faint);
+  padding: 5px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--sc-t-meta);
+}
+.sc-seg button + button { border-left: 1px solid var(--border-strong); }
+.sc-seg button:hover:not(:disabled) { background: var(--nav-hover); color: var(--text); }
+.sc-seg button[aria-pressed='true'] { background: var(--nav-active); color: var(--text); }
+
+/* Buttons: quiet by default, one primary per view. */
+button {
+  border-color: var(--border-strong);
+  background: var(--panel);
+  font-weight: 500;
+}
+button:hover:not(:disabled) { background: var(--nav-hover); border-color: var(--text-ghost); }
+button.sc-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: color-mix(in srgb, var(--bg) 88%, #000);
+  font-weight: 600;
+}
+button.sc-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 85%, var(--text));
+}
+
+/* ------------------------------------------------------------ surfaces */
+
+.sc-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* -------------------------------------------------------------- status */
+
+.sc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sc-t-meta);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.sc-status.ok { color: var(--ok); }
+.sc-status.warn { color: var(--warn-strong); }
+.sc-status.error { color: var(--error); }
+.sc-status.idle, .sc-status.unknown { color: var(--text-faint); }
+
+/* ESXi's capacity bar: label, used/total, and a filled track. */
+.sc-meter { display: grid; gap: 4px; min-width: 0; }
+.sc-meter-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--sc-t-eyebrow);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sc-meter-val {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--sc-t-meta);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.sc-meter-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.sc-meter-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.sc-meter-fill.ok { background: var(--ok); }
+.sc-meter-fill.warn { background: var(--warn-strong); }
+.sc-meter-fill.error { background: var(--error); }
+
+/* --------------------------------------------------------- empty state */
+
+.sc-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 56px 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+}
+.sc-empty .sc-empty-icon { color: var(--text-ghost); margin-bottom: 2px; }
+.sc-empty h2 { font-size: var(--sc-t-card); font-weight: 600; color: var(--text); }
+.sc-empty p { font-size: var(--sc-t-body); color: var(--text-faint); max-width: 46ch; }
+.sc-empty .sc-empty-action { margin-top: 6px; }
+
+/* -------------------------------------------------- stormview overrides
+   ComponentCard / DataGrid style themselves with scoped rules of one
+   class + one element. Wrapping a mount in .sc-grid or .sc-cards and
+   selecting through it beats that specificity without forking stormview. */
+
+.sc-grid .grid-wrap { box-shadow: none; }
+.sc-grid .grid-wrap th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--sc-t-meta);
+  font-weight: 600;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--panel-raised) 55%, var(--panel));
+  padding: 8px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.sc-grid .grid-wrap.nested th { position: static; }
+.sc-grid .grid-wrap td {
+  padding: 9px 14px;
+  border-bottom-color: var(--sc-hairline);
+  color: var(--text);
+}
+.sc-grid .grid-wrap tbody tr:last-child td { border-bottom: none; }
+.sc-grid .grid-wrap .actions-cell button { font-size: var(--sc-t-eyebrow); padding: 3px 9px; }
+
+.sc-cards .card { box-shadow: none; }
+.sc-cards .card:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--panel) 92%, var(--text) 3%); }
+.sc-cards .card .kind {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
+}
+
+/* ----------------------------------------------------------- responsive */
+
+@media (max-width: 860px) {
+  :root { --sc-gutter: 14px; }
+  .sc-search input { min-width: 0; width: 100%; }
+}

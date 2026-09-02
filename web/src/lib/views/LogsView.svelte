@@ -1,9 +1,13 @@
 <script>
   // The fleet log viewer: recent events from the collector's ring with
-  // host/severity/search filters, and live follow over SSE.
+  // host/severity/search filters, and live follow over SSE. The pane owns
+  // the remaining height so the tail always sits at the bottom edge.
   import { onMount } from 'svelte'
   import { get, timeAgo } from '../api.js'
   import { route } from '../router.svelte.js'
+  import PageHeader from '../components/PageHeader.svelte'
+  import EmptyState from '../components/EmptyState.svelte'
+  import Icon from '../components/Icon.svelte'
 
   const SEVERITIES = [
     { v: '', label: 'All severities' },
@@ -91,39 +95,58 @@
   })
 </script>
 
-<div class="content">
-  <div class="bar">
-    <h1>Fleet logs</h1>
-    <select bind:value={host} onchange={refresh}>
+<div class="sc-page logs">
+  <PageHeader
+    crumbs={[{ label: 'Observe' }, { label: 'Fleet logs' }]}
+    title="Fleet logs"
+    scope={host ? `from ${host}` : ''}
+  >
+    {#snippet actions()}
+      <button class:following={follow} onclick={toggleFollow} title={follow ? 'Pause the live tail' : 'Follow the live tail'}>
+        <span class="pulse" class:on={follow}></span>
+        {follow ? 'Following' : 'Paused'}
+      </button>
+    {/snippet}
+  </PageHeader>
+
+  <div class="sc-toolbar">
+    <label class="sc-search">
+      <Icon name="search" size={14} />
+      <input type="search" placeholder="Search message" aria-label="Search message" bind:value={search} onchange={refresh} />
+    </label>
+    <select bind:value={host} onchange={refresh} aria-label="Filter by host">
       <option value="">All hosts</option>
       {#each hosts as h}
         <option value={h.host}>{h.host} ({h.count})</option>
       {/each}
     </select>
-    <select bind:value={minSeverity} onchange={refresh}>
+    <select bind:value={minSeverity} onchange={refresh} aria-label="Filter by severity">
       {#each SEVERITIES as s}
         <option value={s.v}>{s.label}</option>
       {/each}
     </select>
-    <input
-      type="search"
-      placeholder="Search message…"
-      bind:value={search}
-      onchange={refresh}
-    />
-    <button class:on={follow} onclick={toggleFollow} title="Follow live">
-      {follow ? '⏸ Pause' : '▶ Follow'}
-    </button>
+    <span class="sc-right">
+      <span class="sc-hint">{rows.length} lines</span>
+      <button onclick={refresh} title="Reload the buffer"><Icon name="refresh" size={14} /></button>
+    </span>
   </div>
 
   {#if !loaded}
-    <div class="empty">Loading…</div>
+    <div class="sc-empty"><p>Loading the ring buffer…</p></div>
   {:else if error}
-    <div class="empty">Failed: {error}</div>
+    <EmptyState icon="logs" title="The log store is unavailable" hint="The collector returned: {error}">
+      {#snippet action()}
+        <button class="sc-primary" onclick={refresh}>Try again</button>
+      {/snippet}
+    </EmptyState>
   {:else if rows.length === 0}
-    <div class="empty">No events yet — the collector is listening.</div>
+    <EmptyState
+      icon="logs"
+      title="No log lines yet"
+      hint="The collector is listening on the fleet multicast group. Lines appear the moment a node sends one."
+    />
   {:else}
-    <div class="table" bind:this={tableEl}>
+    <div class="pane" bind:this={tableEl}>
       <table>
         <tbody>
           {#each rows as e}
@@ -142,43 +165,35 @@
 </div>
 
 <style>
-  .content { display: flex; flex-direction: column; height: 100%; }
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
+  .logs { display: flex; flex-direction: column; height: 100%; padding-bottom: var(--sc-gutter); }
+
+  .following { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
+  .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-ghost); display: inline-block; margin-right: 6px;
   }
-  h1 { font-size: 16px; font-weight: 600; margin-right: 8px; }
-  select, input {
-    padding: 5px 8px;
-    font-size: 12px;
-    background: var(--panel-raised);
-    color: var(--text);
+  .pulse.on { background: var(--ok); animation: blink 1.6s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  .pane {
+    flex: 1;
+    overflow: auto;
+    background: var(--term-bg);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
   }
-  input { min-width: 200px; }
-  button {
-    padding: 5px 12px;
-    font-size: 12px;
-    background: var(--panel-raised);
-    color: var(--text-dim);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-  }
-  button.on { color: var(--ok); border-color: var(--ok); }
-  .table { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono, monospace); }
-  td { padding: 3px 8px; border-bottom: 1px solid var(--border); color: var(--text-dim); vertical-align: top; }
-  .time { white-space: nowrap; color: var(--text-faint); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: var(--sc-t-meta); }
+  td { padding: 2px 10px; border-bottom: 1px solid var(--sc-hairline); color: var(--text-dim); vertical-align: top; }
+  tbody tr:hover { background: var(--nav-hover); }
+  .time { white-space: nowrap; color: var(--text-ghost); }
   .host { color: var(--accent); white-space: nowrap; }
   .app { color: var(--text-faint); white-space: nowrap; }
-  .msg { width: 100%; word-break: break-word; }
-  .sev { font-weight: 600; white-space: nowrap; }
+  .msg { width: 100%; word-break: break-word; color: var(--text); }
+  .sev { font-weight: 700; white-space: nowrap; letter-spacing: 0.03em; }
   tr.sev0 td.sev, tr.sev1 td.sev, tr.sev2 td.sev, tr.sev3 td.sev { color: var(--error); }
-  tr.sev4 td.sev { color: var(--warn, #f1fa8c); }
+  tr.sev4 td.sev { color: var(--warn-strong); }
+  tr.sev5 td.sev, tr.sev6 td.sev { color: var(--text-faint); }
   tr.sev7 td.sev { color: var(--text-ghost); }
-  .empty { color: var(--text-faint); padding: 40px; text-align: center; }
+  /* A failure should be findable by scrolling fast, not by reading. */
+  tr.sev0, tr.sev1, tr.sev2, tr.sev3 { background: color-mix(in srgb, var(--error-bg) 45%, transparent); }
 </style>

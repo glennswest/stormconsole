@@ -1,9 +1,10 @@
 <script>
-  // "+ Create" — the creators a view offers (by its hash route), or every
-  // creator when used from the top bar. One button when there is one.
+  // "Create" — the creators a view offers (by its hash route), or every
+  // creator when used from the masthead. One button when there is one.
   import { creatorsFor, openCreator } from '../stores.svelte.js'
+  import Icon from './Icon.svelte'
 
-  let { at = null, label = '+ Create', primary = false } = $props()
+  let { at = null, label = 'Create', primary = false } = $props()
   const list = $derived(creatorsFor(at))
   let open = $state(false)
 
@@ -14,10 +15,23 @@
 </script>
 
 {#if list.length === 1}
-  <button class="create" class:primary onclick={() => pick(list[0])}>+ {list[0].label}</button>
+  <button class="create" class:sc-primary={primary} onclick={() => pick(list[0])}>
+    <Icon name="plus" size={14} stroke={2.2} />
+    {list[0].label}
+  </button>
 {:else if list.length > 1}
   <span class="menu">
-    <button class="create" class:primary onclick={() => (open = !open)}>{label} ▾</button>
+    <button
+      class="create"
+      class:sc-primary={primary}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      onclick={() => (open = !open)}
+    >
+      <Icon name="plus" size={14} stroke={2.2} />
+      {label}
+      <span class="caret"><Icon name="down" size={12} stroke={2.2} /></span>
+    </button>
     {#if open}
       <div class="drop" role="menu">
         {#each list as c (c.id)}
@@ -34,22 +48,48 @@
 
 <style>
   .create {
-    padding: 4px 10px; font-size: 12px; border-radius: var(--radius-sm, 4px);
-    background: var(--panel-raised); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: var(--sc-t-meta);
   }
-  .create.primary { background: var(--accent); color: var(--accent-fg, #fff); border-color: var(--accent); font-weight: 600; }
+  .caret { display: inline-grid; place-items: center; opacity: 0.8; margin-left: -1px; }
   .menu { position: relative; display: inline-block; }
   .drop {
-    position: absolute; right: 0; top: calc(100% + 4px); min-width: 220px; z-index: 40;
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm, 4px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); padding: 4px; display: grid;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 5px);
+    min-width: 240px;
+    z-index: 40;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.32);
+    padding: 4px;
+    display: grid;
   }
   .drop button {
-    display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left;
-    background: none; border: none; color: var(--text); padding: 6px 10px; font-size: 13px; cursor: pointer;
-    border-radius: var(--radius-sm, 4px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: var(--sc-t-body);
+    font-weight: 400;
+    border-radius: var(--radius-sm);
   }
-  .drop button:hover { background: var(--panel-raised); }
-  .plugin { color: var(--text-faint); font-size: 11px; }
+  .drop button:hover { background: var(--nav-active); }
+  .plugin {
+    color: var(--text-faint);
+    font-size: var(--sc-t-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
   .close { position: fixed; inset: 0; z-index: 30; }
 </style>

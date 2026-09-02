@@ -1,75 +1,110 @@
 <script>
-  // A grid rooted at one component — where a nav item or a card's ⊞ lands.
+  // A list rooted at one component — where a nav item or a card's ⊞ lands.
   // With ?rel= the top rows are that relationship's targets; without it,
   // the component itself is the single expandable root.
   import { route } from '../router.svelte.js'
-  import { feed } from '../stores.svelte.js'
+  import { feed, prefs, setView, idsForRoute } from '../stores.svelte.js'
   import ComponentGrid from 'stormview/components/ComponentGrid.svelte'
-  import HealthDot from 'stormview/components/HealthDot.svelte'
-  import { call } from '../api.js'
+  import ComponentCard from 'stormview/components/ComponentCard.svelte'
+  import PageHeader from '../components/PageHeader.svelte'
+  import Toolbar from '../components/Toolbar.svelte'
+  import EmptyState from '../components/EmptyState.svelte'
+  import StatusPill from '../components/StatusPill.svelte'
   import CreateMenu from '../components/CreateMenu.svelte'
+  import { call } from '../api.js'
 
   const id = $derived(route.current.query.get('id'))
   const rel = $derived(route.current.query.get('rel'))
   const root = $derived(feed.components.find((c) => c.id === id))
+  const hash = $derived(`#/grid?id=${id}${rel ? `&rel=${rel}` : ''}`)
+
+  let search = $state('')
+
+  const resolveId = (cid) => feed.components.find((c) => c.id === cid)
+  const invoke = (a) => call(a.method, a.path)
 
   // With ?rel=, an absent relation means "none yet" — an honest empty
   // list with a way to create, not the root card standing in for it.
-  const rootIds = $derived.by(() => {
-    if (!root) return []
-    if (rel) {
-      const r = (root.relations || []).find((x) => x.name === rel)
-      return r ? r.targets : []
-    }
-    return [root.id]
-  })
-  const hash = $derived(`#/grid?id=${id}${rel ? `&rel=${rel}` : ''}`)
+  const all = $derived((idsForRoute(hash) || []).map(resolveId).filter(Boolean))
+  const rows = $derived(
+    search
+      ? all.filter((c) =>
+          `${c.label} ${c.detail || ''}`.toLowerCase().includes(search.toLowerCase())
+        )
+      : all
+  )
+  const title = $derived(rel ? rel.replace(/_/g, ' ') : root?.label || '')
 </script>
 
-<div class="content">
+<div class="sc-page">
   {#if !feed.loaded}
-    <div class="empty">Connecting…</div>
+    <div class="sc-empty"><p>Connecting to the component feed…</p></div>
   {:else if !root}
-    <div class="empty">Component “{id}” not found. <a href="#/">Back to overview</a></div>
+    <EmptyState
+      icon="filter"
+      title="Component not found"
+      hint="“{id}” is no longer in the feed. It may have been deleted, or its plugin may be down."
+    >
+      {#snippet action()}
+        <a class="sc-back" href="#/">Back to overview</a>
+      {/snippet}
+    </EmptyState>
   {:else}
-    <div class="head">
-      <a href="#/" class="back">← Overview</a>
-      <h1>
-        <HealthDot health={root.health} />
-        {root.label}
-        {#if rel}<span class="rel">· {rel}</span>{/if}
-        <span class="count">{rootIds.length}</span>
-      </h1>
-      <span class="tools"><CreateMenu at={hash} /></span>
-    </div>
-    {#if rootIds.length === 0}
-      <div class="empty">
-        No {rel || root.label} yet.
-        <div class="empty-create"><CreateMenu at={hash} primary={true} /></div>
-      </div>
+    <PageHeader
+      crumbs={rel
+        ? [{ label: 'Overview', href: '#/' }, { label: root.label, href: `#/grid?id=${encodeURIComponent(root.id)}` }, { label: title }]
+        : [{ label: 'Overview', href: '#/' }, { label: root.label }]}
+      {title}
+      count={all.length}
+    >
+      {#snippet status()}
+        {#if !rel}<StatusPill health={root.health} />{/if}
+      {/snippet}
+      {#snippet actions()}
+        <CreateMenu at={hash} primary={true} />
+      {/snippet}
+    </PageHeader>
+
+    {#if all.length === 0}
+      <EmptyState
+        icon="inbox"
+        title="No {title} yet"
+        hint="{root.label} has nothing under this relationship right now."
+      >
+        {#snippet action()}
+          <CreateMenu at={hash} primary={true} />
+        {/snippet}
+      </EmptyState>
     {:else}
-      <ComponentGrid components={feed.components} {rootIds} invoke={(a) => call(a.method, a.path)} />
+      <Toolbar
+        bind:search
+        placeholder="Search {title}"
+        bind:view={prefs.view}
+        onview={setView}
+        hint={rows.length !== all.length ? `${rows.length} of ${all.length}` : `${all.length} items`}
+      />
+      {#if rows.length === 0}
+        <EmptyState icon="filter" title="No matches" hint="Nothing here matches that search." />
+      {:else if prefs.view === 'cards'}
+        <div class="grid sc-cards">
+          {#each rows as c (c.id)}
+            <ComponentCard component={c} resolve={resolveId} {invoke} />
+          {/each}
+        </div>
+      {:else}
+        <div class="sc-grid">
+          <ComponentGrid components={feed.components} rootIds={rows.map((c) => c.id)} {invoke} />
+        </div>
+      {/if}
     {/if}
   {/if}
 </div>
 
 <style>
-  .head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 14px; }
-  .back { font-size: 13px; color: var(--text-dim); }
-  .back:hover { color: var(--accent); text-decoration: none; }
-  h1 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 16px;
-    font-weight: 600;
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
   }
-  .rel { color: var(--text-dim); font-weight: 400; }
-  .count {
-    font-size: 12px; color: var(--text-faint); background: var(--panel-raised);
-    border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-weight: 400;
-  }
-  .tools { margin-left: auto; }
-  .empty-create { margin-top: 12px; }
-  .empty { color: var(--text-faint); padding: 40px; text-align: center; }
+  .sc-back { font-size: var(--sc-t-body); }
 </style>

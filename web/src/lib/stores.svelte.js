@@ -131,3 +131,92 @@ export function startFeed() {
     .then((list) => { creators.list = list })
     .catch(() => {})
 }
+
+// --- View preferences -------------------------------------------------
+// How a list is drawn (dense table or cards) and which navigator groups
+// are collapsed are the operator's choice, not the app's, so they persist
+// per browser like the namespace selector does.
+
+function load(key, fallback) {
+  try {
+    const v = localStorage.getItem(key)
+    return v === null ? fallback : JSON.parse(v)
+  } catch {
+    return fallback
+  }
+}
+
+function save(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {}
+}
+
+export const prefs = $state({
+  view: load('stormconsole-view', 'table'),
+  collapsed: load('stormconsole-nav-collapsed', {}),
+  navOpen: true,
+})
+
+export function setView(v) {
+  prefs.view = v
+  save('stormconsole-view', v)
+}
+
+export function toggleSection(label) {
+  prefs.collapsed = { ...prefs.collapsed, [label]: !prefs.collapsed[label] }
+  save('stormconsole-nav-collapsed', prefs.collapsed)
+}
+
+// --- Feed helpers -----------------------------------------------------
+
+const NAMESPACED = ['pod', 'deploy', 'sts', 'ds', 'job', 'cronjob', 'svc', 'pvc', 'netpol', 'cnp', 'cep']
+
+/// The ids a route shows, so a view and its nav badge always agree on the
+/// count. `#/k8s/<kind>` is the kind's slice of the feed, scoped by the
+/// namespace selector; `#/grid?id=…&rel=…` is that relationship's targets.
+export function idsForRoute(href) {
+  if (!href) return null
+  const [path, query] = href.split('?')
+  const q = new URLSearchParams(query || '')
+
+  if (path.startsWith('#/k8s/') && path !== '#/k8s/events') {
+    const kind = path.slice('#/k8s/'.length)
+    const prefix = `k8s:${kind}:`
+    let ids = feed.components.filter((c) => c.id.startsWith(prefix)).map((c) => c.id)
+    if (k8sns.selected && NAMESPACED.includes(kind)) {
+      ids = ids.filter((id) => id.startsWith(`${prefix}${k8sns.selected}/`))
+    }
+    return ids.sort()
+  }
+
+  if (path === '#/grid' && q.get('id')) {
+    const root = feed.components.find((c) => c.id === q.get('id'))
+    if (!root) return null
+    const rel = q.get('rel')
+    if (!rel) return [root.id]
+    const r = (root.relations || []).find((x) => x.name === rel)
+    return r ? r.targets : []
+  }
+
+  return null
+}
+
+/// The badge beside a nav item, or null when the route has no countable
+/// contents (the overview, the log tail).
+export function navCount(href) {
+  const ids = idsForRoute(href)
+  return ids ? ids.length : null
+}
+
+/// How the whole feed is doing, for the masthead pill and the overview
+/// summary. Plugin cards are excluded — they report their own children.
+export function rollup(components = feed.components) {
+  const r = { ok: 0, warn: 0, error: 0, idle: 0, unknown: 0, total: 0 }
+  for (const c of components) {
+    if (c.kind === 'plugin') continue
+    r.total++
+    r[c.health] = (r[c.health] ?? 0) + 1
+  }
+  return r
+}
