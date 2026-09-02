@@ -1,9 +1,13 @@
 //! The logs plugin is the fleet log collector: it joins the stormcast
-//! multicast group, parses RFC 5424, stores into a bounded SQLite ring,
-//! and serves query + live-follow APIs patterned on mcastsyslog's proven
-//! shape. Per-entity logs stay at their source (a node's stormd),
-//! reachable via the fleet plugin — the console does not re-store what a
-//! node already stores.
+//! multicast group, parses RFC 5424, stores into a bounded deduplicating
+//! redb ring, and serves query + live-follow APIs patterned on
+//! mcastsyslog's proven shape. Per-entity logs stay at their source (a
+//! node's stormd), reachable via the fleet plugin — the console does not
+//! re-store what a node already stores.
+//!
+//! Repeats collapse into one entry with a count, and the ring expires
+//! entries on both a retention window and an entry cap. See `store` for
+//! why.
 
 mod collector;
 mod parse;
@@ -23,8 +27,7 @@ use serde_json::json;
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
-use parse::LogEvent;
-use store::Store;
+use store::{Stats, Store, StoredEvent};
 pub use store::HostSummary;
 
 struct Status {
@@ -35,8 +38,11 @@ struct Status {
 struct Inner {
     group: String,
     db_path: String,
+    cap: u64,
+    retain_ms: u64,
+    dedup: bool,
     store: RwLock<Option<Arc<Store>>>,
-    tail: broadcast::Sender<LogEvent>,
+    tail: broadcast::Sender<StoredEvent>,
     status: RwLock<Status>,
 }
 
@@ -44,7 +50,13 @@ pub struct LogsPlugin {
     inner: Arc<Inner>,
 }
 
-const RING_CAP: i64 = 200_000;
+/// How the ring is bounded when the config says nothing.
+pub const DEFAULT_RING_CAP: u64 = 200_000;
+pub const DEFAULT_RETAIN_HOURS: u64 = 168;
+
+/// Old entries are swept on a timer as well as on insert, so a fleet that
+/// goes quiet still expires what it left behind.
+const PRUNE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// A handle other plugins hold to ask which hosts the collector has heard
 /// from — the fleet plugin's node list is exactly this.
@@ -66,11 +78,24 @@ impl LogsPlugin {
     }
 
     pub fn new(mcast_group: String, db_path: String) -> Self {
+        Self::with_retention(mcast_group, db_path, DEFAULT_RING_CAP, DEFAULT_RETAIN_HOURS, true)
+    }
+
+    pub fn with_retention(
+        mcast_group: String,
+        db_path: String,
+        cap: u64,
+        retain_hours: u64,
+        dedup: bool,
+    ) -> Self {
         let (tail, _) = broadcast::channel(1024);
         Self {
             inner: Arc::new(Inner {
                 group: mcast_group,
                 db_path,
+                cap,
+                retain_ms: retain_hours.saturating_mul(3_600_000),
+                dedup,
                 store: RwLock::new(None),
                 tail,
                 status: RwLock::new(Status {
@@ -104,7 +129,15 @@ impl ConsolePlugin for LogsPlugin {
         let status = self.inner.status.read().await;
         let mut metrics = Vec::new();
         if let Some(store) = self.inner.store.read().await.as_ref() {
-            metrics.push(Metric::new("events", store.count().to_string()));
+            let Stats { entries, occurrences, suppressed } = store.stats();
+            metrics.push(Metric::new("events", entries.to_string()));
+            metrics.push(Metric::new("received", occurrences.to_string()).tone("muted"));
+            // The headline of the whole dedup exercise: how much repetition
+            // the ring is absorbing. Warm it once it is actually doing work.
+            metrics.push(
+                Metric::new("duplicates", suppressed.to_string())
+                    .tone(if suppressed > 0 { "warn" } else { "muted" }),
+            );
             if let Ok(hosts) = store.hosts() {
                 metrics.push(Metric::new("hosts", hosts.len().to_string()).tone("accent"));
             }
@@ -131,7 +164,12 @@ impl ConsolePlugin for LogsPlugin {
     }
 
     async fn run(&self, shutdown: CancellationToken) {
-        let store = match Store::open(&self.inner.db_path, RING_CAP) {
+        let store = match Store::open(
+            &self.inner.db_path,
+            self.inner.cap,
+            self.inner.retain_ms,
+            self.inner.dedup,
+        ) {
             Ok(s) => Arc::new(s),
             Err(e) => {
                 *self.inner.status.write().await = Status {
@@ -147,6 +185,33 @@ impl ConsolePlugin for LogsPlugin {
             health: Health::Ok,
             detail: format!("listening on {}", self.inner.group),
         };
+
+        // The sweeper runs whether or not anything is arriving — retention
+        // is a promise about age, not about traffic.
+        let sweeper = {
+            let store = store.clone();
+            let shutdown = shutdown.clone();
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(PRUNE_INTERVAL);
+                tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    tokio::select! {
+                        _ = tick.tick() => {
+                            let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
+                            match store.prune(now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::debug!(removed = n, "log ring pruned")
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(error = %e, "log ring prune failed"),
+                            }
+                        }
+                        _ = shutdown.cancelled() => return,
+                    }
+                }
+            })
+        };
+
         let result = collector::run(
             &self.inner.group,
             store,
@@ -159,6 +224,7 @@ impl ConsolePlugin for LogsPlugin {
                 Status { health: Health::Error, detail: e };
         }
         shutdown.cancelled().await;
+        sweeper.abort();
     }
 }
 
@@ -191,7 +257,11 @@ async fn events(State(inner): State<Arc<Inner>>, Query(q): Query<EventsQuery>) -
 
 async fn summary(State(inner): State<Arc<Inner>>) -> Response {
     let Some(store) = inner.store.read().await.clone() else {
-        return Json(json!({"total": 0, "hosts": [], "severities": []})).into_response();
+        return Json(json!({
+            "total": 0, "received": 0, "duplicates": 0,
+            "hosts": [], "severities": [],
+        }))
+        .into_response();
     };
     let hosts = store.hosts().unwrap_or_default();
     let severities: Vec<_> = store
@@ -200,8 +270,18 @@ async fn summary(State(inner): State<Arc<Inner>>) -> Response {
         .into_iter()
         .map(|(s, n)| json!({"severity": s, "count": n}))
         .collect();
-    Json(json!({"total": store.count(), "hosts": hosts, "severities": severities}))
-        .into_response()
+    let Stats { entries, occurrences, suppressed } = store.stats();
+    Json(json!({
+        "total": entries,
+        "received": occurrences,
+        "duplicates": suppressed,
+        "dedup": inner.dedup,
+        "retain_hours": inner.retain_ms / 3_600_000,
+        "cap": inner.cap,
+        "hosts": hosts,
+        "severities": severities,
+    }))
+    .into_response()
 }
 
 async fn stream(

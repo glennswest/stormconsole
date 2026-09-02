@@ -46,10 +46,14 @@ thiserror = "2"
 rust-embed = "8"
 mime_guess = "2"
 futures-util = "0.3"
-rusqlite = { version = "0.32", features = ["bundled"] }
+# The fleet log ring. redb is pure Rust with no C toolchain and no
+# SQLITE_FULL page ceiling — the failure that took the ring out on a
+# node with 1.7 TB free.
+redb = "2"
 socket2 = "0.5"
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3"
 
 [profile.release]
 strip = true

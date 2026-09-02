@@ -151,14 +151,40 @@ pub struct Logs {
     pub enabled: bool,
     #[serde(default = "default_group")]
     pub mcast_group: String,
-    /// SQLite ring store path; defaults to `<data_dir>/logs.db`.
+    /// redb ring store path; defaults to `<data_dir>/logs.redb`.
     pub db_path: Option<String>,
+    /// Most distinct entries the ring keeps. The oldest go first.
+    #[serde(default = "default_ring_cap")]
+    pub ring_cap: u64,
+    /// Drop an entry this long after it was last seen. 0 disables the age
+    /// bound and leaves `ring_cap` as the only one.
+    #[serde(default = "default_retain_hours")]
+    pub retain_hours: u64,
+    /// Collapse repeats of the same host/app/severity/message into one
+    /// entry with a count. Off stores every arrival separately.
+    #[serde(default = "on")]
+    pub dedup: bool,
 }
 
 impl Default for Logs {
     fn default() -> Self {
-        Self { enabled: true, mcast_group: default_group(), db_path: None }
+        Self {
+            enabled: true,
+            mcast_group: default_group(),
+            db_path: None,
+            ring_cap: default_ring_cap(),
+            retain_hours: default_retain_hours(),
+            dedup: true,
+        }
     }
+}
+
+fn default_ring_cap() -> u64 {
+    200_000
+}
+
+fn default_retain_hours() -> u64 {
+    168
 }
 
 fn default_group() -> String {
@@ -307,7 +333,7 @@ impl Config {
     pub fn logs_db_path(&self) -> String {
         match &self.logs.db_path {
             Some(p) => p.clone(),
-            None => format!("{}/logs.db", self.data_dir().trim_end_matches('/')),
+            None => format!("{}/logs.redb", self.data_dir().trim_end_matches('/')),
         }
     }
 
@@ -333,7 +359,7 @@ data_dir    = \"/var/lib/stormconsole\"
         let c = Config::parse(STORMPUMP_GOLDEN).unwrap();
         assert_eq!(c.bind(), "0.0.0.0:9094");
         assert_eq!(c.data_dir(), "/var/lib/stormconsole");
-        assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.db");
+        assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.redb");
         assert!(c.logs.enabled && c.kubernetes.enabled);
         assert!(!c.auth_required());
     }
@@ -342,14 +368,14 @@ data_dir    = \"/var/lib/stormconsole\"
     fn example_config_is_accepted() {
         let c = Config::parse(include_str!("../../../config/config.toml")).unwrap();
         assert_eq!(c.bind(), "0.0.0.0:9094");
-        assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.db");
+        assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.redb");
     }
 
     #[test]
     fn defaults_without_a_file() {
         let c = Config::default();
         assert_eq!(c.bind(), "0.0.0.0:9094");
-        assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.db");
+        assert_eq!(c.logs_db_path(), "/var/lib/stormconsole/logs.redb");
         assert_eq!(c.data_dir(), DEFAULT_DATA_DIR);
     }
 

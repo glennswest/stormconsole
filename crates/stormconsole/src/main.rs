@@ -66,7 +66,13 @@ async fn main() {
         )));
     }
     let logs = config.logs.enabled.then(|| {
-        Arc::new(plugin_logs::LogsPlugin::new(config.logs.mcast_group.clone(), config.logs_db_path()))
+        Arc::new(plugin_logs::LogsPlugin::with_retention(
+            config.logs.mcast_group.clone(),
+            config.logs_db_path(),
+            config.logs.ring_cap,
+            config.logs.retain_hours,
+            config.logs.dedup,
+        ))
     });
     if config.fleet.enabled {
         plugins.push(Arc::new(plugin_fleet::FleetPlugin::new(
