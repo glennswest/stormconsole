@@ -3,6 +3,22 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.7.1] — 2026-09-02
+
+### 2026-09-02
+- **fix:** dedup normalises a leading timestamp out of the key. Emitters
+  forward a process's own log line verbatim and tracing writes its
+  timestamp at the front of it, so the message text carries a microsecond
+  clock that changes on every occurrence — keyed on raw text, the flood
+  dedup was written for stayed one entry per arrival and nothing
+  collapsed. Verified against the live fleet: 646 arrivals of the same
+  line are now one entry showing `×646`. Only the key is normalised; the
+  stored text is whatever last arrived, and a message that is nothing but
+  a timestamp keeps it
+- **fix:** a stale ring is named rather than reported as "invalid data" —
+  a config pointing `[logs] db_path` at the SQLite file from 0.6 now says
+  what the file is and that it can be deleted
+
 ## [v0.7.0] — 2026-09-02
 
 ### 2026-09-02

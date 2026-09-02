@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.7.0**
+Current: **0.7.1**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -209,8 +209,15 @@ OpenShift console and the ESXi host client.
       flooding the fleet it observes
 - [x] Per-host/per-severity aggregates maintained on insert and prune
       (redb has no GROUP BY, and the feed asks every few seconds)
-- [x] 39/39 tests on dev, seven new covering dedup, throttling, both
-      bounds, and aggregate bookkeeping under eviction
+- [x] Dedup keys on a *fingerprint*: a leading timestamp is stripped,
+      because emitters forward tracing's own line and its microsecond
+      clock made every flooded line distinct. Found only by running
+      against the live fleet — the first build deduplicated nothing
+- [x] 44/44 tests on dev, twelve new covering dedup, fingerprinting,
+      throttling, both bounds, aggregate bookkeeping under eviction, and
+      the stale-ring error
+- [x] Verified on dev against the real group: 646 arrivals of sptest's
+      flooding line → 1 entry, `×646`, live tail responsive
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

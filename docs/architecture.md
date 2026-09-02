@@ -270,6 +270,25 @@ entry; the viewer renders it as `×N`, and a lifetime `duplicates` counter
 on the collector component shows how much is being absorbed. `[logs]
 dedup = false` stores every arrival separately.
 
+The text is *fingerprinted* before it is keyed, and there is one
+normalisation: a leading timestamp comes off. Emitters here forward a
+process's own log line verbatim, and tracing writes its timestamp at the
+front of it, so the message carries a microsecond clock that changes on
+every occurrence —
+
+```text
+2026-09-02T18:26:30.258373Z  WARN plugin_logs::collector: store insert failed …
+2026-09-02T18:26:44.545181Z  WARN plugin_logs::collector: store insert failed …
+```
+
+— and keyed on raw text those are two entries. The first build of this
+ran against a real node and deduplicated nothing at all for exactly that
+reason. A leading timestamp is redundant with the event's own `ts` and can
+never be what distinguishes two messages, so it is stripped for keying
+only; the stored text is whatever last arrived. Nothing else is
+normalised — collapsing numbers or identifiers would merge messages that
+genuinely differ.
+
 **Two automatic bounds.** An entry is dropped when it falls outside the
 retention window (`retain_hours`, measured from *last* seen, so a line
 that keeps arriving keeps its place) or when the ring exceeds `ring_cap`
