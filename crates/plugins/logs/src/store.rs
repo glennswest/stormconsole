@@ -161,6 +161,17 @@ pub struct Store {
     since_prune: Mutex<u64>,
 }
 
+/// SQLite stamps every database with this header, so an old ring is
+/// identifiable rather than merely unreadable.
+fn is_sqlite(path: &str) -> bool {
+    use std::io::Read;
+    let mut header = [0u8; 16];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut header))
+        .is_ok()
+        && &header == b"SQLite format 3\0"
+}
+
 fn dedup_key(host: &str, app: &str, severity: u8, msg: &str) -> String {
     // \x1f (unit separator) cannot appear in a parsed syslog field, so the
     // parts can never run together into a colliding key.
@@ -172,7 +183,22 @@ impl Store {
         if let Some(dir) = Path::new(path).parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let db = Database::create(path)?;
+        let db = match Database::create(path) {
+            Ok(db) => db,
+            // The default path changed name with the format, so this only
+            // happens when a config points at the old ring explicitly. redb
+            // says "invalid data", which tells an operator nothing; say what
+            // the file actually is and what to do about it.
+            Err(e) if is_sqlite(path) => {
+                return Err(Error(format!(
+                    "{path} is the SQLite ring from stormconsole 0.6 and \
+                     earlier, which nothing reads any more. Delete it, or \
+                     point [logs] db_path at a new file such as \
+                     logs.redb ({e})"
+                )))
+            }
+            Err(e) => return Err(e.into()),
+        };
         let store = Self { db, cap, retain_ms, dedup, since_prune: Mutex::new(0) };
         store.create_tables()?;
         Ok(store)
@@ -495,6 +521,17 @@ mod tests {
             facility: 16,
             msg: msg.into(),
         }
+    }
+
+    #[test]
+    fn an_old_sqlite_ring_is_named_not_just_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("logs.db");
+        std::fs::write(&path, b"SQLite format 3\0and then some payload").unwrap();
+        let err = Store::open(path.to_str().unwrap(), 10, HOUR, true).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("SQLite ring"), "{msg}");
+        assert!(msg.contains("Delete it"), "{msg}");
     }
 
     #[test]
