@@ -243,6 +243,14 @@ OpenShift console and the ESXi host client.
 Tracked in `docs/architecture.md` §Integration gaps. File with `gh issue
 create` on the owning repo; never fix in this repo (Core Rule 11).
 
+2026-09-02: stormcast#1 (repetition collapse compares raw lines, so
+tracing's leading timestamp defeats it — one looping service put 10,920
+copies of one line on the fleet bus; same bug class stormconsole hit in
+its own dedup and fixed in v0.7.1), rustkube#57 (store-unavailable
+returns 500 with a raw Rust Debug dump; should be 503 with a concise
+reason). fastetcd's ENOSPC → read-barrier deadlock is already covered by
+fastetcd#14/#15 — not re-filed.
+
 2026-08-30: stormpump#7 (re-enable the console in the image, #3 fixed),
 stormd#2 (non-retryable exit codes; the console exits 78 for config errors).
 Also stormpump#11 (Cilium agent metrics addr + Hubble/relay enablement) —
