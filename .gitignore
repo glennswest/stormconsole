@@ -17,7 +17,7 @@ credentials/
 Thumbs.db
 
 # Build artifacts
-target/
+target
 dist/
 # The built SPA is committed — it is embedded into the binary at cargo build
 !web/dist/
