@@ -21,6 +21,11 @@
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
 
+  // Two views of the same hardware. Drives asks "where is that disk";
+  // shelves asks "which enclosure is in trouble" — a shelf fails as a
+  // unit, and its PSUs and fans are the thing to look at when it does.
+  const asShelves = $derived(route.current.query.get('group') === 'shelf')
+
   let search = $state('')
   let membership = $state('')
   let busy = $state('')
@@ -103,9 +108,9 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Hardware' }, { label: 'Drives' }]}
-    title="Drives"
-    count={feed.loaded ? drives.length : null}
+    crumbs={[{ label: 'Hardware' }, { label: asShelves ? 'Shelves' : 'Drives' }]}
+    title={asShelves ? 'Shelves' : 'Drives'}
+    count={feed.loaded ? (asShelves ? shelves.length : drives.length) : null}
   >
     {#snippet status()}
       <span class="fleet" title="Drives enrolled in the storage fleet">
@@ -116,6 +121,27 @@
 
   {#if !feed.loaded}
     <div class="sc-empty"><p>Connecting to the component feed…</p></div>
+  {:else if asShelves}
+    {#if shelves.length === 0}
+      <EmptyState
+        icon="storage"
+        title="No shelves"
+        hint="stormdrive reports no enclosure. Drives attached directly to a controller have no shelf — they are on the Drives page."
+      >
+        {#snippet action()}
+          <a class="sc-back" href="#/drives">See the drives</a>
+        {/snippet}
+      </EmptyState>
+    {:else}
+      <!-- Expanding a shelf shows its drives, through the has_many edge
+           stormdrive already publishes. -->
+      <ResourceTable
+        components={feed.components}
+        rootIds={shelves.map((s) => s.id)}
+        {invoke}
+        showKind={false}
+      />
+    {/if}
   {:else if drives.length === 0}
     <EmptyState
       icon="storage"
