@@ -24,6 +24,14 @@ bind = "0.0.0.0:9094"
 # [[api.users]]                      # any user or token being set turns auth on
 # name = "admin"
 # password = "changeme"
+#
+# A user may carry their own kubernetes identity. With one, what they see
+# of the cluster is what the apiserver says they may see — asked as them,
+# with their bearer — and every write they make carries it too, so RBAC
+# decides. Without one there is no identity to authorize against and the
+# console says so (/api/v1/console/access reports identified: false)
+# rather than implying a check it is not doing.
+# kube_token = "eyJhbGciOi…"          # a ServiceAccount token, or any bearer rustkube knows
 
 # Every upstream below defaults to this node's own daemon on loopback (the
 # golden runs on the host network), so a node needs none of these.
@@ -71,3 +79,13 @@ enabled = true
 [sbregistry]
 enabled = true
 # url = "http://127.0.0.1:5100"
+
+[vm]
+enabled = true
+# A VM is a KubeVirt object in the apiserver, not a thing this URL serves
+# — the kubelet reconciles it (stormvm docs/kube.md), so the VM list needs
+# no stormvm at all. This is only the two console doors, serial and
+# framebuffer, which stormvm proxies. Unset or unreachable means the VM
+# page says which upstream is missing rather than showing a terminal that
+# will never print.
+# url = "http://127.0.0.1:9095"

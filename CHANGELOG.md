@@ -1,7 +1,78 @@
 # Changelog
 
 ## [Unreleased]
-<!-- New unreleased changes go here -->
+
+### 2026-09-09
+- **feat:** a **VM plugin** (#9, #2). stormvm's `docs/kube.md` settles where
+  a VM lives — *"stormvm is libraries, the kubelet is the loop"* — so a VM
+  is a KubeVirt `VirtualMachine`/`VirtualMachineInstance` in the apiserver
+  and the plugin watches `kubevirt.io/v1` the way the Cilium view watches
+  `cilium.io/v2`, with no second source of truth. Both objects are shown,
+  because they answer different questions; vCPU is read however the spec
+  spelled it; lifecycle is `spec.running` and nothing else; a definition
+  that wants to run with no instance says so rather than being drawn as
+  broken. A VM page carries disks with what backs each, network, the
+  reason it did not start, YAML, and both console doors
+- **feat:** the **console doors** (#2) — serial and framebuffer, relayed
+  through the console's own origin as websockets and addressed by VM
+  rather than node, so the browser never learns a node address and the URL
+  survives a live migration. The serial door is a terminal that sends
+  keystrokes back; the framebuffer is noVNC (MPL-2.0), lazily loaded in
+  its own chunk. Neither upstream serves them yet — stormvm's console
+  service is unbuilt, and the pod-log route needs rustkube#55 and
+  rustkube-node#34 — so the page names the missing upstream instead of
+  showing a terminal that will never print
+- **feat:** **namespace as a dimension** (#5). The selection travels in the
+  URL as `?ns=`, so a pasted link shows what the sender was looking at;
+  what is namespaced comes from a server-side kind catalogue
+  (`GET /api/plugins/k8s/kinds`, from `cache::RESOURCES`) instead of three
+  hardcoded lists in the SPA; a cluster-scoped list says it is
+  cluster-scoped rather than leaving a reader to wonder why the selector
+  changed nothing
+- **feat:** a **namespace page** (#6) at `#/k8s/ns/<name>` — inventory,
+  quota, limit ranges, labels, resources, events, YAML — whose every count
+  is a link into that kind filtered to this namespace. "No quota" is shown
+  as the answer it is: nothing here is bounded
+- **feat:** **per-viewer authorization** (#7). `[[api.users]] kube_token`
+  gives a user a kubernetes identity; the console asks rustkube *as them*
+  which namespaces they may see, and filters the feed before it leaves the
+  process — so a hidden object is unreachable by REST, by websocket and by
+  following a relation, and a plugin route answers 404 for it. Every write
+  carries the viewer's own bearer, so the apiserver's RBAC decides. With no
+  identity nothing is enforced and `/api/v1/console/access` says so
+- **feat:** **drives are hardware, not storage** (#8). A Hardware nav
+  section; `#/drives` grouped by shelf and ordered by bay with stormdrive's
+  real actions on the rows and the shelf's on the group;
+  `#/drives?group=shelf` for the other question, which enclosure is in
+  trouble. Enrolling a discovered disk into the fleet was reachable from
+  nowhere and is now a button
+- **feat:** **YAML that can be saved** (#4). `PUT
+  /api/plugins/k8s/object/{kind}/{key}` replaces the object, so the
+  `resourceVersion` it was loaded with is the concurrency guard — a 409
+  rather than a silent overwrite. A rename is refused rather than
+  performed
+- **feat:** the **Cilium agent's own verdict** (#4) — `127.0.0.1:9879/healthz`
+  on the node, taken as the worse of it and the CRD view, because they
+  disagree exactly when it matters
+- **feat:** row actions behind a menu. A drive carries nine operations;
+  nine buttons per row is a wall, and it put "Destructive test" one
+  mis-click from "Locate"
+- **fix:** no card renders a loopback address as if a browser could use it
+  (#10). `console_core::upstream` separates the address the console dials
+  from the one a viewer could use; a card says "on this node :9092"
+- **fix:** an unserved CRD leaves the snapshot rather than emptying, so
+  "absent" and "present and empty" are tellable apart — a machine that has
+  never run Cilium was getting a red Cilium card
+- **fix:** a partial route match no longer leaves its parameters behind for
+  whichever route eventually wins
+- **docs:** README §The namespace is a dimension, §Who sees what,
+  §Virtual machines, §Hardware and storage; architecture §Who sees what and
+  §vm; `[api.users] kube_token` and `[vm]` in the example config
+- **chore:** cross-project issues filed — rustkube#59 (no
+  SelfSubjectAccessReview, so scoping costs a probe per namespace) and
+  stormdrive#3 (bay and controller only in the rendered detail string).
+  stormconsole#1 is closed by stormdrive v0.4.0 / stormstorage v0.2.0,
+  which the console already consumes as feed plugins
 
 ## [v0.7.1] — 2026-09-02
 

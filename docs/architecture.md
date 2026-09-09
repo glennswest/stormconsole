@@ -78,6 +78,8 @@ pub trait ConsolePlugin: Send + Sync {
     async fn components(&self) -> Vec<ComponentSummary>;
     /// Plugin's own health — surfaces as a component and in /readyz.
     async fn health(&self) -> Health;
+    /// What one viewer may see of this plugin's slice.
+    async fn access(&self, viewer: &Viewer) -> Access;
     /// Background work (watches, multicast listeners, pollers).
     async fn run(&self, shutdown: CancellationToken);
 }
@@ -97,6 +99,59 @@ The host (console-core) provides:
   expose upstream daemons (a node's stormdrive, rustkube) through the
   console origin: `/api/plugins/{name}/proxy/…`. The browser only ever
   talks to the console; upstream credentials stay server-side.
+- **Access** — a `Viewer` is the identity on a request; each plugin answers
+  `access()` with what that identity may see of its own slice, and the
+  registry applies the answer *before a snapshot leaves the process*. That
+  is the whole point: a filter in the UI is a display choice, and this has
+  to be an authorization result. A plugin with nothing to authorize says
+  `Unrestricted`, and `GET /api/v1/console/access` reports whether anything
+  is being enforced at all — the console never implies a check it is not
+  doing. See §Who sees what.
+- **Upstream addresses** — the address the console *dials* and the address a
+  browser could *use* are different things (`console_core::upstream`). The
+  console runs on the node, so its dial addresses are loopback and correct;
+  printed on a card read from a laptop, `127.0.0.1:9092` is that laptop. A
+  card says where an upstream is in words — "on this node :9092" — and
+  anything meant to be clicked goes through the plugin proxy.
+
+### Who sees what
+
+The console aggregates kubernetes, fleet, logs, drives, volumes and the
+registry into one feed, which makes it the broadest read surface on the
+platform. The authorization model, in the order it runs:
+
+1. **Identity.** `[[api.users]] kube_token` gives a console user a
+   kubernetes bearer. The auth middleware puts the `Viewer` on every
+   request's extensions; console-core makes it an axum extractor, so a
+   plugin route reads it without knowing anything about sessions.
+2. **The question.** `NamespaceAccess` asks rustkube **as the viewer**:
+   `GET /api/v1/namespaces` first, since a 200 is the self-scoped answer
+   OpenShift's project list gives. rustkube's RBAC makes that
+   all-or-nothing, and it serves no `SelfSubjectAccessReview`
+   ([rustkube#59](https://github.com/glennswest/rustkube/issues/59)), so a
+   403 falls back to one probe per known namespace — `GET
+   /api/v1/namespaces/{ns}/pods?limit=1`, **not** the Namespace object,
+   because a Namespace is cluster-scoped and a RoleBinding cannot grant
+   access to one. Answers are cached 30s: a feed that redraws every two
+   seconds would otherwise be a denial of service on the apiserver by way
+   of a UI. One `NamespaceAccess` is shared by the kubernetes and vm
+   plugins, so the same question is asked once and cannot be answered two
+   ways.
+3. **Reads.** `/api/v1/components` and `/ws/components` are filtered per
+   viewer, with surviving relations re-pointed, so a hidden object is
+   unreachable by REST, by socket and by following an edge. A plugin route
+   answers 404 for a hidden namespace — the same answer an absent one
+   gets, because 403 would confirm it is there.
+4. **Writes.** Every mutation carries the viewer's own bearer, so the
+   apiserver's RBAC decides. A viewer whose Role has no `delete` verb is
+   refused by the apiserver rather than by the console's guess about them.
+   The *watches* keep the console's own credential — they have to see the
+   whole cluster to serve anybody.
+5. **Honesty.** What is withheld is counted and named ("4 namespaces you
+   cannot view"), because a short list with no explanation reads as a
+   broken console. An apiserver that cannot be asked hides nothing and
+   says so: an unreachable authorizer must not quietly become a permissive
+   one, and must not blank the console either.
 
 Later, **remote plugins** (OpenShift dynamic-plugin style, stormd
 `[process.ui]` style): a service registers a manifest (name, nav items,
@@ -351,6 +406,37 @@ and stormstorage's pool → node → volume graph arrive with no mapping here.
 Fleet-wide drive aggregation across nodes rides on fleet discovery later;
 one node first.
 
+### vm (KubeVirt objects, not a daemon)
+
+stormvm's `docs/kube.md` settles where a VM lives: *"stormvm is libraries,
+the kubelet is the loop"*. A VM is a `VirtualMachine` /
+`VirtualMachineInstance` in the apiserver, rustkube-node's kubelet
+reconciles the instances assigned to its node, and stormvm's own REST API
+on :9095 "is not done, and may not be wanted". So the plugin watches
+`kubevirt.io/v1` with the same client and list+watch loop the Cilium view
+uses — `plugin-kubernetes` exports `Client`, `KubeStore` and `watch` for
+it — and there is no second source of truth to reconcile.
+
+It is a plugin rather than two more kinds in the kubernetes plugin because
+a VM is a domain: its own navigation, its own creation forms, its own
+lifecycle verbs, and two console doors that are websockets rather than
+component actions.
+
+Both objects are surfaced, because they answer different questions: the
+definition is what should exist and whether it should run, the instance is
+the machine that *is* running. vCPU is read however the spec spelled it
+(`cores`, the sockets×cores×threads product, or a resource request) — a
+page that understands one spelling is wrong for every VM that used
+another. Lifecycle is `spec.running` and nothing else; stopping an
+instance is deleting it, since a VMI *is* the running machine.
+
+The console doors are relayed through the console's own origin
+(`/api/plugins/vm/console/{ns}/{name}/{serial,vnc}`) and addressed by VM
+rather than node, so the browser never learns a node address and the URL
+survives a live migration. stormvm is probed for its **VM collection**,
+not `/healthz` — every daemon here answers `/healthz`, and a health probe
+would have the console offering a terminal that dials a stranger.
+
 ### stormblock
 
 The block engine's management API on :9090 has no stormview feed yet (its
@@ -448,7 +534,8 @@ stormconsole/
       kubernetes/            # rustkube client, watch cache, k8s components
       fleet/                 # multicast discovery, node proxy, fleet actions
       logs/                  # collector, ring store, query API, SSE
-      stormdrive/            # per-node drive aggregation
+      stormdrive/            # per-node drive aggregation (Hardware, not Storage)
+      vm/                    # KubeVirt objects + the serial and VNC doors
       stormblock/            # block engine views
       sbregistry/            # goldens/clones/pallets views
   web/                       # Svelte 5 SPA (stormview npm), embedded at build
@@ -461,10 +548,14 @@ stormconsole/
 
 | Repo | Issue | Needed for |
 |------|-------|------------|
-| rustkube | No `GET /api/v1/namespaces/{ns}/pods/{name}/log` subresource (apiserver → kubelet proxy) | pod logs in the console (and `kubectl logs` generally) |
+| rustkube | [#55](https://github.com/glennswest/rustkube/issues/55) No `GET /api/v1/namespaces/{ns}/pods/{name}/log` subresource (apiserver → kubelet proxy) | pod logs in the console, and a VM's serial through the pod log the kubelet already writes |
+| rustkube | [#59](https://github.com/glennswest/rustkube/issues/59) No `SelfSubjectAccessReview` / `SelfSubjectRulesReview` — the RBAC engine decides correctly on every request, but there is no way to *ask* | scoping the namespace list in one call each instead of a probe per namespace; deciding whether to show an action before it 403s |
+| stormdrive | [#3](https://github.com/glennswest/stormdrive/issues/3) Bay and controller live only in the rendered `detail` string, so a UI has to regex prose to place a drive in a chassis | ordering a shelf by bay without parsing a sentence that is free to change |
+| stormvm | Console service: the serial and VNC websockets (`/api/v1/vms/{id}/console/{serial,vnc}`) — stormvm phase 1, unticked | the console doors; the console side is built and probes for them |
+| stormblock-registry | [#5](https://github.com/glennswest/stormblock-registry/issues/5) Raw media volumes — a disk image landing as an opaque golden that is never unpacked | importing an existing qcow2/raw VM disk, which is what makes replacing a hypervisor a migration rather than a rebuild |
 | rustkube-node | Kubelet has no `/containerLogs/{ns}/{pod}/{container}` endpoint though CRI log files exist under `/var/log/pods/…` | same |
 | stormblock-registry (sbregistry) | Serve a stormview components feed (`/api/v1/components` + `/ws/components`) for goldens/clones/pallets/warm-up | generic rendering in stormconsole and stormsh |
-| stormdrive | Serve the stormview components feed (planned in stormview README, not present in src) | fleet-wide drive aggregation without bespoke mapping |
+| ~~stormdrive~~ | ~~Serve the stormview components feed~~ — **done**, stormdrive v0.4.0 and stormstorage v0.2.0 (stormconsole#1); both are consumed as `FeedPlugin`s | fleet-wide drive aggregation without bespoke mapping |
 | stormcos | Define the node capability beacon (periodic, alongside stormcast logs: cores, memory, drives, pallets, join state) | fleet inventory without an inventory protocol |
 | stormpump | [#7](https://github.com/glennswest/stormpump/issues/7) put stormconsole back in the image — the crash loop (stormconsole#3) is fixed in v0.3.0 | the console booting on a StormCOS node at all |
 | stormpump | [#11](https://github.com/glennswest/stormpump/issues/11) Cilium observability — agent `prometheus-serve-addr`, enable Hubble + relay (+ ui) in the image | agent metrics on the Cilium card; the flow view (stormconsole#4) |

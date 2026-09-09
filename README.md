@@ -9,7 +9,13 @@ own part.
 - **kubernetes** — namespaces, workloads, nodes, events, network policies
   via [rustkube](https://github.com/glennswest/rustkube) (kube-wire-compatible
   apiserver, watch-backed cache); **Cilium** endpoints, nodes, identities
-  and policies through its CRDs, under one Cilium card
+  and policies through its CRDs, under one Cilium card that also carries
+  the agent's own verdict on this node
+- **vm** — virtual machines as KubeVirt `VirtualMachine` /
+  `VirtualMachineInstance` objects, which is where
+  [stormvm](https://github.com/glennswest/stormvm) puts them: the kubelet
+  is the loop, so the console watches the CRDs. Lifecycle, disks, network,
+  and both console doors — serial and framebuffer
 - **logs** — the fleet log collector: stormcast multicast
   (`239.255.42.1:5514`) → a deduplicating redb ring → query API + live
   follow. Repeats collapse into one entry with a count, and entries expire
@@ -30,11 +36,91 @@ aggregates every plugin's components at `/api/v1/components` (+
 
 ## Status
 
-v0.4.0 — a working console on a StormCOS node with no config: rustkube
-(with Cilium), fleet nodes and services, fleet logs, stormdrive,
-stormstorage, stormblock, sbregistry, and OpenShift-style create. Design in
+v0.8.0 — a working console on a StormCOS node with no config: rustkube
+(with Cilium), virtual machines, fleet nodes and services, fleet logs,
+stormdrive, stormstorage, stormblock, sbregistry, OpenShift-style create
+and edit, the namespace dimension, and per-viewer authorization. Design in
 [docs/architecture.md](docs/architecture.md); work plan in
 [CLAUDE.md](CLAUDE.md).
+
+## The namespace is a dimension
+
+A namespace is the unit of ownership, quota and policy, so it is a
+persistent control in the masthead rather than a menu item — the
+OpenShift project selector. It scopes every namespaced view, says nothing
+about the cluster-scoped ones (which say so on their own pages), and
+**travels in the URL** as `?ns=`, so a link somebody pastes shows what
+they were looking at. Which kinds it applies to comes from the plugin
+that owns them (`GET /api/plugins/k8s/kinds`), not from a list kept in
+the SPA.
+
+A namespace also has a page of its own — `#/k8s/ns/<name>` — with an
+inventory whose **every count is a link** into that kind filtered to this
+namespace, its quota as used-against-hard, its limit ranges, its events
+and its YAML. "No quota" is shown as the answer it is: nothing here is
+bounded.
+
+## Who sees what
+
+The console aggregates kubernetes, fleet, logs, drives, volumes and the
+registry into one feed, which makes it the broadest read surface on the
+platform. So a viewer sees what they may see, and the decision is not the
+console's:
+
+- a user configured with `kube_token` has a kubernetes identity; the
+  console asks **rustkube, as them** which namespaces they may see (list,
+  falling back to a per-namespace probe, since rustkube serves no
+  `SelfSubjectAccessReview` — [rustkube#59](https://github.com/glennswest/rustkube/issues/59))
+- the feed is filtered **before it leaves the process**, so a hidden
+  object is unreachable by REST, by websocket and by following a
+  relation; a plugin route answers for it exactly as it would for one
+  that does not exist
+- every **write** carries the viewer's own bearer, so the apiserver's
+  RBAC decides — a viewer whose Role has no `delete` verb is refused by
+  the apiserver, not by the console's guess about them
+- with no identity configured nothing is enforced, and
+  `GET /api/v1/console/access` says so (`identified: false`) rather than
+  implying a check that is not happening
+- what is withheld is counted and named — "4 namespaces you cannot view"
+  beside the selector — because a short list with no explanation reads as
+  a broken console
+
+## Virtual machines
+
+A VM here is a KubeVirt object in the apiserver that rustkube-node's
+kubelet reconciles (stormvm `docs/kube.md`: *"stormvm is libraries, the
+kubelet is the loop"*), so the plugin watches `kubevirt.io/v1` the way the
+Cilium view watches `cilium.io/v2`. Both objects are shown, because they
+answer different questions: a `VirtualMachine` is what should exist and
+whether it should run, a `VirtualMachineInstance` is the machine that is
+running — its node, its phase, its disks, and the reason it did not start
+when it did not.
+
+Lifecycle is `spec.running` and nothing else. A definition that wants to
+run and has no instance says exactly that: nothing places one yet, which
+is stormvm's own outstanding work, not a fault here.
+
+The two console doors are websockets relayed through the console's own
+origin and addressed **by VM rather than by node**, so the browser never
+learns a node address and the URL survives a live migration. Neither
+upstream serves them yet — stormvm's console service is unbuilt, and the
+other route to a guest's serial (the pod log the kubelet already writes)
+needs [rustkube#55](https://github.com/glennswest/rustkube/issues/55) and
+[rustkube-node#34](https://github.com/glennswest/rustkube-node/issues/34)
+— so the page names the missing upstream instead of showing a terminal
+that will never print. The framebuffer is
+[noVNC](https://github.com/novnc/noVNC) (MPL-2.0), lazily loaded in its
+own chunk so it is not in the console's first paint.
+
+## Hardware, and storage
+
+They are different sections because they are different things. A **drive**
+is a physical object with a serial, a shelf and a bay that somebody
+eventually walks up to and pulls; a **volume** is an allocation on top of
+one. `#/drives` groups by shelf and orders by bay, with stormdrive's own
+operations — locate, join fleet, designate, format — on the rows and the
+shelf's on the group. `#/drives?group=shelf` is the other question: which
+enclosure is in trouble, since a shelf fails as a unit.
 
 ## Build
 
@@ -102,6 +188,7 @@ lights up with the two-line config above and nothing else:
 | sbregistry | `http://127.0.0.1:5100` | `[sbregistry] url` |
 | stormdrive | `http://127.0.0.1:9092` (its stormview feed) | `[stormdrive] url` |
 | stormstorage | `http://127.0.0.1:9093` (its stormview feed) | `[stormstorage] url` |
+| vm | the apiserver above for the objects; `http://127.0.0.1:9095` for the console doors only | `[vm] url` |
 | fleet | stormd instances probed on `127.0.0.1` ports 9080–9089 and 9180–9199 (the StormCOS layout) | `[fleet] stormd_host`, `stormd_ports` |
 
 Any plugin can be turned off with `enabled = false`. To run the console
@@ -129,6 +216,21 @@ knows nothing about pods or volumes.
   proxy to the engine's own API.
 - **sbregistry** — Golden (repository + tag/digest) and Clone (of a
   golden), likewise.
+- **vm** — a Virtual machine form (name, namespace, node, vCPU, memory, a
+  golden for the root disk, bus, SSH key) and a `VirtualMachineInstance`
+  YAML template. The form builds an *instance*, not a definition, because
+  nothing turns a definition into one yet — a form producing a definition
+  would produce a VM that never starts. Importing an existing qcow2 or raw
+  disk needs a raw-media path in the registry
+  ([stormblock-registry#5](https://github.com/glennswest/stormblock-registry/issues/5))
+  and is not pretended at.
+
+Editing exists too: any cached object's YAML tab saves back with `PUT
+/api/plugins/k8s/object/{kind}/{key}`. The write is a replace, so the
+`resourceVersion` it was loaded with is the concurrency guard — an edit of
+something changed since comes back 409 rather than quietly overwriting
+somebody. A rename is refused rather than performed, because saving under
+a new name would create a second object and leave the first.
 
 Actions on cards — delete a volume, restart a stormd process, locate a
 drive — are carried by the feed and invoked with the method the feed
