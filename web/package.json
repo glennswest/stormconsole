@@ -14,6 +14,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "@novnc/novnc": "^1.7.0",
     "stormview": "github:glennswest/stormview#main"
   }
 }

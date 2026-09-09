@@ -7,15 +7,23 @@ const routes = [
   // component ids carry ':' and '/', so the grid root travels in the query:
   // #/grid?id=<component>&rel=<relation>
   { pattern: '#/grid', name: 'grid' },
+  { pattern: '#/drives', name: 'drives' },
+  { pattern: '#/vms', name: 'vmlist' },
+  { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },
+  // A namespace is a place, not a row: it has a page of its own, and it
+  // is matched before the generic kind list because it is longer.
+  { pattern: '#/k8s/ns/:name', name: 'namespace' },
   { pattern: '#/k8s/:kind', name: 'k8slist' },
 ]
 
 function match(hash) {
   if (!hash || hash === '#') hash = '#/'
   const [path, query] = hash.split('?')
-  const params = {}
   for (const r of routes) {
+    // Fresh per candidate: a partial match must not leave its parameters
+    // behind for the route that eventually wins.
+    const params = {}
     const rp = r.pattern.split('/')
     const hp = path.split('/')
     if (rp.length !== hp.length) continue

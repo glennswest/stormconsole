@@ -12,6 +12,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // noVNC (the graphical console) uses top-level await to probe for a
+    // hardware H.264 decoder, which needs a 2022-era baseline. It is a
+    // lazily-loaded chunk, so this raises the floor only for browsers
+    // that open a VM's framebuffer.
+    target: 'es2022',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/app.js',

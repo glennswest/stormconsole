@@ -9,6 +9,10 @@
   import LogsView from './lib/views/LogsView.svelte'
   import K8sList from './lib/views/K8sList.svelte'
   import K8sEvents from './lib/views/K8sEvents.svelte'
+  import NamespaceDetail from './lib/views/NamespaceDetail.svelte'
+  import DrivesView from './lib/views/DrivesView.svelte'
+  import VmList from './lib/views/VmList.svelte'
+  import VmDetail from './lib/views/VmDetail.svelte'
   import Login from './lib/views/Login.svelte'
 
   checkAuth().then(() => {
@@ -21,6 +25,10 @@
     logs: LogsView,
     k8slist: K8sList,
     k8sevents: K8sEvents,
+    namespace: NamespaceDetail,
+    drives: DrivesView,
+    vmlist: VmList,
+    vmdetail: VmDetail,
   }
 
   let View = $derived(views[route.current.name] || Overview)
@@ -35,7 +43,7 @@
     <TopBar />
     <Sidebar />
     <main id="main">
-      {#key route.current.name + (route.current.params.kind || '') + route.current.query.toString()}
+      {#key route.current.name + Object.values(route.current.params).join('/') + route.current.query.toString()}
         <View />
       {/key}
     </main>

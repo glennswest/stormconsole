@@ -3,7 +3,9 @@
   // actions come from their relations and this view holds no model of its
   // own — it adds the chrome: scope, search, state filter, table or cards.
   import { route } from '../router.svelte.js'
-  import { feed, k8sns, nav, prefs, setView, idsForRoute } from '../stores.svelte.js'
+  import {
+    feed, k8sns, nav, prefs, setView, idsForRoute, kindTitle, isNamespaced, kinds,
+  } from '../stores.svelte.js'
   import ResourceTable from '../components/ResourceTable.svelte'
   import ComponentCard from 'stormview/components/ComponentCard.svelte'
   import PageHeader from '../components/PageHeader.svelte'
@@ -12,30 +14,17 @@
   import CreateMenu from '../components/CreateMenu.svelte'
   import { call } from '../api.js'
 
-  const titles = {
-    pod: 'Pods',
-    deploy: 'Deployments',
-    sts: 'StatefulSets',
-    ds: 'DaemonSets',
-    job: 'Jobs',
-    cronjob: 'CronJobs',
-    svc: 'Services',
-    pvc: 'PersistentVolumeClaims',
-    node: 'Nodes',
-    ns: 'Namespaces',
-    netpol: 'Network policies',
-    cnp: 'Cilium network policies',
-    ccnp: 'Cilium clusterwide policies',
-    cep: 'Cilium endpoints',
-    cn: 'Cilium nodes',
-    cid: 'Cilium identities',
-  }
-  const namespaced = ['pod', 'deploy', 'sts', 'ds', 'job', 'cronjob', 'svc', 'pvc', 'netpol', 'cnp', 'cep']
-
+  // What a kind is called, and whether the selector applies to it, come
+  // from the plugin that owns the kinds (#5) — not from a copy of that
+  // knowledge kept here.
   const kind = $derived(route.current.params.kind)
-  const title = $derived(titles[kind] || kind)
+  const title = $derived(kindTitle(kind))
   const at = $derived(`#/k8s/${kind}`)
-  const scoped = $derived(k8sns.selected && namespaced.includes(kind))
+  const namespaced = $derived(isNamespaced(kind))
+  const scoped = $derived(!!k8sns.selected && namespaced)
+  // A cluster-scoped list says so, rather than leaving a reader to wonder
+  // why the selector above it changed nothing.
+  const clusterScoped = $derived(kinds.loaded && !namespaced && !!k8sns.selected)
 
   let search = $state('')
   let state = $state('')
@@ -65,13 +54,20 @@
   <PageHeader
     crumbs={[{ label: section }, { label: title }]}
     {title}
-    scope={scoped ? `in ${k8sns.selected}` : ''}
+    scope={scoped ? `in ${k8sns.selected}` : clusterScoped ? 'cluster-scoped' : ''}
     count={feed.loaded ? all.length : null}
   >
     {#snippet actions()}
       <CreateMenu {at} primary={true} />
     {/snippet}
   </PageHeader>
+
+  {#if clusterScoped}
+    <p class="note">
+      {title} are cluster-scoped, so the <strong>{k8sns.selected}</strong> selection does not
+      narrow this list.
+    </p>
+  {/if}
 
   {#if !feed.loaded}
     <div class="sc-empty"><p>Connecting to the component feed…</p></div>
@@ -125,6 +121,16 @@
 </div>
 
 <style>
+  .note {
+    margin: 0 0 12px;
+    padding: 7px 12px;
+    font-size: var(--sc-t-meta);
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+  }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

@@ -29,10 +29,12 @@ export const ICONS = {
   plus: 'M12 5v14M5 12h14',
   inbox: 'M3 12h5l2 3h4l2-3h5M5 5h14l2 7v7H3v-7Z',
   filter: 'M3 5h18l-7 8v6l-4 2v-8Z',
+  vm: 'M3 4h18v12H3zM8 20h8M12 16v4M8 8h8M8 12h5',
 }
 
 const RULES = [
   [/events/i, 'events'],
+  [/virtual machine|^vms?$|hypervisor/i, 'vm'],
   [/log/i, 'logs'],
   [/overview|home|dashboard/i, 'overview'],
   [/node|host|fleet|machine/i, 'node'],

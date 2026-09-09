@@ -103,9 +103,7 @@ impl ConsolePlugin for VmPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
-        vec![NavSection::new("Virtualization", 15)
-            .item("Virtual machines", "#/vms")
-            .item("Definitions", "#/grid?id=plugin:vm")]
+        vec![NavSection::new("Virtualization", 15).item("Virtual machines", "#/vms")]
     }
 
     fn creators(&self) -> Vec<Creator> {

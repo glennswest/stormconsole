@@ -4,19 +4,33 @@
   // create, cluster health, appearance, session.
   import {
     auth, feed, nav, logout, k8sns, selectNamespace, prefs, rollup,
-    STYLES, applyStyle,
+    STYLES, applyStyle, access, routeTakesNamespace,
   } from '../stores.svelte.js'
+  import { route } from '../router.svelte.js'
   import { THEMES, theme, applyTheme } from 'stormview/theme'
   import CreateMenu from './CreateMenu.svelte'
   import Icon from './Icon.svelte'
   import StatusPill from './StatusPill.svelte'
 
+  // The namespaces this viewer may see — the feed is already
+  // authorization-filtered on the server, so this list *is* the answer,
+  // not a display of a longer one.
   let namespaces = $derived(
     feed.components
       .filter((c) => c.kind === 'k8s-ns')
       .map((c) => c.label)
       .sort()
   )
+
+  // Whether the selector applies to what is on screen. On a cluster-scoped
+  // page it still sets the scope you carry to the next page, so it stays —
+  // greyed, and saying why.
+  // `route.current` is read first so the derivation re-runs on every
+  // navigation; `location.hash` is not reactive on its own.
+  let hash = $derived(route.current && location.hash)
+  let applies = $derived(routeTakesNamespace(hash) || route.current.name === 'overview')
+
+  let hiddenNote = $derived(access.plugins?.k8s?.note || '')
 
   const health = $derived(rollup())
   const worst = $derived(health.error ? 'error' : health.warn ? 'warn' : health.total ? 'ok' : 'unknown')
@@ -56,11 +70,14 @@
   </a>
 
   {#if namespaces.length}
-    <span class="scope">
+    <span class="scope" class:dim={!applies}>
       <label for="ns-pick">Namespace</label>
       <select
         id="ns-pick"
         value={k8sns.selected}
+        title={applies
+          ? 'Scopes every namespaced view'
+          : 'This page is cluster-scoped — the selection applies to the next namespaced page you open'}
         onchange={(e) => selectNamespace(e.target.value)}
       >
         <option value="">All namespaces</option>
@@ -68,6 +85,13 @@
           <option value={ns}>{ns}</option>
         {/each}
       </select>
+      {#if hiddenNote}
+        <!-- Saying what is withheld, because a short list with no
+             explanation reads as a broken console. -->
+        <span class="hidden-note" title="Your access decides this list. {hiddenNote}.">
+          {access.plugins.k8s.hidden} hidden
+        </span>
+      {/if}
     </span>
   {/if}
 
@@ -172,6 +196,15 @@
     color: var(--sc-masthead-dim);
   }
   .scope select { max-width: 220px; }
+  .scope.dim label, .scope.dim select { opacity: 0.55; }
+  .hidden-note {
+    font-size: var(--sc-t-eyebrow);
+    color: var(--sc-masthead-dim);
+    border: 1px dashed var(--sc-masthead-line);
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
 
   .right {
     margin-left: auto;

@@ -21,23 +21,101 @@ export const nav = $state({
 })
 
 // The namespace selector, OpenShift's project selector: '' means all
-// namespaces. Scopes every namespaced k8s view; persists per browser.
-export const k8sns = $state({
-  selected: (() => {
-    try {
-      return localStorage.getItem('stormconsole-ns') || ''
-    } catch {
-      return ''
-    }
-  })(),
-})
+// namespaces.
+//
+// It is a *dimension*, not a menu item (#5): it scopes every namespaced
+// view, it says nothing about the cluster-scoped ones, and it travels in
+// the URL — so a link somebody pastes shows what they were looking at,
+// which a selector kept only in localStorage cannot do. The stored value
+// is the default for a fresh tab; the URL wins wherever it says anything.
+export const k8sns = $state({ selected: readStored() })
+
+function readStored() {
+  try {
+    return localStorage.getItem('stormconsole-ns') || ''
+  } catch {
+    return ''
+  }
+}
+
+/// Which hash routes are scoped by the selector. A cluster-scoped kind is
+/// not one of them and says so on its own page; the kind catalogue is the
+/// authority (see `kinds`).
+export function routeTakesNamespace(hash = location.hash) {
+  const path = (hash || '#/').split('?')[0]
+  if (path === '#/k8s/events' || path === '#/vms') return true
+  if (path.startsWith('#/k8s/') && !path.startsWith('#/k8s/ns/')) {
+    return isNamespaced(path.slice('#/k8s/'.length))
+  }
+  return false
+}
+
+/// Rewrite the current hash so it carries the selection. `replace` keeps
+/// the back button meaning what it did before the selector was touched.
+function writeNamespaceToUrl(ns, { replace = false } = {}) {
+  const [path, query] = (location.hash || '#/').split('?')
+  const q = new URLSearchParams(query || '')
+  if (ns) q.set('ns', ns)
+  else q.delete('ns')
+  const next = q.toString() ? `${path}?${q}` : path
+  if (next === (location.hash || '#/')) return
+  if (replace) history.replaceState(null, '', next)
+  else location.hash = next
+}
 
 export function selectNamespace(ns) {
   k8sns.selected = ns
   try {
     localStorage.setItem('stormconsole-ns', ns)
   } catch {}
+  if (routeTakesNamespace()) writeNamespaceToUrl(ns)
 }
+
+/// Keep the selector and the address bar agreeing. Called on every hash
+/// change: a URL that names a namespace sets the selection, and a scoped
+/// route that does not carries the current one so the address is always a
+/// complete description of what is on screen.
+export function syncNamespaceWithUrl() {
+  if (!routeTakesNamespace()) return
+  const q = new URLSearchParams((location.hash || '').split('?')[1] || '')
+  if (q.has('ns')) {
+    const ns = q.get('ns') || ''
+    if (ns !== k8sns.selected) {
+      k8sns.selected = ns
+      try {
+        localStorage.setItem('stormconsole-ns', ns)
+      } catch {}
+    }
+    return
+  }
+  if (k8sns.selected) writeNamespaceToUrl(k8sns.selected, { replace: true })
+}
+
+window.addEventListener('hashchange', syncNamespaceWithUrl)
+
+// The kind catalogue, from the plugin that owns the kinds
+// (/api/plugins/k8s/kinds). What a kind is called and whether the
+// namespace selector applies to it used to be written down three times in
+// this app; it is declared once, beside the watch that produces the
+// objects.
+export const kinds = $state({ list: [], loaded: false })
+
+export function kindSpec(kind) {
+  return kinds.list.find((k) => k.kind === kind) || null
+}
+
+export function kindTitle(kind) {
+  return kindSpec(kind)?.title || kind
+}
+
+export function isNamespaced(kind) {
+  return !!kindSpec(kind)?.namespaced
+}
+
+// What this viewer is not being shown, and whether anything is being
+// enforced at all (/api/v1/console/access). A short list with no
+// explanation reads as a broken console.
+export const access = $state({ enforced: false, identified: false, hidden: 0, plugins: {} })
 
 // What can be created, declared by plugins (/api/v1/console/creators):
 // a YAML editor with a template or a form, each posting to a plugin path.
@@ -130,6 +208,20 @@ export function startFeed() {
   get('/api/v1/console/creators')
     .then((list) => { creators.list = list })
     .catch(() => {})
+
+  get('/api/plugins/k8s/kinds')
+    .then((list) => {
+      kinds.list = Array.isArray(list) ? list : []
+      kinds.loaded = true
+      // The catalogue decides which routes are scoped, so the URL can
+      // only be reconciled once it is here.
+      syncNamespaceWithUrl()
+    })
+    .catch(() => { kinds.loaded = true })
+
+  get('/api/v1/console/access')
+    .then((a) => Object.assign(access, a))
+    .catch(() => {})
 }
 
 // --- View preferences -------------------------------------------------
@@ -192,24 +284,40 @@ export function toggleSection(label) {
 
 // --- Feed helpers -----------------------------------------------------
 
-const NAMESPACED = ['pod', 'deploy', 'sts', 'ds', 'job', 'cronjob', 'svc', 'pvc', 'netpol', 'cnp', 'cep']
+/// Every component under one id prefix, sorted.
+function withPrefix(prefix) {
+  return feed.components.filter((c) => c.id.startsWith(prefix)).map((c) => c.id).sort()
+}
 
 /// The ids a route shows, so a view and its nav badge always agree on the
 /// count. `#/k8s/<kind>` is the kind's slice of the feed, scoped by the
-/// namespace selector; `#/grid?id=…&rel=…` is that relationship's targets.
+/// namespace selector when the catalogue says the kind is namespaced;
+/// `#/grid?id=…&rel=…` is that relationship's targets.
 export function idsForRoute(href) {
   if (!href) return null
   const [path, query] = href.split('?')
   const q = new URLSearchParams(query || '')
+  // A link's own ?ns= wins over the selector, so a count in the navigator
+  // and the page it leads to always agree.
+  const ns = q.has('ns') ? q.get('ns') : k8sns.selected
+
+  if (path === '#/drives') return withPrefix('drive:drive:')
+  if (path === '#/vms') {
+    let ids = withPrefix('vm:')
+    if (ns) ids = ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`))
+    return ids
+  }
+
+  if (path.startsWith('#/k8s/ns/')) return null
 
   if (path.startsWith('#/k8s/') && path !== '#/k8s/events') {
     const kind = path.slice('#/k8s/'.length)
     const prefix = `k8s:${kind}:`
-    let ids = feed.components.filter((c) => c.id.startsWith(prefix)).map((c) => c.id)
-    if (k8sns.selected && NAMESPACED.includes(kind)) {
-      ids = ids.filter((id) => id.startsWith(`${prefix}${k8sns.selected}/`))
+    let ids = withPrefix(prefix)
+    if (ns && isNamespaced(kind)) {
+      ids = ids.filter((id) => id.startsWith(`${prefix}${ns}/`))
     }
-    return ids.sort()
+    return ids
   }
 
   if (path === '#/grid' && q.get('id')) {

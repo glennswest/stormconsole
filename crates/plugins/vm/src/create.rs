@@ -55,10 +55,10 @@ pub fn creators() -> Vec<Creator> {
             ],
         )
         .describe("A VM on this cluster, from a golden, on a named node")
-        .at(&["#/vms", "#/grid?id=plugin:vm"]),
+        .at(&["#/vms"]),
         Creator::yaml("vm:yaml", "Virtual machine (YAML)", APPLY, VMI)
             .describe("A KubeVirt VirtualMachineInstance, as kubectl would apply it")
-            .at(&["#/vms", "#/grid?id=plugin:vm"]),
+            .at(&["#/vms"]),
     ]
 }
 
