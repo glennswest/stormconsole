@@ -51,11 +51,11 @@
     <EmptyState
       icon="pod"
       title={k8sns.selected ? `No virtual machines in ${k8sns.selected}` : 'No virtual machines'}
-      hint={plugin?.detail?.includes('CRDs')
-        ? 'The kubevirt.io resources are served and empty — this cluster can run VMs and none has been created. A VM here is a VirtualMachineInstance the kubelet reconciles; create one from a golden.'
+      hint={plugin?.detail?.includes('not installed')
+        ? 'The kubevirt.io resources are not installed on this cluster, so nothing here can carry a VM. They arrive with stormpump’s manifest set.'
         : k8sns.selected
           ? 'Nothing runs in the selected namespace. Switch namespaces in the masthead, or create a VM here.'
-          : 'The kubevirt.io resources are not being served, so nothing on this cluster carries a VM yet. They arrive with stormpump’s manifest set.'}
+          : 'This cluster can run VMs and none has been created. A VM here is a VirtualMachineInstance the kubelet reconciles; create one from a golden.'}
     >
       {#snippet action()}
         <CreateMenu at="#/vms" primary={true} />

@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use console_core::{
     Access, ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Probe, Viewer,

@@ -137,6 +137,12 @@ pub struct Store {
     objects: RwLock<HashMap<&'static str, HashMap<String, Value>>>,
     /// kind → whether the initial list has completed since the last break
     synced: RwLock<HashMap<&'static str, bool>>,
+    /// kind → the apiserver does not serve this resource at all. Only an
+    /// optional kind can be absent, and the difference between "absent"
+    /// and "present and empty" is the difference between "this cluster
+    /// cannot do that" and "nobody has done it yet" — which is the whole
+    /// answer a card is being asked for.
+    absent: RwLock<HashMap<&'static str, bool>>,
     /// How many kinds this store is meant to hold, so "3/5 synced" is
     /// honest for a store that is not this plugin's own.
     kinds: usize,
@@ -150,7 +156,12 @@ impl Default for Store {
 
 impl Store {
     pub fn with_kinds(kinds: usize) -> Self {
-        Self { objects: RwLock::new(HashMap::new()), synced: RwLock::new(HashMap::new()), kinds }
+        Self {
+            objects: RwLock::new(HashMap::new()),
+            synced: RwLock::new(HashMap::new()),
+            absent: RwLock::new(HashMap::new()),
+            kinds,
+        }
     }
 }
 
@@ -209,9 +220,22 @@ impl Store {
             .unwrap_or(0)
     }
 
+    /// Is this kind one the apiserver does not serve? `false` for a kind
+    /// that is served, whether or not anything of it exists.
+    pub async fn is_absent(&self, kind: &str) -> bool {
+        self.absent.read().await.get(kind).copied().unwrap_or(false)
+    }
+
     async fn replace(&self, kind: &'static str, items: HashMap<String, Value>) {
         self.objects.write().await.insert(kind, items);
         self.synced.write().await.insert(kind, true);
+        self.absent.write().await.insert(kind, false);
+    }
+
+    async fn set_absent(&self, kind: &'static str) {
+        self.objects.write().await.insert(kind, HashMap::new());
+        self.synced.write().await.insert(kind, true);
+        self.absent.write().await.insert(kind, true);
     }
 
     async fn set_stale(&self, kind: &'static str) {
@@ -290,7 +314,7 @@ pub async fn watch_resource(
                 // Not installed. Synced, empty; look again in a minute in
                 // case someone installs it.
                 debug!(kind = spec.kind, "CRD not served — treating as empty");
-                store.replace(spec.kind, HashMap::new()).await;
+                store.set_absent(spec.kind).await;
                 backoff = Duration::from_secs(60);
             }
             Err(e) => {

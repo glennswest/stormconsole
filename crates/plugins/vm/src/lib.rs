@@ -169,8 +169,13 @@ impl ConsolePlugin for VmPlugin {
         if synced < total {
             return "waiting for the apiserver".into();
         }
+        if self.inner.store.is_absent("vmi").await && self.inner.store.is_absent("vm").await {
+            // Nothing this console can do about it, and worth saying
+            // exactly: the cluster carries no VM resource at all.
+            return "the kubevirt.io resources are not installed on this cluster".into();
+        }
         if instances == 0 && defined == 0 {
-            return "no virtual machines — the kubevirt.io CRDs are served but empty".into();
+            return "no virtual machines yet — the kubevirt.io resources are served and empty".into();
         }
         let doors = match (&self.inner.stormvm, *self.inner.stormvm_up.read().await) {
             (Some(_), true) => " · consoles available",
