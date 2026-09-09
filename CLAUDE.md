@@ -77,8 +77,11 @@ Containerfile needed on that path.
       action through the console worked and the watch removed the pod from
       the feed. rustkube emits no events without controller-manager — the
       events view shows an honest empty list.
-- [ ] Pod logs — blocked on rustkube#55 and rustkube-node#34 (interim:
-      fleet logs deep link)
+- [x] Pod logs — superseded: rustkube#55 and rustkube-node#34 were closed
+      as duplicates of stormvm#5, which gives a VM's serial as an
+      interactive socket rather than a log read. `kubectl logs` for
+      ordinary pods is consequently unserved by anything; reopen those two
+      if it is wanted
 
 ### Phase 3 — logs plugin ✅ complete 2026-08-28
 - [x] Collector: socket2 multicast join on `239.255.42.1:5514`, lenient
@@ -268,8 +271,18 @@ dev with a real ServiceAccount and a synthetic stormdrive feed; 84 tests.
       already consumed as `FeedPlugin`s, and #8 was the consumer-side
       work that was left
 
-Next: pod logs (rustkube#55, rustkube-node#34), the fleet plugin's
-per-node drill-in (Phase 4), and Cilium's gated half.
+### The VM console doors, live (2026-09-09)
+stormvm#5 landed, so the doors stopped being theoretical. Running both
+ends together found three bugs no amount of reading either side would
+have: the stormvm probe was behind the apiserver guard (a node with no
+rustkube reported its consoles shut while stormvm answered on the same
+machine); doors were reported per stormvm rather than per VM; and a
+refusal reached the viewer as a bare status line. Verified against a real
+`stormvm serve` — the relay is byte-identical to dialling stormvm direct,
+and the browser terminal takes keystrokes to the guest.
+
+Next: Cilium's gated half (stormpump#11), the capability beacon
+(stormcos#26) and fleet lifecycle (stormcos#38).
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

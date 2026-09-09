@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### 2026-09-09
+- **fix:** the VM console doors work, now that stormvm serves them
+  (stormvm#5). Three bugs found only by running both ends together: the
+  stormvm probe sat behind the apiserver guard, so a node with no rustkube
+  reported its consoles shut while stormvm answered on the same machine;
+  doors were reported per stormvm rather than per VM, offering a
+  framebuffer to a machine whose spec never asked for one; and a refusal
+  reached the viewer as "HTTP error: 409 Conflict", because a websocket
+  upgrade carries only a status. Verified end to end on dev — the relay is
+  byte-identical to dialling stormvm directly, and the browser terminal
+  takes keystrokes to the guest
 - **feat:** a node can be opened (Phase 4). `#/node/<host>` probes that
   node's known ports concurrently and shows what answered — the daemon's
   own `system` card over the port layout's guess, with silence explained
