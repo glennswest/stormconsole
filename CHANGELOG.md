@@ -1,7 +1,31 @@
 # Changelog
 
 ## [Unreleased]
-<!-- New unreleased changes go here -->
+
+### 2026-09-09
+- **feat:** a node can be opened (Phase 4). `#/node/<host>` probes that
+  node's known ports concurrently and shows what answered — the daemon's
+  own `system` card over the port layout's guess, with silence explained
+  rather than reported as a fault. Drill-in is on demand: twenty nodes'
+  components in the pushed feed would be thousands of rows nobody is
+  looking at
+- **feat:** `#/nodes` lists the fleet. "Nodes" in the navigator pointed at
+  the plugin card — a page showing one row, with a badge that said 1
+  however many nodes were on the segment
+- **fix:** the log collector was throwing away the address. It had the
+  datagram's source and used it only as a fallback *name* for lines that
+  failed to parse, so a node that identified itself properly left nothing
+  to dial — which is the one thing CLUSTER.md says the console needs
+  ("everything else it can ask the node's own API for once it has an
+  address"). `LogEvent.addr` is always the sender; the host summary keeps
+  the last seen, so a node that moves corrects itself
+- **fix:** the local node had no page — the only node without one, because
+  its fallback component carried no link and the detail route only knew
+  hosts the group had heard
+- **fix:** a feed with no `system` card was reported Unknown, which says
+  "did not answer" about something that answered fully
+- **chore:** stormcos#38 filed — fleet lifecycle (join, promote, demote,
+  drain) is CLI-only, so the console can show a node and not act on it
 
 ## [v0.8.0] — 2026-09-09
 

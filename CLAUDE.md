@@ -272,10 +272,28 @@ Next: pod logs (rustkube#55, rustkube-node#34), the fleet plugin's
 per-node drill-in (Phase 4), and Cilium's gated half.
 
 ### Phase 4 — fleet/nodes plugin
-- [ ] Node discovery from multicast presence
-- [ ] Node detail: drill into that node's stormd/stormdrive/stormblock APIs
-- [ ] Define the capability beacon (issue filed on stormcos)
-- [ ] Fleet actions per CLUSTER.md: join, promote, demote, drain
+- [x] Node discovery from multicast presence — and the piece that was
+      actually missing: the **address**. The collector had the datagram's
+      source and used it only as a fallback name for unparseable lines, so
+      a node that identified itself properly left nothing to dial.
+      `LogEvent.addr` is always the sender; the host summary keeps the last
+      one seen
+- [x] Node detail: `#/node/<host>` probes that node's fifteen known ports
+      concurrently and renders what answered — the daemon's own `system`
+      card over the port layout's guess, with silence explained rather
+      than reported as failure. **On demand, not aggregated**: twenty
+      nodes' components in the pushed feed is thousands of rows nobody is
+      looking at
+- [x] `#/nodes` — the navigator's "Nodes" pointed at the plugin card, a
+      page showing one row with a badge that said 1 however many nodes
+      were on the segment
+- [ ] Define the capability beacon — stormcos#26, still open
+- [ ] Fleet actions per CLUSTER.md: join, promote, demote, drain —
+      **blocked**, filed as stormcos#38. They are a CLI on the node
+      (`stormcos join <endpoint> --token …`), with no HTTP surface; a
+      button that cannot work is worse than no button. The transport to
+      reach a node exists now, so what is missing is only something to
+      call
 
 ### Phase 5 — storage & images plugins
 - [ ] stormdrive plugin: aggregate per-node :9092 (drives, SMART, wear,
@@ -295,7 +313,9 @@ per-node drill-in (Phase 4), and Cilium's gated half.
 Tracked in `docs/architecture.md` §Integration gaps. File with `gh issue
 create` on the owning repo; never fix in this repo (Core Rule 11).
 
-2026-09-09: rustkube#59 (no SelfSubjectAccessReview / SelfSubjectRulesReview
+2026-09-09: stormcos#38 (fleet lifecycle has no API — join/promote/demote/
+drain are CLI-only, and the refusal a join can give is the interesting
+answer, so it has to arrive as data a console can render), rustkube#59 (no SelfSubjectAccessReview / SelfSubjectRulesReview
 — the RBAC engine decides correctly on every request but there is no way to
 *ask*, so scoping the namespace list costs one probe per namespace per
 viewer, and deciding whether to show an action before it 403s is
