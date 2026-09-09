@@ -97,6 +97,17 @@ async fn main() {
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
     }
+    // VMs are kube objects here — the plugin watches the same apiserver
+    // with the same credential, and only reaches stormvm for the console
+    // doors.
+    if config.vm.enabled {
+        plugins.push(Arc::new(plugin_vm::VmPlugin::new(
+            config.kubernetes.enabled.then(|| config.kubernetes_server()),
+            config.kubernetes.token.clone(),
+            config.kubernetes_insecure(),
+            Some(config.stormvm_url()),
+        )));
+    }
 
     let registry = Arc::new(Registry::new(plugins));
     let shutdown = CancellationToken::new();

@@ -60,6 +60,26 @@ impl RkClient {
         Ok((status, body))
     }
 
+    /// Merge-patch one object. A KubeVirt `VirtualMachine` is started and
+    /// stopped by writing `spec.running`, so this is the whole of a VM's
+    /// lifecycle on the apiserver side.
+    pub async fn patch_merge(
+        &self,
+        path: &str,
+        body: &Value,
+    ) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self
+            .http
+            .patch(format!("{}{}", self.base, path))
+            .header(reqwest::header::CONTENT_TYPE, "application/merge-patch+json")
+            .json(body)
+            .send()
+            .await?;
+        let status = resp.status();
+        let body = resp.json().await.unwrap_or(Value::Null);
+        Ok((status, body))
+    }
+
     pub async fn delete(&self, path: &str) -> Result<reqwest::StatusCode, RkError> {
         let resp = self.http.delete(format!("{}{}", self.base, path)).send().await?;
         Ok(resp.status())

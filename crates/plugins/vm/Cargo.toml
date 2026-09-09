@@ -1,0 +1,22 @@
+[package]
+name = "plugin-vm"
+description = "stormconsole VM plugin — KubeVirt-shaped virtual machines on stormvm, and their consoles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true
+plugin-kubernetes.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tokio-tungstenite.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tracing.workspace = true

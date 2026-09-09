@@ -36,6 +36,8 @@ pub struct Config {
     pub stormblock: Stormblock,
     #[serde(default)]
     pub sbregistry: Sbregistry,
+    #[serde(default)]
+    pub vm: Vm,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -260,6 +262,25 @@ impl Default for Sbregistry {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Vm {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// This node's stormvm, for the serial and framebuffer consoles only
+    /// — the VM objects come from the apiserver, because a VM here is a
+    /// KubeVirt object the kubelet reconciles (stormvm docs/kube.md).
+    /// Unset means no console doors, said plainly rather than shown as a
+    /// terminal that never prints.
+    pub url: Option<String>,
+}
+
+impl Default for Vm {
+    fn default() -> Self {
+        Self { enabled: true, url: None }
+    }
+}
+
 fn on() -> bool {
     true
 }
@@ -336,6 +357,12 @@ impl Config {
         self.stormstorage.url.clone().unwrap_or_else(|| "http://127.0.0.1:9093".to_string())
     }
 
+    /// stormvm's console service on this node. Defaulted like every
+    /// other upstream, since the golden runs on the host network.
+    pub fn stormvm_url(&self) -> String {
+        self.vm.url.clone().unwrap_or_else(|| "http://127.0.0.1:9095".to_string())
+    }
+
     /// The log ring's SQLite file.
     pub fn logs_db_path(&self) -> String {
         match &self.logs.db_path {
@@ -400,6 +427,7 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.sbregistry_url(), "http://127.0.0.1:5100");
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
+        assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");
         assert!(c.fleet.stormd_ports.contains(&9085) && c.fleet.stormd_ports.contains(&9194));
     }
 

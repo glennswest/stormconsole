@@ -113,12 +113,26 @@ pub fn catalogue() -> Vec<serde_json::Value> {
         .collect()
 }
 
-#[derive(Default)]
 pub struct Store {
     /// kind → (ns/name or name → object)
     objects: RwLock<HashMap<&'static str, HashMap<String, Value>>>,
     /// kind → whether the initial list has completed since the last break
     synced: RwLock<HashMap<&'static str, bool>>,
+    /// How many kinds this store is meant to hold, so "3/5 synced" is
+    /// honest for a store that is not this plugin's own.
+    kinds: usize,
+}
+
+impl Default for Store {
+    fn default() -> Self {
+        Self::with_kinds(RESOURCES.len())
+    }
+}
+
+impl Store {
+    pub fn with_kinds(kinds: usize) -> Self {
+        Self { objects: RwLock::new(HashMap::new()), synced: RwLock::new(HashMap::new()), kinds }
+    }
 }
 
 pub fn object_key(obj: &Value) -> Option<String> {
@@ -137,7 +151,7 @@ impl Store {
 
     pub async fn synced_kinds(&self) -> (usize, usize) {
         let s = self.synced.read().await;
-        (s.values().filter(|v| **v).count(), RESOURCES.len())
+        (s.values().filter(|v| **v).count(), self.kinds)
     }
 
     /// One kind's objects, keyed as the store keys them (`ns/name`, or

@@ -10,6 +10,7 @@ members = [
     "crates/plugins/stormstorage",
     "crates/plugins/stormblock",
     "crates/plugins/sbregistry",
+    "crates/plugins/vm",
 ]
 
 [workspace.package]
@@ -27,6 +28,7 @@ plugin-stormdrive = { path = "crates/plugins/stormdrive" }
 plugin-stormstorage = { path = "crates/plugins/stormstorage" }
 plugin-stormblock = { path = "crates/plugins/stormblock" }
 plugin-sbregistry = { path = "crates/plugins/sbregistry" }
+plugin-vm = { path = "crates/plugins/vm" }
 
 stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
 tokio = { version = "1", features = ["full"] }
@@ -46,6 +48,10 @@ thiserror = "2"
 rust-embed = "8"
 mime_guess = "2"
 futures-util = "0.3"
+# The VM console doors are websockets end to end: the browser speaks to
+# the console, the console speaks to stormvm. axum serves one side, this
+# dials the other.
+tokio-tungstenite = "0.29"
 # The fleet log ring. redb is pure Rust with no C toolchain and no
 # SQLITE_FULL page ceiling — the failure that took the ring out on a
 # node with 1.7 TB free.

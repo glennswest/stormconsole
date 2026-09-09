@@ -6,10 +6,10 @@
 //! from the same conditions kubectl reads. Actions surface as POST routes
 //! under /api/plugins/k8s so any stormview renderer can wire them.
 
-mod apply;
+pub mod apply;
 mod authz;
-mod cache;
-mod client;
+pub mod cache;
+pub mod client;
 mod components;
 
 use std::sync::Arc;
@@ -29,6 +29,13 @@ use tokio_util::sync::CancellationToken;
 
 use cache::{watch_resource, Store, RESOURCES};
 use client::RkClient;
+
+// A VM on this platform is a kube object — a KubeVirt
+// `VirtualMachineInstance` the kubelet reconciles (stormvm docs/kube.md) —
+// so the VM plugin watches the apiserver with the same client and the
+// same list+watch loop rather than growing a second one.
+pub use cache::{watch_resource as watch, ResourceSpec, Store as KubeStore};
+pub use client::{RkClient as Client, RkError};
 
 struct Inner {
     server: Option<String>,
