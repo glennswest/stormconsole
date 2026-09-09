@@ -9,6 +9,8 @@ const routes = [
   { pattern: '#/grid', name: 'grid' },
   { pattern: '#/drives', name: 'drives' },
   { pattern: '#/vms', name: 'vmlist' },
+  { pattern: '#/nodes', name: 'nodes' },
+  { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },
   // A namespace is a place, not a row: it has a page of its own, and it

@@ -9,7 +9,14 @@ use serde::Serialize;
 pub struct LogEvent {
     /// RFC 3339 as sent, or receive time when absent.
     pub ts: String,
+    /// What the node calls itself — the RFC 5424 HOSTNAME field.
     pub host: String,
+    /// Where the datagram actually came from. Always the sender's address,
+    /// whatever the HOSTNAME field said, because the two can disagree and
+    /// only one of them can be dialled: a node's syslog hostname need not
+    /// resolve, and CLUSTER.md's whole drill-in story is "everything else
+    /// it can ask the node's own API for **once it has an address**".
+    pub addr: String,
     pub app: String,
     /// Syslog severity 0–7 (emergency..debug).
     pub severity: u8,
@@ -27,6 +34,7 @@ pub fn parse(line: &str, src: &str, now: impl Fn() -> String) -> LogEvent {
     let fallback = |msg: &str| LogEvent {
         ts: now(),
         host: src.to_string(),
+        addr: src.to_string(),
         app: String::new(),
         severity,
         facility: facility as u8,
@@ -54,6 +62,7 @@ pub fn parse(line: &str, src: &str, now: impl Fn() -> String) -> LogEvent {
     LogEvent {
         ts: if ts == "-" { now() } else { ts.to_string() },
         host: if host == "-" { src.to_string() } else { host.to_string() },
+        addr: src.to_string(),
         app: if app == "-" { String::new() } else { app.to_string() },
         severity,
         facility: facility as u8,
@@ -142,5 +151,40 @@ mod tests {
         assert_eq!(e.host, "10.0.0.5");
         assert_eq!(e.severity, 6);
         assert_eq!(e.msg, "plain kernel text");
+    }
+}
+
+#[cfg(test)]
+mod addr_tests {
+    use super::*;
+
+    fn at(line: &str, src: &str) -> LogEvent {
+        parse(line, src, || "2026-09-09T00:00:00Z".to_string())
+    }
+
+    #[test]
+    fn the_address_is_kept_even_when_the_node_names_itself() {
+        // What a node calls itself and where it is are different facts, and
+        // they routinely disagree: a syslog HOSTNAME need not resolve.
+        let e = at(
+            "<134>1 2026-09-09T12:00:00Z storm-2c91b3 stormd 1 - - up",
+            "192.168.8.106",
+        );
+        assert_eq!(e.host, "storm-2c91b3");
+        assert_eq!(e.addr, "192.168.8.106");
+    }
+
+    #[test]
+    fn an_unparseable_line_still_carries_the_address() {
+        let e = at("not syslog at all", "192.168.8.107");
+        assert_eq!(e.host, "192.168.8.107", "falls back to the address as a name");
+        assert_eq!(e.addr, "192.168.8.107");
+    }
+
+    #[test]
+    fn a_dash_hostname_falls_back_to_the_address_for_both() {
+        let e = at("<134>1 2026-09-09T12:00:00Z - stormd 1 - - up", "192.168.8.108");
+        assert_eq!(e.host, "192.168.8.108");
+        assert_eq!(e.addr, "192.168.8.108");
     }
 }

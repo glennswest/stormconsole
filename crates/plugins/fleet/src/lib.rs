@@ -9,8 +9,14 @@
 //! the StormCOS port layout on loopback; each one's own stormview feed
 //! (system card + processes, with start/stop/restart) is folded in under
 //! `fleet:svc:<name>` and its actions go through this plugin's proxy.
-//! Drilling into another node's services is the fleet-wide step still to
-//! come (CLUSTER.md: join, promote, demote, drain).
+//!
+//! **Other nodes are drilled into on demand** (see [`node`]). The
+//! aggregate feed carries nodes, not the contents of nodes: a node's own
+//! console shows ~180 components, and pushing twenty nodes' worth to every
+//! browser every two seconds is thousands of components nobody asked for.
+//! Opening a node fetches that node's services then, from the address the
+//! log collector recorded — which is what CLUSTER.md means by "everything
+//! else it can ask the node's own API for once it has an address".
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -21,12 +27,15 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::any;
+use axum::routing::{any, get};
+use axum::Json;
 use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, Metric, NavSection, Relation};
 use plugin_logs::LogHosts;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
+
+pub mod node;
 
 struct Service {
     name: String,
@@ -86,14 +95,19 @@ impl ConsolePlugin for FleetPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
+        // "Nodes" pointed at the plugin card, which is a page showing one
+        // row that has to be expanded before it shows anything. The badge
+        // beside it said 1 however many nodes were on the segment.
         vec![NavSection::new("Compute", 20)
-            .item("Nodes", "#/grid?id=plugin:fleet")
+            .item("Nodes", "#/nodes")
             .item("Node services", "#/grid?id=fleet:node:local&rel=services")]
     }
 
     fn routes(&self) -> axum::Router {
         axum::Router::new()
             .route("/proxy/{port}/{*path}", any(proxy))
+            .route("/nodes/{host}", get(node_detail))
+            .route("/nodes/{addr}/{port}/{*path}", any(node_proxy))
             .with_state(self.inner.clone())
     }
 
@@ -170,9 +184,10 @@ impl ConsolePlugin for FleetPlugin {
                 label: h.host.clone(),
                 health,
                 detail: format!(
-                    "{} log events · last seen {seen}{}",
+                    "{}{} · {} log events · last seen {seen}",
+                    if h.addr.is_empty() { "no address yet".to_string() } else { h.addr.clone() },
+                    if is_local { " · this node" } else { "" },
                     h.count,
-                    if is_local { " · this node" } else { "" }
                 ),
                 metrics: vec![
                     Metric::new("events", h.count.to_string()),
@@ -181,7 +196,10 @@ impl ConsolePlugin for FleetPlugin {
                 ],
                 actions: vec![],
                 relations,
-                link: Some(format!("#/logs?host={}", h.host)),
+                // A node opens its own page; the log tail is one tab on it.
+                // Before this the only thing you could do with a node was
+                // read its logs, which is not what a node is.
+                link: Some(format!("#/node/{}", h.host)),
             });
         }
         if !nodes.iter().any(|n| n.id == "fleet:node:local") {
@@ -201,7 +219,11 @@ impl ConsolePlugin for FleetPlugin {
                 metrics: vec![Metric::new("services", svc_ids.len().to_string()).tone("muted")],
                 actions: vec![],
                 relations: if svc_ids.is_empty() { vec![] } else { vec![Relation::has_many("services", svc_ids.clone())] },
-                link: None,
+                // The node this console runs on was the one node with no
+                // page — reachable at whatever address the console was
+                // pointed at, even though it has not been heard on the
+                // group.
+                link: Some(format!("#/node/{}", self.inner.hostname)),
             });
         }
         let mut all = nodes;
@@ -287,6 +309,110 @@ fn rank(h: Health) -> u8 {
         Health::Idle => 3,
         Health::Unknown => 4,
     }
+}
+
+/// One node, asked about itself. Everything here is fetched now — see the
+/// module note on why this is not in the aggregate feed.
+async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) -> Response {
+    let hosts = match &inner.hosts {
+        Some(h) => h.hosts().await,
+        None => Vec::new(),
+    };
+    let summary = hosts.iter().find(|h| h.host == host);
+    // The node this console runs on is always askable, heard on the group
+    // or not: it is reachable at whatever address the console was pointed
+    // at, which is a loopback no datagram would ever carry.
+    let is_local = host == inner.hostname;
+    if summary.is_none() && !is_local {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("no node {host} has been heard on the group")})),
+        )
+            .into_response();
+    }
+    let addr = match summary.map(|s| s.addr.clone()).filter(|a| !a.is_empty()) {
+        Some(a) => a,
+        None if is_local => inner.host.clone(),
+        None => String::new(),
+    };
+
+    if addr.is_empty() {
+        return Json(node::NodeDetail {
+            host,
+            addr,
+            reachable: false,
+            services: vec![],
+            silent: vec![],
+            note: node::note("", 0, 0),
+        })
+        .into_response();
+    }
+
+    // Probed together rather than in sequence: fifteen ports at two
+    // seconds each is half a minute of staring at a spinner.
+    let probes = node::NODE_PORTS.iter().map(|(port, expected)| {
+        let client = inner.client.clone();
+        let addr = addr.clone();
+        async move { (*port, node::probe_port(&client, &addr, *port, expected).await) }
+    });
+    let results = futures_util::future::join_all(probes).await;
+
+    let mut services = Vec::new();
+    let mut silent = Vec::new();
+    for (port, found) in results {
+        match found {
+            Some(s) => services.push(s),
+            None => silent.push(port),
+        }
+    }
+    services.sort_by_key(|s| s.port);
+    let note = node::note(&addr, services.len(), silent.len());
+    Json(node::NodeDetail {
+        host,
+        addr,
+        reachable: !services.is_empty(),
+        services,
+        silent,
+        note,
+    })
+    .into_response()
+}
+
+/// Reach one port on one node through this console's origin. The address
+/// is checked against what the collector has actually heard, so this is
+/// not a general-purpose outbound proxy: a caller cannot name an arbitrary
+/// host and have the console fetch it.
+async fn node_proxy(
+    State(inner): State<Arc<Inner>>,
+    Path((addr, port, path)): Path<(String, u16, String)>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let known = match &inner.hosts {
+        Some(h) => h.hosts().await,
+        None => Vec::new(),
+    };
+    let heard = known.iter().any(|h| h.addr == addr) || addr == inner.host;
+    if !heard {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": format!("{addr} is not a node this console has heard from")
+            })),
+        )
+            .into_response();
+    }
+    if !node::NODE_PORTS.iter().any(|(p, _)| *p == port) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": format!("port {port} is not in the node layout")})),
+        )
+            .into_response();
+    }
+    let upstream = format!("http://{addr}:{port}");
+    console_core::proxy::forward(&inner.client, &upstream, &method, &path, uri.query(), &headers, body).await
 }
 
 async fn proxy(

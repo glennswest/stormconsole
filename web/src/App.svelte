@@ -11,6 +11,8 @@
   import K8sEvents from './lib/views/K8sEvents.svelte'
   import NamespaceDetail from './lib/views/NamespaceDetail.svelte'
   import DrivesView from './lib/views/DrivesView.svelte'
+  import NodeDetail from './lib/views/NodeDetail.svelte'
+  import NodesView from './lib/views/NodesView.svelte'
   import VmList from './lib/views/VmList.svelte'
   import VmDetail from './lib/views/VmDetail.svelte'
   import Login from './lib/views/Login.svelte'
@@ -27,6 +29,8 @@
     k8sevents: K8sEvents,
     namespace: NamespaceDetail,
     drives: DrivesView,
+    nodes: NodesView,
+    nodedetail: NodeDetail,
     vmlist: VmList,
     vmdetail: VmDetail,
   }

@@ -306,6 +306,9 @@ export function idsForRoute(href) {
   if (path === '#/drives') {
     return q.get('group') === 'shelf' ? withPrefix('drive:shelf:') : withPrefix('drive:drive:')
   }
+  if (path === '#/nodes') {
+    return feed.components.filter((c) => c.kind === 'node').map((c) => c.id).sort()
+  }
   if (path === '#/vms') {
     let ids = withPrefix('vm:')
     if (ns) ids = ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`))

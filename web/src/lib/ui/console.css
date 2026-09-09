@@ -285,6 +285,31 @@ button.sc-primary:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 85%, var(--text));
 }
 
+/* A link that acts like a button. Page headers mix the two — "Logs" is a
+   navigation and "Refresh" is an action, and they sit side by side — so an
+   anchor needs to be able to wear the same clothes rather than showing up
+   as bare underlined text next to a control. */
+a.sc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--sc-t-meta);
+  font-weight: var(--sc-btn-weight);
+  text-transform: var(--sc-btn-case);
+  letter-spacing: var(--sc-btn-track);
+  white-space: nowrap;
+}
+a.sc-btn:hover {
+  background: var(--nav-hover);
+  border-color: var(--text-ghost);
+  text-decoration: none;
+}
+
 /* ------------------------------------------------------------ surfaces */
 
 .sc-panel {

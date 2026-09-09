@@ -125,6 +125,12 @@ fn one() -> u64 {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HostSummary {
     pub host: String,
+    /// The address its datagrams arrive from — what the fleet plugin
+    /// dials to drill into this node. Empty for a host heard only before
+    /// this was recorded; the last address seen wins, so a node that
+    /// changes address corrects itself on its next line.
+    #[serde(default)]
+    pub addr: String,
     /// Occurrences currently retained, duplicates included — the same
     /// number this reported before dedup existed.
     pub count: i64,
@@ -394,6 +400,9 @@ impl Store {
                 summary.entries += 1;
             }
             summary.last_ts = e.ts.clone();
+            if !e.addr.is_empty() {
+                summary.addr = e.addr.clone();
+            }
             hosts.insert(e.host.as_str(), serde_json::to_vec(&summary)?.as_slice())?;
 
             out = Insert { event: record, notify };
@@ -598,11 +607,28 @@ mod tests {
         LogEvent {
             ts: "2026-08-28T00:00:00Z".into(),
             host: host.into(),
+            addr: format!("192.168.8.{}", 100 + (host.len() as u8)),
             app: "test".into(),
             severity,
             facility: 16,
             msg: msg.into(),
         }
+    }
+
+    #[test]
+    fn a_host_summary_carries_the_address_to_dial_it_on() {
+        let (s, _d) = Store::open_temp(1000, HOUR, true).unwrap();
+        s.insert(&ev("storm-1", 6, "up"), 1).unwrap();
+        let hosts = s.hosts().unwrap();
+        let h = hosts.iter().find(|h| h.host == "storm-1").unwrap();
+        assert_eq!(h.addr, "192.168.8.107", "the address the datagram came from");
+
+        // A node that moves corrects itself on its next line.
+        let mut moved = ev("storm-1", 6, "up again");
+        moved.addr = "192.168.8.200".into();
+        s.insert(&moved, 2).unwrap();
+        let hosts = s.hosts().unwrap();
+        assert_eq!(hosts.iter().find(|h| h.host == "storm-1").unwrap().addr, "192.168.8.200");
     }
 
     #[test]
