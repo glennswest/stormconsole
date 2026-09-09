@@ -434,9 +434,15 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
     }
 
     // The card: only once Cilium's CRDs are being served at all, or the
-    // agent on this node answered — a node whose agent is up but whose
+    // agent on this node *answered* — a node whose agent is up but whose
     // CRDs are not installed is a real state worth showing.
-    let agent_answered = matches!(&agent, Some((h, _)) if *h != Health::Unknown);
+    //
+    // "Answered" means it responded, not that the probe ran. A connection
+    // refused on :9879 is what a machine with no Cilium looks like, and
+    // turning that into a red Cilium card would put a failure on the
+    // overview of every node that was never meant to run it.
+    let agent_answered =
+        matches!(&agent, Some((Health::Ok, _)) | Some((Health::Warn, _)));
     if !snap.contains_key("cep") && !snap.contains_key("cn") && !agent_answered {
         return;
     }
@@ -678,6 +684,16 @@ mod tests {
         let out = map(&snap, Some((Health::Ok, "reachable · 200 OK".into())));
         let card = out.iter().find(|c| c.id == "k8s:cilium").unwrap();
         assert_eq!(card.metrics[0].value, "up");
+    }
+
+    #[test]
+    fn a_machine_that_never_ran_cilium_gets_no_cilium_card() {
+        // Connection refused on :9879 is what "no Cilium here" looks like.
+        // Rendering that as a failed Cilium would put a red card on the
+        // overview of every node that was never meant to run one.
+        let snap: Snapshot = HashMap::new();
+        let out = map(&snap, Some((Health::Error, "unreachable: connection refused".into())));
+        assert!(out.iter().all(|c| c.id != "k8s:cilium"), "no CRDs and no agent means no card");
     }
 
     #[test]
