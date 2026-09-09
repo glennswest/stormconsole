@@ -295,6 +295,17 @@ per-node drill-in (Phase 4), and Cilium's gated half.
 Tracked in `docs/architecture.md` §Integration gaps. File with `gh issue
 create` on the owning repo; never fix in this repo (Core Rule 11).
 
+2026-09-09: rustkube#59 (no SelfSubjectAccessReview / SelfSubjectRulesReview
+— the RBAC engine decides correctly on every request but there is no way to
+*ask*, so scoping the namespace list costs one probe per namespace per
+viewer, and deciding whether to show an action before it 403s is
+impossible), stormdrive#3 (bay and controller live only in the rendered
+`detail` string, so a UI has to regex prose to place a drive in a
+chassis). Still waiting: rustkube#55 + rustkube-node#34 (pod logs — and
+with them a VM's serial, which the kubelet already writes to the pod log),
+stormblock-registry#5 (raw media, and with it VM disk import), stormpump#11
+(Cilium metrics, Hubble, relay), and stormvm's own console service.
+
 2026-09-02: stormcast#1 (repetition collapse compares raw lines, so
 tracing's leading timestamp defeats it — one looping service put 10,920
 copies of one line on the fleet bus; same bug class stormconsole hit in
