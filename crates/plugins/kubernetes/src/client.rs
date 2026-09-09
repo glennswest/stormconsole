@@ -60,6 +60,18 @@ impl RkClient {
         Ok((status, body))
     }
 
+    /// Replace one object — what saving an edited YAML does. The
+    /// apiserver's `resourceVersion` check is the concurrency guard: an
+    /// edit of a stale object is refused with a 409 rather than
+    /// overwriting somebody else's change, so it is passed through as it
+    /// comes back.
+    pub async fn put_json(&self, path: &str, body: &Value) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.http.put(format!("{}{}", self.base, path)).json(body).send().await?;
+        let status = resp.status();
+        let body = resp.json().await.unwrap_or(Value::Null);
+        Ok((status, body))
+    }
+
     /// Merge-patch one object. A KubeVirt `VirtualMachine` is started and
     /// stopped by writing `spec.running`, so this is the whole of a VM's
     /// lifecycle on the apiserver side.

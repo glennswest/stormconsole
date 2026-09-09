@@ -84,6 +84,25 @@ pub const RESOURCES: &[ResourceSpec] = &[
     ),
 ];
 
+impl ResourceSpec {
+    /// The collection's group-version base and its plural, split out of
+    /// the all-namespaces list path: `/apis/apps/v1/deployments` is
+    /// `/apis/apps/v1` and `deployments`.
+    pub fn split_path(&self) -> (&'static str, &'static str) {
+        self.list_path.rsplit_once('/').unwrap_or(("", self.list_path))
+    }
+
+    /// Where one object of this kind lives, from the key the store uses.
+    /// This is the path a YAML edit writes back to (#4).
+    pub fn object_path(&self, key: &str) -> String {
+        let (base, plural) = self.split_path();
+        match (self.namespaced, key.split_once('/')) {
+            (true, Some((ns, name))) => format!("{base}/namespaces/{ns}/{plural}/{name}"),
+            _ => format!("{base}/{plural}/{key}"),
+        }
+    }
+}
+
 pub fn spec(kind: &str) -> Option<&'static ResourceSpec> {
     RESOURCES.iter().find(|r| r.kind == kind)
 }
@@ -284,5 +303,29 @@ pub async fn watch_resource(
             _ = tokio::time::sleep(backoff) => {}
             _ = shutdown.cancelled() => return,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_object_path_is_derived_from_the_list_path() {
+        assert_eq!(spec("pod").unwrap().object_path("default/web"), "/api/v1/namespaces/default/pods/web");
+        assert_eq!(
+            spec("deploy").unwrap().object_path("kube-system/dns"),
+            "/apis/apps/v1/namespaces/kube-system/deployments/dns"
+        );
+        assert_eq!(spec("node").unwrap().object_path("storm-1"), "/api/v1/nodes/storm-1");
+        assert_eq!(spec("ns").unwrap().object_path("default"), "/api/v1/namespaces/default");
+        assert_eq!(
+            spec("cnp").unwrap().object_path("default/allow-dns"),
+            "/apis/cilium.io/v2/namespaces/default/ciliumnetworkpolicies/allow-dns"
+        );
+        assert_eq!(
+            spec("ccnp").unwrap().object_path("deny-all"),
+            "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies/deny-all"
+        );
     }
 }

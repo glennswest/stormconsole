@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use console_core::{
     Access, ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Probe, Viewer,
@@ -29,6 +29,10 @@ use tokio_util::sync::CancellationToken;
 
 use cache::{watch_resource, Store, RESOURCES};
 use client::RkClient;
+
+/// The Cilium agent's health server (`cilium-health-api`), bound to
+/// loopback on every node that runs the agent.
+const CILIUM_AGENT_HEALTH: &str = "http://127.0.0.1:9879/healthz";
 
 // A VM on this platform is a kube object — a KubeVirt
 // `VirtualMachineInstance` the kubelet reconciles (stormvm docs/kube.md) —
@@ -41,6 +45,11 @@ struct Inner {
     server: Option<String>,
     client: Option<RkClient>,
     probe: Option<Probe>,
+    /// The Cilium agent's own health server. It is localhost-bound by
+    /// design, and the console golden shares the host network, so this
+    /// works exactly when the console runs on the node — which is the
+    /// only place the answer means anything (#4).
+    agent: Probe,
     store: Arc<Store>,
     http: reqwest::Client,
     authz: authz::Authorizer,
@@ -63,6 +72,7 @@ impl KubernetesPlugin {
                 server,
                 client,
                 probe,
+                agent: Probe::new(CILIUM_AGENT_HEALTH),
                 store: Arc::new(Store::default()),
                 http,
                 authz: authz::Authorizer::default(),
@@ -112,7 +122,7 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/events", get(events))
             .route("/namespaces/{ns}", get(namespace_detail))
-            .route("/object/{kind}/{*key}", get(object))
+            .route("/object/{kind}/{*key}", get(object).put(edit_object))
             .route("/apply", post(apply_yaml))
             .route("/raw/{*path}", delete(raw_delete))
             .with_state(self.inner.clone())
@@ -132,7 +142,8 @@ impl ConsolePlugin for KubernetesPlugin {
             relations: vec![],
             link: None,
         }];
-        out.extend(components::map(&inner.store.snapshot().await));
+        let agent = inner.agent.state().await;
+        out.extend(components::map(&inner.store.snapshot().await, Some((agent.health, agent.detail))));
         out
     }
 
@@ -192,6 +203,15 @@ impl ConsolePlugin for KubernetesPlugin {
             let token = shutdown.clone();
             tokio::spawn(async move {
                 watch_resource(client, spec, store, token).await;
+            });
+        }
+        // The agent's health server answers on loopback whether or not
+        // the apiserver does, so it is probed either way.
+        {
+            let inner = self.inner.clone();
+            let token = shutdown.clone();
+            tokio::spawn(async move {
+                inner.agent.run(inner.http.clone(), Duration::from_secs(15), token).await;
             });
         }
         if let Some(probe) = &self.inner.probe {
@@ -326,14 +346,80 @@ fn limit_row(l: &Value) -> Value {
 /// for. Served from the watch cache, so it is the same object the list
 /// row was drawn from.
 async fn object(State(inner): State<Arc<Inner>>, Path((kind, key)): Path<(String, String)>) -> Response {
+    let editable = cache::spec(&kind).is_some();
     match inner.store.object(&kind, &key).await {
-        Some(v) => Json(json!({"kind": kind, "key": key, "object": v, "yaml": to_yaml(&v)}))
-            .into_response(),
+        Some(v) => Json(json!({
+            "kind": kind,
+            "key": key,
+            "object": v,
+            "yaml": to_yaml(&v),
+            "editable": editable,
+        }))
+        .into_response(),
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("no {kind} {key} in the cache")})),
         )
             .into_response(),
+    }
+}
+
+/// Save an edited object. The body is the YAML from the editor; it goes
+/// back to the apiserver as a replace, so the `resourceVersion` it was
+/// loaded with is the concurrency guard — an edit of an object somebody
+/// else has changed since is refused with a 409 rather than silently
+/// overwriting them. Create exists (`/apply`); this is the other half
+/// (#4).
+async fn edit_object(
+    State(inner): State<Arc<Inner>>,
+    Path((kind, key)): Path<(String, String)>,
+    body: String,
+) -> Response {
+    let Some(client) = &inner.client else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
+            .into_response();
+    };
+    let Some(spec) = cache::spec(&kind) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("unknown kind {kind}")})))
+            .into_response();
+    };
+    let docs = match apply::parse_documents(&body) {
+        Ok(d) => d,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    let [doc] = &docs[..] else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "an edit is one document — use Import YAML for several"})),
+        )
+            .into_response();
+    };
+    // Editing must not become a rename: a name change here would create a
+    // second object and leave the first, which is not what "save" means.
+    let name = doc.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
+    let expected = key.rsplit('/').next().unwrap_or(&key);
+    if name != expected {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("this edits {expected}; the document names {name}. Rename with Import YAML and delete the old one.")})),
+        )
+            .into_response();
+    }
+    let path = spec.object_path(&key);
+    match client.put_json(&path, doc).await {
+        Ok((status, _)) if status.is_success() => {
+            Json(json!({"message": format!("{kind} {key} saved")})).into_response()
+        }
+        Ok((status, resp)) => {
+            let msg = resp
+                .get("message")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("apiserver returned {}", status.as_u16()));
+            let code = if status.as_u16() == 409 { StatusCode::CONFLICT } else { StatusCode::BAD_GATEWAY };
+            (code, Json(json!({"error": msg}))).into_response()
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 

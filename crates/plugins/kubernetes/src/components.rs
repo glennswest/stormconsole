@@ -51,7 +51,11 @@ fn ns_relation(key: &str) -> Option<Relation> {
     ns.map(|ns| Relation::belongs_to("namespace", format!("k8s:ns:{ns}")))
 }
 
-pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
+/// What the Cilium agent's own health server said, when it could be
+/// asked. `None` means the console is not on a node that runs one.
+pub type AgentState = Option<(Health, String)>;
+
+pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
     let mut out = Vec::new();
     let empty = HashMap::new();
     let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
@@ -231,7 +235,7 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
         out.push(c);
     }
 
-    cilium(snap, &mut out);
+    cilium(snap, agent, &mut out);
     out
 }
 
@@ -307,7 +311,7 @@ fn policy_summary(obj: &Value) -> String {
 /// Cilium through its CRDs: endpoints (one per pod, with its identity and
 /// address), nodes, identities, and policies — plus the core
 /// NetworkPolicy — under one `k8s:cilium` card.
-fn cilium(snap: &Snapshot, out: &mut Vec<ComponentSummary>) {
+fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
     let empty = HashMap::new();
     let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
 
@@ -429,12 +433,15 @@ fn cilium(snap: &Snapshot, out: &mut Vec<ComponentSummary>) {
         out.push(c);
     }
 
-    // The card: only once Cilium's CRDs are being served at all.
-    if !snap.contains_key("cep") && !snap.contains_key("cn") {
+    // The card: only once Cilium's CRDs are being served at all, or the
+    // agent on this node answered — a node whose agent is up but whose
+    // CRDs are not installed is a real state worth showing.
+    let agent_answered = matches!(&agent, Some((h, _)) if *h != Health::Unknown);
+    if !snap.contains_key("cep") && !snap.contains_key("cn") && !agent_answered {
         return;
     }
     let eps = endpoint_ids.len();
-    let (health, detail) = if eps == 0 && node_ids.is_empty() {
+    let (mut health, mut detail) = if eps == 0 && node_ids.is_empty() {
         (Health::Idle, "no Cilium objects — agent not running or CRDs not installed".to_string())
     } else if eps > 0 && ready == 0 {
         (Health::Error, format!("0/{eps} endpoints ready"))
@@ -442,6 +449,20 @@ fn cilium(snap: &Snapshot, out: &mut Vec<ComponentSummary>) {
         (Health::Warn, format!("{ready}/{eps} endpoints ready"))
     } else {
         (Health::Ok, format!("{ready}/{eps} endpoints ready"))
+    };
+    // The CRDs say what the cluster believes; the agent's own health
+    // server says whether the dataplane on *this* node is actually up.
+    // They disagree exactly when it matters, so the worse one wins.
+    let agent_metric = match &agent {
+        Some((Health::Ok, _)) => Some(Metric::new("agent", "up").tone("ok")),
+        Some((Health::Unknown, _)) | None => None,
+        Some((h, d)) => {
+            if severity(*h) < severity(health) {
+                health = *h;
+            }
+            detail = format!("{detail} · agent {d}");
+            Some(Metric::new("agent", "down").tone("error"))
+        }
     };
     let mut c = base(
         "cilium",
@@ -457,7 +478,8 @@ fn cilium(snap: &Snapshot, out: &mut Vec<ComponentSummary>) {
     );
     c.kind = "cni".into();
     c.id = "k8s:cilium".into();
-    c.metrics = vec![
+    c.metrics = agent_metric.into_iter().collect();
+    c.metrics.extend(vec![
         Metric::new("endpoints", format!("{ready}/{eps}")).tone(match health {
             Health::Ok => "ok",
             Health::Warn => "warn",
@@ -467,7 +489,7 @@ fn cilium(snap: &Snapshot, out: &mut Vec<ComponentSummary>) {
         Metric::new("identities", identity_ids.len().to_string()),
         Metric::new("nodes", node_ids.len().to_string()),
         Metric::new("policies", (policy_ids.len() + of("netpol").len()).to_string()),
-    ];
+    ]);
     for (name, ids) in [("endpoints", endpoint_ids), ("nodes", node_ids), ("identities", identity_ids), ("policies", policy_ids)] {
         if !ids.is_empty() {
             c.relations.push(Relation::has_many(name, ids));
@@ -475,6 +497,17 @@ fn cilium(snap: &Snapshot, out: &mut Vec<ComponentSummary>) {
     }
     c.link = Some("#/k8s/cep".into());
     out.push(c);
+}
+
+/// Broken first — the same ordering console-core sorts health by.
+fn severity(h: Health) -> u8 {
+    match h {
+        Health::Error => 0,
+        Health::Warn => 1,
+        Health::Ok => 2,
+        Health::Idle => 3,
+        Health::Unknown => 4,
+    }
 }
 
 fn workload(kind: &'static str, key: &str, desired: i64, ready: i64) -> ComponentSummary {
@@ -520,7 +553,7 @@ mod tests {
                 }
             }),
         );
-        let out = map(&snap);
+        let out = map(&snap, None);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "k8s:pod:default/web");
         assert_eq!(out[0].health, Health::Ok);
@@ -540,7 +573,7 @@ mod tests {
                 "status": {"readyReplicas": 1}
             }),
         );
-        let out = map(&snap);
+        let out = map(&snap, None);
         assert_eq!(out[0].health, Health::Warn);
         assert_eq!(out[0].detail, "1/3 ready");
     }
@@ -571,7 +604,7 @@ mod tests {
                         "spec": {"nodeName": "n1"}, "status": {"phase": "Running"}}),
             )]),
         );
-        let out = map(&snap);
+        let out = map(&snap, None);
         let node = out.iter().find(|c| c.id == "k8s:node:n1").unwrap();
         assert_eq!(node.health, Health::Error);
         assert_eq!(node.relations[0].targets, vec!["k8s:pod:default/web"]);
@@ -601,7 +634,7 @@ mod tests {
             "default/allow-dns".to_string(),
             json!({"spec": {"endpointSelector": {"matchLabels": {"app": "web"}}, "egress": [{}, {}]}}),
         )]));
-        let out = map(&snap);
+        let out = map(&snap, None);
         let ep = out.iter().find(|c| c.id == "k8s:cep:kube-system/coredns-1").unwrap();
         assert_eq!(ep.health, Health::Ok);
         assert!(ep.detail.starts_with("10.0.0.5 · identity 42 · ready"), "{}", ep.detail);
@@ -618,8 +651,38 @@ mod tests {
     }
 
     #[test]
+    fn a_down_agent_outranks_a_healthy_crd_view() {
+        let mut snap: Snapshot = HashMap::new();
+        snap.insert("cep", HashMap::from([(
+            "default/web".to_string(),
+            json!({"status": {"state": "ready", "networking": {"addressing": [{"ipv4": "10.0.0.5"}]}}}),
+        )]));
+        // Every endpoint is ready and the dataplane on this node is not.
+        let out = map(&snap, Some((Health::Error, "unreachable: connection refused".into())));
+        let card = out.iter().find(|c| c.id == "k8s:cilium").unwrap();
+        assert_eq!(card.health, Health::Error);
+        assert!(card.detail.contains("agent unreachable"), "{}", card.detail);
+        assert_eq!(card.metrics[0].label, "agent");
+        assert_eq!(card.metrics[0].value, "down");
+
+        let up = map(&snap, Some((Health::Ok, "reachable · 200 OK".into())));
+        let card = up.iter().find(|c| c.id == "k8s:cilium").unwrap();
+        assert_eq!(card.health, Health::Ok);
+        assert_eq!(card.metrics[0].value, "up");
+    }
+
+    #[test]
+    fn an_agent_on_a_node_with_no_crds_still_gets_a_card() {
+        let snap: Snapshot = HashMap::new();
+        assert!(map(&snap, None).iter().all(|c| c.id != "k8s:cilium"));
+        let out = map(&snap, Some((Health::Ok, "reachable · 200 OK".into())));
+        let card = out.iter().find(|c| c.id == "k8s:cilium").unwrap();
+        assert_eq!(card.metrics[0].value, "up");
+    }
+
+    #[test]
     fn no_cilium_means_no_card() {
         let snap: Snapshot = HashMap::new();
-        assert!(map(&snap).iter().all(|c| c.id != "k8s:cilium"));
+        assert!(map(&snap, None).iter().all(|c| c.id != "k8s:cilium"));
     }
 }
