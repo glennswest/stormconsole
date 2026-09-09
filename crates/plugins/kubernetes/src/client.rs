@@ -6,9 +6,19 @@
 use futures_util::StreamExt;
 use serde_json::Value;
 
+/// A thin apiserver client that can act as somebody other than itself.
+///
+/// The console's own credential is what the watches use — they have to
+/// see the whole cluster to serve anybody. A *write* is different: it
+/// should be subject to the same authorization as the read that showed
+/// the object, which means carrying the viewer's own bearer so the
+/// apiserver's RBAC decides. `as_viewer` is that override, and it is
+/// per-request rather than a second client, because a client per session
+/// is a connection pool per session.
 #[derive(Clone)]
 pub struct RkClient {
     base: String,
+    token: Option<String>,
     http: reqwest::Client,
 }
 
@@ -24,26 +34,46 @@ pub enum RkError {
 
 impl RkClient {
     pub fn new(server: &str, token: Option<&str>, insecure: bool) -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(t) = token {
-            if let Ok(v) = format!("Bearer {t}").parse() {
-                headers.insert(reqwest::header::AUTHORIZATION, v);
-            }
-        }
         let http = reqwest::Client::builder()
-            .default_headers(headers)
             .danger_accept_invalid_certs(insecure)
             .build()
             .expect("reqwest client");
-        Self { base: server.trim_end_matches('/').to_string(), http }
+        Self {
+            base: server.trim_end_matches('/').to_string(),
+            token: token.map(str::to_string),
+            http,
+        }
     }
 
     pub fn base(&self) -> &str {
         &self.base
     }
 
+    /// The bearer a request carries: the viewer's when they have one,
+    /// otherwise the console's own.
+    fn auth<'a>(&'a self, as_viewer: Option<&'a str>) -> Option<&'a str> {
+        as_viewer.or(self.token.as_deref())
+    }
+
+    fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        as_viewer: Option<&str>,
+    ) -> reqwest::RequestBuilder {
+        let req = self.http.request(method, format!("{}{}", self.base, path));
+        match self.auth(as_viewer) {
+            Some(t) => req.bearer_auth(t),
+            None => req,
+        }
+    }
+
     pub async fn get(&self, path: &str) -> Result<Value, RkError> {
-        let resp = self.http.get(format!("{}{}", self.base, path)).send().await?;
+        self.get_as(path, None).await
+    }
+
+    pub async fn get_as(&self, path: &str, as_viewer: Option<&str>) -> Result<Value, RkError> {
+        let resp = self.request(reqwest::Method::GET, path, as_viewer).send().await?;
         if !resp.status().is_success() {
             return Err(RkError::Status(resp.status()));
         }
@@ -54,7 +84,16 @@ impl RkClient {
     /// and body come back whatever they are — a 409 is the caller's to
     /// report, not an error here.
     pub async fn post_json(&self, path: &str, body: &Value) -> Result<(reqwest::StatusCode, Value), RkError> {
-        let resp = self.http.post(format!("{}{}", self.base, path)).json(body).send().await?;
+        self.post_json_as(path, body, None).await
+    }
+
+    pub async fn post_json_as(
+        &self,
+        path: &str,
+        body: &Value,
+        as_viewer: Option<&str>,
+    ) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.request(reqwest::Method::POST, path, as_viewer).json(body).send().await?;
         let status = resp.status();
         let body = resp.json().await.unwrap_or(Value::Null);
         Ok((status, body))
@@ -65,8 +104,13 @@ impl RkClient {
     /// edit of a stale object is refused with a 409 rather than
     /// overwriting somebody else's change, so it is passed through as it
     /// comes back.
-    pub async fn put_json(&self, path: &str, body: &Value) -> Result<(reqwest::StatusCode, Value), RkError> {
-        let resp = self.http.put(format!("{}{}", self.base, path)).json(body).send().await?;
+    pub async fn put_json(
+        &self,
+        path: &str,
+        body: &Value,
+        as_viewer: Option<&str>,
+    ) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.request(reqwest::Method::PUT, path, as_viewer).json(body).send().await?;
         let status = resp.status();
         let body = resp.json().await.unwrap_or(Value::Null);
         Ok((status, body))
@@ -79,10 +123,10 @@ impl RkClient {
         &self,
         path: &str,
         body: &Value,
+        as_viewer: Option<&str>,
     ) -> Result<(reqwest::StatusCode, Value), RkError> {
         let resp = self
-            .http
-            .patch(format!("{}{}", self.base, path))
+            .request(reqwest::Method::PATCH, path, as_viewer)
             .header(reqwest::header::CONTENT_TYPE, "application/merge-patch+json")
             .json(body)
             .send()
@@ -92,8 +136,8 @@ impl RkClient {
         Ok((status, body))
     }
 
-    pub async fn delete(&self, path: &str) -> Result<reqwest::StatusCode, RkError> {
-        let resp = self.http.delete(format!("{}{}", self.base, path)).send().await?;
+    pub async fn delete(&self, path: &str, as_viewer: Option<&str>) -> Result<reqwest::StatusCode, RkError> {
+        let resp = self.request(reqwest::Method::DELETE, path, as_viewer).send().await?;
         Ok(resp.status())
     }
 
@@ -112,7 +156,13 @@ impl RkClient {
             "{}{}{}watch=true&resourceVersion={}&allowWatchBookmarks=true",
             self.base, path, sep, resource_version
         );
-        let resp = self.http.get(url).send().await?;
+        // The watch is the console's own read of the whole cluster, so it
+        // always carries the console's credential, never a viewer's.
+        let req = match self.token.as_deref() {
+            Some(t) => self.http.get(url).bearer_auth(t),
+            None => self.http.get(url),
+        };
+        let resp = req.send().await?;
         if !resp.status().is_success() {
             return Err(RkError::Status(resp.status()));
         }

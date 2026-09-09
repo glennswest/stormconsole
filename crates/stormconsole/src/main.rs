@@ -58,12 +58,18 @@ async fn main() {
     // Every upstream defaults to this node's own daemon (the golden runs on
     // the host network), so a StormCOS node lights up with no config at all.
     let mut plugins: Vec<Arc<dyn ConsolePlugin>> = Vec::new();
+    // The kubernetes plugin owns the namespace cache and the
+    // authorization answer derived from it; the VM plugin shares that one
+    // answer rather than asking the apiserver the same question twice.
+    let mut namespace_access = None;
     if config.kubernetes.enabled {
-        plugins.push(Arc::new(plugin_kubernetes::KubernetesPlugin::new(
+        let k8s = Arc::new(plugin_kubernetes::KubernetesPlugin::new(
             Some(config.kubernetes_server()),
             config.kubernetes.token.clone(),
             config.kubernetes_insecure(),
-        )));
+        ));
+        namespace_access = Some(k8s.namespace_access());
+        plugins.push(k8s);
     }
     let logs = config.logs.enabled.then(|| {
         Arc::new(plugin_logs::LogsPlugin::with_retention(
@@ -106,6 +112,7 @@ async fn main() {
             config.kubernetes.token.clone(),
             config.kubernetes_insecure(),
             Some(config.stormvm_url()),
+            namespace_access.clone(),
         )));
     }
 

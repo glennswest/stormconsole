@@ -25,6 +25,9 @@
 
 use std::sync::Arc;
 
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+
 /// The identity behind one request. Anonymous when the console serves
 /// without authentication, which is the single-node default.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -34,6 +37,18 @@ pub struct Viewer {
     /// A credential to act as this viewer against an upstream — for
     /// kubernetes, the bearer token whose RBAC decides what they may read.
     pub token: Option<String>,
+}
+
+/// A plugin's routes get the viewer the host put on the request, so a
+/// plugin can refuse to answer for something this identity may not see —
+/// and can act *as* them upstream, which is what makes a write subject to
+/// the same authorization as the read that showed it.
+impl<S: Send + Sync> FromRequestParts<S> for Viewer {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        Ok(parts.extensions.get::<Viewer>().cloned().unwrap_or_default())
+    }
 }
 
 impl Viewer {

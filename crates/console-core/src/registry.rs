@@ -118,10 +118,13 @@ impl Registry {
                 )
             })
             .collect();
+        // No aggregate count: two plugins hiding the same four namespaces
+        // would sum to eight, which is a number that means nothing. Each
+        // plugin's own count and line stand on their own, and `enforced`
+        // answers "is anything being withheld at all".
         serde_json::json!({
             "enforced": !limits.is_empty(),
             "identified": !viewer.is_anonymous(),
-            "hidden": limits.iter().map(|(_, a)| a.hidden()).sum::<usize>(),
             "plugins": plugins,
         })
     }
@@ -313,8 +316,9 @@ mod tests {
         let viewer = Viewer { user: Some("gw".into()), token: Some("t".into()) };
         let closed = r.access_report(&viewer).await;
         assert_eq!(closed["enforced"], true);
-        assert_eq!(closed["hidden"], 1);
+        assert_eq!(closed["plugins"]["sc"]["hidden"], 1);
         assert_eq!(closed["plugins"]["sc"]["note"], "1 thing you cannot view");
+        assert!(closed.get("hidden").is_none(), "no meaningless cross-plugin sum");
     }
 
     #[test]

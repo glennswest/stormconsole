@@ -93,7 +93,12 @@ fn bearer(req: &Request) -> Option<String> {
 
 /// Everything except health, metrics, the auth endpoints and static assets
 /// requires a session or bearer once auth is configured.
-pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
+pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
+    // Every request carries who made it, whether or not anything checks:
+    // a plugin route reads it to refuse what this identity may not see,
+    // and to act as them upstream rather than as the console.
+    let who = viewer(&state, &req);
+    req.extensions_mut().insert(who);
     if !state.auth_required {
         return next.run(req).await;
     }

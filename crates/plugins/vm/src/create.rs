@@ -24,7 +24,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use console_core::{Creator, Field};
+use console_core::{Creator, Field, Viewer};
 use serde_json::{json, Value};
 
 use crate::Inner;
@@ -134,7 +134,11 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     }))
 }
 
-pub async fn create(State(inner): State<Arc<Inner>>, Json(form): Json<Form>) -> Response {
+pub async fn create(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Json(form): Json<Form>,
+) -> Response {
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
@@ -144,8 +148,11 @@ pub async fn create(State(inner): State<Arc<Inner>>, Json(form): Json<Form>) -> 
         Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
     let ns = doc.pointer("/metadata/namespace").and_then(Value::as_str).unwrap_or("default");
+    if let Some(refusal) = crate::refuse_hidden(&inner, &viewer, ns).await {
+        return refusal;
+    }
     let path = format!("{}/namespaces/{ns}/virtualmachineinstances", crate::VM_API);
-    match client.post_json(&path, &doc).await {
+    match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
         Ok((status, body)) if status.is_success() => {
             let name = doc.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
             let _ = body;

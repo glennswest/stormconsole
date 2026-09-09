@@ -7,7 +7,7 @@
 //! under /api/plugins/k8s so any stormview renderer can wire them.
 
 pub mod apply;
-mod authz;
+pub mod authz;
 pub mod cache;
 pub mod client;
 mod components;
@@ -38,6 +38,7 @@ const CILIUM_AGENT_HEALTH: &str = "http://127.0.0.1:9879/healthz";
 // `VirtualMachineInstance` the kubelet reconciles (stormvm docs/kube.md) —
 // so the VM plugin watches the apiserver with the same client and the
 // same list+watch loop rather than growing a second one.
+pub use authz::NamespaceAccess;
 pub use cache::{watch_resource as watch, ResourceSpec, Store as KubeStore};
 pub use client::{RkClient as Client, RkError};
 
@@ -52,7 +53,7 @@ struct Inner {
     agent: Probe,
     store: Arc<Store>,
     http: reqwest::Client,
-    authz: authz::Authorizer,
+    access: Arc<authz::NamespaceAccess>,
 }
 
 pub struct KubernetesPlugin {
@@ -60,6 +61,12 @@ pub struct KubernetesPlugin {
 }
 
 impl KubernetesPlugin {
+    /// The shared namespace-authorization answer, so the VM plugin asks
+    /// the same question once rather than a second time.
+    pub fn namespace_access(&self) -> Arc<authz::NamespaceAccess> {
+        self.inner.access.clone()
+    }
+
     pub fn new(server: Option<String>, token: Option<String>, insecure: bool) -> Self {
         let client = server.as_ref().map(|s| RkClient::new(s, token.as_deref(), insecure));
         let probe = client.as_ref().map(|c| Probe::new(format!("{}/version", c.base())));
@@ -67,15 +74,17 @@ impl KubernetesPlugin {
             .danger_accept_invalid_certs(insecure)
             .build()
             .expect("reqwest client");
+        let store = Arc::new(Store::default());
+        let server_for_access = server.clone();
         Self {
             inner: Arc::new(Inner {
                 server,
                 client,
                 probe,
                 agent: Probe::new(CILIUM_AGENT_HEALTH),
-                store: Arc::new(Store::default()),
-                http,
-                authz: authz::Authorizer::default(),
+                store: store.clone(),
+                http: http.clone(),
+                access: authz::NamespaceAccess::new(server_for_access, http, store),
             }),
         }
     }
@@ -165,31 +174,11 @@ impl ConsolePlugin for KubernetesPlugin {
     /// says *that* (`/api/v1/console/access` reports `identified: false`)
     /// rather than implying a check it is not doing.
     async fn access(&self, viewer: &Viewer) -> Access {
-        let (Some(token), Some(server)) = (&viewer.token, &self.inner.server) else {
+        let Some((hidden, note)) = self.inner.access.hidden(viewer).await else {
             return Access::Unrestricted;
         };
-        let known = self.inner.store.namespaces().await;
-        let allowed =
-            self.inner.authz.allowed(server, &self.inner.http, token, &known).await;
-        if allowed.source == authz::Source::Unavailable {
-            // An authorizer that cannot be reached must not quietly become
-            // a permissive one, and must not blank the console either.
-            // Nothing is hidden and the note says why.
-            return Access::limited(
-                |_| true,
-                0,
-                authz::note(0, authz::Source::Unavailable),
-            );
-        }
-        let hidden: Vec<String> =
-            known.iter().filter(|n| !allowed.namespaces.contains(*n)).cloned().collect();
-        if hidden.is_empty() {
-            return Access::Unrestricted;
-        }
-        let hidden_set: std::collections::HashSet<String> = hidden.into_iter().collect();
-        let count = hidden_set.len();
-        let note = authz::note(count, allowed.source);
-        Access::limited(move |id| visible_to(id, &hidden_set), count, note)
+        let count = hidden.len();
+        Access::limited(move |id| visible_to(id, &hidden), count, note)
     }
 
     async fn run(&self, shutdown: CancellationToken) {
@@ -220,6 +209,21 @@ impl ConsolePlugin for KubernetesPlugin {
             shutdown.cancelled().await;
         }
     }
+}
+
+/// A namespace this viewer may not see does not exist as far as they are
+/// concerned. Returning 403 would confirm it is there, so a hidden
+/// namespace answers exactly as an absent one does — which is also what
+/// keeps a plugin route from being a way around the filtered feed.
+async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
+    let (hidden, _) = inner.access.hidden(viewer).await?;
+    hidden.contains(ns).then(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("no namespace {ns}")})),
+        )
+            .into_response()
+    })
 }
 
 /// Is this component id outside every hidden namespace?
@@ -254,7 +258,14 @@ async fn kinds() -> Response {
 /// Everything a namespace page needs, in one answer (#6): the object
 /// itself, an inventory whose every count is a link, its quotas and limit
 /// ranges, and its events.
-async fn namespace_detail(State(inner): State<Arc<Inner>>, Path(ns): Path<String>) -> Response {
+async fn namespace_detail(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path(ns): Path<String>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     let Some(object) = inner.store.object("ns", &ns).await else {
         return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no namespace {ns}")})))
             .into_response();
@@ -273,7 +284,7 @@ async fn namespace_detail(State(inner): State<Arc<Inner>>, Path(ns): Path<String
     let limits: Vec<Value> = objects_in(&inner, "limits", &ns).await;
     let events = match &inner.client {
         Some(c) => c
-            .get(&format!("/api/v1/namespaces/{ns}/events"))
+            .get_as(&format!("/api/v1/namespaces/{ns}/events"), viewer.token.as_deref())
             .await
             .ok()
             .and_then(|l| l.get("items").and_then(Value::as_array).cloned())
@@ -345,7 +356,14 @@ fn limit_row(l: &Value) -> Value {
 /// One object as YAML — the thing every OpenShift resource page has a tab
 /// for. Served from the watch cache, so it is the same object the list
 /// row was drawn from.
-async fn object(State(inner): State<Arc<Inner>>, Path((kind, key)): Path<(String, String)>) -> Response {
+async fn object(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((kind, key)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_key(&inner, &viewer, &kind, &key).await {
+        return refusal;
+    }
     let editable = cache::spec(&kind).is_some();
     match inner.store.object(&kind, &key).await {
         Some(v) => Json(json!({
@@ -372,9 +390,13 @@ async fn object(State(inner): State<Arc<Inner>>, Path((kind, key)): Path<(String
 /// (#4).
 async fn edit_object(
     State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
     Path((kind, key)): Path<(String, String)>,
     body: String,
 ) -> Response {
+    if let Some(refusal) = refuse_key(&inner, &viewer, &kind, &key).await {
+        return refusal;
+    }
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
@@ -406,7 +428,7 @@ async fn edit_object(
             .into_response();
     }
     let path = spec.object_path(&key);
-    match client.put_json(&path, doc).await {
+    match client.put_json(&path, doc, viewer.token.as_deref()).await {
         Ok((status, _)) if status.is_success() => {
             Json(json!({"message": format!("{kind} {key} saved")})).into_response()
         }
@@ -451,13 +473,20 @@ async fn apiserver_state(inner: &Inner) -> (Health, String) {
 
 async fn delete_pod(
     State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
     };
-    match client.delete(&format!("/api/v1/namespaces/{ns}/pods/{name}")).await {
+    match client
+        .delete(&format!("/api/v1/namespaces/{ns}/pods/{name}"), viewer.token.as_deref())
+        .await
+    {
         Ok(status) if status.is_success() => Json(json!({"deleted": format!("{ns}/{name}")}))
             .into_response(),
         Ok(status) => (StatusCode::BAD_GATEWAY, Json(json!({"error": status.as_u16()})))
@@ -469,7 +498,11 @@ async fn delete_pod(
 
 /// DELETE any apiserver path — what a component's delete action calls.
 /// Only `/api/…` and `/apis/…` are forwarded.
-async fn raw_delete(State(inner): State<Arc<Inner>>, Path(path): Path<String>) -> Response {
+async fn raw_delete(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path(path): Path<String>,
+) -> Response {
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
@@ -478,7 +511,12 @@ async fn raw_delete(State(inner): State<Arc<Inner>>, Path(path): Path<String>) -
     if !(path.starts_with("/api/") || path.starts_with("/apis/")) {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "not an apiserver path"}))).into_response();
     }
-    match client.delete(&path).await {
+    if let Some(ns) = namespace_in_path(&path) {
+        if let Some(refusal) = refuse_hidden(&inner, &viewer, ns).await {
+            return refusal;
+        }
+    }
+    match client.delete(&path, viewer.token.as_deref()).await {
         Ok(status) if status.is_success() => Json(json!({"deleted": path})).into_response(),
         Ok(status) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", status.as_u16())})))
             .into_response(),
@@ -489,7 +527,7 @@ async fn raw_delete(State(inner): State<Arc<Inner>>, Path(path): Path<String>) -
 /// Import YAML, OpenShift-style: one or more documents, each created in
 /// its collection. Every document gets a line in the result; a failure on
 /// one does not stop the rest.
-async fn apply_yaml(State(inner): State<Arc<Inner>>, body: String) -> Response {
+async fn apply_yaml(State(inner): State<Arc<Inner>>, viewer: Viewer, body: String) -> Response {
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
@@ -512,7 +550,14 @@ async fn apply_yaml(State(inner): State<Arc<Inner>>, body: String) -> Response {
                 continue;
             }
         };
-        match client.post_json(&path, &doc).await {
+        if let Some(ns) = namespace_in_path(&path) {
+            if refuse_hidden(&inner, &viewer, ns).await.is_some() {
+                failed = true;
+                results.push(json!({"kind": kind, "name": name, "error": format!("no namespace {ns}")}));
+                continue;
+            }
+        }
+        match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
             Ok((status, _)) if status.is_success() => {
                 results.push(json!({"kind": kind, "name": name, "status": status.as_u16(), "created": true}))
             }
@@ -542,25 +587,68 @@ async fn apply_yaml(State(inner): State<Arc<Inner>>, body: String) -> Response {
         .into_response()
 }
 
+/// The namespace an apiserver path acts in, if it has one:
+/// `/api/v1/namespaces/<ns>/pods/web` → `kube-system`. A path with no
+/// `/namespaces/` segment is cluster-scoped and has none.
+fn namespace_in_path(path: &str) -> Option<&str> {
+    let (_, rest) = path.split_once("/namespaces/")?;
+    let ns = rest.split('/').next()?;
+    (!ns.is_empty()).then_some(ns)
+}
+
+/// A key from the store (`ns/name`, or a bare name) in a hidden namespace?
+async fn refuse_key(inner: &Inner, viewer: &Viewer, kind: &str, key: &str) -> Option<Response> {
+    let ns = if kind == "ns" {
+        key
+    } else if cache::is_namespaced(kind) {
+        key.split_once('/')?.0
+    } else {
+        return None;
+    };
+    refuse_hidden(inner, viewer, ns).await
+}
+
 #[derive(serde::Deserialize)]
 struct EventsQuery {
     namespace: Option<String>,
 }
 
-async fn events(State(inner): State<Arc<Inner>>, Query(q): Query<EventsQuery>) -> Response {
+async fn events(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Query(q): Query<EventsQuery>,
+) -> Response {
     let Some(client) = &inner.client else {
         return Json(json!([])).into_response();
     };
     let path = match &q.namespace {
-        Some(ns) if !ns.is_empty() => format!("/api/v1/namespaces/{ns}/events"),
+        Some(ns) if !ns.is_empty() => {
+            if let Some(refusal) = refuse_hidden(&inner, &viewer, ns).await {
+                return refusal;
+            }
+            format!("/api/v1/namespaces/{ns}/events")
+        }
         _ => "/api/v1/events".to_string(),
     };
+    // Cluster-wide events are read as the console (the cache's own
+    // credential) but filtered to what this viewer may see, so a hidden
+    // namespace's activity does not leak through the Events page.
+    let hidden = inner.access.hidden(&viewer).await.map(|(h, _)| h);
     match client.get(&path).await {
         Ok(list) => {
             let rows: Vec<Value> = list
                 .get("items")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().map(event_row).collect())
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(event_row)
+                        .filter(|r| match (&hidden, r.get("namespace").and_then(Value::as_str)) {
+                            (Some(h), Some(ns)) if !ns.is_empty() => !h.contains(ns),
+                            _ => true,
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
             Json(rows).into_response()
         }
@@ -660,5 +748,23 @@ mod tests {
         assert_eq!(row["resources"][0]["resource"], "cpu");
         assert_eq!(row["resources"][0]["hard"], "4");
         assert_eq!(row["resources"][0]["used"], "1");
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::namespace_in_path;
+
+    #[test]
+    fn the_namespace_a_write_acts_in_comes_off_its_path() {
+        assert_eq!(namespace_in_path("/api/v1/namespaces/team-a/pods"), Some("team-a"));
+        assert_eq!(
+            namespace_in_path("/apis/apps/v1/namespaces/kube-system/deployments/dns"),
+            Some("kube-system")
+        );
+        // Cluster-scoped: no namespace to check, and no namespace to hide.
+        assert_eq!(namespace_in_path("/api/v1/nodes/storm-1"), None);
+        assert_eq!(namespace_in_path("/api/v1/namespaces"), None);
+        assert_eq!(namespace_in_path("/api/v1/namespaces/"), None);
     }
 }

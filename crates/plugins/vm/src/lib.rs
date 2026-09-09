@@ -36,8 +36,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use console_core::{ComponentSummary, ConsolePlugin, Creator, Health, NavSection};
-use plugin_kubernetes::{Client, KubeStore, ResourceSpec};
+use console_core::{Access, ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Viewer};
+use plugin_kubernetes::{Client, KubeStore, NamespaceAccess, ResourceSpec};
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -75,6 +75,12 @@ struct Inner {
     stormvm: Option<String>,
     stormvm_up: RwLock<bool>,
     http: reqwest::Client,
+    /// The same namespace-authorization answer the kubernetes plugin
+    /// uses. A VM is a kube object in a namespace, so it is hidden by
+    /// exactly the rule that hides a pod — and asking separately would
+    /// mean two sets of probes for one answer, and two answers that can
+    /// disagree for a cache window.
+    access: Option<Arc<NamespaceAccess>>,
 }
 
 pub struct VmPlugin {
@@ -82,7 +88,13 @@ pub struct VmPlugin {
 }
 
 impl VmPlugin {
-    pub fn new(server: Option<String>, token: Option<String>, insecure: bool, stormvm: Option<String>) -> Self {
+    pub fn new(
+        server: Option<String>,
+        token: Option<String>,
+        insecure: bool,
+        stormvm: Option<String>,
+        access: Option<Arc<NamespaceAccess>>,
+    ) -> Self {
         let client = server.as_ref().map(|s| Client::new(s, token.as_deref(), insecure));
         Self {
             inner: Arc::new(Inner {
@@ -91,6 +103,7 @@ impl VmPlugin {
                 stormvm,
                 stormvm_up: RwLock::new(false),
                 http: reqwest::Client::new(),
+                access,
             }),
         }
     }
@@ -185,6 +198,17 @@ impl ConsolePlugin for VmPlugin {
         format!("{running}/{instances} running · {defined} defined{doors}")
     }
 
+    /// Every VM component is `vm:<sub>:<ns>/<name>`, so a hidden
+    /// namespace hides them by the same rule that hides a pod.
+    async fn access(&self, viewer: &Viewer) -> Access {
+        let Some(shared) = &self.inner.access else { return Access::Unrestricted };
+        let Some((hidden, note)) = shared.hidden(viewer).await else {
+            return Access::Unrestricted;
+        };
+        let count = hidden.len();
+        Access::limited(move |id| visible_to(id, &hidden), count, note)
+    }
+
     async fn run(&self, shutdown: CancellationToken) {
         let Some(client) = self.inner.client.clone() else {
             shutdown.cancelled().await;
@@ -200,12 +224,19 @@ impl ConsolePlugin for VmPlugin {
         }
         // stormvm is probed rather than assumed: the console doors say
         // which upstream is missing, and that answer has to be current.
+        //
+        // The probe asks for the VM collection, not `/healthz`. Every
+        // daemon on this platform answers `/healthz`, so a health probe
+        // says only that *something* is on that port — and the console
+        // would then offer a terminal that dials a stranger. What is
+        // needed is whether *stormvm's VM API* is there, which is the
+        // same API the console doors hang off.
         loop {
             if let Some(url) = &self.inner.stormvm {
                 let up = self
                     .inner
                     .http
-                    .get(format!("{}/healthz", url.trim_end_matches('/')))
+                    .get(format!("{}/api/v1/vms", url.trim_end_matches('/')))
                     .timeout(Duration::from_secs(3))
                     .send()
                     .await
@@ -219,6 +250,28 @@ impl ConsolePlugin for VmPlugin {
             }
         }
     }
+}
+
+/// Is this component id outside every hidden namespace? Ids are
+/// `vm:<sub>:<ns>/<name>`; anything that is not shaped that way is not
+/// this plugin's to hide.
+fn visible_to(id: &str, hidden: &std::collections::HashSet<String>) -> bool {
+    let Some(rest) = id.strip_prefix("vm:") else { return true };
+    let Some((_, key)) = rest.split_once(':') else { return true };
+    match key.split_once('/') {
+        Some((ns, _)) => !hidden.contains(ns),
+        None => true,
+    }
+}
+
+/// A VM in a namespace this viewer may not see does not exist as far as
+/// they are concerned — the same answer an absent one gets, so a plugin
+/// route is not a way around the filtered feed.
+async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
+    let (hidden, _) = inner.access.as_ref()?.hidden(viewer).await?;
+    hidden.contains(ns).then(|| {
+        (StatusCode::NOT_FOUND, Json(json!({"error": format!("no namespace {ns}")}))).into_response()
+    })
 }
 
 fn no_apiserver() -> Response {
@@ -240,10 +293,24 @@ fn from_apiserver(status: reqwest::StatusCode, body: Value, done: &str) -> Respo
 /// Start and stop are one field. KubeVirt's `spec.running` is the switch;
 /// writing it is the whole of a VM's lifecycle on the apiserver side, and
 /// what acts on it is the cluster's business, not the console's.
-async fn set_running(inner: &Inner, ns: &str, name: &str, running: bool) -> Response {
+async fn set_running(
+    inner: &Inner,
+    viewer: &Viewer,
+    ns: &str,
+    name: &str,
+    running: bool,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(inner, viewer, ns).await {
+        return refusal;
+    }
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
-    match client.patch_merge(&path, &json!({"spec": {"running": running}})).await {
+    // Carried as the viewer, so the apiserver's RBAC decides whether they
+    // may start it — not the console's own standing.
+    match client
+        .patch_merge(&path, &json!({"spec": {"running": running}}), viewer.token.as_deref())
+        .await
+    {
         Ok((status, body)) => from_apiserver(
             status,
             body,
@@ -253,20 +320,38 @@ async fn set_running(inner: &Inner, ns: &str, name: &str, running: bool) -> Resp
     }
 }
 
-async fn start(State(inner): State<Arc<Inner>>, Path((ns, name)): Path<(String, String)>) -> Response {
-    set_running(&inner, &ns, &name, true).await
+async fn start(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    set_running(&inner, &viewer, &ns, &name, true).await
 }
 
-async fn stop(State(inner): State<Arc<Inner>>, Path((ns, name)): Path<(String, String)>) -> Response {
-    set_running(&inner, &ns, &name, false).await
+async fn stop(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    set_running(&inner, &viewer, &ns, &name, false).await
 }
 
 async fn delete_machine(
     State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     let Some(client) = &inner.client else { return no_apiserver() };
-    match client.delete(&format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}")).await {
+    match client
+        .delete(
+            &format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}"),
+            viewer.token.as_deref(),
+        )
+        .await
+    {
         Ok(s) if s.is_success() => Json(json!({"message": format!("{ns}/{name} deleted")})).into_response(),
         Ok(s) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", s.as_u16())})))
             .into_response(),
@@ -279,11 +364,18 @@ async fn delete_machine(
 /// except its definition, if it has one.
 async fn delete_instance(
     State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     let Some(client) = &inner.client else { return no_apiserver() };
     match client
-        .delete(&format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"))
+        .delete(
+            &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
+            viewer.token.as_deref(),
+        )
         .await
     {
         Ok(s) if s.is_success() => Json(json!({"message": format!("{ns}/{name} stopped")})).into_response(),
@@ -296,7 +388,14 @@ async fn delete_instance(
 /// Everything a VM page shows, in one answer: the definition, the running
 /// instance, the disks with what backs each, the interfaces, and the two
 /// console doors' state.
-async fn detail(State(inner): State<Arc<Inner>>, Path((ns, name)): Path<(String, String)>) -> Response {
+async fn detail(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     let key = format!("{ns}/{name}");
     let machine = inner.store.object("vm", &key).await;
     let instance = inner.store.object("vmi", &key).await;
@@ -348,18 +447,31 @@ async fn detail(State(inner): State<Arc<Inner>>, Path((ns, name)): Path<(String,
     .into_response()
 }
 
-async fn console_caps(State(inner): State<Arc<Inner>>, Path(_p): Path<(String, String)>) -> Response {
+async fn console_caps(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, _name)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     Json(console::capabilities(inner.stormvm.as_deref(), *inner.stormvm_up.read().await))
         .into_response()
 }
 
 async fn door(
     inner: Arc<Inner>,
+    viewer: Viewer,
     ws: WebSocketUpgrade,
     ns: String,
     name: String,
     kind: console::Door,
 ) -> Response {
+    // A console is the most complete access a VM has: it must be gated by
+    // the same rule as its row in the list.
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
     let Some(base) = inner.stormvm.clone() else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -373,16 +485,35 @@ async fn door(
 
 async fn serial(
     State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    door(inner, ws, ns, name, console::Door::Serial).await
+    door(inner, viewer, ws, ns, name, console::Door::Serial).await
 }
 
 async fn vnc(
     State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    door(inner, ws, ns, name, console::Door::Vnc).await
+    door(inner, viewer, ws, ns, name, console::Door::Vnc).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn a_hidden_namespace_hides_its_vms() {
+        let hidden: HashSet<String> = ["kube-system".to_string()].into_iter().collect();
+        assert!(!visible_to("vm:instance:kube-system/dns-vm", &hidden));
+        assert!(!visible_to("vm:machine:kube-system/dns-vm", &hidden));
+        assert!(visible_to("vm:instance:team-a/web", &hidden));
+        // Not this plugin's ids, and not this plugin's to hide.
+        assert!(visible_to("k8s:pod:kube-system/x", &hidden));
+        assert!(visible_to("plugin:vm", &hidden));
+    }
 }

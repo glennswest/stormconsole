@@ -11,23 +11,33 @@
 //! 1. `GET /api/v1/namespaces` as the viewer. A `200` is the self-scoped
 //!    answer OpenShift's project list gives: exactly what this identity
 //!    may list.
-//! 2. rustkube's RBAC makes that all-or-nothing — a user with access to
-//!    one namespace and no cluster-wide `list namespaces` gets a `403`,
-//!    not a short list. Upstream solves this with
-//!    `SelfSubjectAccessReview`, which rustkube does not serve (filed
-//!    there). Until it does, a `403` falls back to asking about each
-//!    namespace the console already knows of: `GET
-//!    /api/v1/namespaces/{ns}` as the viewer, one request each, and the
-//!    ones that answer `200` are theirs.
+//! 2. RBAC makes that all-or-nothing — a user with access to one
+//!    namespace and no cluster-wide `list namespaces` gets a `403`, not a
+//!    short list. Upstream solves this with `SelfSubjectAccessReview`,
+//!    which rustkube does not serve (filed there). Until it does, a `403`
+//!    falls back to asking about each namespace the console already knows
+//!    of, one request each.
+//!
+//!    The question asked has to be one RBAC can actually answer for a
+//!    namespaced user: **not** `GET /api/v1/namespaces/{ns}`, because a
+//!    Namespace is a cluster-scoped object and a RoleBinding cannot grant
+//!    access to one — every ordinary project member would fail that probe
+//!    and see nothing. It asks `GET /api/v1/namespaces/{ns}/pods?limit=1`
+//!    instead, which is exactly the permission a RoleBinding grants and
+//!    exactly what "can I see anything in here" means.
 //!
 //! Answers are cached briefly per token: a console redraws its feed every
 //! two seconds and an authorization question per redraw would be a denial
 //! of service on the apiserver by way of a UI.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use console_core::Viewer;
 use tokio::sync::RwLock;
+
+use crate::cache::Store;
 
 /// How long an answer stands. Short enough that a RoleBinding takes
 /// effect while somebody is still looking at the screen.
@@ -102,7 +112,7 @@ async fn ask(base: &str, http: &reqwest::Client, token: &str, known: &[String]) 
             let mut ok = HashSet::new();
             for ns in known {
                 let r = http
-                    .get(format!("{base}/api/v1/namespaces/{ns}"))
+                    .get(format!("{base}{}", probe_path(ns)))
                     .bearer_auth(token)
                     .timeout(Duration::from_secs(5))
                     .send()
@@ -115,6 +125,13 @@ async fn ask(base: &str, http: &reqwest::Client, token: &str, known: &[String]) 
         }
         _ => Allowed { namespaces: HashSet::new(), source: Source::Unavailable },
     }
+}
+
+/// The one question RBAC can answer for a namespaced identity: may this
+/// viewer see anything inside `ns`? `limit=1` because the answer is the
+/// status code, not the body.
+fn probe_path(ns: &str) -> String {
+    format!("/api/v1/namespaces/{ns}/pods?limit=1")
 }
 
 /// `metadata.name` of every item in a list response.
@@ -162,6 +179,17 @@ mod tests {
     }
 
     #[test]
+    fn the_probe_asks_about_a_namespaced_resource_not_the_namespace_itself() {
+        // A Namespace is cluster-scoped: a RoleBinding cannot grant `get`
+        // on one, so probing it would report every ordinary project
+        // member as having access to nothing.
+        let p = probe_path("team-a");
+        assert!(p.starts_with("/api/v1/namespaces/team-a/"), "{p}");
+        assert!(p.contains("/pods"), "{p}");
+        assert!(p.contains("limit=1"), "{p}");
+    }
+
+    #[test]
     fn the_note_counts_and_says_when_it_could_not_ask() {
         assert_eq!(note(1, Source::Listed), "1 namespace you cannot view");
         assert_eq!(note(3, Source::Probed), "3 namespaces you cannot view");
@@ -183,5 +211,52 @@ mod tests {
         let second = a.allowed("http://127.0.0.1:1", &http, "t", &[]).await;
         assert_eq!(second, first);
         assert!(started.elapsed() < Duration::from_millis(50), "second ask was not cached");
+    }
+}
+
+
+/// The shared answer to "which namespaces may this viewer see".
+///
+/// Two plugins ask it — kubernetes and vm — and they must not ask
+/// separately: two Authorizers would mean two sets of probes per viewer
+/// per cache window against the same apiserver for the same answer, and
+/// they could disagree for thirty seconds at a time. One instance is
+/// built beside the kubernetes plugin's watch cache (which already holds
+/// the namespace list) and handed to whoever else needs it.
+pub struct NamespaceAccess {
+    server: Option<String>,
+    http: reqwest::Client,
+    store: Arc<Store>,
+    authz: Authorizer,
+}
+
+/// What a viewer may not see: the namespaces, and the line to say about
+/// them. `None` means nothing is being withheld.
+pub type Hidden = Option<(HashSet<String>, String)>;
+
+impl NamespaceAccess {
+    pub fn new(server: Option<String>, http: reqwest::Client, store: Arc<Store>) -> Arc<Self> {
+        Arc::new(Self { server, http, store, authz: Authorizer::default() })
+    }
+
+    /// `None` when nothing is hidden — no identity to authorize against,
+    /// no apiserver, or a viewer who may see everything.
+    pub async fn hidden(&self, viewer: &Viewer) -> Hidden {
+        let (Some(token), Some(server)) = (&viewer.token, &self.server) else { return None };
+        let known = self.store.namespaces().await;
+        let allowed = self.authz.allowed(server, &self.http, token, &known).await;
+        if allowed.source == Source::Unavailable {
+            // An authorizer that cannot be reached must not quietly become
+            // a permissive one, and must not blank the console either:
+            // nothing is hidden, and the note says why.
+            return Some((HashSet::new(), note(0, Source::Unavailable)));
+        }
+        let hidden: HashSet<String> =
+            known.into_iter().filter(|n| !allowed.namespaces.contains(n)).collect();
+        if hidden.is_empty() {
+            return None;
+        }
+        let note = note(hidden.len(), allowed.source);
+        Some((hidden, note))
     }
 }
