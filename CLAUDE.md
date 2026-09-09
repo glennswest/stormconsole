@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.7.1**
+Current: **0.8.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -219,44 +219,57 @@ OpenShift console and the ESXi host client.
 - [x] Verified on dev against the real group: 646 arrivals of sptest's
       flooding line → 1 entry, `×646`, live tail responsive
 
-### Namespaces, access, hardware and VMs (v0.8.0) — in progress 2026-09-09
-Nine issues filed on 2026-09-09 after a live review; this is the run at
-all of them. Order matters: the kind catalogue is the foundation the
-namespace work stands on, and the viewer identity is the foundation the
-authorization work stands on.
+### Namespaces, access, hardware and VMs (v0.8.0) ✅ 2026-09-09
+Nine issues filed after a live review, all closed but #4 (half of it is
+gated on stormpump#11). Verified against a real rustkube + fastetcd on
+dev with a real ServiceAccount and a synthetic stormdrive feed; 84 tests.
 
-- [ ] **#5 namespace as a dimension** — the kind catalogue moves to the
+- [x] **#5 namespace as a dimension** — the kind catalogue moved to the
       server (`/api/plugins/k8s/kinds`, from `cache::RESOURCES`), so the
-      SPA stops carrying three hardcoded lists of what is namespaced; the
-      selection travels in the URL (`?ns=`) so a pasted link shows what
-      the sender saw; cluster-scoped kinds say they are
-- [ ] **#6 namespace detail** — `#/k8s/ns/<name>`: an inventory whose
-      every count is a link, quota and limit ranges (and "no quota" said
-      plainly), events, and the namespace's own YAML
-- [ ] **#7 access-scoped namespaces** — a viewer identity in the request
-      path (`[[api.users]] kube_token`), a `console_core::Access` seam
-      every plugin can answer, and a k8s answer that is an authorization
-      result (list-as-viewer, falling back to per-namespace probes) and
-      not a client-side filter. rustkube serves no SelfSubjectAccessReview
-      — file it there
-- [ ] **#8 drives are hardware, not storage** — a Hardware nav section,
-      a drives view grouped by shelf then bay, with the feed's real
-      actions (locate, join fleet, designate, format) on the rows and the
-      shelf's on the group
-- [ ] **#9 + #2 VM plugin** — stormvm serves no REST API and says it may
-      never (`docs/kube.md`): the VM object is a KubeVirt
-      `VirtualMachine`/`VirtualMachineInstance` in the apiserver and the
-      kubelet is the loop. So the plugin watches the CRDs like Cilium's,
-      and the two console doors (serial, VNC) proxy stormvm when a node
-      serves them
-- [ ] **#10 loopback addresses** — `console_core::upstream` separates the
-      dial address from the viewer address; no card renders `127.0.0.1`
-      as if a browser could use it
-- [ ] **#4 Cilium, the ungated half** — the agent's own health server on
-      `127.0.0.1:9879/healthz`, and policy YAML view/edit. Metrics,
-      hubble-ui and the flow view stay gated on stormpump#11
-- [ ] **#1** — stormdrive/stormstorage already arrive as feeds
-      (`FeedPlugin`, v0.4.0); what was left of it is #8's grouping
+      SPA stopped carrying three hardcoded lists of what is namespaced;
+      the selection travels in the URL (`?ns=`); cluster-scoped kinds say
+      they are, and the masthead greys the selector where it does not
+      apply
+- [x] **#6 namespace detail** — `#/k8s/ns/<name>` with tabs, an inventory
+      whose every count is a link, quota as used-against-hard, limit
+      ranges, events and YAML. "No quota" is shown as the answer it is
+- [x] **#7 access-scoped namespaces** — `console_core::access` (a
+      `Viewer` on every request, an `Access` answer per plugin, filtering
+      before the snapshot leaves the process) and a k8s answer that is an
+      authorization result. Four things only the live run found: the
+      probe was asking about the Namespace object, which is cluster-scoped
+      and which no RoleBinding can grant — so every ordinary project
+      member saw *nothing*; the VM plugin was not scoped at all; plugin
+      routes were an open door around the filtered feed; and writes were
+      going out on the console's credential rather than the viewer's.
+      Filed rustkube#59 for the SelfSubjectAccessReview that would
+      replace the probe
+- [x] **#8 drives are hardware, not storage** — a Hardware nav section,
+      `#/drives` grouped by shelf and ordered by bay with the feed's real
+      actions, `#/drives?group=shelf` for the enclosure question, and row
+      actions behind a menu (nine buttons per row put a destructive one a
+      mis-click from a harmless one). Filed stormdrive#3 for bay and
+      controller as metrics instead of prose
+- [x] **#9 + #2 VM plugin** — the whole shape came from reading
+      stormvm's `docs/kube.md` rather than assuming a daemon: a VM is a
+      KubeVirt object the kubelet reconciles, so the plugin watches the
+      CRDs. Lifecycle, disks, network, YAML, and both console doors —
+      built, probed, and honest about stormvm's console service being
+      unbuilt. Import stays blocked on stormblock-registry#5
+- [x] **#10 loopback addresses** — `console_core::upstream`; verified no
+      component mentions `127.0.0.1` any more
+- [x] **#4 Cilium, the ungated half** — the agent's health server on the
+      node, taken as the worse of it and the CRD view; and YAML
+      view/edit (`PUT /api/plugins/k8s/object/…`, a replace, so
+      `resourceVersion` is the concurrency guard and a rename is
+      refused). Metrics, hubble-ui and the flow view stay gated on
+      stormpump#11 — #4 stays open for them
+- [x] **#1** — closed: stormdrive v0.4.0 and stormstorage v0.2.0 are
+      already consumed as `FeedPlugin`s, and #8 was the consumer-side
+      work that was left
+
+Next: pod logs (rustkube#55, rustkube-node#34), the fleet plugin's
+per-node drill-in (Phase 4), and Cilium's gated half.
 
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence

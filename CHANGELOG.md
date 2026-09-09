@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+<!-- New unreleased changes go here -->
+
+## [v0.8.0] — 2026-09-09
 
 ### 2026-09-09
 - **feat:** a **VM plugin** (#9, #2). stormvm's `docs/kube.md` settles where
