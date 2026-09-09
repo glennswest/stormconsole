@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use stormview::{ComponentSummary, Health};
 use tokio_util::sync::CancellationToken;
 
+use crate::access::{Access, Viewer};
 use crate::create::Creator;
 use crate::nav::NavSection;
 
@@ -44,6 +45,15 @@ pub trait ConsolePlugin: Send + Sync {
     /// One human line for the plugin's card.
     async fn detail(&self) -> String {
         String::new()
+    }
+
+    /// What this viewer may see of this plugin's slice. The default is
+    /// [`Access::Unrestricted`] — a plugin with nothing to authorize says
+    /// so rather than implying an enforcement it is not doing. The host
+    /// applies the answer before a snapshot leaves the process, so this is
+    /// an authorization result and not a display choice.
+    async fn access(&self, _viewer: &Viewer) -> Access {
+        Access::Unrestricted
     }
 
     /// Background work: watches, pollers, multicast listeners. Runs for the

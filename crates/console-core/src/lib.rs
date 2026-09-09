@@ -8,6 +8,7 @@
 
 pub use stormview::{Action, ComponentSummary, Health, Metric, Relation, RelationKind};
 
+pub mod access;
 pub mod create;
 pub mod feed;
 mod nav;
@@ -15,8 +16,10 @@ mod plugin;
 mod probe;
 pub mod proxy;
 mod registry;
+pub mod upstream;
 pub mod value;
 
+pub use access::{Access, Scope, Viewer};
 pub use create::{Creator, Field};
 pub use feed::{Feed, FeedPlugin, FeedState};
 pub use nav::{NavItem, NavSection};

@@ -9,6 +9,7 @@ use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
+use crate::access::{Access, Viewer};
 use crate::nav::{merge, NavSection};
 use crate::plugin::ConsolePlugin;
 
@@ -48,6 +49,81 @@ impl Registry {
     /// The current aggregated feed (cheap clone of an Arc).
     pub async fn components(&self) -> Arc<Vec<ComponentSummary>> {
         self.snapshot.read().await.clone()
+    }
+
+    /// The feed as one viewer may see it. Every plugin that limits this
+    /// viewer has its components dropped and every surviving relation
+    /// re-pointed, so a hidden object is not reachable by following an
+    /// edge either. Cheap when nothing is limited: the shared Arc comes
+    /// straight back.
+    pub async fn components_for(&self, viewer: &Viewer) -> Arc<Vec<ComponentSummary>> {
+        let all = self.components().await;
+        let limits = self.limits(viewer).await;
+        if limits.is_empty() {
+            return all;
+        }
+        let visible = |id: &str| match limits.iter().find(|(name, _)| owns(name, id)) {
+            Some((_, access)) => access.allows(id),
+            None => true,
+        };
+        let mut out: Vec<ComponentSummary> =
+            all.iter().filter(|c| visible(&c.id)).cloned().collect();
+        let kept: std::collections::HashSet<&str> = out.iter().map(|c| c.id.as_str()).collect();
+        let kept: std::collections::HashSet<String> = kept.into_iter().map(str::to_string).collect();
+        for c in &mut out {
+            for r in &mut c.relations {
+                r.targets.retain(|t| kept.contains(t));
+            }
+            c.relations.retain(|r| !r.targets.is_empty());
+        }
+        // A plugin card's component count is the viewer's count, not the
+        // cluster's — a card claiming 40 pods over a list of 6 is worse
+        // than saying 6.
+        for c in &mut out {
+            if c.kind == "plugin" {
+                if let Some(name) = c.id.strip_prefix("plugin:") {
+                    let n = kept.iter().filter(|id| owns(name, id) && *id != &c.id).count();
+                    if let Some(m) = c.metrics.iter_mut().find(|m| m.label == "components") {
+                        m.value = n.to_string();
+                    }
+                }
+            }
+        }
+        Arc::new(out)
+    }
+
+    /// Every plugin that limits this viewer, with its answer.
+    async fn limits(&self, viewer: &Viewer) -> Vec<(&'static str, Access)> {
+        let mut out = Vec::new();
+        for p in &self.plugins {
+            let a = p.access(viewer).await;
+            if !a.is_unrestricted() {
+                out.push((p.name(), a));
+            }
+        }
+        out
+    }
+
+    /// What this viewer is not being shown, per plugin — so the UI can say
+    /// "3 namespaces you cannot view" instead of showing a short list that
+    /// reads like a broken console.
+    pub async fn access_report(&self, viewer: &Viewer) -> serde_json::Value {
+        let limits = self.limits(viewer).await;
+        let plugins: serde_json::Map<String, serde_json::Value> = limits
+            .iter()
+            .map(|(name, a)| {
+                (
+                    name.to_string(),
+                    serde_json::json!({"hidden": a.hidden(), "note": a.note()}),
+                )
+            })
+            .collect();
+        serde_json::json!({
+            "enforced": !limits.is_empty(),
+            "identified": !viewer.is_anonymous(),
+            "hidden": limits.iter().map(|(_, a)| a.hidden()).sum::<usize>(),
+            "plugins": plugins,
+        })
     }
 
     /// Subscribe to full-snapshot pushes, stormd-style.
@@ -126,6 +202,14 @@ impl Registry {
     }
 }
 
+/// Does `plugin` own this component id? Its own card, or anything under
+/// its `{name}:` prefix — the same rule `refresh` warns about.
+fn owns(plugin: &str, id: &str) -> bool {
+    id == plugin
+        || id.starts_with(&format!("{plugin}:"))
+        || id == format!("plugin:{plugin}")
+}
+
 pub(crate) fn severity(h: Health) -> u8 {
     match h {
         Health::Error => 0,
@@ -161,6 +245,84 @@ mod tests {
                 link: None,
             }]
         }
+    }
+
+    struct Scoped;
+
+    #[async_trait]
+    impl ConsolePlugin for Scoped {
+        fn name(&self) -> &'static str {
+            "sc"
+        }
+        async fn components(&self) -> Vec<ComponentSummary> {
+            ["sc:a", "sc:b"]
+                .iter()
+                .map(|id| ComponentSummary {
+                    id: (*id).into(),
+                    kind: "thing".into(),
+                    label: (*id).into(),
+                    health: Health::Ok,
+                    detail: String::new(),
+                    metrics: vec![],
+                    actions: vec![],
+                    relations: vec![Relation::has_many(
+                        "peers",
+                        vec!["sc:a".into(), "sc:b".into()],
+                    )],
+                    link: None,
+                })
+                .collect()
+        }
+        async fn access(&self, viewer: &Viewer) -> Access {
+            if viewer.is_anonymous() {
+                Access::Unrestricted
+            } else {
+                Access::limited(|id| id != "sc:b", 1, "1 thing you cannot view")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_limited_viewer_never_receives_the_hidden_component() {
+        let r = Registry::new(vec![Arc::new(Scoped)]);
+        r.refresh().await;
+
+        let open = r.components_for(&Viewer::anonymous()).await;
+        assert_eq!(open.len(), 3, "card + two things");
+
+        let viewer = Viewer { user: Some("gw".into()), token: Some("t".into()) };
+        let seen = r.components_for(&viewer).await;
+        let ids: Vec<&str> = seen.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["plugin:sc", "sc:a"]);
+        // The edge to the hidden component is gone too, so it cannot be
+        // reached by following a relation.
+        let a = seen.iter().find(|c| c.id == "sc:a").unwrap();
+        assert_eq!(a.relations[0].targets, vec!["sc:a"]);
+        // And the card counts what this viewer can see.
+        let card = seen.iter().find(|c| c.id == "plugin:sc").unwrap();
+        assert_eq!(card.metrics[0].value, "1");
+    }
+
+    #[tokio::test]
+    async fn the_report_says_what_is_hidden_and_whether_anything_is_enforced() {
+        let r = Registry::new(vec![Arc::new(Scoped)]);
+        r.refresh().await;
+        let open = r.access_report(&Viewer::anonymous()).await;
+        assert_eq!(open["enforced"], false);
+        assert_eq!(open["identified"], false);
+        let viewer = Viewer { user: Some("gw".into()), token: Some("t".into()) };
+        let closed = r.access_report(&viewer).await;
+        assert_eq!(closed["enforced"], true);
+        assert_eq!(closed["hidden"], 1);
+        assert_eq!(closed["plugins"]["sc"]["note"], "1 thing you cannot view");
+    }
+
+    #[test]
+    fn ownership_is_the_prefix_rule_the_feed_already_uses() {
+        assert!(owns("k8s", "k8s:pod:default/web"));
+        assert!(owns("k8s", "plugin:k8s"));
+        assert!(!owns("k8s", "k8sx:thing"));
+        assert!(!owns("sb", "k8s:pod:default/web"));
     }
 
     #[tokio::test]
