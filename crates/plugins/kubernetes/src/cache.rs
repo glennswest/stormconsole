@@ -232,8 +232,14 @@ impl Store {
         self.absent.write().await.insert(kind, false);
     }
 
+    /// The apiserver does not serve this kind. The key is *removed*, not
+    /// emptied: "absent" and "present and empty" have to be tellable
+    /// apart by anything reading the snapshot, and an empty map that is
+    /// present says the wrong one. The Cilium card turns on exactly this
+    /// difference — a node that never ran Cilium must not get a Cilium
+    /// card at all, let alone a failed one.
     async fn set_absent(&self, kind: &'static str) {
-        self.objects.write().await.insert(kind, HashMap::new());
+        self.objects.write().await.remove(kind);
         self.synced.write().await.insert(kind, true);
         self.absent.write().await.insert(kind, true);
     }
