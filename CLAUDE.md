@@ -219,6 +219,45 @@ OpenShift console and the ESXi host client.
 - [x] Verified on dev against the real group: 646 arrivals of sptest's
       flooding line → 1 entry, `×646`, live tail responsive
 
+### Namespaces, access, hardware and VMs (v0.8.0) — in progress 2026-09-09
+Nine issues filed on 2026-09-09 after a live review; this is the run at
+all of them. Order matters: the kind catalogue is the foundation the
+namespace work stands on, and the viewer identity is the foundation the
+authorization work stands on.
+
+- [ ] **#5 namespace as a dimension** — the kind catalogue moves to the
+      server (`/api/plugins/k8s/kinds`, from `cache::RESOURCES`), so the
+      SPA stops carrying three hardcoded lists of what is namespaced; the
+      selection travels in the URL (`?ns=`) so a pasted link shows what
+      the sender saw; cluster-scoped kinds say they are
+- [ ] **#6 namespace detail** — `#/k8s/ns/<name>`: an inventory whose
+      every count is a link, quota and limit ranges (and "no quota" said
+      plainly), events, and the namespace's own YAML
+- [ ] **#7 access-scoped namespaces** — a viewer identity in the request
+      path (`[[api.users]] kube_token`), a `console_core::Access` seam
+      every plugin can answer, and a k8s answer that is an authorization
+      result (list-as-viewer, falling back to per-namespace probes) and
+      not a client-side filter. rustkube serves no SelfSubjectAccessReview
+      — file it there
+- [ ] **#8 drives are hardware, not storage** — a Hardware nav section,
+      a drives view grouped by shelf then bay, with the feed's real
+      actions (locate, join fleet, designate, format) on the rows and the
+      shelf's on the group
+- [ ] **#9 + #2 VM plugin** — stormvm serves no REST API and says it may
+      never (`docs/kube.md`): the VM object is a KubeVirt
+      `VirtualMachine`/`VirtualMachineInstance` in the apiserver and the
+      kubelet is the loop. So the plugin watches the CRDs like Cilium's,
+      and the two console doors (serial, VNC) proxy stormvm when a node
+      serves them
+- [ ] **#10 loopback addresses** — `console_core::upstream` separates the
+      dial address from the viewer address; no card renders `127.0.0.1`
+      as if a browser could use it
+- [ ] **#4 Cilium, the ungated half** — the agent's own health server on
+      `127.0.0.1:9879/healthz`, and policy YAML view/edit. Metrics,
+      hubble-ui and the flow view stay gated on stormpump#11
+- [ ] **#1** — stormdrive/stormstorage already arrive as feeds
+      (`FeedPlugin`, v0.4.0); what was left of it is #8's grouping
+
 ### Phase 4 — fleet/nodes plugin
 - [ ] Node discovery from multicast presence
 - [ ] Node detail: drill into that node's stormd/stormdrive/stormblock APIs
