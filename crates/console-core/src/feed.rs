@@ -135,14 +135,18 @@ fn concise(e: &reqwest::Error) -> String {
     e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
 }
 
-/// A plugin that is exactly one upstream feed: name, a nav item, the URL.
-/// stormdrive and stormstorage are this; a node's stormd instances are
-/// this several times over.
+/// A plugin that is exactly one upstream feed: a name, the daemon it
+/// fronts, where it lands in the navigator, and the URL. stormdrive and
+/// stormstorage are this; a node's stormd instances are this several
+/// times over.
 pub struct FeedPlugin {
     name: &'static str,
+    /// The daemon's own name, for the card's line — "stormdrive", not
+    /// the plugin's short id.
+    daemon: &'static str,
     section: &'static str,
     order: i32,
-    item: &'static str,
+    items: Vec<(String, String)>,
     feed: Arc<Feed>,
     client: reqwest::Client,
 }
@@ -150,13 +154,29 @@ pub struct FeedPlugin {
 impl FeedPlugin {
     pub fn new(
         name: &'static str,
+        daemon: &'static str,
         section: &'static str,
         order: i32,
         item: &'static str,
         base_url: &str,
     ) -> Self {
         let feed = Arc::new(Feed::new(base_url, name, &format!("/api/plugins/{name}/proxy")));
-        Self { name, section, order, item, feed, client: reqwest::Client::new() }
+        Self {
+            name,
+            daemon,
+            section,
+            order,
+            items: vec![(item.to_string(), format!("#/grid?id=plugin:{name}"))],
+            feed,
+            client: reqwest::Client::new(),
+        }
+    }
+
+    /// Replace the single generated nav item — a feed whose contents want
+    /// a view of their own (drives grouped by shelf, say) points at it.
+    pub fn nav_items(mut self, items: &[(&str, &str)]) -> Self {
+        self.items = items.iter().map(|(l, h)| (l.to_string(), h.to_string())).collect();
+        self
     }
 
     pub fn upstream(&self) -> &str {
@@ -171,8 +191,11 @@ impl ConsolePlugin for FeedPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
-        vec![NavSection::new(self.section, self.order)
-            .item(self.item, format!("#/grid?id=plugin:{}", self.name))]
+        let mut section = NavSection::new(self.section, self.order);
+        for (label, href) in &self.items {
+            section = section.item(label, href.clone());
+        }
+        vec![section]
     }
 
     fn routes(&self) -> axum::Router {
@@ -189,7 +212,7 @@ impl ConsolePlugin for FeedPlugin {
 
     async fn detail(&self) -> String {
         let s = self.feed.state().await;
-        format!("{} · {}", self.feed.base, s.detail)
+        crate::upstream::detail(self.daemon, &self.feed.base, &s.detail)
     }
 
     async fn run(&self, shutdown: CancellationToken) {

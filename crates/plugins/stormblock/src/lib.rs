@@ -109,7 +109,7 @@ impl ConsolePlugin for StormblockPlugin {
 
     async fn detail(&self) -> String {
         let s = self.inner.state.read().await;
-        format!("{} · {}", self.inner.base, s.detail)
+        console_core::upstream::detail("stormblock", &self.inner.base, &s.detail)
     }
 
     async fn run(&self, shutdown: CancellationToken) {

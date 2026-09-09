@@ -5,5 +5,5 @@
 use console_core::FeedPlugin;
 
 pub fn plugin(url: &str) -> FeedPlugin {
-    FeedPlugin::new("storage", "Storage", 40, "Pools", url)
+    FeedPlugin::new("storage", "stormstorage", "Storage", 40, "Pools", url)
 }

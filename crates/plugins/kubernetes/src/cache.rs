@@ -14,44 +14,104 @@ use tracing::{debug, warn};
 
 use crate::client::RkClient;
 
-/// One watched resource. `kind` is the console's short noun (also the
-/// component kind suffix); `list_path` lists across all namespaces.
+/// One watched resource.
+///
+/// `kind` is the console's short noun — the component id suffix, the hash
+/// route (`#/k8s/pod`) and the key the SPA asks for. `title` is what a
+/// page calls it. `namespaced` is the one fact the whole namespace
+/// dimension turns on (issue #5), and it lives here because this is where
+/// the resource is declared: the SPA used to carry three separate
+/// hardcoded lists of it, which is three chances to disagree.
 pub struct ResourceSpec {
     pub kind: &'static str,
+    pub title: &'static str,
     pub list_path: &'static str,
+    pub namespaced: bool,
     /// A CRD that may not be installed: a 404 means "none", not "broken",
     /// and the kind counts as synced with nothing in it.
     pub optional: bool,
+    /// Counted in a namespace's inventory. Cluster-scoped kinds are not,
+    /// and neither is the namespace itself.
+    pub inventory: bool,
 }
 
-const fn core(kind: &'static str, list_path: &'static str) -> ResourceSpec {
-    ResourceSpec { kind, list_path, optional: false }
+const fn ns_scoped(kind: &'static str, title: &'static str, list_path: &'static str) -> ResourceSpec {
+    ResourceSpec { kind, title, list_path, namespaced: true, optional: false, inventory: true }
 }
 
-const fn crd(kind: &'static str, list_path: &'static str) -> ResourceSpec {
-    ResourceSpec { kind, list_path, optional: true }
+const fn cluster(kind: &'static str, title: &'static str, list_path: &'static str) -> ResourceSpec {
+    ResourceSpec { kind, title, list_path, namespaced: false, optional: false, inventory: false }
+}
+
+const fn crd(
+    kind: &'static str,
+    title: &'static str,
+    list_path: &'static str,
+    namespaced: bool,
+) -> ResourceSpec {
+    ResourceSpec { kind, title, list_path, namespaced, optional: true, inventory: namespaced }
 }
 
 pub const RESOURCES: &[ResourceSpec] = &[
-    core("ns", "/api/v1/namespaces"),
-    core("node", "/api/v1/nodes"),
-    core("pod", "/api/v1/pods"),
-    core("deploy", "/apis/apps/v1/deployments"),
-    core("sts", "/apis/apps/v1/statefulsets"),
-    core("ds", "/apis/apps/v1/daemonsets"),
-    core("job", "/apis/batch/v1/jobs"),
-    core("cronjob", "/apis/batch/v1/cronjobs"),
-    core("svc", "/api/v1/services"),
-    core("pvc", "/api/v1/persistentvolumeclaims"),
-    core("netpol", "/apis/networking.k8s.io/v1/networkpolicies"),
+    cluster("ns", "Namespaces", "/api/v1/namespaces"),
+    cluster("node", "Nodes", "/api/v1/nodes"),
+    ns_scoped("pod", "Pods", "/api/v1/pods"),
+    ns_scoped("deploy", "Deployments", "/apis/apps/v1/deployments"),
+    ns_scoped("sts", "StatefulSets", "/apis/apps/v1/statefulsets"),
+    ns_scoped("ds", "DaemonSets", "/apis/apps/v1/daemonsets"),
+    ns_scoped("job", "Jobs", "/apis/batch/v1/jobs"),
+    ns_scoped("cronjob", "CronJobs", "/apis/batch/v1/cronjobs"),
+    ns_scoped("svc", "Services", "/api/v1/services"),
+    ns_scoped("pvc", "PersistentVolumeClaims", "/api/v1/persistentvolumeclaims"),
+    ns_scoped("cm", "ConfigMaps", "/api/v1/configmaps"),
+    ns_scoped("netpol", "Network policies", "/apis/networking.k8s.io/v1/networkpolicies"),
+    // A namespace's limits — what it may use, and what it is using. Both
+    // are usually absent, and "no quota" is an answer worth showing
+    // (issue #6) rather than an empty space.
+    ns_scoped("quota", "Resource quotas", "/api/v1/resourcequotas"),
+    ns_scoped("limits", "Limit ranges", "/api/v1/limitranges"),
     // Cilium, through its CRDs — the agent's own API is a unix socket and
     // Hubble is gRPC, neither reachable from a golden.
-    crd("cep", "/apis/cilium.io/v2/ciliumendpoints"),
-    crd("cn", "/apis/cilium.io/v2/ciliumnodes"),
-    crd("cid", "/apis/cilium.io/v2/ciliumidentities"),
-    crd("cnp", "/apis/cilium.io/v2/ciliumnetworkpolicies"),
-    crd("ccnp", "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies"),
+    crd("cep", "Cilium endpoints", "/apis/cilium.io/v2/ciliumendpoints", true),
+    crd("cn", "Cilium nodes", "/apis/cilium.io/v2/ciliumnodes", false),
+    crd("cid", "Cilium identities", "/apis/cilium.io/v2/ciliumidentities", false),
+    crd("cnp", "Cilium network policies", "/apis/cilium.io/v2/ciliumnetworkpolicies", true),
+    crd(
+        "ccnp",
+        "Cilium clusterwide policies",
+        "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies",
+        false,
+    ),
 ];
+
+pub fn spec(kind: &str) -> Option<&'static ResourceSpec> {
+    RESOURCES.iter().find(|r| r.kind == kind)
+}
+
+/// Is this kind scoped to a namespace? Unknown kinds are treated as
+/// cluster-scoped, because filtering something by a namespace it does not
+/// have hides it entirely.
+pub fn is_namespaced(kind: &str) -> bool {
+    spec(kind).map(|s| s.namespaced).unwrap_or(false)
+}
+
+/// The catalogue the SPA renders from: what exists, what to call it, and
+/// whether the namespace selector applies to it.
+pub fn catalogue() -> Vec<serde_json::Value> {
+    RESOURCES
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "kind": r.kind,
+                "title": r.title,
+                "namespaced": r.namespaced,
+                "optional": r.optional,
+                "inventory": r.inventory,
+                "href": format!("#/k8s/{}", r.kind),
+            })
+        })
+        .collect()
+}
 
 #[derive(Default)]
 pub struct Store {
@@ -78,6 +138,42 @@ impl Store {
     pub async fn synced_kinds(&self) -> (usize, usize) {
         let s = self.synced.read().await;
         (s.values().filter(|v| **v).count(), RESOURCES.len())
+    }
+
+    /// One kind's objects, keyed as the store keys them (`ns/name`, or
+    /// `name` for a cluster-scoped kind).
+    pub async fn kind(&self, kind: &str) -> HashMap<String, Value> {
+        self.objects.read().await.get(kind).cloned().unwrap_or_default()
+    }
+
+    /// One object, or None when the kind is not watched or the key is gone.
+    pub async fn object(&self, kind: &str, key: &str) -> Option<Value> {
+        self.objects.read().await.get(kind)?.get(key).cloned()
+    }
+
+    /// Every namespace name the cache has seen.
+    pub async fn namespaces(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .objects
+            .read()
+            .await
+            .get("ns")
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// How many objects of `kind` live in `ns`. Keys are `ns/name`, so
+    /// this is a prefix count and needs no per-object parse.
+    pub async fn count_in(&self, kind: &str, ns: &str) -> usize {
+        let prefix = format!("{ns}/");
+        self.objects
+            .read()
+            .await
+            .get(kind)
+            .map(|m| m.keys().filter(|k| k.starts_with(&prefix)).count())
+            .unwrap_or(0)
     }
 
     async fn replace(&self, kind: &'static str, items: HashMap<String, Value>) {

@@ -4,13 +4,13 @@
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::{header, StatusCode, Uri};
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use console_core::{Health, Registry};
+use console_core::{Health, Registry, Viewer};
 use rust_embed::RustEmbed;
 use serde_json::json;
 
@@ -35,6 +35,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/components", get(components))
         .route("/api/v1/console/nav", get(nav))
         .route("/api/v1/console/creators", get(creators))
+        .route("/api/v1/console/access", get(access))
         .route("/ws/components", get(ws_components))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
@@ -50,8 +51,21 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(state, auth::middleware))
 }
 
-async fn components(State(state): State<AppState>) -> Response {
-    Json(state.registry.components().await.as_ref().clone()).into_response()
+/// The feed as this viewer may see it. The filter runs here, before the
+/// snapshot leaves the process, so a hidden object is not reachable by
+/// asking for it — a UI-side filter would only be a way of not drawing it
+/// (issue #7).
+async fn components(State(state): State<AppState>, req: Request) -> Response {
+    let viewer = auth::viewer(&state, &req);
+    Json(state.registry.components_for(&viewer).await.as_ref().clone()).into_response()
+}
+
+/// What this viewer is not being shown, and whether anything is being
+/// enforced at all. A short list with no explanation reads as a broken
+/// console; so does a console that implies a check it is not doing.
+async fn access(State(state): State<AppState>, req: Request) -> Response {
+    let viewer = auth::viewer(&state, &req);
+    Json(state.registry.access_report(&viewer).await).into_response()
 }
 
 async fn nav(State(state): State<AppState>) -> Response {
@@ -92,13 +106,16 @@ async fn summary(State(state): State<AppState>) -> Response {
     .into_response()
 }
 
-async fn ws_components(State(state): State<AppState>, ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(move |socket| push_snapshots(socket, state))
+async fn ws_components(State(state): State<AppState>, ws: WebSocketUpgrade, req: Request) -> Response {
+    let viewer = auth::viewer(&state, &req);
+    ws.on_upgrade(move |socket| push_snapshots(socket, state, viewer))
 }
 
-async fn push_snapshots(mut socket: WebSocket, state: AppState) {
+/// The stream is filtered per connection, not per render: a viewer's
+/// socket never carries a component they may not see.
+async fn push_snapshots(mut socket: WebSocket, state: AppState, viewer: Viewer) {
     let mut rx = state.registry.subscribe();
-    let first = state.registry.components().await;
+    let first = state.registry.components_for(&viewer).await;
     if let Ok(text) = serde_json::to_string(first.as_ref()) {
         if socket.send(Message::Text(text.into())).await.is_err() {
             return;
@@ -107,7 +124,8 @@ async fn push_snapshots(mut socket: WebSocket, state: AppState) {
     loop {
         tokio::select! {
             snap = rx.recv() => {
-                let Ok(snap) = snap else { return };
+                let Ok(_) = snap else { return };
+                let snap = state.registry.components_for(&viewer).await;
                 let Ok(text) = serde_json::to_string(snap.as_ref()) else { continue };
                 if socket.send(Message::Text(text.into())).await.is_err() {
                     return;

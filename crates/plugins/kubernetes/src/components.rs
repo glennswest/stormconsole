@@ -85,7 +85,7 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
             }
         }
         c.metrics.push(Metric::new("pods", pods.to_string()));
-        c.link = Some(format!("#/grid?id=k8s:ns:{key}"));
+        c.link = Some(format!("#/k8s/ns/{key}"));
         out.push(c);
     }
 
@@ -577,6 +577,8 @@ mod tests {
         assert_eq!(node.relations[0].targets, vec!["k8s:pod:default/web"]);
         let ns = out.iter().find(|c| c.id == "k8s:ns:default").unwrap();
         assert!(ns.relations.iter().any(|r| r.name == "pods"));
+        // A namespace opens its own page, not a generic grid (#6).
+        assert_eq!(ns.link.as_deref(), Some("#/k8s/ns/default"));
     }
 
     #[test]

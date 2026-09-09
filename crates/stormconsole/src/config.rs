@@ -81,9 +81,16 @@ fn default_bind() -> String {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct User {
     pub name: String,
     pub password: String,
+    /// This user's own kubernetes identity — a ServiceAccount token or
+    /// any bearer rustkube's RBAC knows. When set, what they see of the
+    /// cluster is what the apiserver says they may see, asked as them
+    /// (issue #7). Without one there is no identity to authorize against
+    /// and the console says so rather than implying a check.
+    pub kube_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -341,6 +348,11 @@ impl Config {
     pub fn auth_required(&self) -> bool {
         !self.api.users.is_empty() || self.api.auth_token.is_some()
     }
+
+    /// A named user's kubernetes bearer, if they have one.
+    pub fn kube_token_for(&self, user: &str) -> Option<String> {
+        self.api.users.iter().find(|u| u.name == user).and_then(|u| u.kube_token.clone())
+    }
 }
 
 #[cfg(test)]
@@ -416,6 +428,18 @@ data_dir    = \"/var/lib/stormconsole\"
         let e = Config::parse("listen_addr = \"0.0.0.0:9094\"\nport = 9094\n").unwrap_err();
         assert!(e.contains("line 2"), "{e}");
         assert!(e.contains("port"), "{e}");
+    }
+
+    #[test]
+    fn a_user_may_carry_a_kube_identity_and_need_not() {
+        let c = Config::parse(
+            "[[api.users]]\nname = \"gw\"\npassword = \"p\"\nkube_token = \"jwt\"\n\n[[api.users]]\nname = \"ro\"\npassword = \"q\"\n",
+        )
+        .unwrap();
+        assert!(c.auth_required());
+        assert_eq!(c.kube_token_for("gw").as_deref(), Some("jwt"));
+        assert_eq!(c.kube_token_for("ro"), None);
+        assert_eq!(c.kube_token_for("nobody"), None);
     }
 
     #[test]

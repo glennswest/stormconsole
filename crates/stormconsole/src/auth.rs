@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
+use console_core::Viewer;
 use axum::http::{header, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -52,6 +53,29 @@ impl Sessions {
     fn remove(&self, id: &str) {
         self.inner.lock().unwrap().remove(id);
     }
+}
+
+/// Who is behind this request. The console's own session names the user;
+/// their configured kubernetes bearer is what upstream authorization is
+/// asked with. With authentication off there is no identity, and the
+/// console reports that rather than pretending to enforce anything.
+pub fn viewer(state: &AppState, req: &Request) -> Viewer {
+    if !state.auth_required {
+        return Viewer::anonymous();
+    }
+    if let Some(user) = cookie_session(req).and_then(|id| state.sessions.user_of(&id)) {
+        let token = state.config.kube_token_for(&user);
+        return Viewer { user: Some(user), token };
+    }
+    // A machine on the bearer token acts as the console itself: it is the
+    // console's own credential, not a person's, so it carries no
+    // kubernetes identity of its own.
+    if bearer(req).as_deref() == state.config.api.auth_token.as_deref() {
+        if let Some(_) = state.config.api.auth_token.as_deref() {
+            return Viewer { user: Some("token".into()), token: None };
+        }
+    }
+    Viewer::anonymous()
 }
 
 fn cookie_session(req: &Request) -> Option<String> {
