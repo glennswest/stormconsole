@@ -16,13 +16,14 @@
 //! carries bytes, the framebuffer door carries RFB, and neither is
 //! anything this process should be interpreting.
 //!
-//! **What actually works today.** stormvm serves neither endpoint yet
-//! (its phase 1 has "Console service" unticked), and the other route to a
-//! guest's serial — the pod log the kubelet already writes — needs
-//! rustkube#55 and rustkube-node#34. So the doors are built, probed, and
-//! honest: with no stormvm on the node the capability answer says which
-//! upstream is missing, and the UI says that instead of showing a
-//! terminal that will never print.
+//! **Reaching them.** stormvm binds loopback by default and admits a
+//! connection from the node without a credential — everything that
+//! legitimately opens a console is on the node, and stormconsole is one of
+//! those things, relaying from its own authenticated origin. A console
+//! pointed at a *remote* node (the dev workflow in this repo's README) is
+//! refused, and cannot help itself: minting is loopback-only by design, so
+//! there is no token for it to fetch. That is stormvm's call and the right
+//! one; the capability answer says so rather than returning a bare 401.
 
 use std::time::Duration;
 
@@ -43,6 +44,61 @@ pub struct Capabilities {
     pub reason: String,
 }
 
+/// What *this VM's* doors are, asked of stormvm.
+///
+/// Reachability is not the whole answer: stormvm registers a serial socket
+/// only if the spec asked for a console and a VNC socket only if it asked
+/// for a framebuffer, and it reports both per VM. Offering a graphical
+/// console on a machine whose spec never asked for one is a tab that opens
+/// onto a refusal — the CH path has no framebuffer at all, and stormvm's
+/// design says so at define time rather than at first look.
+pub async fn for_vm(
+    client: &reqwest::Client,
+    upstream: Option<&str>,
+    reachable: bool,
+    ns: &str,
+    name: &str,
+) -> Capabilities {
+    let base = match (upstream, reachable) {
+        (Some(u), true) => u,
+        _ => return capabilities(upstream, reachable),
+    };
+    let url = format!("{}/api/v1/vms/{ns}/{name}", base.trim_end_matches('/'));
+    let resp = client.get(&url).timeout(Duration::from_secs(5)).send().await;
+    let described = console_core::upstream::describe(base);
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            let v: serde_json::Value = r.json().await.unwrap_or(serde_json::Value::Null);
+            let door = |k: &str| v.pointer(&format!("/console/{k}")).and_then(serde_json::Value::as_bool).unwrap_or(false);
+            let (serial, vnc) = (door("serial"), door("vnc"));
+            Capabilities {
+                serial,
+                vnc,
+                upstream: described,
+                reason: match (serial, vnc) {
+                    (true, true) => String::new(),
+                    (true, false) => "this machine has no framebuffer — its spec asked for a \
+                                      serial console only, so there is nothing to draw"
+                        .into(),
+                    (false, true) => "this machine has no serial console — its spec asked for a \
+                                      framebuffer only"
+                        .into(),
+                    (false, false) => "this machine asked for neither console".into(),
+                },
+            }
+        }
+        Ok(r) if r.status().as_u16() == 404 => Capabilities {
+            serial: false,
+            vnc: false,
+            upstream: described,
+            reason: "stormvm on this node is not running this machine — it may have stopped, \
+                     or it may be running somewhere else"
+                .into(),
+        },
+        _ => capabilities(upstream, false),
+    }
+}
+
 /// stormvm is optional and usually absent; say which thing is missing
 /// rather than "unavailable".
 pub fn capabilities(upstream: Option<&str>, reachable: bool) -> Capabilities {
@@ -57,9 +113,10 @@ pub fn capabilities(upstream: Option<&str>, reachable: bool) -> Capabilities {
             serial: false,
             vnc: false,
             upstream: console_core::upstream::describe(url),
-            reason: "stormvm is not answering — its console service is unbuilt (stormvm phase 1). \
-                     The guest's serial is still in the pod log, which needs rustkube#55 and \
-                     rustkube-node#34 to read from here."
+            reason: "stormvm is not answering on this node, so there is no console to open. \
+                     It serves the doors (`stormvm serve`), and it binds loopback by default — \
+                     a console running off the node cannot reach them, because a door opened \
+                     from elsewhere needs a token minted on the node."
                 .into(),
         },
         (Some(url), true) => Capabilities {
@@ -116,7 +173,7 @@ pub async fn relay(browser: WebSocket, url: String) {
     {
         Ok(Ok((s, _))) => s,
         Ok(Err(e)) => {
-            close_with(browser, &format!("stormvm refused the console: {e}")).await;
+            close_with(browser, &refusal(&e)).await;
             return;
         }
         Err(_) => {
@@ -169,6 +226,29 @@ pub async fn relay(browser: WebSocket, url: String) {
     }
 }
 
+/// stormvm's refusals in words.
+///
+/// The upgrade carries only a status code — the JSON body stormvm writes
+/// never reaches a websocket client — so "HTTP error: 409 Conflict" is all
+/// tungstenite can say, and it is exactly the wrong amount of information
+/// to put in front of somebody waiting to see a screen.
+fn refusal(e: &tokio_tungstenite::tungstenite::Error) -> String {
+    use tokio_tungstenite::tungstenite::Error;
+    let status = match e {
+        Error::Http(r) => Some(r.status().as_u16()),
+        _ => None,
+    };
+    match status {
+        Some(401) => "stormvm refused this console: a door opened from off the node needs a \
+                      token minted on it, and this console is not on that node"
+            .into(),
+        Some(404) => "stormvm is not running this machine — it may have stopped".into(),
+        Some(409) => "this machine has no such console: its spec did not ask for one".into(),
+        Some(s) => format!("stormvm refused this console ({s})"),
+        None => format!("stormvm could not be reached: {e}"),
+    }
+}
+
 /// Say why the door did not open, in the socket itself — the browser has
 /// already upgraded by this point, so an HTTP status is no longer available
 /// to explain with.
@@ -201,6 +281,25 @@ mod tests {
     }
 
     #[test]
+    fn a_refusal_is_translated_out_of_a_status_code() {
+        use tokio_tungstenite::tungstenite::Error;
+        let http = |code: u16| {
+            let r = axum::http::Response::builder()
+                .status(code)
+                .body(None::<Vec<u8>>)
+                .unwrap();
+            Error::Http(Box::new(r))
+        };
+        assert!(refusal(&http(409)).contains("did not ask for one"), "{}", refusal(&http(409)));
+        assert!(refusal(&http(401)).contains("token minted"), "{}", refusal(&http(401)));
+        assert!(refusal(&http(404)).contains("may have stopped"), "{}", refusal(&http(404)));
+        // Whatever it is, it never reaches a viewer as a bare status line.
+        for c in [409u16, 401, 404, 500] {
+            assert!(!refusal(&http(c)).starts_with("HTTP error"), "{c}");
+        }
+    }
+
+    #[test]
     fn a_closed_door_names_what_is_missing() {
         let none = capabilities(None, false);
         assert!(!none.serial && !none.vnc);
@@ -209,7 +308,9 @@ mod tests {
         let down = capabilities(Some("http://127.0.0.1:9095"), false);
         assert!(!down.serial);
         assert_eq!(down.upstream, "on this node :9095", "loopback is never offered as an address");
-        assert!(down.reason.contains("rustkube#55"), "{}", down.reason);
+        assert!(down.reason.contains("stormvm serve"), "{}", down.reason);
+        // The remote case is the one a reader will hit and be puzzled by.
+        assert!(down.reason.contains("off the node"), "{}", down.reason);
 
         let up = capabilities(Some("http://127.0.0.1:9095"), true);
         assert!(up.serial && up.vnc);

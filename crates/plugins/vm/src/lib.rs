@@ -210,17 +210,21 @@ impl ConsolePlugin for VmPlugin {
     }
 
     async fn run(&self, shutdown: CancellationToken) {
-        let Some(client) = self.inner.client.clone() else {
-            shutdown.cancelled().await;
-            return;
-        };
-        for spec in RESOURCES {
-            let store = self.inner.store.clone();
-            let client = client.clone();
-            let token = shutdown.clone();
-            tokio::spawn(async move {
-                plugin_kubernetes::watch(client, spec, store, token).await;
-            });
+        // The watches need an apiserver; the console doors do not. Guarding
+        // both on the client meant a node with no rustkube reported its
+        // consoles permanently shut while stormvm was answering on the same
+        // machine — the doors have nothing to do with the apiserver, and a
+        // VM's screen is exactly what you want on a node whose control
+        // plane is the thing that is broken.
+        if let Some(client) = self.inner.client.clone() {
+            for spec in RESOURCES {
+                let store = self.inner.store.clone();
+                let client = client.clone();
+                let token = shutdown.clone();
+                tokio::spawn(async move {
+                    plugin_kubernetes::watch(client, spec, store, token).await;
+                });
+            }
         }
         // stormvm is probed rather than assumed: the console doors say
         // which upstream is missing, and that answer has to be current.
@@ -424,7 +428,14 @@ async fn detail(
         .cloned()
         .unwrap_or_default();
     let networks = spec.pointer("/networks").and_then(Value::as_array).cloned().unwrap_or_default();
-    let caps = console::capabilities(inner.stormvm.as_deref(), *inner.stormvm_up.read().await);
+    let caps = console::for_vm(
+        &inner.http,
+        inner.stormvm.as_deref(),
+        *inner.stormvm_up.read().await,
+        &ns,
+        &name,
+    )
+    .await;
     let yaml = plugin_kubernetes::to_yaml(
         machine.as_ref().or(instance.as_ref()).unwrap_or(&Value::Null),
     );
@@ -450,13 +461,22 @@ async fn detail(
 async fn console_caps(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
-    Path((ns, _name)): Path<(String, String)>,
+    Path((ns, name)): Path<(String, String)>,
 ) -> Response {
     if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
         return refusal;
     }
-    Json(console::capabilities(inner.stormvm.as_deref(), *inner.stormvm_up.read().await))
-        .into_response()
+    Json(
+        console::for_vm(
+            &inner.http,
+            inner.stormvm.as_deref(),
+            *inner.stormvm_up.read().await,
+            &ns,
+            &name,
+        )
+        .await,
+    )
+    .into_response()
 }
 
 async fn door(
