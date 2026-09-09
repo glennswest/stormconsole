@@ -301,7 +301,11 @@ export function idsForRoute(href) {
   // and the page it leads to always agree.
   const ns = q.has('ns') ? q.get('ns') : k8sns.selected
 
-  if (path === '#/drives') return withPrefix('drive:drive:')
+  // The two hardware routes count different things: the shelves page is
+  // a list of enclosures, not of the disks in them.
+  if (path === '#/drives') {
+    return q.get('group') === 'shelf' ? withPrefix('drive:shelf:') : withPrefix('drive:drive:')
+  }
   if (path === '#/vms') {
     let ids = withPrefix('vm:')
     if (ns) ids = ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`))

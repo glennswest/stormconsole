@@ -120,6 +120,34 @@
 
   const open = (row) => { if (row.link) location.hash = row.link }
   const arrow = (key) => (sortKey !== key ? '' : sortDir > 0 ? '▲' : '▼')
+
+  // A drive carries nine operations and a VM half a dozen. Nine buttons
+  // on every row is a wall, not a set of choices — and it puts a
+  // destructive one a mis-click away from a harmless one. So the two
+  // safe, most-used actions stay on the row and everything else, every
+  // destructive action included, goes behind the row menu. The same rule
+  // OpenShift's kebab and ESXi's Actions menu follow.
+  const INLINE = 2
+
+  function split(row) {
+    const acts = row.actions || []
+    const inline = acts.filter((a) => !a.danger).slice(0, INLINE)
+    return { inline, menu: acts.filter((a) => !inline.includes(a)) }
+  }
+
+  let menuFor = $state(null)
+
+  function toggleMenu(e, id) {
+    e.stopPropagation()
+    menuFor = menuFor === id ? null : id
+  }
+
+  $effect(() => {
+    if (!menuFor) return
+    const close = () => (menuFor = null)
+    window.addEventListener('click', close, { once: true })
+    return () => window.removeEventListener('click', close)
+  })
 </script>
 
 {#if bulk.length}
@@ -158,6 +186,7 @@
     <tbody>
       {#each sorted as row (row.id)}
         {@const kids = children(row)}
+        {@const acts = split(row)}
         <tr
           class:selected={selected.includes(row.id)}
           class:clickable={!!row.link}
@@ -196,15 +225,36 @@
             {/each}
           </td>
           <td class="acts" onclick={(e) => e.stopPropagation()}>
-            {#each row.actions || [] as a}
+            {#each acts.inline as a}
               <button
                 class:ok={a.id === 'start'}
                 class:warn={a.id === 'restart'}
-                class:danger={a.danger}
                 disabled={!a.enabled}
                 onclick={() => rowAction(row, a)}>{a.label}</button
               >
             {/each}
+            {#if acts.menu.length}
+              <span class="menu-wrap">
+                <button
+                  class="kebab"
+                  aria-label="More actions for {row.label}"
+                  aria-expanded={menuFor === row.id}
+                  onclick={(e) => toggleMenu(e, row.id)}>⋯</button
+                >
+                {#if menuFor === row.id}
+                  <div class="menu" role="menu">
+                    {#each acts.menu as a}
+                      <button
+                        role="menuitem"
+                        class:danger={a.danger}
+                        disabled={!a.enabled}
+                        onclick={() => { menuFor = null; rowAction(row, a) }}>{a.label}</button
+                      >
+                    {/each}
+                  </div>
+                {/if}
+              </span>
+            {/if}
           </td>
         </tr>
         {#if expanded[row.id] && kids.length}
@@ -333,6 +383,44 @@
 
   .acts { text-align: right; white-space: nowrap; }
   .acts button { font-size: var(--sc-t-eyebrow); padding: 3px 9px; margin-left: 4px; }
+
+  .menu-wrap { position: relative; display: inline-block; }
+  .kebab {
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px 8px;
+    letter-spacing: 1px;
+  }
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+    min-width: 190px;
+    display: grid;
+    padding: 4px;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.28);
+  }
+  .menu button {
+    margin: 0;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: var(--sc-t-body);
+    color: var(--text);
+  }
+  .menu button:hover:not(:disabled) { background: var(--nav-hover); }
+  .menu button:disabled { color: var(--text-ghost); }
+  .menu button.danger { color: var(--error); }
+  .menu button.danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--error) 16%, transparent);
+  }
 
   .child > td { padding: 6px 14px 14px 40px; background: color-mix(in srgb, var(--panel-raised) 35%, transparent); }
   .section + .section { margin-top: 10px; }
