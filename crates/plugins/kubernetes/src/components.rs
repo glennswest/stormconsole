@@ -51,6 +51,133 @@ fn ns_relation(key: &str) -> Option<Relation> {
     ns.map(|ns| Relation::belongs_to("namespace", format!("k8s:ns:{ns}")))
 }
 
+/// The containers a pod declares, init containers first, as component ids.
+///
+/// Reads `spec`, not `status`: a pod that has not started yet still *has*
+/// containers, and a list that appears only once the kubelet has reported is
+/// a list that is empty exactly when somebody is looking to find out why.
+fn container_ids(key: &str, pod: &Value) -> Vec<String> {
+    CONTAINER_FIELDS
+        .iter()
+        .flat_map(|(spec_field, _, _)| {
+            pod.pointer(&format!("/spec/{spec_field}"))
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+        })
+        .filter_map(|c| s(c, "/name"))
+        .map(|name| format!("k8s:container:{key}/{name}"))
+        .collect()
+}
+
+/// `(spec field, status field, whether it is an init container)`.
+///
+/// Init containers are listed first because that is the order they run in,
+/// and a pod stuck in `Init:0/2` is a pod whose interesting container is one
+/// of these rather than the app.
+const CONTAINER_FIELDS: [(&str, &str, bool); 2] =
+    [("initContainers", "initContainerStatuses", true), ("containers", "containerStatuses", false)];
+
+/// The container's state, as the three words `kubectl describe` uses, plus
+/// the reason when there is one — `Waiting: CrashLoopBackOff` is the whole
+/// diagnosis in most cases and it should not need a YAML tab to find.
+fn container_state(status: Option<&Value>) -> (Health, String, bool) {
+    let Some(st) = status else {
+        // Declared, never reported: the kubelet has not got to it. Not an
+        // error — a pod that is still being admitted looks exactly like this.
+        return (Health::Unknown, "not started".to_string(), false);
+    };
+    let ready = st.pointer("/ready").and_then(Value::as_bool).unwrap_or(false);
+    if let Some(run) = st.pointer("/state/running") {
+        let since = s(run, "/startedAt").unwrap_or("");
+        let detail = if ready { "running".to_string() } else { "running · not ready".to_string() };
+        let _ = since;
+        return (if ready { Health::Ok } else { Health::Warn }, detail, ready);
+    }
+    if let Some(w) = st.pointer("/state/waiting") {
+        let reason = s(w, "/reason").unwrap_or("waiting");
+        // CrashLoopBackOff is the one everybody is actually looking for.
+        let health = if reason.contains("Err") || reason.contains("CrashLoop") || reason.contains("Invalid") {
+            Health::Error
+        } else {
+            Health::Warn
+        };
+        return (health, format!("waiting · {reason}"), ready);
+    }
+    if let Some(t) = st.pointer("/state/terminated") {
+        let code = n(t, "/exitCode");
+        let reason = s(t, "/reason").unwrap_or("terminated");
+        let health = if code == 0 { Health::Idle } else { Health::Error };
+        return (health, format!("terminated · {reason} ({code})"), ready);
+    }
+    (Health::Unknown, "unknown".to_string(), ready)
+}
+
+/// One component per container in a pod.
+///
+/// A container is not a kubernetes object — there is no `/api/v1/containers`
+/// — but it is the thing a person means when they open a pod, and the feed
+/// is a view of what is running rather than a mirror of the API's nouns. It
+/// gets an id of its own so the table can nest it, the grid can select it,
+/// and a future logs/terminal tab has something to be scoped to.
+fn containers_of(key: &str, pod: &Value) -> Vec<ComponentSummary> {
+    let mut out = Vec::new();
+    for (spec_field, status_field, is_init) in CONTAINER_FIELDS {
+        let specs = pod
+            .pointer(&format!("/spec/{spec_field}"))
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let statuses = pod
+            .pointer(&format!("/status/{status_field}"))
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        for spec in specs {
+            let Some(name) = s(spec, "/name") else { continue };
+            // Matched by name, not by position: the kubelet does not promise
+            // the two arrays are in the same order, and pairing a container
+            // with somebody else's state is worse than showing none.
+            let status = statuses.iter().find(|st| s(st, "/name") == Some(name));
+            let (health, state, _ready) = container_state(status);
+            let image = s(spec, "/image").unwrap_or("");
+            let detail = if is_init { format!("init · {state}") } else { state };
+            let mut c = base("container", &format!("{key}/{name}"), name, health, detail);
+            // The image in full. It is the first thing anybody checks when a
+            // pod is running the wrong thing, and truncating it in the detail
+            // line is what makes that check impossible.
+            if !image.is_empty() {
+                c.metrics.push(Metric::new("image", image.to_string()).tone("muted"));
+            }
+            if let Some(st) = status {
+                let restarts = n(st, "/restartCount");
+                c.metrics.push(
+                    Metric::new("restarts", restarts.to_string())
+                        .tone(if restarts > 0 { "warn" } else { "muted" }),
+                );
+                if let Some(id) = s(st, "/imageID") {
+                    // The digest actually running, which is not always what
+                    // the tag in `image` resolves to any more.
+                    c.metrics.push(Metric::new("imageID", id.to_string()).tone("muted"));
+                }
+            }
+            if let Some(ports) = spec.pointer("/ports").and_then(Value::as_array) {
+                let list: Vec<String> = ports
+                    .iter()
+                    .filter_map(|p| p.pointer("/containerPort").and_then(Value::as_i64))
+                    .map(|p| p.to_string())
+                    .collect();
+                if !list.is_empty() {
+                    c.metrics.push(Metric::new("ports", list.join(", ")).tone("muted"));
+                }
+            }
+            c.relations.push(Relation::belongs_to("pod", format!("k8s:pod:{key}")));
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// What the Cilium agent's own health server said, when it could be
 /// asked. `None` means the console is not on a node that runs one.
 pub type AgentState = Option<(Health, String)>;
@@ -140,9 +267,16 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
             .map(|cs| cs.iter().map(|c| n(c, "/restartCount")).sum())
             .unwrap_or(0);
         let node = s(obj, "/spec/nodeName");
-        let detail = match node {
-            Some(nd) => format!("{phase} · {nd}"),
-            None => phase.to_string(),
+        // The namespace, in the line. The table gains a Namespace column from
+        // the `belongs_to` edge, but a card, a search and the grid all read
+        // `detail` — and a pod whose namespace appears nowhere on it is one
+        // you cannot tell apart from the identically-named pod next door.
+        let (ns, _) = split_key(key);
+        let detail = match (ns, node) {
+            (Some(ns), Some(nd)) => format!("{ns} · {phase} · {nd}"),
+            (Some(ns), None) => format!("{ns} · {phase}"),
+            (None, Some(nd)) => format!("{phase} · {nd}"),
+            (None, None) => phase.to_string(),
         };
         let mut c = base("pod", key, name, health, detail);
         c.metrics.push(
@@ -151,7 +285,20 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         );
         c.relations.extend(ns_relation(key));
         if let Some(nd) = node {
-            c.relations.push(Relation::has_one("node", format!("k8s:node:{nd}")));
+            // **belongs_to, not has_one.** A pod does not own its node — it is
+            // placed on one — and the direction is what the table reads to
+            // decide what nests inside what. As `has_one` it expanded a pod
+            // into its node, and the node's `has_many pods` expanded straight
+            // back: open a pod, find a node, find the pods again, and the one
+            // thing a pod actually contains was nowhere in it.
+            c.relations.push(Relation::belongs_to("node", format!("k8s:node:{nd}")));
+        }
+        // What a pod *is*. Until this, `containerStatuses` was read only to
+        // sum restarts, so the containers — their images, what state each is
+        // in, which one is crash-looping — were not in the feed at all.
+        let ids = container_ids(key, obj);
+        if !ids.is_empty() {
+            c.relations.push(Relation::has_many("containers", ids));
         }
         c.actions.push(Action {
             id: "delete".into(),
@@ -162,6 +309,7 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
             danger: true,
         });
         out.push(c);
+        out.extend(containers_of(key, obj));
     }
 
     for (key, obj) in of("deploy") {
@@ -544,28 +692,211 @@ mod tests {
         m
     }
 
+    /// A pod with one container, the shape every test below starts from.
+    fn pod_snap() -> Snapshot {
+        snap_with(
+            "pod",
+            "default/web",
+            json!({
+                "metadata": {"name": "web", "namespace": "default"},
+                "spec": {"nodeName": "n1", "containers": [
+                    {"name": "app", "image": "nginx:1.27", "ports": [{"containerPort": 8080}]}
+                ]},
+                "status": {
+                    "phase": "Running",
+                    "conditions": [{"type": "Ready", "status": "True"}],
+                    "containerStatuses": [{
+                        "name": "app", "restartCount": 2, "ready": true,
+                        "imageID": "docker.io/library/nginx@sha256:abc",
+                        "state": {"running": {"startedAt": "2026-09-20T22:04:46Z"}}
+                    }]
+                }
+            }),
+        )
+    }
+
+    fn find<'a>(out: &'a [ComponentSummary], id: &str) -> &'a ComponentSummary {
+        out.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("no component {id} in {:?}", out.iter().map(|c| &c.id).collect::<Vec<_>>()))
+    }
+
     #[test]
     fn running_ready_pod_is_ok() {
+        let out = map(&pod_snap(), None);
+        let pod = find(&out, "k8s:pod:default/web");
+        assert_eq!(pod.health, Health::Ok);
+        // The namespace is on the pod, not only in its id: a pod whose
+        // namespace appears nowhere cannot be told apart from the
+        // identically-named pod next door.
+        assert_eq!(pod.detail, "default · Running · n1");
+        assert_eq!(pod.metrics[0].value, "2");
+        assert!(pod.actions.iter().any(|a| a.id == "delete"));
+    }
+
+    #[test]
+    fn a_pod_carries_its_containers() {
+        // What a pod *is*. Before this, `containerStatuses` was read only to
+        // sum restarts and the containers were not in the feed at all.
+        let out = map(&pod_snap(), None);
+        let pod = find(&out, "k8s:pod:default/web");
+        let rel = pod
+            .relations
+            .iter()
+            .find(|r| r.name == "containers")
+            .expect("the pod has a containers relation");
+        assert_eq!(rel.targets, vec!["k8s:container:default/web/app"]);
+
+        let c = find(&out, "k8s:container:default/web/app");
+        assert_eq!(c.label, "app");
+        assert_eq!(c.health, Health::Ok);
+        assert_eq!(c.detail, "running");
+        // The image in full, because a truncated image is exactly the thing
+        // you opened the pod to check.
+        let m = |name: &str| c.metrics.iter().find(|m| m.label == name).map(|m| m.value.clone());
+        assert_eq!(m("image").as_deref(), Some("nginx:1.27"));
+        assert_eq!(m("restarts").as_deref(), Some("2"));
+        assert_eq!(m("ports").as_deref(), Some("8080"));
+        assert!(m("imageID").is_some());
+        // And it points back up, so the table nests it under the pod rather
+        // than expanding the pod into it.
+        assert!(c
+            .relations
+            .iter()
+            .any(|r| r.name == "pod" && r.targets == vec!["k8s:pod:default/web"]));
+    }
+
+    #[test]
+    fn a_pod_belongs_to_its_node_rather_than_owning_it() {
+        // The loop this fixes: as `has_one`, the table expanded a pod into
+        // its node, and the node's `has_many pods` expanded straight back —
+        // so a pod opened into a node, which opened into the pods again, and
+        // the containers were nowhere.
+        let out = map(&pod_snap(), None);
+        let pod = find(&out, "k8s:pod:default/web");
+        let node = pod.relations.iter().find(|r| r.name == "node").expect("a node edge");
+        assert_eq!(node.kind, console_core::RelationKind::BelongsTo);
+        // The only thing that nests inside a pod is its containers.
+        let downward: Vec<&str> = pod
+            .relations
+            .iter()
+            .filter(|r| r.kind != console_core::RelationKind::BelongsTo)
+            .map(|r| r.name.as_str())
+            .collect();
+        assert_eq!(downward, vec!["containers"]);
+    }
+
+    #[test]
+    fn a_crash_looping_container_says_so_and_is_an_error() {
+        // `Waiting · CrashLoopBackOff` is the whole diagnosis in most cases,
+        // and it should not need the YAML tab to find.
         let snap = snap_with(
             "pod",
             "default/web",
             json!({
                 "metadata": {"name": "web", "namespace": "default"},
-                "spec": {"nodeName": "n1"},
+                "spec": {"containers": [{"name": "app", "image": "nginx"}]},
                 "status": {
                     "phase": "Running",
-                    "conditions": [{"type": "Ready", "status": "True"}],
-                    "containerStatuses": [{"restartCount": 2}]
+                    "containerStatuses": [{
+                        "name": "app", "restartCount": 7, "ready": false,
+                        "state": {"waiting": {"reason": "CrashLoopBackOff"}}
+                    }]
                 }
             }),
         );
         let out = map(&snap, None);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].id, "k8s:pod:default/web");
-        assert_eq!(out[0].health, Health::Ok);
-        assert_eq!(out[0].detail, "Running · n1");
-        assert_eq!(out[0].metrics[0].value, "2");
-        assert!(out[0].actions.iter().any(|a| a.id == "delete"));
+        let c = find(&out, "k8s:container:default/web/app");
+        assert_eq!(c.health, Health::Error);
+        assert_eq!(c.detail, "waiting · CrashLoopBackOff");
+    }
+
+    #[test]
+    fn an_init_container_is_listed_first_and_marked() {
+        let snap = snap_with(
+            "pod",
+            "default/web",
+            json!({
+                "metadata": {"name": "web", "namespace": "default"},
+                "spec": {
+                    "initContainers": [{"name": "setup", "image": "busybox"}],
+                    "containers": [{"name": "app", "image": "nginx"}]
+                },
+                "status": {
+                    "phase": "Running",
+                    "initContainerStatuses": [{
+                        "name": "setup", "restartCount": 0,
+                        "state": {"terminated": {"exitCode": 0, "reason": "Completed"}}
+                    }],
+                    "containerStatuses": [{
+                        "name": "app", "restartCount": 0, "ready": true,
+                        "state": {"running": {}}
+                    }]
+                }
+            }),
+        );
+        let out = map(&snap, None);
+        let pod = find(&out, "k8s:pod:default/web");
+        let rel = pod.relations.iter().find(|r| r.name == "containers").unwrap();
+        // Init first, because that is the order they run in and a pod stuck
+        // at Init:0/1 is a pod whose interesting container is one of these.
+        assert_eq!(
+            rel.targets,
+            vec!["k8s:container:default/web/setup", "k8s:container:default/web/app"]
+        );
+        let init = find(&out, "k8s:container:default/web/setup");
+        assert_eq!(init.detail, "init · terminated · Completed (0)");
+        assert_eq!(init.health, Health::Idle);
+    }
+
+    #[test]
+    fn a_container_state_is_matched_by_name_not_by_position() {
+        // The kubelet does not promise the spec and status arrays are in the
+        // same order, and pairing a container with somebody else's state is
+        // worse than showing none.
+        let snap = snap_with(
+            "pod",
+            "default/web",
+            json!({
+                "metadata": {"name": "web", "namespace": "default"},
+                "spec": {"containers": [
+                    {"name": "app", "image": "nginx"},
+                    {"name": "sidecar", "image": "envoy"}
+                ]},
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [
+                        {"name": "sidecar", "restartCount": 5, "ready": true, "state": {"running": {}}},
+                        {"name": "app", "restartCount": 0, "ready": true, "state": {"running": {}}}
+                    ]
+                }
+            }),
+        );
+        let out = map(&snap, None);
+        let restarts = |id: &str| {
+            find(&out, id).metrics.iter().find(|m| m.label == "restarts").unwrap().value.clone()
+        };
+        assert_eq!(restarts("k8s:container:default/web/app"), "0");
+        assert_eq!(restarts("k8s:container:default/web/sidecar"), "5");
+    }
+
+    #[test]
+    fn a_container_the_kubelet_has_not_reported_is_still_listed() {
+        // Read from `spec`, not `status`: a pod that has not started yet
+        // still *has* containers, and a list that appears only once the
+        // kubelet reports is empty exactly when somebody is looking to find
+        // out why.
+        let snap = snap_with(
+            "pod",
+            "default/web",
+            json!({
+                "metadata": {"name": "web", "namespace": "default"},
+                "spec": {"containers": [{"name": "app", "image": "nginx"}]},
+                "status": {"phase": "Pending"}
+            }),
+        );
+        let out = map(&snap, None);
+        let c = find(&out, "k8s:container:default/web/app");
+        assert_eq!(c.health, Health::Unknown);
+        assert_eq!(c.detail, "not started");
     }
 
     #[test]

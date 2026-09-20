@@ -41,11 +41,37 @@
   const kinds = $derived(new Set(rows.map((r) => r.kind)))
   const withKind = $derived(showKind && kinds.size > 1)
 
+  // Which namespace a row is in.
+  //
+  // Read from the `belongs_to namespace` edge every namespaced component
+  // already publishes, rather than parsed out of the id: the relation is
+  // the fact, and a table that splits ids on '/' is a table that guesses
+  // wrong the first time a name contains one.
+  //
+  // Generic on purpose — nothing here knows what a pod is. Anything that
+  // belongs to a namespace gets the column, which is why deployments,
+  // services and the rest gain it at the same time as pods did.
+  function nsOf(row) {
+    const rel = (row.relations || []).find(
+      (r) => r.kind === 'belongs_to' && r.name === 'namespace'
+    )
+    const target = rel?.targets?.[0]
+    if (!target) return ''
+    // `k8s:ns:default` → `default`. Prefer the component's own label when
+    // the feed carries it, so a renamed display name is honoured.
+    return byId.get(target)?.label || target.split(':').pop()
+  }
+
+  // Earns its column the same way Kind does: only when some row has one.
+  // A cluster-scoped list (nodes, storage classes) gets no empty column.
+  const withNs = $derived(rows.some((r) => nsOf(r)))
+
   const sorted = $derived.by(() => {
     const k = sortKey
     const dir = sortDir
     return [...rows].sort((a, b) => {
       if (k === 'health') return ((RANK[a.health] ?? 9) - (RANK[b.health] ?? 9)) * dir
+      if (k === 'namespace') return nsOf(a).localeCompare(nsOf(b)) * dir
       return String(a[k] ?? '').localeCompare(String(b[k] ?? '')) * dir
     })
   })
@@ -174,6 +200,11 @@
           />
         </th>
         <th class="sortable name" onclick={() => sortBy('label')}>Name <i>{arrow('label')}</i></th>
+        {#if withNs}
+          <th class="sortable ns" onclick={() => sortBy('namespace')}
+            >Namespace <i>{arrow('namespace')}</i></th
+          >
+        {/if}
         <th class="sortable status" onclick={() => sortBy('health')}>Status <i>{arrow('health')}</i></th>
         {#if withKind}
           <th class="sortable kind" onclick={() => sortBy('kind')}>Kind <i>{arrow('kind')}</i></th>
@@ -213,6 +244,7 @@
             />
           </td>
           <td class="name">{row.label}</td>
+          {#if withNs}<td class="ns">{nsOf(row)}</td>{/if}
           <td class="status"><StatusPill health={row.health} /></td>
           {#if withKind}<td class="kind">{row.kind}</td>{/if}
           <td class="detail">{row.detail ?? ''}</td>
@@ -364,6 +396,7 @@
   .name { font-weight: 500; }
   .status { width: 110px; }
   .kind { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
+  .ns { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
   .detail { color: var(--text-dim); }
 
   .metrics { white-space: nowrap; }
