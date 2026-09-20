@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use console_core::value::field;
+use console_core::value::{field, u64_field};
 use console_core::{ComponentSummary, ConsolePlugin, Creator, Field, Health, Metric, NavSection, Relation};
 use serde_json::Value;
 use tokio::sync::RwLock;
@@ -157,7 +157,7 @@ async fn poll(inner: &Inner) {
     let goldens: Vec<_> = items(inner, "/v1/goldens").await.iter().map(golden).collect();
     let clones: Vec<_> = items(inner, "/v1/clones").await.iter().map(clone_).collect();
     let pallets: Vec<_> = items(inner, "/v1/pallets").await.iter().map(|v| generic(v, "pallet")).collect();
-    let images: Vec<_> = items(inner, "/v1/images").await.iter().map(|v| generic(v, "image")).collect();
+    let images: Vec<_> = items(inner, "/v1/images").await.iter().map(image).collect();
 
     let groups = [
         ("goldens", goldens.iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
@@ -281,8 +281,128 @@ fn clone_(v: &Value) -> ComponentSummary {
     }
 }
 
-/// Pallets and images: identity from whichever of the usual keys is there,
-/// one line from the descriptive ones.
+/// The first 12 hex of a manifest digest — the whole of the coordination
+/// protocol for goldens, which are named `img-<those twelve>`.
+fn short_digest(digest: &str) -> Option<String> {
+    let hex = digest.strip_prefix("sha256:").unwrap_or(digest);
+    let twelve: String = hex.chars().take(12).collect();
+    (twelve.len() == 12 && twelve.chars().all(|c| c.is_ascii_hexdigit())).then_some(twelve)
+}
+
+/// How long ago, in the units somebody reading a registry actually wants.
+///
+/// Registry pushes are days and weeks apart, not seconds, so this stops at
+/// days rather than pretending to a precision the number does not have.
+fn since(unix: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if unix == 0 || unix > now {
+        return String::new();
+    }
+    let secs = now - unix;
+    match secs {
+        0..=90 => "just now".to_string(),
+        s if s < 3600 => format!("{}m ago", s / 60),
+        s if s < 86_400 => format!("{}h ago", s / 3600),
+        s => format!("{}d ago", s / 86_400),
+    }
+}
+
+/// One pushed image.
+///
+/// It had been going through `generic`, which found `digest` and nothing
+/// else on the usual key list — so an image was a name and the word
+/// "digest", with no metrics, no actions and no edges. Everything below is
+/// already in the record sbregistry serves; none of it was being read.
+///
+/// The **command** is the point. An image is a filesystem plus the thing it
+/// runs, and `Entrypoint`/`Cmd` is the half you cannot get from the name —
+/// it is what a reader is checking when they ask what an image *is*.
+fn image(v: &Value) -> ComponentSummary {
+    let digest = field(v, &["digest"]).unwrap_or_default();
+    let reference = field(v, &["image"]).unwrap_or_default();
+    let short = short_digest(&digest);
+    let pushed = u64_field(v, "pushed_unix").unwrap_or(0);
+
+    let cfg = v.get("config");
+    let strs = |key: &str| -> Vec<String> {
+        cfg.and_then(|c| c.get(key))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .unwrap_or_default()
+    };
+    let entrypoint = strs("Entrypoint");
+    let cmd = strs("Cmd");
+    let env = strs("Env");
+
+    let mut metrics = Vec::new();
+    if let Some(sd) = &short {
+        // The twelve hex that name the golden, so the two can be matched by
+        // eye without expanding a 71-character digest.
+        metrics.push(Metric::new("digest", sd.clone()).tone("muted"));
+    }
+    // Entrypoint and Cmd concatenated, which is what actually runs: Cmd
+    // alone is the default *arguments* when an Entrypoint is set, and
+    // showing it by itself has read as the command for as long as both
+    // fields have existed.
+    let command = [entrypoint.as_slice(), cmd.as_slice()].concat();
+    if !command.is_empty() {
+        metrics.push(Metric::new("command", command.join(" ")).tone("accent"));
+    }
+    if let Some(user) = cfg.and_then(|c| field(c, &["User"])) {
+        // Blank means root, and an image that runs as root is worth seeing
+        // without opening anything.
+        metrics.push(Metric::new("user", user).tone("warn"));
+    }
+    if let Some(wd) = cfg.and_then(|c| field(c, &["WorkingDir"])) {
+        metrics.push(Metric::new("workdir", wd).tone("muted"));
+    }
+    if !env.is_empty() {
+        metrics.push(Metric::new("env", env.len().to_string()).tone("muted"));
+    }
+
+    let mut detail = Vec::new();
+    if !digest.is_empty() {
+        detail.push(digest.chars().take(19).collect::<String>());
+    }
+    let when = since(pushed);
+    if !when.is_empty() {
+        detail.push(format!("pushed {when}"));
+    }
+    if cfg.is_none() {
+        // Said out loud rather than shown as an image with no command: the
+        // config is what a consumer needs to run it, and its absence is a
+        // fact about the push rather than a gap in this view.
+        detail.push("no config recorded".to_string());
+    }
+
+    let mut relations = vec![Relation::belongs_to("registry", "reg:registry")];
+    if let Some(sd) = &short {
+        // The golden built from this image. `img-<12 hex>` is not a guess —
+        // it is the naming rule the whole golden/clone model coordinates on
+        // (docs/api.md). A target nothing has built yet simply does not
+        // resolve, and the table drops it.
+        relations.push(Relation::has_one("golden", format!("reg:golden:img-{sd}")));
+    }
+
+    ComponentSummary {
+        id: format!("reg:image:{digest}"),
+        kind: "image".into(),
+        label: if reference.is_empty() { digest.clone() } else { reference },
+        health: Health::Ok,
+        detail: detail.join(" · "),
+        metrics,
+        actions: vec![],
+        relations,
+        link: None,
+    }
+}
+
+/// Pallets: identity from whichever of the usual keys is there, one line
+/// from the descriptive ones. Images had their own mapper split out of this
+/// (see `image`) once it became clear how much of their record it dropped.
 fn generic(v: &Value, kind: &str) -> ComponentSummary {
     let id = field(v, &["id", "name", "digest", "ref"]).unwrap_or_default();
     let label = field(v, &["name", "ref", "image", "id", "digest"]).unwrap_or_else(|| id.clone());
@@ -322,6 +442,74 @@ mod tests {
         assert_eq!(h, Health::Ok);
         let (h, _) = readiness(&json!({"ready": false}));
         assert_eq!(h, Health::Warn);
+    }
+
+    /// The record sbregistry actually serves: `PushRec` — a ref, a manifest
+    /// digest, an optional decoded image config, and when it was pushed.
+    fn push_rec() -> Value {
+        json!({
+            "image": "quay.io/cilium/cilium:v1.20.1",
+            "digest": "sha256:f70030cc1ee5aad3e15a5b37324a5f3dd4ec039c082a22c589d439fbaf3ac68d",
+            "config": {
+                "Entrypoint": ["/usr/bin/cilium-agent"],
+                "Cmd": ["--config-dir=/tmp/cilium/config-map"],
+                "Env": ["PATH=/usr/bin", "CILIUM_HOME=/"],
+                "WorkingDir": "/home/cilium",
+                "User": "1000"
+            },
+            "pushed_unix": 1
+        })
+    }
+
+    #[test]
+    fn an_image_carries_what_its_record_holds() {
+        // It had been going through `generic`, which found `digest` and
+        // nothing else on the usual key list: a name, the word "digest",
+        // and no metrics at all.
+        let c = image(&push_rec());
+        assert_eq!(c.label, "quay.io/cilium/cilium:v1.20.1");
+        assert!(c.id.starts_with("reg:image:sha256:"));
+        let m = |name: &str| c.metrics.iter().find(|m| m.label == name).map(|m| m.value.clone());
+        // Entrypoint and Cmd together, because Cmd alone is the default
+        // *arguments* when an Entrypoint is set, and showing it by itself
+        // reads as the command.
+        assert_eq!(
+            m("command").as_deref(),
+            Some("/usr/bin/cilium-agent --config-dir=/tmp/cilium/config-map")
+        );
+        assert_eq!(m("user").as_deref(), Some("1000"));
+        assert_eq!(m("workdir").as_deref(), Some("/home/cilium"));
+        assert_eq!(m("env").as_deref(), Some("2"));
+        assert_eq!(m("digest").as_deref(), Some("f70030cc1ee5"));
+    }
+
+    #[test]
+    fn an_image_links_the_golden_built_from_it() {
+        // `img-<first 12 hex>` is not a guess: it is the naming rule the
+        // whole golden/clone model coordinates on.
+        let c = image(&push_rec());
+        assert!(
+            c.relations.iter().any(|r| r.targets == vec!["reg:golden:img-f70030cc1ee5"]),
+            "{:?}",
+            c.relations
+        );
+    }
+
+    #[test]
+    fn an_image_with_no_config_says_so_rather_than_looking_empty() {
+        // The config is what a consumer needs to run it, and its absence is
+        // a fact about the push rather than a gap in this view.
+        let c = image(&json!({"image": "x:1", "digest": "sha256:abcdefabcdef0000", "pushed_unix": 1}));
+        assert!(c.detail.contains("no config recorded"), "{}", c.detail);
+        assert!(c.metrics.iter().all(|m| m.label != "command"));
+    }
+
+    #[test]
+    fn a_digest_that_is_not_one_yields_no_golden_edge() {
+        // A short or malformed digest must not mint `reg:golden:img-abc`
+        // and point a reader at a template that could never exist.
+        let c = image(&json!({"image": "x:1", "digest": "notadigest", "pushed_unix": 1}));
+        assert!(c.relations.iter().all(|r| r.name != "golden"), "{:?}", c.relations);
     }
 
     #[test]
