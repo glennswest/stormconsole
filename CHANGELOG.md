@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### 2026-09-20
+- **feat(vmimages):** a plugin for cloud images: the catalogue a cluster could
+  golden from, the goldens the fleet has, and which nodes carry a local copy —
+  all of it from `vmcloud-image-operator`, which is a door onto the cluster's
+  own `CloudImage` and `CloudImagePlacement` objects, so a golden made here is
+  the object `kubectl` shows. A catalogue row carries a **Make golden**
+  action, because the operator's `POST /api/v1/catalog/{reference}` takes no
+  body precisely so a stormview action — a method and a path, and nothing
+  else — can be wired to it. The create forms offer the live catalogue, the
+  built goldens and the known nodes rather than asking anybody to type a
+  reference. A local copy points at the stormblock volume it became
+  (`sb:volume:…`) and the node it is on (`k8s:node:…`) rather than describing
+  either a second time. Config: `[vmimages] enabled`, `url` (default
+  `http://127.0.0.1:9099`). Nav items land under **Images**, beside
+  sbregistry's, because both answer "where does an image come from".
 - **fix(vm):** the node is optional now that something schedules VMs. The form
   required one — "nothing places VMs yet, so a node has to be named" — and the
   YAML template shipped `nodeName: CHANGE-ME`. Both were true, and both were
