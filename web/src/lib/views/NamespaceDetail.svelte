@@ -45,6 +45,24 @@
   const populated = $derived((data?.inventory || []).filter((i) => i.count > 0))
   const empties = $derived((data?.inventory || []).filter((i) => i.count === 0))
 
+  // Annotations that answer "what is this namespace and whose is it" get a
+  // line of their own; the rest stay a list. The keys are OpenShift's,
+  // because a project and a namespace are the same object and those are the
+  // names already written on it.
+  const DESCRIBED = {
+    'openshift.io/display-name': 'Display name',
+    'openshift.io/description': 'Description',
+    'openshift.io/requester': 'Requester',
+  }
+  const described = $derived(
+    Object.entries(DESCRIBED)
+      .filter(([k]) => data?.annotations?.[k])
+      .map(([k, label]) => [label, data.annotations[k]])
+  )
+  const rest = $derived(
+    Object.entries(data?.annotations || {}).filter(([k]) => !(k in DESCRIBED))
+  )
+
   async function load(ns) {
     loaded = false
     error = ''
@@ -168,6 +186,33 @@
             <ul class="labels">
               {#each Object.entries(data.labels) as [k, v] (k)}
                 <li class="mono">{k}={v}</li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+
+        <!--
+          Annotations, which is where the descriptive fields actually live.
+          A namespace's labels never carried who asked for it or what it is
+          for; `openshift.io/requester` and `openshift.io/description` are
+          annotations, and so is anything an operator adds to explain a
+          namespace to the next person. They were fetched with the object
+          and thrown away.
+
+          `described` are the ones worth a line of their own, promoted out
+          of the list so they read as prose rather than as configuration.
+        -->
+        <div class="card">
+          <h2>Annotations</h2>
+          {#if Object.keys(data.annotations || {}).length === 0}
+            <p class="none">No annotations.</p>
+          {:else}
+            {#each described as [label, v] (label)}
+              <p class="described"><span class="dk">{label}</span>{v}</p>
+            {/each}
+            <ul class="labels">
+              {#each rest as [k, v] (k)}
+                <li class="mono" title="{k}={v}">{k}={v}</li>
               {/each}
             </ul>
           {/if}
@@ -301,6 +346,9 @@
 
   .plain, .labels { list-style: none; display: grid; gap: 3px; }
   .labels li, .plain li { font-size: var(--sc-t-meta); color: var(--text-dim); }
+  .labels li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .described { margin: 0 0 6px; font-size: var(--sc-t-meta); color: var(--text); }
+  .dk { display: block; color: var(--text-dim); font-size: var(--sc-t-eyebrow); }
 
   .quota + .quota { margin-top: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: var(--sc-t-body); }

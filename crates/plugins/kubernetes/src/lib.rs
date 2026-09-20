@@ -297,6 +297,7 @@ async fn namespace_detail(
         "phase": object.pointer("/status/phase").and_then(Value::as_str).unwrap_or("Active"),
         "created": object.pointer("/metadata/creationTimestamp").and_then(Value::as_str).unwrap_or(""),
         "labels": object.pointer("/metadata/labels").cloned().unwrap_or(json!({})),
+        "annotations": annotations_of(&object),
         "inventory": inventory,
         "quotas": quotas.iter().map(quota_row).collect::<Vec<_>>(),
         "limitRanges": limits.iter().map(limit_row).collect::<Vec<_>>(),
@@ -320,6 +321,30 @@ async fn objects_in(inner: &Inner, kind: &str, ns: &str) -> Vec<Value> {
         v.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("").to_string()
     });
     out
+}
+
+/// A namespace's annotations, minus the one that is not an annotation.
+///
+/// `kubectl.kubernetes.io/last-applied-configuration` is the entire object
+/// as a JSON string — kilobytes of it — and rendering it in a card of
+/// key/value pairs buries every annotation that means something. It is
+/// dropped here rather than in the view, because every consumer of this
+/// payload would otherwise have to know to drop it.
+///
+/// Annotations are where the descriptive fields live: OpenShift puts a
+/// project's requester and description in `openshift.io/requester` and
+/// `openshift.io/description`, and a namespace's own labels never carried
+/// either. They were fetched with the object and thrown away.
+fn annotations_of(object: &Value) -> Value {
+    const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
+    match object.pointer("/metadata/annotations").and_then(Value::as_object) {
+        Some(map) => {
+            let kept: serde_json::Map<String, Value> =
+                map.iter().filter(|(k, _)| k.as_str() != LAST_APPLIED).map(|(k, v)| (k.clone(), v.clone())).collect();
+            Value::Object(kept)
+        }
+        None => json!({}),
+    }
 }
 
 /// A quota as a page can print it: every resource with its used and hard
@@ -734,6 +759,29 @@ mod tests {
         let y = to_yaml(&v);
         assert!(y.contains("name: default"), "{y}");
         assert!(!y.contains("managedFields"), "{y}");
+    }
+
+    #[test]
+    fn annotations_drop_the_one_that_is_not_an_annotation() {
+        // `last-applied-configuration` is the whole object as a JSON string,
+        // kilobytes of it, and in a card of key/value pairs it buries every
+        // annotation that means something.
+        let obj = json!({"metadata": {"annotations": {
+            "openshift.io/requester": "gwest",
+            "openshift.io/description": "gwest-dev",
+            "kubectl.kubernetes.io/last-applied-configuration": "{\"a\":1}"
+        }}});
+        let a = annotations_of(&obj);
+        assert_eq!(a["openshift.io/requester"], "gwest");
+        assert_eq!(a["openshift.io/description"], "gwest-dev");
+        assert!(a.get("kubectl.kubernetes.io/last-applied-configuration").is_none());
+    }
+
+    #[test]
+    fn a_namespace_with_no_annotations_yields_an_object_not_a_null() {
+        // The view iterates it; a null would be a crash on a namespace that
+        // simply has none, which is most of them.
+        assert_eq!(annotations_of(&json!({"metadata": {}})), json!({}));
     }
 
     #[test]

@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### 2026-09-20
+- **feat(k8s):** a namespace shows its annotations, which is where the
+  descriptive fields actually live. Labels never carried who asked for a
+  namespace or what it is for — `openshift.io/requester`,
+  `openshift.io/description` and `openshift.io/display-name` are annotations,
+  and so is anything an operator adds to explain a namespace to the next
+  person. They were fetched with the object and thrown away. Those three get
+  a line of their own so they read as prose; the rest stay a list; and
+  `kubectl.kubernetes.io/last-applied-configuration` is dropped in the plugin
+  rather than in the view, because it is the whole object as a JSON string
+  and every consumer would otherwise have to know to drop it.
 - **fix(k8s):** a pod contains containers, not a node. Three faults wearing
   one symptom — open a pod, get a node, which gets you back to the pods, and
   the thing a pod actually contains was nowhere.
