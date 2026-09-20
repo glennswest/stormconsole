@@ -113,12 +113,19 @@ async fn main() {
     // with the same credential, and only reaches stormvm for the console
     // doors.
     if config.vm.enabled {
-        plugins.push(Arc::new(plugin_vm::VmPlugin::new(
+        // The same image operator the vmimages plugin browses, given to the
+        // create form so a root disk is chosen from what exists rather than
+        // typed from memory. Only when that plugin is enabled: pointing at an
+        // operator the operator's own view is not showing would be two
+        // answers about one cluster.
+        let image_operator = config.vmimages.enabled.then(|| config.vmimages_url());
+        plugins.push(Arc::new(plugin_vm::VmPlugin::with_images(
             config.kubernetes.enabled.then(|| config.kubernetes_server()),
             config.kubernetes.token.clone(),
             config.kubernetes_insecure(),
             Some(config.stormvm_url()),
             namespace_access.clone(),
+            image_operator,
         )));
     }
 
