@@ -25,6 +25,7 @@
 pub mod components;
 pub mod console;
 mod create;
+pub mod images;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -81,6 +82,12 @@ struct Inner {
     /// mean two sets of probes for one answer, and two answers that can
     /// disagree for a cache window.
     access: Option<Arc<NamespaceAccess>>,
+    /// Where vmcloud-image-operator answers, and the last thing it said.
+    ///
+    /// Polled rather than asked on demand: `creators()` is synchronous, and
+    /// a create form must not wait on an upstream that may be slow or gone.
+    image_operator: Option<String>,
+    images: images::Cache,
 }
 
 pub struct VmPlugin {
@@ -95,6 +102,22 @@ impl VmPlugin {
         stormvm: Option<String>,
         access: Option<Arc<NamespaceAccess>>,
     ) -> Self {
+        Self::with_images(server, token, insecure, stormvm, access, None)
+    }
+
+    /// The same, naming where `vmcloud-image-operator` answers.
+    ///
+    /// `None` keeps the old behaviour exactly: the root-disk field is free
+    /// text. A console on a cluster without the operator should not offer an
+    /// empty dropdown where a working text box used to be.
+    pub fn with_images(
+        server: Option<String>,
+        token: Option<String>,
+        insecure: bool,
+        stormvm: Option<String>,
+        access: Option<Arc<NamespaceAccess>>,
+        image_operator: Option<String>,
+    ) -> Self {
         let client = server.as_ref().map(|s| Client::new(s, token.as_deref(), insecure));
         Self {
             inner: Arc::new(Inner {
@@ -104,6 +127,8 @@ impl VmPlugin {
                 stormvm_up: RwLock::new(false),
                 http: reqwest::Client::new(),
                 access,
+                image_operator,
+                images: images::Cache::new(),
             }),
         }
     }
@@ -120,7 +145,9 @@ impl ConsolePlugin for VmPlugin {
     }
 
     fn creators(&self) -> Vec<Creator> {
-        create::creators()
+        // The snapshot, not a request: this is called while the console is
+        // rendering and must not wait on anything.
+        create::creators(&self.inner.images.get())
     }
 
     fn routes(&self) -> Router {
@@ -226,6 +253,30 @@ impl ConsolePlugin for VmPlugin {
                 });
             }
         }
+        // Keep the root-disk list current (stormcos: wire new VM to the image
+        // operator). A console that offered a dropdown built once at startup
+        // would never show an image goldened five minutes ago, which is
+        // exactly when somebody goes looking for it.
+        if let Some(base) = self.inner.image_operator.clone() {
+            let inner = self.inner.clone();
+            let token = shutdown.clone();
+            tokio::spawn(async move {
+                loop {
+                    // The node is left empty here: this console serves a
+                    // cluster, and which node a VM is pinned to is a field on
+                    // the form rather than a property of the console. The
+                    // "already on this node" grouping needs a node, so it is
+                    // answered per request by the images route below.
+                    let cat = images::fetch(&inner.http, &base, "").await;
+                    inner.images.put(cat);
+                    tokio::select! {
+                        _ = tokio::time::sleep(images::REFRESH) => {}
+                        _ = token.cancelled() => return,
+                    }
+                }
+            });
+        }
+
         // stormvm is probed rather than assumed: the console doors say
         // which upstream is missing, and that answer has to be current.
         //

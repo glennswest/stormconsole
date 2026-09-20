@@ -38,6 +38,8 @@ pub struct Config {
     pub sbregistry: Sbregistry,
     #[serde(default)]
     pub vm: Vm,
+    #[serde(default)]
+    pub vmimages: VmImages,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -281,6 +283,23 @@ impl Default for Vm {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VmImages {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// vmcloud-image-operator's API — the cloud-image catalogue, the
+    /// fleet's goldens, and which nodes carry a local copy. On a node it
+    /// is the operator beside the control plane; elsewhere, name it.
+    pub url: Option<String>,
+}
+
+impl Default for VmImages {
+    fn default() -> Self {
+        Self { enabled: true, url: None }
+    }
+}
+
 fn on() -> bool {
     true
 }
@@ -343,6 +362,10 @@ impl Config {
 
     pub fn stormblock_url(&self) -> String {
         self.stormblock.url.clone().unwrap_or_else(|| "http://127.0.0.1:9090".to_string())
+    }
+
+    pub fn vmimages_url(&self) -> String {
+        self.vmimages.url.clone().unwrap_or_else(|| "http://127.0.0.1:9099".to_string())
     }
 
     pub fn sbregistry_url(&self) -> String {
@@ -425,6 +448,7 @@ data_dir    = \"/var/lib/stormconsole\"
         assert!(c.kubernetes_insecure());
         assert_eq!(c.stormblock_url(), "http://127.0.0.1:9090");
         assert_eq!(c.sbregistry_url(), "http://127.0.0.1:5100");
+        assert_eq!(c.vmimages_url(), "http://127.0.0.1:9099");
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
         assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");

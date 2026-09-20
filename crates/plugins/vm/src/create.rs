@@ -35,6 +35,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use console_core::{Creator, Field, Viewer};
+
+use crate::images::{self, Catalogue};
 use serde_json::{json, Value};
 
 use crate::Inner;
@@ -42,7 +44,7 @@ use crate::Inner;
 const CREATE: &str = "/api/plugins/vm/create";
 const APPLY: &str = "/api/plugins/k8s/apply";
 
-pub fn creators() -> Vec<Creator> {
+pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
     vec![
         Creator::form(
             "vm:vm",
@@ -55,9 +57,7 @@ pub fn creators() -> Vec<Creator> {
                     .hint("leave blank and the scheduler picks one; name a node to pin it there"),
                 Field::text("cores", "vCPU").default("2"),
                 Field::text("memory", "Memory").default("4Gi"),
-                Field::text("golden", "Root disk from golden")
-                    .required()
-                    .hint("a sealed golden to CoW-clone, e.g. rocky-10-cloud. Importing an existing disk image needs stormblock-registry#5"),
+                root_disk(catalogue),
                 Field::select("bus", "Disk bus", &["virtio", "nvme", "scsi", "sata"]),
                 Field::text("ssh_key", "SSH public key")
                     .hint("goes into the cloud-init seed; a guest with no key and no password is a machine nothing can log into"),
@@ -150,6 +150,49 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     Ok(vmi)
 }
 
+/// The root-disk field: a list when the image operator has answered, free
+/// text when it has not.
+///
+/// Free text was the old behaviour and it is the right fallback rather than
+/// an empty dropdown — a console on a cluster with no image operator should
+/// keep the box that worked, not show a control with nothing in it.
+///
+/// The list holds three kinds in one field, ordered by how soon the VM can
+/// start: goldens already on the node, goldens the fleet has that would be
+/// copied, and catalogue entries that must be downloaded and built. Each
+/// label says which, because the difference is minutes.
+fn root_disk(catalogue: &Catalogue) -> Field {
+    if catalogue.choices.is_empty() {
+        let hint = if catalogue.note.is_empty() {
+            "a sealed golden to CoW-clone, e.g. rocky-10-cloud".to_string()
+        } else {
+            catalogue.note.clone()
+        };
+        return Field::text("golden", "Root disk").required().hint(&hint);
+    }
+    // `options` carries the label; the value is recovered on submit by
+    // `value_of`. One field rather than two, because a value and a separate
+    // description that can disagree is how a form lies.
+    let labels: Vec<&str> = catalogue.choices.iter().map(|c| c.label.as_str()).collect();
+    Field::select("golden", "Root disk", &labels)
+        .required()
+        .hint("already on the node boots at once; anything else is built or copied first")
+}
+
+/// Recover the submitted value from what the form showed.
+///
+/// The select posts back the label it displayed, so the label is mapped to
+/// its value here. Anything unrecognised is passed through unchanged, which
+/// is what keeps a typed golden name working when the operator is absent.
+pub fn value_of(catalogue: &Catalogue, submitted: &str) -> String {
+    catalogue
+        .choices
+        .iter()
+        .find(|c| c.label == submitted)
+        .map(|c| c.value.clone())
+        .unwrap_or_else(|| submitted.to_string())
+}
+
 pub async fn create(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
@@ -159,6 +202,25 @@ pub async fn create(
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
     };
+    // Resolve what the form showed back to what it means, and golden it if
+    // it is not a golden yet.
+    //
+    // One field carries three kinds of answer — a local golden, a fleet
+    // golden, a catalogue reference nobody has built — because they are the
+    // same decision from the person's side: what should this machine boot.
+    // Which of the three it was is the operator's problem, not theirs.
+    let mut form = form;
+    let catalogue = inner.images.get();
+    form.golden = value_of(&catalogue, form.golden.trim());
+    if images::is_reference(&form.golden) {
+        match golden_from_reference(&inner, &form.golden, &form.node).await {
+            Ok(name) => form.golden = name,
+            Err(e) => {
+                return (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response()
+            }
+        }
+    }
+
     let doc = match instance(&form) {
         Ok(d) => d,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
@@ -184,6 +246,67 @@ pub async fn create(
         }
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
     }
+}
+
+/// Ask the image operator to golden a catalogue reference, and say what the
+/// VM should then boot from.
+///
+/// **This returns as soon as the object exists, not when the golden is
+/// built.** The operator answers 202 and reconciles: a download, a decode
+/// and a seal, which is minutes for a cloud image. The VM is created against
+/// the name the golden will have, and starts when it is there — which is the
+/// same shape as a pod scheduled before its image is pulled, and the reason
+/// the form says "will be built" rather than pretending it is instant.
+///
+/// `localOn` is the node the VM is pinned to, when it is pinned. A VM the
+/// scheduler will place has no node to name yet, so the image is goldened
+/// fleet-wide and the copy follows wherever it lands.
+async fn golden_from_reference(
+    inner: &Arc<Inner>,
+    reference: &str,
+    node: &str,
+) -> Result<String, String> {
+    let Some(base) = inner.image_operator.clone() else {
+        return Err(format!(
+            "{reference} is a catalogue reference and there is no image operator to build it"
+        ));
+    };
+    let mut body = json!({"reference": reference});
+    if !node.trim().is_empty() {
+        body["localOn"] = json!([node.trim()]);
+    }
+    let url = format!("{}/api/v1/images", base.trim_end_matches('/'));
+    let r = inner
+        .http
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("image operator at {base}: {e}"))?;
+    let status = r.status();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if !status.is_success() {
+        let msg = v
+            .get("error")
+            .or_else(|| v.get("message"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("image operator returned {}", status.as_u16()));
+        return Err(msg);
+    }
+    // `localName` is what a VM spec refers to; it is only there once the
+    // object has been resolved, so fall back to the object's own name.
+    let name = v
+        .pointer("/status/localName")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .or_else(|| v.get("name").and_then(Value::as_str))
+        .unwrap_or("")
+        .to_string();
+    if name.is_empty() {
+        return Err(format!("image operator accepted {reference} but named no golden"));
+    }
+    Ok(name)
 }
 
 const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachineInstance\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  domain:\n    cpu:\n      cores: 2\n    memory:\n      guest: 4Gi\n    firmware:\n      bootloader:\n        efi:\n          secureBoot: false\n    devices:\n      disks:\n        - name: root\n          disk:\n            bus: virtio\n        - name: seed\n          disk:\n            bus: virtio\n      interfaces:\n        - name: default\n  networks:\n    - name: default\n      pod: {}\n  volumes:\n    - name: root\n      dataVolume:\n        name: rocky-10-cloud\n    - name: seed\n      cloudInitNoCloud:\n        userData: |\n          #cloud-config\n";

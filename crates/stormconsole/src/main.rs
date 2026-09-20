@@ -103,6 +103,12 @@ async fn main() {
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
     }
+    // Cloud images: what could be goldened, what has been, and where the
+    // copies are. Beside sbregistry in the nav, because both answer "where
+    // does an image come from" and a person should find one list.
+    if config.vmimages.enabled {
+        plugins.push(Arc::new(plugin_vmimages::VmImagesPlugin::new(&config.vmimages_url())));
+    }
     // VMs are kube objects here — the plugin watches the same apiserver
     // with the same credential, and only reaches stormvm for the console
     // doors.

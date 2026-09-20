@@ -11,6 +11,7 @@ members = [
     "crates/plugins/stormblock",
     "crates/plugins/sbregistry",
     "crates/plugins/vm",
+    "crates/plugins/vmimages",
 ]
 
 [workspace.package]
@@ -28,6 +29,7 @@ plugin-stormdrive = { path = "crates/plugins/stormdrive" }
 plugin-stormstorage = { path = "crates/plugins/stormstorage" }
 plugin-stormblock = { path = "crates/plugins/stormblock" }
 plugin-sbregistry = { path = "crates/plugins/sbregistry" }
+plugin-vmimages = { path = "crates/plugins/vmimages" }
 plugin-vm = { path = "crates/plugins/vm" }
 
 stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
