@@ -398,4 +398,76 @@ mod tests {
         assert_eq!(name, "web-1");
         assert_eq!(path, "/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances");
     }
+
+    use crate::images::Choice;
+
+    fn catalogue() -> Catalogue {
+        Catalogue {
+            choices: vec![
+                Choice {
+                    value: "fedora-43-x86_64".into(),
+                    label: "fedora-43-x86_64 — on this node".into(),
+                },
+                Choice {
+                    value: "rocky-10-x86_64".into(),
+                    label: "rocky-10-x86_64 — goldened, will be copied to the node".into(),
+                },
+                Choice {
+                    value: "debian:13".into(),
+                    label: "debian 13 x86_64 — not goldened yet, will be built".into(),
+                },
+            ],
+            note: String::new(),
+        }
+    }
+
+    #[test]
+    fn the_root_disk_is_a_list_when_the_operator_has_answered() {
+        let f = root_disk(&catalogue());
+        assert_eq!(f.kind, "select");
+        assert_eq!(f.options.len(), 3);
+        assert!(f.required);
+    }
+
+    #[test]
+    fn the_root_disk_falls_back_to_free_text_without_an_operator() {
+        // The old behaviour, kept: a console on a cluster with no image
+        // operator should keep the box that worked rather than show an
+        // empty dropdown.
+        let f = root_disk(&Catalogue::default());
+        assert_eq!(f.kind, "text");
+        assert!(f.required);
+        assert!(f.hint.contains("golden"));
+    }
+
+    #[test]
+    fn an_empty_list_explains_itself() {
+        let c = Catalogue { choices: vec![], note: "no answer from the image operator".into() };
+        assert_eq!(root_disk(&c).hint, "no answer from the image operator");
+    }
+
+    #[test]
+    fn a_label_maps_back_to_its_value() {
+        let c = catalogue();
+        assert_eq!(value_of(&c, "fedora-43-x86_64 — on this node"), "fedora-43-x86_64");
+        assert_eq!(value_of(&c, "debian 13 x86_64 — not goldened yet, will be built"), "debian:13");
+    }
+
+    #[test]
+    fn a_typed_golden_passes_through_unchanged() {
+        // What keeps the free-text path working, and what stops a console
+        // whose cache is empty from mangling a name somebody typed.
+        assert_eq!(value_of(&Catalogue::default(), "rocky-10-cloud"), "rocky-10-cloud");
+        assert_eq!(value_of(&catalogue(), "something-else"), "something-else");
+    }
+
+    #[test]
+    fn only_a_reference_needs_goldening() {
+        let c = catalogue();
+        assert!(!images::is_reference(&value_of(&c, "fedora-43-x86_64 — on this node")));
+        assert!(images::is_reference(&value_of(
+            &c,
+            "debian 13 x86_64 — not goldened yet, will be built"
+        )));
+    }
 }
