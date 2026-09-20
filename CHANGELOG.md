@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### 2026-09-20
+- **fix(vm):** the node is optional now that something schedules VMs. The form
+  required one — "nothing places VMs yet, so a node has to be named" — and the
+  YAML template shipped `nodeName: CHANGE-ME`. Both were true, and both were
+  the workaround somebody had to perform to get a VM to run at all;
+  rustkube#72 gave the scheduler VirtualMachineInstances. Blank now means "the
+  scheduler picks"; a named node still pins the machine there. The key is
+  **absent** rather than empty when none was asked for, because `spec.nodeName`
+  is a pin and the scheduler leaves a VMI carrying one alone — an empty string
+  would pin the machine to a node called `""`, which is the same shape of bug
+  as `CHANGE-ME` and harder to see.
 - **feat(k8s):** a namespace shows its annotations, which is where the
   descriptive fields actually live. Labels never carried who asked for a
   namespace or what it is for — `openshift.io/requester`,
