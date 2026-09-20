@@ -43,6 +43,7 @@ pub async fn run(
     group: &str,
     store: Arc<Store>,
     tail: broadcast::Sender<StoredEvent>,
+    inner: Arc<crate::Inner>,
     shutdown: CancellationToken,
 ) -> Result<(), String> {
     let (ip, port) = parse_group(group)?;
@@ -63,6 +64,15 @@ pub async fn run(
         };
         let line = String::from_utf8_lossy(&buf[..len]);
         let now = chrono::Utc::now();
+
+        // A beacon is state, so it is taken here and kept beside the ring
+        // rather than being fished back out of it later (stormcos#26). It is
+        // *also* stored as an ordinary line below — it is a real log line,
+        // and dropping it would make a node's inventory invisible to anyone
+        // reading the group directly.
+        if let Some(b) = crate::beacon::from_line(&line, &src.ip().to_string()) {
+            inner.beacons.write().await.insert(b.host.clone(), b);
+        }
         let event = parse(&line, &src.ip().to_string(), || {
             now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
         });

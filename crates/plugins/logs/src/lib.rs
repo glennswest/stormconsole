@@ -9,6 +9,7 @@
 //! entries on both a retention window and an entry cap. See `store` for
 //! why.
 
+pub mod beacon;
 mod collector;
 mod parse;
 mod store;
@@ -44,6 +45,14 @@ struct Inner {
     store: RwLock<Option<Arc<Store>>>,
     tail: broadcast::Sender<StoredEvent>,
     status: RwLock<Status>,
+    /// The most recent capability beacon from each node (stormcos#26).
+    ///
+    /// Kept beside the ring rather than in it. A beacon is *state* — the
+    /// current shape of a node — and the ring is a log: bounded, pruned by
+    /// age, and deduplicated. A beacon that fell out of a busy ring would
+    /// take the node's capabilities off the fleet view while the node was
+    /// still shouting them every thirty seconds.
+    beacons: RwLock<std::collections::HashMap<String, beacon::Beacon>>,
 }
 
 pub struct LogsPlugin {
@@ -64,6 +73,13 @@ const PRUNE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 pub struct LogHosts(Arc<Inner>);
 
 impl LogHosts {
+    /// The latest beacon from every node that has sent one, keyed by the
+    /// hostname the node calls itself — the same key `hosts()` uses, so the
+    /// fleet plugin can join the two without a second identity.
+    pub async fn beacons(&self) -> std::collections::HashMap<String, beacon::Beacon> {
+        self.0.beacons.read().await.clone()
+    }
+
     pub async fn hosts(&self) -> Vec<HostSummary> {
         match self.0.store.read().await.as_ref() {
             Some(store) => store.hosts().unwrap_or_default(),
@@ -98,6 +114,7 @@ impl LogsPlugin {
                 dedup,
                 store: RwLock::new(None),
                 tail,
+                beacons: RwLock::new(std::collections::HashMap::new()),
                 status: RwLock::new(Status {
                     health: Health::Idle,
                     detail: "collector not started".to_string(),
@@ -216,6 +233,7 @@ impl ConsolePlugin for LogsPlugin {
             &self.inner.group,
             store,
             self.inner.tail.clone(),
+            self.inner.clone(),
             shutdown.clone(),
         )
         .await;

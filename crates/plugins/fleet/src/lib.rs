@@ -161,6 +161,14 @@ impl ConsolePlugin for FleetPlugin {
             None => Vec::new(),
         };
         hosts.sort_by(|a, b| a.host.cmp(&b.host));
+        // What each node says it *is* (stormcos#26). Until this existed the
+        // fleet view could say a node was talking and nothing about the
+        // machine — the capabilities had to come from per-node API calls
+        // after discovery, which is the polling the beacon exists to avoid.
+        let beacons = match &self.inner.hosts {
+            Some(h) => h.beacons().await,
+            None => Default::default(),
+        };
         let now = chrono::Utc::now();
         let mut nodes: Vec<ComponentSummary> = Vec::new();
         for h in &hosts {
@@ -183,17 +191,29 @@ impl ConsolePlugin for FleetPlugin {
                 kind: "node".into(),
                 label: h.host.clone(),
                 health,
-                detail: format!(
-                    "{}{} · {} log events · last seen {seen}",
-                    if h.addr.is_empty() { "no address yet".to_string() } else { h.addr.clone() },
-                    if is_local { " · this node" } else { "" },
-                    h.count,
-                ),
-                metrics: vec![
-                    Metric::new("events", h.count.to_string()),
-                    Metric::new("services", if is_local { svc_ids.len().to_string() } else { "—".into() })
-                        .tone("muted"),
-                ],
+                detail: {
+                    let addr = if h.addr.is_empty() {
+                        "no address yet".to_string()
+                    } else {
+                        h.addr.clone()
+                    };
+                    let here = if is_local { " · this node" } else { "" };
+                    match beacons.get(&h.host) {
+                        // The beacon's facts first: on a fleet view, what a
+                        // machine *is* outranks how many log lines it has
+                        // sent, and the log count was only ever there
+                        // because nothing better was known.
+                        Some(b) => format!(
+                            "{addr}{here} · {} · last seen {seen}",
+                            describe(b)
+                        ),
+                        None => format!(
+                            "{addr}{here} · {} log events · last seen {seen}",
+                            h.count
+                        ),
+                    }
+                },
+                metrics: node_metrics(h, is_local, svc_ids.len(), beacons.get(&h.host)),
                 actions: vec![],
                 relations,
                 // A node opens its own page; the log tail is one tab on it.
@@ -428,4 +448,98 @@ async fn proxy(
     }
     let upstream = format!("http://{}:{port}", inner.host);
     console_core::proxy::forward(&inner.client, &upstream, &method, &path, uri.query(), &headers, body).await
+}
+
+/// A node's shape in one clause, from its beacon.
+///
+/// Only what the beacon actually carried. Every field is optional by design —
+/// the emitter omits what it cannot read so that a reader can tell "no role"
+/// from "role unknown" — and inventing a zero here would throw that away at
+/// the last step.
+fn describe(b: &plugin_logs::beacon::Beacon) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(c) = b.cores() {
+        parts.push(format!("{c} cores"));
+    }
+    if let Some(m) = b.mem_bytes() {
+        parts.push(format!("{} RAM", human_bytes(m)));
+    }
+    if let Some(d) = b.drives() {
+        parts.push(format!("{d} drive{}", if d == 1 { "" } else { "s" }));
+    }
+    if let Some(r) = b.role() {
+        parts.push(r.to_string());
+    }
+    if let Some(r) = b.release() {
+        parts.push(format!("release {r}"));
+    }
+    if parts.is_empty() {
+        // A beacon arrived but carried nothing this console could read.
+        // Saying so beats an empty clause that looks like a rendering bug.
+        return "beacon carries no known fields".into();
+    }
+    parts.join(" · ")
+}
+
+/// Metrics for a node card: the beacon's facts when there are any.
+fn node_metrics(
+    h: &plugin_logs::HostSummary,
+    is_local: bool,
+    services: usize,
+    beacon: Option<&plugin_logs::beacon::Beacon>,
+) -> Vec<Metric> {
+    let mut m = Vec::new();
+    if let Some(b) = beacon {
+        if let Some(c) = b.cores() {
+            m.push(Metric::new("cores", c.to_string()));
+        }
+        if let Some(bytes) = b.mem_bytes() {
+            m.push(Metric::new("memory", human_bytes(bytes)));
+        }
+        if let Some(d) = b.drives() {
+            m.push(Metric::new("drives", d.to_string()));
+        }
+        // Running and failed together, because the pair is the fact: "14
+        // running" alone reads as healthy on a node with six dead workloads.
+        if let (Some(r), Some(f)) = (b.running(), b.failed()) {
+            m.push(Metric::new("workloads", format!("{r} up, {f} down")).tone(
+                if f > 0 { "warn" } else { "muted" },
+            ));
+        }
+        let pallets = b.pallets().len();
+        if pallets > 0 {
+            m.push(Metric::new("pallets", pallets.to_string()).tone("muted"));
+        }
+    }
+    m.push(Metric::new("events", h.count.to_string()).tone("muted"));
+    m.push(
+        Metric::new(
+            "services",
+            if is_local { services.to_string() } else { "—".into() },
+        )
+        .tone("muted"),
+    );
+    m
+}
+
+/// Bytes as an operator reads them. Binary units, because memory is sold and
+/// reported in them and 16 GB of RAM showing as "17.2 GB" reads as wrong.
+fn human_bytes(n: u64) -> String {
+    const UNIT: [(u64, &str); 4] = [
+        (1 << 40, "TB"),
+        (1 << 30, "GB"),
+        (1 << 20, "MB"),
+        (1 << 10, "KB"),
+    ];
+    for (scale, name) in UNIT {
+        if n >= scale {
+            let whole = n as f64 / scale as f64;
+            return if whole >= 10.0 {
+                format!("{whole:.0} {name}")
+            } else {
+                format!("{whole:.1} {name}")
+            };
+        }
+    }
+    format!("{n} B")
 }
