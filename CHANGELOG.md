@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### 2026-09-20
+- **fix(k8s):** a pod contains containers, not a node. Three faults wearing
+  one symptom — open a pod, get a node, which gets you back to the pods, and
+  the thing a pod actually contains was nowhere.
+  `Relation::has_one("node", …)` was the wrong direction: the table reads the
+  direction to decide what nests inside what, so a pod expanded into its node
+  and the node's `has_many pods` expanded straight back. It is `belongs_to`
+  now — a pod does not own its node, it is placed on one.
+  Containers were not in the feed at all; `containerStatuses` was read once,
+  to sum restarts. Every container is now a component of its own
+  (`k8s:container:<ns>/<pod>/<name>`) carrying the image in full, the
+  `imageID` actually running, restarts, ports and the state in the words
+  `kubectl describe` uses — `waiting · CrashLoopBackOff` is the whole
+  diagnosis in most cases and should not need the YAML tab. Read from `spec`,
+  not `status`, so a pod that has not started still lists them; init
+  containers first, because that is the order they run in; spec and status
+  matched by name, because the kubelet does not promise the arrays agree and
+  pairing a container with somebody else's state is worse than showing none.
+- **fix(k8s):** a pod says which namespace it is in. It is in the detail line,
+  and the table grew a Namespace column — read from the `belongs_to namespace`
+  edge every namespaced component already publishes rather than parsed out of
+  an id, and shown only when some row has one, so cluster-scoped lists get no
+  empty column. Generic, so deployments, services and the rest gained it at
+  the same time.
+- **fix(registry):** an image is more than a name and the word "digest".
+  Images went through `generic()`, which looks for whichever of
+  `state/status/digest/size_human/created/role` it finds and takes three; a
+  `PushRec` has none of those but `digest`, so an image rendered as its ref,
+  the text "digest sha256:…", no metrics and no edges. Everything now shown
+  was already in the record: the **command** (`Entrypoint` + `Cmd`
+  concatenated — `Cmd` alone is the default *arguments* when an Entrypoint is
+  set, and showing it by itself reads as the command), the user (blank means
+  root, worth seeing without opening anything), workdir, env count, and the
+  twelve hex that name its golden. The golden built from it is now an edge:
+  `img-<first 12 hex>` is the naming rule the golden/clone model coordinates
+  on, and a malformed digest yields no edge rather than pointing at a template
+  that could never exist.
+
 ### 2026-09-09
 - **fix:** the VM console doors work, now that stormvm serves them
   (stormvm#5). Three bugs found only by running both ends together: the
