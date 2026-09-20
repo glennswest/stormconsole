@@ -606,6 +606,7 @@ mod beacon_render_tests {
             host: "storm-1".into(),
             addr: "192.168.30.2".into(),
             count: 10,
+            entries: 10,
             last_ts: String::new(),
         };
         let healthy = beacon(&[("running", "18"), ("failed", "0")]);
@@ -628,6 +629,7 @@ mod beacon_render_tests {
             host: "storm-1".into(),
             addr: "192.168.30.2".into(),
             count: 42,
+            entries: 42,
             last_ts: String::new(),
         };
         let m = node_metrics(&h, true, 2, None);
