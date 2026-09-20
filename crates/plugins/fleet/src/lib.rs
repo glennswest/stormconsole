@@ -543,3 +543,96 @@ fn human_bytes(n: u64) -> String {
     }
     format!("{n} B")
 }
+
+#[cfg(test)]
+mod beacon_render_tests {
+    use super::*;
+    use plugin_logs::beacon::Beacon;
+
+    fn beacon(pairs: &[(&str, &str)]) -> Beacon {
+        let mut b = Beacon::default();
+        for (k, v) in pairs {
+            b.params.insert(k.to_string(), v.to_string());
+        }
+        b
+    }
+
+    #[test]
+    fn a_full_beacon_describes_the_machine() {
+        let b = beacon(&[
+            ("cores", "8"),
+            ("mem_bytes", "16708300800"),
+            ("drives", "3"),
+        ]);
+        assert_eq!(describe(&b), "8 cores · 16 GB RAM · 3 drives");
+    }
+
+    #[test]
+    fn one_drive_is_not_pluralised() {
+        assert_eq!(describe(&beacon(&[("drives", "1")])), "1 drive");
+    }
+
+    #[test]
+    fn absent_fields_are_left_out_rather_than_zeroed() {
+        // The emitter omits what it cannot read so a reader can tell "no
+        // role" from "role unknown". Rendering a 0 here would discard that
+        // at the very last step.
+        let b = beacon(&[("cores", "4")]);
+        assert_eq!(describe(&b), "4 cores");
+        assert!(!describe(&b).contains("0 drives"));
+        assert!(!describe(&b).contains("RAM"));
+    }
+
+    #[test]
+    fn a_beacon_with_nothing_readable_says_so() {
+        // Better than an empty clause, which renders as a bug.
+        assert_eq!(
+            describe(&beacon(&[("something_new", "1")])),
+            "beacon carries no known fields"
+        );
+    }
+
+    #[test]
+    fn memory_is_binary_because_that_is_how_it_is_sold() {
+        // 16 GiB reported as "17.2 GB" reads as wrong to whoever bought it.
+        assert_eq!(human_bytes(16 * (1 << 30)), "16 GB");
+        assert_eq!(human_bytes(1536 * (1 << 20)), "1.5 GB");
+        assert_eq!(human_bytes(512), "512 B");
+    }
+
+    #[test]
+    fn failed_workloads_tone_the_metric() {
+        let h = plugin_logs::HostSummary {
+            host: "storm-1".into(),
+            addr: "192.168.30.2".into(),
+            count: 10,
+            last_ts: String::new(),
+        };
+        let healthy = beacon(&[("running", "18"), ("failed", "0")]);
+        let sick = beacon(&[("running", "14"), ("failed", "4")]);
+
+        let m = node_metrics(&h, true, 3, Some(&healthy));
+        let w = m.iter().find(|m| m.label == "workloads").expect("workloads");
+        assert_eq!(w.value, "18 up, 0 down");
+        assert_eq!(w.tone.as_deref(), Some("muted"));
+
+        let m = node_metrics(&h, true, 3, Some(&sick));
+        let w = m.iter().find(|m| m.label == "workloads").expect("workloads");
+        assert_eq!(w.value, "14 up, 4 down");
+        assert_eq!(w.tone.as_deref(), Some("warn"));
+    }
+
+    #[test]
+    fn a_node_with_no_beacon_still_gets_its_old_metrics() {
+        let h = plugin_logs::HostSummary {
+            host: "storm-1".into(),
+            addr: "192.168.30.2".into(),
+            count: 42,
+            last_ts: String::new(),
+        };
+        let m = node_metrics(&h, true, 2, None);
+        assert!(m.iter().any(|m| m.label == "events" && m.value == "42"));
+        assert!(m.iter().any(|m| m.label == "services" && m.value == "2"));
+        assert!(!m.iter().any(|m| m.label == "cores"));
+    }
+}
