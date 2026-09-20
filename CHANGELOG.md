@@ -410,3 +410,17 @@
   (stormcast collector), fleet, stormdrive, stormblock, sbregistry
 - **docs:** Work plan (`CLAUDE.md`), README
 - **chore:** Repository bootstrap, .gitignore, private GitHub repo
+
+### 2026-09-20
+- **feat:** the fleet view reads the node capability beacon (stormcos#26).
+  Node cards now carry cores, memory, drives, workloads up/down and pallet
+  count, read off the `[storm-beacon@0 …]` element every node puts on the log
+  group every 30 s. No new socket, no polling: the collector already sees
+  every datagram. Beacons are kept beside the log ring rather than in it,
+  because a beacon is state and the ring is a bounded, age-pruned log —
+  one that aged out would take a node's capabilities off the fleet view
+  while the node was still announcing them.
+- Every beacon parameter is retained rather than parsed into a fixed struct,
+  so a field stormcos adds reaches the node card without a release here.
+  Absent fields render as absent: the emitter omits what it cannot read so a
+  reader can tell "no role" from "role unknown".

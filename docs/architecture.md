@@ -388,12 +388,31 @@ log cards are filtered out; sixty of them per service is noise on an
 overview.
 
 CLUSTER.md calls for a **small periodic capability beacon** alongside the
-logs (cores, memory, drives, pallets booted, join state) rather than an
-inventory protocol. The beacon is the console's to define — proposed as an
-issue on stormcos (below); until it exists, capabilities come from per-node
-API calls after discovery. Drilling into *another* node's services, and
-the fleet actions (join, promote, demote, drain), are the remaining phase 4
-work.
+logs rather than an inventory protocol, and it now exists (stormcos#26).
+Every node puts an RFC 5424 element — `[storm-beacon@0 cores="8"
+mem_bytes="…" drives="3" pallets="…" running="18" failed="0" …]` — on the
+same multicast group as its logs, every thirty seconds. The collector
+already sees every datagram, so reading it costs no socket, no discovery
+and no polling: capabilities no longer come from per-node API calls after
+discovery, they arrive with the traffic that made the node visible at all.
+
+Two properties are load-bearing on the reading side:
+
+- **Beacons are kept beside the ring, not in it.** A beacon is *state* —
+  the current shape of a node — and the ring is a bounded, age-pruned,
+  deduplicating log. A beacon that fell out of a busy ring would take a
+  node's capabilities off the fleet view while the node was still
+  announcing them every thirty seconds.
+- **Every parameter is kept, not parsed into a struct.** stormcos owns the
+  shape; a fixed struct here would mean every new field needed a release in
+  this repo before it could be seen. Unknown fields reach the node card.
+
+Absent fields are rendered as absent. The emitter omits what it cannot read
+rather than sending an empty value, precisely so a reader can tell "no
+role" from "role unknown", and nothing on this side defaults them to zero.
+
+Drilling into *another* node's services, and the fleet actions (join,
+promote, demote, drain — stormcos#38), are the remaining phase 4 work.
 
 ### stormdrive and stormstorage — feed plugins
 
