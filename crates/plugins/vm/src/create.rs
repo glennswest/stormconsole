@@ -3,12 +3,22 @@
 //! Two doors, the way OpenShift has two: a form for the ordinary case,
 //! and YAML for everything else. The form builds a
 //! `VirtualMachineInstance` — not a `VirtualMachine` — because nothing
-//! turns a definition into an instance yet (stormvm `docs/kube.md`: "a
-//! controller turning a running VirtualMachine into an instance, and a
-//! scheduler placing it" is on the Left list, and "today an instance is
-//! applied with a nodeName"). A form that produced a definition would
-//! produce a VM that never starts, and the console would have made a
-//! promise the cluster cannot keep.
+//! turns a definition into an instance yet. A form that produced a
+//! definition would produce a VM that never starts, and the console would
+//! have made a promise the cluster cannot keep.
+//!
+//! **The node is optional now.** It was required, with the hint "nothing
+//! schedules VMs yet, so this is explicit", and the YAML template shipped
+//! `nodeName: CHANGE-ME` — which was true and is the workaround somebody
+//! had to perform to get a VM at all. rustkube#72 gave the scheduler
+//! VirtualMachineInstances, so a VM with no node is placed like anything
+//! else.
+//!
+//! What has *not* changed is what `spec.nodeName` means: it is a **pin**,
+//! and the scheduler leaves a VMI that carries one alone. So the field is
+//! absent unless somebody asked for it — an empty string would pin the
+//! machine to a node called `""` and it would never run, which is the same
+//! shape of bug as `CHANGE-ME` and harder to see.
 //!
 //! **Import.** Bringing an existing qcow2 or raw disk in is the thing
 //! that makes replacing a hypervisor a migration rather than a rebuild,
@@ -42,8 +52,7 @@ pub fn creators() -> Vec<Creator> {
                 Field::text("name", "Name").required(),
                 Field::text("namespace", "Namespace").default("default"),
                 Field::text("node", "Node")
-                    .required()
-                    .hint("the node to run on — nothing schedules VMs yet, so this is explicit"),
+                    .hint("leave blank and the scheduler picks one; name a node to pin it there"),
                 Field::text("cores", "vCPU").default("2"),
                 Field::text("memory", "Memory").default("4Gi"),
                 Field::text("golden", "Root disk from golden")
@@ -54,7 +63,7 @@ pub fn creators() -> Vec<Creator> {
                     .hint("goes into the cloud-init seed; a guest with no key and no password is a machine nothing can log into"),
             ],
         )
-        .describe("A VM on this cluster, from a golden, on a named node")
+        .describe("A VM on this cluster, from a golden")
         .at(&["#/vms"]),
         Creator::yaml("vm:yaml", "Virtual machine (YAML)", APPLY, VMI)
             .describe("A KubeVirt VirtualMachineInstance, as kubectl would apply it")
@@ -92,9 +101,6 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     if f.golden.trim().is_empty() {
         return Err("a root disk needs a golden to clone from".into());
     }
-    if f.node.trim().is_empty() {
-        return Err("nothing places VMs yet, so a node has to be named".into());
-    }
     let cores: i64 = f.cores.trim().parse().unwrap_or(2);
     if cores < 1 {
         return Err("vCPU must be at least 1".into());
@@ -107,12 +113,11 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     } else {
         format!("#cloud-config\nssh_authorized_keys:\n  - {}\n", f.ssh_key.trim())
     };
-    Ok(json!({
+    let mut vmi = json!({
         "apiVersion": "kubevirt.io/v1",
         "kind": "VirtualMachineInstance",
         "metadata": {"name": f.name.trim(), "namespace": ns},
         "spec": {
-            "nodeName": f.node.trim(),
             "domain": {
                 "cpu": {"cores": cores},
                 "memory": {"guest": memory},
@@ -131,7 +136,18 @@ pub fn instance(f: &Form) -> Result<Value, String> {
                 {"name": "seed", "cloudInitNoCloud": {"userData": user_data}}
             ]
         }
-    }))
+    });
+    // A node only when one was asked for.
+    //
+    // `spec.nodeName` is a **pin**, not a hint: the scheduler treats a VMI
+    // that carries one as already placed and leaves it alone, which is right
+    // for a machine somebody deliberately put somewhere and wrong for every
+    // other machine. Writing an empty string would be writing a field the
+    // user did not set, so the key is absent unless it means something.
+    if !f.node.trim().is_empty() {
+        vmi["spec"]["nodeName"] = json!(f.node.trim());
+    }
+    Ok(vmi)
 }
 
 pub async fn create(
@@ -170,7 +186,7 @@ pub async fn create(
     }
 }
 
-const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachineInstance\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  # Nothing schedules VMs yet, so the node is named here.\n  nodeName: CHANGE-ME\n  domain:\n    cpu:\n      cores: 2\n    memory:\n      guest: 4Gi\n    firmware:\n      bootloader:\n        efi:\n          secureBoot: false\n    devices:\n      disks:\n        - name: root\n          disk:\n            bus: virtio\n        - name: seed\n          disk:\n            bus: virtio\n      interfaces:\n        - name: default\n  networks:\n    - name: default\n      pod: {}\n  volumes:\n    - name: root\n      dataVolume:\n        name: rocky-10-cloud\n    - name: seed\n      cloudInitNoCloud:\n        userData: |\n          #cloud-config\n";
+const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachineInstance\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  domain:\n    cpu:\n      cores: 2\n    memory:\n      guest: 4Gi\n    firmware:\n      bootloader:\n        efi:\n          secureBoot: false\n    devices:\n      disks:\n        - name: root\n          disk:\n            bus: virtio\n        - name: seed\n          disk:\n            bus: virtio\n      interfaces:\n        - name: default\n  networks:\n    - name: default\n      pod: {}\n  volumes:\n    - name: root\n      dataVolume:\n        name: rocky-10-cloud\n    - name: seed\n      cloudInitNoCloud:\n        userData: |\n          #cloud-config\n";
 
 #[cfg(test)]
 mod tests {
@@ -224,11 +240,30 @@ mod tests {
         f.golden = String::new();
         assert!(instance(&f).unwrap_err().contains("golden"));
         let mut f = form();
-        f.node = String::new();
-        assert!(instance(&f).unwrap_err().contains("node"));
-        let mut f = form();
         f.cores = "0".into();
         assert!(instance(&f).unwrap_err().contains("vCPU"));
+    }
+
+    #[test]
+    fn no_node_means_the_scheduler_picks_one() {
+        // It used to be required — "nothing places VMs yet, so a node has to
+        // be named". Something does now (rustkube#72), and the field is a
+        // pin rather than an obligation.
+        let mut f = form();
+        f.node = String::new();
+        let v = instance(&f).expect("a VM with no node is a VM the scheduler places");
+        assert!(
+            v["spec"]["nodeName"].is_null(),
+            "the key must be absent, not empty: the scheduler treats a VMI \
+             carrying spec.nodeName as already placed, so an empty string \
+             would pin the VM to a node called \"\" and it would never run"
+        );
+    }
+
+    #[test]
+    fn a_named_node_still_pins_the_machine() {
+        let v = instance(&form()).unwrap();
+        assert_eq!(v["spec"]["nodeName"], "storm-1");
     }
 
     #[test]
