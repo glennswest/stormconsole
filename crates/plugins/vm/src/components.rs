@@ -112,7 +112,7 @@ fn instance_health(phase: &str) -> Health {
 }
 
 fn action(id: &str, label: &str, method: &str, path: String, enabled: bool, danger: bool) -> Action {
-    Action { id: id.into(), label: label.into(), method: method.into(), path, enabled, danger }
+    Action { id: id.into(), label: label.into(), method: method.into(), path, enabled, danger, tone: None }
 }
 
 pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
