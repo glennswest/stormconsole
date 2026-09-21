@@ -267,18 +267,27 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
             .map(|cs| cs.iter().map(|c| n(c, "/restartCount")).sum())
             .unwrap_or(0);
         let node = s(obj, "/spec/nodeName");
-        // The namespace, in the line. The table gains a Namespace column from
-        // the `belongs_to` edge, but a card, a search and the grid all read
-        // `detail` — and a pod whose namespace appears nowhere on it is one
-        // you cannot tell apart from the identically-named pod next door.
-        let (ns, _) = split_key(key);
-        let detail = match (ns, node) {
-            (Some(ns), Some(nd)) => format!("{ns} · {phase} · {nd}"),
-            (Some(ns), None) => format!("{ns} · {phase}"),
-            (None, Some(nd)) => format!("{phase} · {nd}"),
-            (None, None) => phase.to_string(),
-        };
+        // The phase, and only the phase.
+        //
+        // This used to read "<namespace> · <phase> · <node>", from before the
+        // table could show either as a column. Both are `belongs_to` edges and
+        // the table now renders them as sortable columns, so repeating them
+        // here spends the one line a card has on facts already on screen —
+        // and a sentence cannot be sorted or compared down a list, which is
+        // the whole reason to want them as columns.
+        let detail = phase.to_string();
+        // The name without the node it is pinned to.
+        //
+        // A static pod's mirror is named `<name>-<node>` — upstream's
+        // convention, and load-bearing: pod names are unique per namespace,
+        // so twenty nodes each running `stormconsole` need twenty distinct
+        // names. The *object* therefore keeps the suffix. What a person reads
+        // does not need it, because the node is its own column now, and
+        // "stormconsole-storm-06f96d" is mostly a node id repeated on every
+        // row of a column that already says it.
+        let label = short_label(name, node);
         let mut c = base("pod", key, name, health, detail);
+        c.label = label;
         c.metrics.push(
             Metric::new("restarts", restarts.to_string())
                 .tone(if restarts > 0 { "warn" } else { "muted" }),
@@ -681,6 +690,23 @@ fn workload(kind: &'static str, key: &str, desired: i64, ready: i64) -> Componen
     c
 }
 
+/// Trim the node suffix a mirror pod carries, for display only.
+///
+/// Only when it is exactly `-<node>` at the end: a pod genuinely named after
+/// a machine, or one whose ReplicaSet hash happens to look like one, keeps
+/// what it was called. Trimming by guesswork would rename real pods.
+fn short_label(name: &str, node: Option<&str>) -> String {
+    match node {
+        Some(nd) if !nd.is_empty() => match name.strip_suffix(nd) {
+            Some(head) if head.ends_with('-') && head.len() > 1 => {
+                head.trim_end_matches('-').to_string()
+            }
+            _ => name.to_string(),
+        },
+        _ => name.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1031,5 +1057,28 @@ mod tests {
     fn no_cilium_means_no_card() {
         let snap: Snapshot = HashMap::new();
         assert!(map(&snap, None).iter().all(|c| c.id != "k8s:cilium"));
+    }
+
+    #[test]
+    fn a_mirror_pod_shows_without_the_node_it_repeats() {
+        assert_eq!(short_label("stormconsole-storm-06f96d", Some("storm-06f96d")), "stormconsole");
+    }
+
+    #[test]
+    fn an_ordinary_pod_keeps_its_name() {
+        assert_eq!(short_label("coredns-aa22fcb9f6-3f2ed", Some("storm-06f96d")), "coredns-aa22fcb9f6-3f2ed");
+        assert_eq!(short_label("web-1", None), "web-1");
+    }
+
+    #[test]
+    fn a_pod_actually_named_after_the_node_is_not_emptied() {
+        // The suffix is the whole name: trimming it would leave nothing.
+        assert_eq!(short_label("storm-06f96d", Some("storm-06f96d")), "storm-06f96d");
+    }
+
+    #[test]
+    fn a_partial_match_is_not_trimmed() {
+        // "…-storm-06f96" is not the node, and a name is not a place to guess.
+        assert_eq!(short_label("thing-storm-06f96", Some("storm-06f96d")), "thing-storm-06f96");
     }
 }

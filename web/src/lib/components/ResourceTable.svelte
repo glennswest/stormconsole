@@ -62,9 +62,24 @@
     return byId.get(target)?.label || target.split(':').pop()
   }
 
+  // Where a thing is placed, read the same generic way as its namespace.
+  //
+  // A pod carries `belongs_to node`; anything that does gets the column. It
+  // was only ever in `detail`, which cannot be sorted, cannot be compared
+  // down a list, and disappears into a sentence next to the phase.
+  function nodeOf(row) {
+    const rel = (row.relations || []).find(
+      (r) => r.kind === 'belongs_to' && r.name === 'node'
+    )
+    const target = rel?.targets?.[0]
+    if (!target) return ''
+    return byId.get(target)?.label || target.split(':').pop()
+  }
+
   // Earns its column the same way Kind does: only when some row has one.
   // A cluster-scoped list (nodes, storage classes) gets no empty column.
   const withNs = $derived(rows.some((r) => nsOf(r)))
+  const withNode = $derived(rows.some((r) => nodeOf(r)))
 
   const sorted = $derived.by(() => {
     const k = sortKey
@@ -72,6 +87,7 @@
     return [...rows].sort((a, b) => {
       if (k === 'health') return ((RANK[a.health] ?? 9) - (RANK[b.health] ?? 9)) * dir
       if (k === 'namespace') return nsOf(a).localeCompare(nsOf(b)) * dir
+      if (k === 'node') return nodeOf(a).localeCompare(nodeOf(b)) * dir
       return String(a[k] ?? '').localeCompare(String(b[k] ?? '')) * dir
     })
   })
@@ -205,6 +221,11 @@
             >Namespace <i>{arrow('namespace')}</i></th
           >
         {/if}
+        {#if withNode}
+          <th class="sortable node" onclick={() => sortBy('node')}
+            >Node <i>{arrow('node')}</i></th
+          >
+        {/if}
         <th class="sortable status" onclick={() => sortBy('health')}>Status <i>{arrow('health')}</i></th>
         {#if withKind}
           <th class="sortable kind" onclick={() => sortBy('kind')}>Kind <i>{arrow('kind')}</i></th>
@@ -245,6 +266,7 @@
           </td>
           <td class="name">{row.label}</td>
           {#if withNs}<td class="ns">{nsOf(row)}</td>{/if}
+          {#if withNode}<td class="node">{nodeOf(row)}</td>{/if}
           <td class="status"><StatusPill health={row.health} /></td>
           {#if withKind}<td class="kind">{row.kind}</td>{/if}
           <td class="detail">{row.detail ?? ''}</td>
@@ -396,6 +418,7 @@
   .name { font-weight: 500; }
   .status { width: 110px; }
   .kind { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
+  .node { white-space: nowrap; color: var(--text-dim); }
   .ns { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
   .detail { color: var(--text-dim); }
 
