@@ -20,7 +20,7 @@ pub mod upstream;
 pub mod value;
 
 pub use access::{Access, Scope, Viewer};
-pub use create::{Creator, Field};
+pub use create::{Creator, Field, FieldOption};
 pub use feed::{Feed, FeedPlugin, FeedState};
 pub use nav::{NavItem, NavSection};
 pub use plugin::ConsolePlugin;

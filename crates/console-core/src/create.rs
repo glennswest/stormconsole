@@ -15,7 +15,7 @@ pub struct Field {
     #[serde(default)]
     pub required: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub options: Vec<String>,
+    pub options: Vec<FieldOption>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub default: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -35,11 +35,26 @@ impl Field {
         }
     }
 
+    /// A select whose options are their own labels.
     pub fn select(name: &str, label: &str, options: &[&str]) -> Self {
+        Self::choices(name, label, options.iter().map(|o| FieldOption::plain(o)).collect())
+    }
+
+    /// A select whose options say one thing and submit another.
+    ///
+    /// The form posts the **value**; the label is only ever displayed. That
+    /// distinction is the whole point of this existing: the VM root-disk
+    /// picker showed "alma 10 x86_64 — not goldened yet, will be built" and
+    /// submitted it verbatim, because the option carried one string and the
+    /// server mapped the label back to a value afterwards. The moment the two
+    /// could drift — a catalogue refresh between rendering the form and
+    /// submitting it — the mapping missed and a machine was created with a
+    /// sentence as the name of its disk.
+    pub fn choices(name: &str, label: &str, options: Vec<FieldOption>) -> Self {
         Self {
             kind: "select".into(),
-            options: options.iter().map(|s| s.to_string()).collect(),
-            default: options.first().map(|s| s.to_string()).unwrap_or_default(),
+            default: options.first().map(|o| o.value.clone()).unwrap_or_default(),
+            options,
             ..Self::text(name, label)
         }
     }
@@ -57,6 +72,33 @@ impl Field {
     pub fn default(mut self, d: &str) -> Self {
         self.default = d.into();
         self
+    }
+}
+
+/// One choice in a select: what is submitted, and what is read.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FieldOption {
+    pub value: String,
+    /// What a person sees. Defaults to the value, so a plain list of strings
+    /// still means what it used to.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+}
+
+impl FieldOption {
+    /// A choice that reads as what it submits.
+    pub fn plain(value: &str) -> Self {
+        FieldOption { value: value.to_string(), label: String::new() }
+    }
+
+    /// A choice that says one thing and submits another.
+    pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
+        FieldOption { value: value.into(), label: label.into() }
+    }
+
+    /// What to display.
+    pub fn text(&self) -> &str {
+        if self.label.is_empty() { &self.value } else { &self.label }
     }
 }
 

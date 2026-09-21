@@ -109,11 +109,7 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     let memory = if f.memory.trim().is_empty() { "4Gi" } else { f.memory.trim() };
     let bus = if f.bus.trim().is_empty() { "virtio" } else { f.bus.trim() };
     let ns = if f.namespace.trim().is_empty() { "default" } else { f.namespace.trim() };
-    let user_data = if f.ssh_key.trim().is_empty() {
-        "#cloud-config\n".to_string()
-    } else {
-        format!("#cloud-config\nssh_authorized_keys:\n  - {}\n", f.ssh_key.trim())
-    };
+    let _ = cloud_init(f);
     let mut vmi = json!({
         "apiVersion": "kubevirt.io/v1",
         "kind": "VirtualMachineInstance",
@@ -134,7 +130,20 @@ pub fn instance(f: &Form) -> Result<Value, String> {
             "networks": [{"name": "default", "pod": {}}],
             "volumes": [
                 {"name": "root", "dataVolume": {"name": f.golden.trim()}},
-                {"name": "seed", "cloudInitNoCloud": {"userData": user_data}}
+                // The seed by reference, not inline.
+                //
+                // An SSH *public* key is not confidential — that is what
+                // makes it a public key — but `userData` is the field that
+                // grows passwords, and it travels in the VMI spec where
+                // anyone with read on virtualmachineinstances can see it.
+                // KubeVirt has `userDataSecretRef` for exactly this, so the
+                // cloud-init payload goes in a Secret and the machine points
+                // at it. The secret is namespaced with the VM and named after
+                // it, so deleting the VM leaves one obvious thing behind
+                // rather than an anonymous blob.
+                {"name": "seed", "cloudInitNoCloud": {
+                    "userDataSecretRef": {"name": format!("{}-cloudinit", f.name.trim())}
+                }}
             ]
         }
     });
@@ -162,6 +171,20 @@ pub fn instance(f: &Form) -> Result<Value, String> {
 /// start: goldens already on the node, goldens the fleet has that would be
 /// copied, and catalogue entries that must be downloaded and built. Each
 /// label says which, because the difference is minutes.
+/// The cloud-init payload for a machine, which goes into a Secret.
+pub fn cloud_init(f: &Form) -> String {
+    if f.ssh_key.trim().is_empty() {
+        "#cloud-config\n".to_string()
+    } else {
+        format!("#cloud-config\nssh_authorized_keys:\n  - {}\n", f.ssh_key.trim())
+    }
+}
+
+/// The Secret name a machine's seed lives under.
+pub fn seed_secret_name(name: &str) -> String {
+    format!("{}-cloudinit", name.trim())
+}
+
 fn root_disk(catalogue: &Catalogue) -> Field {
     if catalogue.choices.is_empty() {
         let hint = if catalogue.note.is_empty() {
@@ -171,21 +194,34 @@ fn root_disk(catalogue: &Catalogue) -> Field {
         };
         return Field::text("golden", "Root disk").required().hint(&hint);
     }
-    // `options` carries the label; the value is recovered on submit by
-    // `value_of`. One field rather than two, because a value and a separate
-    // description that can disagree is how a form lies.
-    let labels: Vec<&str> = catalogue.choices.iter().map(|c| c.label.as_str()).collect();
-    Field::select("golden", "Root disk", &labels)
+    // The golden name is submitted; the sentence is only read.
+    //
+    // These were one string until a machine was created whose root disk was
+    // named "alma 10 x86_64 — not goldened yet, will be built": the option
+    // carried the label, and the server mapped it back to a value after the
+    // fact. That mapping missed the moment the catalogue changed between
+    // rendering the form and submitting it, and there is no mapping now.
+    let options = catalogue
+        .choices
+        .iter()
+        .map(|c| console_core::FieldOption::new(c.value.clone(), c.label.clone()))
+        .collect();
+    Field::choices("golden", "Root disk", options)
         .required()
         .hint("already on the node boots at once; anything else is built or copied first")
 }
 
-/// Recover the submitted value from what the form showed.
+/// What the form submitted, with one piece of belt and braces.
 ///
-/// The select posts back the label it displayed, so the label is mapped to
-/// its value here. Anything unrecognised is passed through unchanged, which
-/// is what keeps a typed golden name working when the operator is absent.
+/// The select now posts the golden name directly, so this is normally the
+/// identity. It still maps a *label* back, because a form rendered by an
+/// older console — or held open across an upgrade — posts what it was given,
+/// and a machine created with a sentence for a disk name is a bad way to
+/// find that out.
 pub fn value_of(catalogue: &Catalogue, submitted: &str) -> String {
+    if catalogue.choices.iter().any(|c| c.value == submitted) {
+        return submitted.to_string();
+    }
     catalogue
         .choices
         .iter()
@@ -242,6 +278,42 @@ pub async fn create(
     if let Some(refusal) = crate::refuse_hidden(&inner, &viewer, ns).await {
         return refusal;
     }
+    // The seed first: a machine whose secret does not exist boots with no
+    // cloud-init at all, which is a VM with no login and no obvious reason.
+    //
+    // `stringData` so the payload is written as text rather than base64 by
+    // hand — the apiserver does the encoding, and a hand-encoded secret that
+    // is wrong is unreadable in a way nobody debugs quickly.
+    let secret = json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": seed_secret_name(&form.name),
+            "namespace": ns,
+            "labels": {"storm.io/vm": form.name.trim()},
+        },
+        "type": "Opaque",
+        "stringData": {"userdata": cloud_init(&form)},
+    });
+    let secret_path = format!("/api/v1/namespaces/{ns}/secrets");
+    match client.post_json_as(&secret_path, &secret, viewer.token.as_deref()).await {
+        // 409 is fine: recreating a machine of the same name reuses its seed.
+        Ok((status, _)) if status.is_success() || status.as_u16() == 409 => {}
+        Ok((status, body)) => {
+            let msg = body
+                .get("message")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("apiserver returned {}", status.as_u16()));
+            warn!(name = %form.name, error = %msg, "vm create: could not write the cloud-init secret");
+            return (StatusCode::BAD_GATEWAY, Json(json!({"error": msg}))).into_response();
+        }
+        Err(e) => {
+            warn!(name = %form.name, error = %e, "vm create: could not write the cloud-init secret");
+            return (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response();
+        }
+    }
+
     let path = format!("{}/namespaces/{ns}/virtualmachineinstances", crate::VM_API);
     match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
         Ok((status, body)) if status.is_success() => {

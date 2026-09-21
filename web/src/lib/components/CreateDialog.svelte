@@ -97,7 +97,14 @@
               <span class="lbl">{f.label}{#if f.required}<b>*</b>{/if}</span>
               {#if f.kind === 'select'}
                 <select bind:value={values[f.name]}>
-                  {#each f.options as o}<option value={o}>{o === '' ? '—' : o}</option>{/each}
+                  <!-- The option submits `value` and displays `label`; a
+                       plain string option is both, which is what a list of
+                       bare strings used to mean. -->
+                  {#each f.options as o}
+                    {@const value = typeof o === 'string' ? o : o.value}
+                    {@const text = typeof o === 'string' ? o : (o.label || o.value)}
+                    <option {value}>{value === '' ? '—' : text}</option>
+                  {/each}
                 </select>
               {:else if f.kind === 'textarea'}
                 <textarea bind:value={values[f.name]} rows="4"></textarea>
