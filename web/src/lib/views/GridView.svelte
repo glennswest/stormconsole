@@ -19,6 +19,16 @@
   const hash = $derived(`#/grid?id=${id}${rel ? `&rel=${rel}` : ''}`)
 
   let search = $state('')
+  // What a row *is*, from the metric the feed carries. Generic: any grid
+  // whose rows declare a `kind` metric gets the filter, and one whose rows
+  // do not gets nothing rather than an empty control.
+  let kind = $state('')
+  let state_f = $state('')
+
+  const kindOf = (c) =>
+    (c.metrics || []).find((m) => m.label === 'kind')?.value || ''
+
+  const kinds = $derived([...new Set(all.map(kindOf).filter(Boolean))].sort())
 
   const resolveId = (cid) => feed.components.find((c) => c.id === cid)
   const invoke = (a) => call(a.method, a.path)
@@ -27,11 +37,14 @@
   // list with a way to create, not the root card standing in for it.
   const all = $derived((idsForRoute(hash) || []).map(resolveId).filter(Boolean))
   const rows = $derived(
-    search
-      ? all.filter((c) =>
+    all
+      .filter((c) => !kind || kindOf(c) === kind)
+      .filter((c) => !state_f || c.health === state_f)
+      .filter(
+        (c) =>
+          !search ||
           `${c.label} ${c.detail || ''}`.toLowerCase().includes(search.toLowerCase())
-        )
-      : all
+      )
   )
   const title = $derived(rel ? rel.replace(/_/g, ' ') : root?.label || '')
 </script>
@@ -82,7 +95,27 @@
         bind:view={prefs.view}
         onview={setView}
         hint={rows.length !== all.length ? `${rows.length} of ${all.length}` : `${all.length} items`}
-      />
+      >
+        {#snippet filters()}
+          {#if kinds.length > 1}
+            <!-- Goldens are the bulk of a volume list and rarely the thing
+                 being looked for; what matters is what is in use. -->
+            <select bind:value={kind} aria-label="Filter by kind">
+              <option value="">All kinds</option>
+              {#each kinds as k}
+                <option value={k}>{k}</option>
+              {/each}
+            </select>
+          {/if}
+          <select bind:value={state_f} aria-label="Filter by state">
+            <option value="">All states</option>
+            <option value="ok">Ready</option>
+            <option value="warn">Degraded</option>
+            <option value="error">Failed</option>
+            <option value="idle">Idle</option>
+          </select>
+        {/snippet}
+      </Toolbar>
       {#if rows.length === 0}
         <EmptyState icon="filter" title="No matches" hint="Nothing here matches that search." />
       {:else if prefs.view === 'cards'}

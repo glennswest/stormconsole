@@ -118,17 +118,40 @@
     selected = selected.length === rows.length ? [] : rows.map((r) => r.id)
   }
 
+  // What just happened, so an action is not silent.
+  //
+  // `rowAction` caught its error and wrote it to console.error — so clicking
+  // "Make golden" looked identical whether it started a download, was refused,
+  // or never reached the server. An operator clicked, nothing moved, and there
+  // was nothing on the page to say why.
+  let notice = $state(null)
+  let noticeTimer = null
+
+  function say(kind, text) {
+    notice = { kind, text }
+    clearTimeout(noticeTimer)
+    // Errors stay until dismissed: a failure that vanishes while somebody is
+    // reading it is the same as no message.
+    if (kind === 'ok') noticeTimer = setTimeout(() => (notice = null), 6000)
+  }
+
   async function run(action) {
     if (invoke) return invoke(action)
-    return fetch(action.path, { method: action.method || 'POST' })
+    const resp = await fetch(action.path, { method: action.method || 'POST' })
+    const data = await resp.json().catch(() => ({}))
+    // A bare fetch resolves for a 500 as happily as for a 200, so the status
+    // has to be checked or a refusal reads as success.
+    if (!resp.ok) throw new Error(data.error || data.message || `${resp.status} ${resp.statusText}`)
+    return data
   }
 
   async function rowAction(row, action) {
     if (action.danger && !confirm(`${action.label} ${row.label}?`)) return
     try {
-      await run(action)
+      const data = await run(action)
+      say('ok', (data && (data.message || data.detail)) || `${action.label}: ${row.label}`)
     } catch (e) {
-      console.error(e)
+      say('err', `${action.label} ${row.label}: ${e.message}`)
     }
   }
 
@@ -191,6 +214,13 @@
     return () => window.removeEventListener('click', close)
   })
 </script>
+
+{#if notice}
+  <div class="sc-notice" class:err={notice.kind === 'err'} role="status">
+    <span>{notice.text}</span>
+    <button class="dismiss" onclick={() => (notice = null)} aria-label="Dismiss">×</button>
+  </div>
+{/if}
 
 {#if bulk.length}
   <div class="bulk">
@@ -418,6 +448,17 @@
   .name { font-weight: 500; }
   .status { width: 110px; }
   .kind { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
+  .sc-notice {
+    display: flex; align-items: center; gap: 10px; justify-content: space-between;
+    padding: 8px 12px; margin-bottom: 10px; border-radius: var(--radius-sm);
+    background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border);
+    font-size: var(--sc-t-meta);
+  }
+  .sc-notice.err { background: var(--error-bg); color: var(--error); border-color: var(--error-border); }
+  .sc-notice .dismiss {
+    background: none; border: 0; color: inherit; cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 0 2px;
+  }
   .node { white-space: nowrap; color: var(--text-dim); }
   .ns { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
   .detail { color: var(--text-dim); }

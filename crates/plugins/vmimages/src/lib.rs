@@ -100,7 +100,7 @@ impl ConsolePlugin for VmImagesPlugin {
     /// places images are.
     fn nav(&self) -> Vec<NavSection> {
         vec![NavSection::new("Images", 50)
-            .item("Cloud catalogue", "#/grid?id=img:operator&rel=catalogue")
+            .item("VM catalogue", "#/grid?id=img:operator&rel=catalogue")
             .item("VM goldens", "#/grid?id=img:operator&rel=goldens")
             .item("Local copies", "#/grid?id=img:operator&rel=local")]
     }
@@ -114,7 +114,7 @@ impl ConsolePlugin for VmImagesPlugin {
         let mut out = vec![];
         if !refs.is_empty() {
             let mut fields = vec![
-                Field::select("reference", "Cloud image", &refs)
+                Field::select("reference", "VM image", &refs)
                     .hint("from the catalogue this cluster knows")
                     .required(),
                 Field::select("arch", "Architecture", &["x86_64", "aarch64"]),
@@ -378,35 +378,73 @@ fn catalog_row(v: &Value, goldened: &[(String, String, String)]) -> ComponentSum
             None => Health::Idle,
         },
         detail: match &existing {
-            Some((name, phase)) if phase != "Available" => {
-                format!("goldening as {name} — {phase} · {note}")
-            }
-            Some((name, _)) => format!("goldened as {name} · {note}"),
+            Some((_, phase)) if phase == "Available" => "in the fleet".to_string(),
+            Some((_, phase)) => phase.to_lowercase(),
             None => note,
         },
         metrics,
-        // Green once the golden exists.
+        // What it is, in as few words as carry meaning.
         //
-        // The label already changed, and a label does not carry: down a list
-        // of thirty catalogue entries, "Golden again" and "Make golden" are
-        // the same shape in the same place and the eye does not separate
-        // them. What somebody is scanning that list *for* is which images
-        // the fleet already has, and that should be answerable without
-        // reading a word.
-        actions: vec![Action {
+        // This read "goldened as fedora-43-x86_64 · cleanest cloud-init story
+        // and the newest kernel; ~13 months of support per release" — the
+        // golden name is a column, and the distribution's own blurb is the
+        // same for every version of it. What a person scanning this list
+        // wants is whether the fleet has it, and if it is being built, how
+        // far along.
+        actions: catalog_actions(&reference, &existing),
+        relations,
+        link: None,
+    }
+}
+
+/// What can be done to a catalogue entry, given what the fleet has of it.
+///
+/// **"Golden again" was offered on every row, including ones already built.**
+/// Re-taking an image that is Available achieves nothing unless it is a
+/// rolling tag, and it costs a download and a seal. So the build is offered
+/// when there is nothing, offered again only when the last attempt failed,
+/// and replaced by Delete once it is there — which frees the entry to be
+/// built again, and is the honest way to say "start over".
+fn catalog_actions(reference: &str, existing: &Option<(String, String)>) -> Vec<Action> {
+    let build = |label: &str, tone: Option<&str>| Action {
+        id: "golden".into(),
+        label: label.into(),
+        method: "POST".into(),
+        path: format!("{PROXY}/api/v1/catalog/{reference}"),
+        enabled: true,
+        danger: false,
+        tone: tone.map(str::to_string),
+    };
+    match existing {
+        None => vec![build("Make golden", None)],
+        Some((name, phase)) if phase == "Available" => vec![Action {
+            // Deleting the CloudImage is what re-enables the build. The
+            // golden's bytes are not touched: a VM cloned from it keeps
+            // working, which is why this is not as destructive as it reads.
+            id: "delete".into(),
+            label: "Delete golden".into(),
+            method: "DELETE".into(),
+            path: format!("{PROXY}/api/v1/images/{name}"),
+            enabled: true,
+            danger: true,
+            tone: None,
+        }],
+        Some((_, phase)) if phase == "Failed" => vec![build("Retry", Some("warn"))],
+        // Building or Resolving: it is already happening, and a second POST
+        // while the first is downloading is how two imports race.
+        Some(_) => vec![Action {
             id: "golden".into(),
-            label: if existing.is_some() { "Golden again".into() } else { "Make golden".into() },
+            label: "Building…".into(),
             method: "POST".into(),
             path: format!("{PROXY}/api/v1/catalog/{reference}"),
-            enabled: true,
+            enabled: false,
             danger: false,
-            // Green only when the golden is actually usable. A build in
-            // flight or a failed one must not look like a finished image.
-            tone: existing.as_ref().map(|(_, phase)| {
-                if phase == "Available" { "ok".to_string() } else { "warn".to_string() }
-            }),
+            tone: Some("warn".into()),
         }],
-        relations,
+    }
+}
+
+/// One golden the fleet has.        relations,
         link: None,
     }
 }
