@@ -504,9 +504,19 @@ impl Store {
     }
 
     /// Most-recent entries matching the filters, returned oldest-first.
+    /// `app` is an exact match on the emitter — the container or service
+    /// name, which is what "show me this container's logs" means.
+    ///
+    /// Exact, not a substring of the message, because `search` already does
+    /// substring and the two answer different questions: searching for
+    /// `cilium` finds every line that *mentions* cilium, from any emitter,
+    /// which is the wrong answer when what you want is what one crashing
+    /// container said. That distinction is why this is its own parameter
+    /// rather than a preset search.
     pub fn query(
         &self,
         host: Option<&str>,
+        app: Option<&str>,
         min_severity: Option<u8>,
         search: Option<&str>,
         last: i64,
@@ -525,6 +535,11 @@ impl Store {
             let record: StoredEvent = serde_json::from_slice(v.value())?;
             if let Some(h) = host {
                 if record.host != h {
+                    continue;
+                }
+            }
+            if let Some(a) = app {
+                if record.app != a {
                     continue;
                 }
             }
@@ -680,7 +695,7 @@ mod tests {
         assert_eq!(stats.entries, 1, "one entry for one repeating line");
         assert_eq!(stats.suppressed, 999);
         // The row shows the most recent text, not a normalised one.
-        let row = &s.query(None, None, None, 10).unwrap()[0];
+        let row = &s.query(None, None, None, None, 10).unwrap()[0];
         assert_eq!(row.count, 1000);
         assert!(row.msg.starts_with("2026-09-02T18:26:"));
     }
@@ -707,14 +722,14 @@ mod tests {
         s.insert(&ev("b", 3, "two"), 2).unwrap();
         s.insert(&ev("a", 4, "three"), 3).unwrap();
 
-        let all = s.query(None, None, None, 10).unwrap();
+        let all = s.query(None, None, None, None, 10).unwrap();
         assert_eq!(all.len(), 3);
         assert_eq!(all[0].msg, "one"); // oldest first
 
-        let errors = s.query(None, Some(4), None, 10).unwrap();
+        let errors = s.query(None, None, Some(4), None, 10).unwrap();
         assert_eq!(errors.len(), 2); // severity <= 4
 
-        let a = s.query(Some("a"), None, Some("thr"), 10).unwrap();
+        let a = s.query(Some("a"), None, None, Some("thr"), 10).unwrap();
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].msg, "three");
     }
@@ -732,7 +747,7 @@ mod tests {
         assert_eq!(stats.occurrences, 501);
         assert_eq!(stats.suppressed, 499);
 
-        let rows = s.query(None, None, None, 10).unwrap();
+        let rows = s.query(None, None, None, None, 10).unwrap();
         let flood = rows.iter().find(|r| r.msg == "disk is full").unwrap();
         assert_eq!(flood.count, 500);
         assert_eq!(flood.first_seen, 1000);
@@ -771,7 +786,7 @@ mod tests {
         s.prune(2000).unwrap();
         assert_eq!(s.stats().entries, 10);
         // The survivors are the newest ten.
-        let rows = s.query(None, None, None, 100).unwrap();
+        let rows = s.query(None, None, None, None, 100).unwrap();
         assert_eq!(rows.first().unwrap().msg, "m54");
         assert_eq!(rows.last().unwrap().msg, "m63");
     }
@@ -783,7 +798,7 @@ mod tests {
         s.insert(&ev("a", 6, "recent"), 3 * HOUR).unwrap();
 
         s.prune(3 * HOUR + 1).unwrap();
-        let rows = s.query(None, None, None, 10).unwrap();
+        let rows = s.query(None, None, None, None, 10).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].msg, "recent");
         // The aggregates followed the eviction.
@@ -799,7 +814,7 @@ mod tests {
         s.insert(&ev("a", 6, "heartbeat"), 5 * HOUR).unwrap();
         s.prune(5 * HOUR + 1).unwrap();
         assert_eq!(s.stats().entries, 1);
-        assert_eq!(s.query(None, None, None, 10).unwrap()[0].count, 2);
+        assert_eq!(s.query(None, None, None, None, 10).unwrap()[0].count, 2);
     }
 
     #[test]
@@ -813,5 +828,42 @@ mod tests {
             s.severity_counts().unwrap().into_iter().collect();
         assert_eq!(counts.get(&3).copied().unwrap_or(0), 1);
         assert_eq!(counts.get(&6).copied().unwrap_or(0), 1);
+    }
+
+    fn from_app(app: &str, msg: &str) -> LogEvent {
+        LogEvent { app: app.into(), ..ev("storm-1", 6, msg) }
+    }
+
+    #[test]
+    fn app_filters_to_one_emitter() {
+        // The distinction that makes this its own parameter: a search for
+        // "vmimages" finds every line that *mentions* it, from any emitter.
+        // Asking for one container's logs is a different question, and it is
+        // the one somebody asks when that container is crashing.
+        let (s, _d) = Store::open_temp(1000, HOUR, false).unwrap();
+        for (app, msg) in [
+            ("vmimages", "failed to load certificate authority"),
+            ("kubelet", "starting vmimages container"),
+            ("vmimages", "process exited"),
+        ] {
+            s.insert(&from_app(app, msg), 1).unwrap();
+        }
+        let mine = s.query(None, Some("vmimages"), None, None, 10).unwrap();
+        assert_eq!(mine.len(), 2);
+        assert!(mine.iter().all(|r| r.app == "vmimages"));
+
+        // The same needle as a search also catches the kubelet's line.
+        let searched = s.query(None, None, None, Some("vmimages"), 10).unwrap();
+        assert_eq!(searched.len(), 3);
+    }
+
+    #[test]
+    fn app_is_exact_not_a_prefix() {
+        // "cilium" must not return "cilium-operator": two containers, and
+        // one of them being fine says nothing about the other.
+        let (s, _d) = Store::open_temp(1000, HOUR, false).unwrap();
+        s.insert(&from_app("cilium", "up"), 1).unwrap();
+        s.insert(&from_app("cilium-operator", "up"), 1).unwrap();
+        assert_eq!(s.query(None, Some("cilium"), None, None, 10).unwrap().len(), 1);
     }
 }

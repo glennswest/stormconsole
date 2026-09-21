@@ -249,6 +249,8 @@ impl ConsolePlugin for LogsPlugin {
 #[derive(serde::Deserialize)]
 struct EventsQuery {
     host: Option<String>,
+    /// One emitter — a container or service name, as `?app=vmimages`.
+    app: Option<String>,
     min_severity: Option<u8>,
     search: Option<String>,
     last: Option<i64>,
@@ -260,6 +262,7 @@ async fn events(State(inner): State<Arc<Inner>>, Query(q): Query<EventsQuery>) -
     };
     match store.query(
         q.host.as_deref(),
+        q.app.as_deref(),
         q.min_severity,
         q.search.as_deref(),
         q.last.unwrap_or(200).clamp(1, 5000),
