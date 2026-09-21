@@ -268,9 +268,20 @@ impl ConsolePlugin for VmPlugin {
                     // "already on this node" grouping needs a node, so it is
                     // answered per request by the images route below.
                     let cat = images::fetch(&inner.http, &base, "").await;
+                    let got = !cat.choices.is_empty();
                     inner.images.put(cat);
+                    // Until the first good answer, ask again in seconds.
+                    //
+                    // The console and the image operator start together on a
+                    // node, so the operator is reliably not up yet when the
+                    // first poll goes out. A flat minute of backoff meant the
+                    // create form spent the first minute after every boot
+                    // with an empty dropdown — which is precisely when
+                    // somebody is at the console looking at a machine that
+                    // just came up.
+                    let wait = if got { images::REFRESH } else { images::RETRY };
                     tokio::select! {
-                        _ = tokio::time::sleep(images::REFRESH) => {}
+                        _ = tokio::time::sleep(wait) => {}
                         _ = token.cancelled() => return,
                     }
                 }

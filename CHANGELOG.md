@@ -447,3 +447,21 @@
   instead of inline in the VMI spec. A public key is not confidential, but
   `userData` is the field that grows passwords and it travels in a spec that
   anyone with `get` on virtualmachineinstances can read.
+- **fix:** the VM create form submitted an image *name* where the engine wants
+  a *volume*, so a machine created from the dropdown failed at start with
+  `cloning golden fedora-43 for disk root: 404 Not Found: {"error":"no volume
+  fedora-43"}`. The operator answers three names for one image — `fedora-43`
+  (the object), `fedora-43-x86_64` (`status.localName`, what a person calls
+  it) and `media-846574c8a97c` (`status.golden`, the volume the engine
+  actually holds) — and only the last can be cloned. The dropdown now shows
+  the readable name and submits the volume. Goldening a catalogue reference
+  waits for the digest to resolve (seconds: it comes from the published
+  checksum file, not the download) rather than returning a name that will
+  never be a volume.
+- **fix:** the root-disk dropdown emptied itself whenever the image operator
+  was briefly silent, and degraded to a free-text box asking for a golden name
+  from memory — the exact thing the dropdown exists to remove. The console and
+  the operator start together on a node, so that was the first minute after
+  every boot. An empty refresh now keeps the last good list and says it may be
+  stale, and until the first good answer arrives the poll retries every 3s
+  instead of every 60.

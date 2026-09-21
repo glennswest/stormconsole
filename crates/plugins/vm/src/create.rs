@@ -422,19 +422,62 @@ async fn golden_from_reference(
             .unwrap_or_else(|| format!("image operator returned {}", status.as_u16()));
         return Err(msg);
     }
-    // `localName` is what a VM spec refers to; it is only there once the
-    // object has been resolved, so fall back to the object's own name.
-    let name = v
-        .pointer("/status/localName")
+    // What the VM's root disk must name is the *volume*, `status.golden` —
+    // a content digest like `media-846574c8a97c`. Not `localName`
+    // (`fedora-43-x86_64`) and not the object's name (`fedora-43`): those
+    // are how a person refers to the image, and creating a VM against one
+    // of them fails at start with
+    //
+    //     cloning golden fedora-43 for disk root:
+    //       404 Not Found: {"error":"no volume fedora-43"}
+    //
+    // At 202 the digest is usually not resolved yet, so it is waited for.
+    // The wait is short because it is not the download: the digest comes
+    // from the distribution's published checksum file, which is a few
+    // kilobytes, and the gigabytes follow afterwards. A VM created while
+    // those gigabytes are still arriving is fine — it starts when the
+    // golden is sealed, the same as a pod scheduled before its image is
+    // pulled. A VM created against a name that will never be a volume is
+    // not fine, and that is the only thing this wait prevents.
+    let object = v
+        .get("name")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .or_else(|| v.get("name").and_then(Value::as_str))
-        .unwrap_or("")
-        .to_string();
-    if name.is_empty() {
-        return Err(format!("image operator accepted {reference} but named no golden"));
+        .map(str::to_string)
+        .unwrap_or_else(|| reference.to_string());
+    if let Some(g) = golden_of(&v) {
+        return Ok(g);
     }
-    Ok(name)
+    let one = format!("{url}/{object}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let Ok(r) = inner.http.get(&one).send().await else { continue };
+        let Ok(v) = r.json::<Value>().await else { continue };
+        if let Some(g) = golden_of(&v) {
+            return Ok(g);
+        }
+        // A resolve that failed says so, and waiting out the rest of the
+        // deadline for it would only make the form slower to tell the truth.
+        if let Some(m) = v.pointer("/status/message").and_then(Value::as_str) {
+            if !m.is_empty() {
+                return Err(format!("{reference}: {m}"));
+            }
+        }
+    }
+    Err(format!(
+        "image operator accepted {reference} but has not named its golden yet — \
+         it is still resolving; create the machine again in a moment"
+    ))
+}
+
+/// The volume an image record names, once it has one.
+fn golden_of(v: &Value) -> Option<String> {
+    v.pointer("/status/golden")
+        .or_else(|| v.pointer("/items/0/status/golden"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachineInstance\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  domain:\n    cpu:\n      cores: 2\n    memory:\n      guest: 4Gi\n    firmware:\n      bootloader:\n        efi:\n          secureBoot: false\n    devices:\n      disks:\n        - name: root\n          disk:\n            bus: virtio\n        - name: seed\n          disk:\n            bus: virtio\n      interfaces:\n        - name: default\n  networks:\n    - name: default\n      pod: {}\n  volumes:\n    - name: root\n      dataVolume:\n        name: rocky-10-cloud\n    - name: seed\n      cloudInitNoCloud:\n        userData: |\n          #cloud-config\n";

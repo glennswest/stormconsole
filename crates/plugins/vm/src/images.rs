@@ -37,6 +37,14 @@ use serde::Deserialize;
 /// almost never changes.
 pub const REFRESH: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How often to retry while there is no list at all.
+///
+/// Different from `REFRESH` because the two are different questions. Once
+/// there is a list, a minute of staleness costs nothing. While there is no
+/// list, the form cannot be used, and on a node that is the first minute
+/// after every boot — the operator and the console come up together.
+pub const RETRY: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// A value the create form can submit, and how it is offered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Choice {
@@ -75,11 +83,33 @@ impl Cache {
         }
     }
 
+    /// Store a refresh, **keeping the last good list when this one is
+    /// empty**.
+    ///
+    /// A cache that forgets the moment its upstream hiccups is not a cache.
+    /// The operator and the console start together on a node, so for the
+    /// first seconds of every boot the operator is not answering yet — and
+    /// the create form, finding no choices, turned its root-disk dropdown
+    /// into a free-text box asking a person to type a golden name from
+    /// memory. That is the failure this whole module was written to remove,
+    /// reintroduced by a poll that overwrote 22 good choices with nothing.
+    ///
+    /// An empty answer now keeps the choices and changes only the note, so
+    /// the form still offers what was last seen and says it may be stale.
     pub fn put(&self, c: Catalogue) {
-        match self.0.write() {
-            Ok(mut g) => *g = c,
-            Err(e) => *e.into_inner() = c,
+        let mut g = match self.0.write() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        if c.choices.is_empty() && !g.choices.is_empty() {
+            g.note = if c.note.is_empty() {
+                "the image operator has not answered — this is the list it last gave".into()
+            } else {
+                format!("{} — this is the list it last gave", c.note)
+            };
+            return;
         }
+        *g = c;
     }
 }
 
@@ -118,16 +148,37 @@ struct ImageItem {
     #[serde(default)]
     name: String,
     #[serde(default)]
+    spec: ImageSpec,
+    #[serde(default)]
     status: ImageStatus,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ImageSpec {
+    /// The catalogue reference this image was built from, `fedora:43`. The
+    /// identity that says "this catalogue entry is already goldened", which
+    /// a name cannot: two images of one reference differ by arch, not by
+    /// being different things to golden.
+    #[serde(default)]
+    reference: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct ImageStatus {
     #[serde(default)]
     phase: String,
-    /// The name a VM spec refers to, once it is built.
+    /// What a person calls it: `fedora-43-x86_64`. **Not** a volume — see
+    /// `golden`.
     #[serde(default, rename = "localName")]
     local_name: String,
+    /// The volume the engine actually holds, `media-846574c8a97c`.
+    ///
+    /// This is the name a VM's root disk must ask for. It is a digest, not a
+    /// word, and that is the whole reason this field exists separately from
+    /// `local_name`: a golden is content, and two Fedora 43 images that
+    /// differ by a byte are two goldens with one pretty name.
+    #[serde(default)]
+    golden: String,
     #[serde(default)]
     arch: String,
 }
@@ -176,35 +227,58 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
     //    cannot be cloned, and offering it produces a VM that fails at start
     //    for a reason the form knew about.
     let mut fleet_ok = false;
+    // Which catalogue references already have an image, so step 3 does not
+    // offer "golden this" for something already goldened.
+    let mut goldened: std::collections::HashSet<String> = Default::default();
     if let Ok(r) = http.get(format!("{base}/api/v1/images")).send().await {
         if let Ok(list) = r.json::<ImageList>().await {
             fleet_ok = true;
             for i in list.items {
+                if !i.spec.reference.is_empty() {
+                    goldened.insert(i.spec.reference.clone());
+                }
                 if i.status.phase != "Available" {
                     continue;
                 }
-                let name = if i.status.local_name.is_empty() {
+                // The value is the volume, the label is the name.
+                //
+                // These were the same string until a VM created from this
+                // form failed at start with
+                //
+                //     cloning golden fedora-43 for disk root:
+                //       404 Not Found: {"error":"no volume fedora-43"}
+                //
+                // The engine holds `media-846574c8a97c`. `fedora-43` is the
+                // image resource and `fedora-43-x86_64` is what a person
+                // calls it; neither is a volume, and the form was submitting
+                // one of them as though it were. Offering a digest as the
+                // label would be honest and unreadable, so the two are now
+                // separate: read the name, submit the volume.
+                let label = if i.status.local_name.is_empty() {
                     i.name.clone()
                 } else {
                     i.status.local_name.clone()
                 };
-                if name.is_empty() || local.contains(&name) {
+                let volume = i.status.golden.clone();
+                if volume.is_empty() || label.is_empty() || local.contains(&volume) {
                     continue;
                 }
-                choices.push(Choice { label: name.clone(), value: name });
+                choices.push(Choice { label, value: volume });
             }
         }
     }
 
     // 3. What could be goldened but has not been. These take the longest —
     //    a download, a decode and a seal — so they come last and say so.
-    let have: std::collections::HashSet<String> =
-        choices.iter().map(|c| c.value.clone()).collect();
     if let Ok(r) = http.get(format!("{base}/api/v1/catalog")).send().await {
         if let Ok(list) = r.json::<CatalogList>().await {
             fleet_ok = true;
             for i in list.items {
-                if !i.golden.is_empty() && have.contains(&i.golden) {
+                // Already goldened? Asked of the reference, because the
+                // catalogue's `golden` field is the name an image *would*
+                // be given and the fleet list now answers in volumes. The
+                // reference is the one identity both sides share.
+                if goldened.contains(&i.reference) {
                     continue;
                 }
                 // The name, and nothing else.
@@ -308,7 +382,7 @@ async fn image_for_golden(http: &reqwest::Client, base: &str, golden: &str) -> O
     let list = r.json::<ImageList>().await.ok()?;
     list.items
         .into_iter()
-        .find(|i| i.status.local_name == golden || i.name == golden)
+        .find(|i| i.status.golden == golden || i.status.local_name == golden || i.name == golden)
         .map(|i| i.name)
 }
 
@@ -347,5 +421,71 @@ mod tests {
     #[test]
     fn an_empty_cache_reads_empty_rather_than_failing() {
         assert!(Cache::new().get().choices.is_empty());
+    }
+
+    #[test]
+    fn a_silent_operator_does_not_empty_the_list() {
+        // The bug this is here for: the console and the operator start
+        // together, the first poll finds nothing, and the create form turned
+        // its dropdown into a text box asking for a golden name from memory.
+        let c = Cache::new();
+        c.put(Catalogue {
+            choices: vec![Choice { value: "media-846574c8a97c".into(), label: "fedora-43".into() }],
+            note: String::new(),
+        });
+        c.put(Catalogue { choices: vec![], note: "no answer from the image operator".into() });
+        let after = c.get();
+        assert_eq!(after.choices.len(), 1, "the last good list is kept");
+        assert!(after.note.contains("last gave"), "and it says it may be stale: {}", after.note);
+    }
+
+    #[test]
+    fn a_real_answer_replaces_the_remembered_one() {
+        let c = Cache::new();
+        c.put(Catalogue {
+            choices: vec![Choice { value: "old".into(), label: "old".into() }],
+            note: String::new(),
+        });
+        c.put(Catalogue {
+            choices: vec![Choice { value: "new".into(), label: "new".into() }],
+            note: String::new(),
+        });
+        let after = c.get();
+        assert_eq!(after.choices.len(), 1);
+        assert_eq!(after.choices[0].value, "new");
+        assert!(after.note.is_empty());
+    }
+
+    #[test]
+    fn the_form_submits_the_volume_and_shows_the_name() {
+        // What the operator answers for a built image, trimmed to the
+        // fields that decide this. `golden` is the volume the engine holds;
+        // the other two are what a person calls it, and submitting either
+        // produced `404 no volume fedora-43` at start.
+        let body = r#"{"items":[{"name":"fedora-43",
+            "spec":{"reference":"fedora:43","arch":"x86_64"},
+            "status":{"phase":"Available","localName":"fedora-43-x86_64",
+                      "golden":"media-846574c8a97c","arch":"x86_64"}}]}"#;
+        let list: ImageList = serde_json::from_str(body).expect("parses");
+        let i = &list.items[0];
+        assert_eq!(i.status.golden, "media-846574c8a97c");
+        assert_eq!(i.status.local_name, "fedora-43-x86_64");
+        assert_eq!(i.spec.reference, "fedora:43");
+
+        let label = if i.status.local_name.is_empty() { i.name.clone() } else { i.status.local_name.clone() };
+        let choice = Choice { label, value: i.status.golden.clone() };
+        assert_eq!(choice.value, "media-846574c8a97c", "the value is a volume");
+        assert_eq!(choice.label, "fedora-43-x86_64", "the label is readable");
+        assert!(!is_reference(&choice.value), "a volume is not a catalogue reference");
+    }
+
+    #[test]
+    fn an_image_that_has_not_resolved_yet_is_not_offered() {
+        // No golden means no volume to clone. Offering it would create a VM
+        // that fails at start, which is the failure being fixed.
+        let body = r#"{"items":[{"name":"alma-10","spec":{"reference":"alma:10"},
+            "status":{"phase":"Available","localName":"alma-10-x86_64","golden":""}}]}"#;
+        let list: ImageList = serde_json::from_str(body).expect("parses");
+        assert!(list.items[0].status.golden.is_empty());
     }
 }
