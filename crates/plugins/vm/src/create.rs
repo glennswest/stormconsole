@@ -208,7 +208,6 @@ fn root_disk(catalogue: &Catalogue) -> Field {
         .collect();
     Field::choices("golden", "Root disk", options)
         .required()
-        .hint("already on the node boots at once; anything else is built or copied first")
 }
 
 /// What the form submitted, with one piece of belt and braces.

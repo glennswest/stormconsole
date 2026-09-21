@@ -166,10 +166,7 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
                         continue;
                     }
                     local.insert(i.name.clone());
-                    choices.push(Choice {
-                        label: format!("{} — on this node", i.name),
-                        value: i.name,
-                    });
+                    choices.push(Choice { label: i.name.clone(), value: i.name });
                 }
             }
         }
@@ -194,10 +191,7 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
                 if name.is_empty() || local.contains(&name) {
                     continue;
                 }
-                choices.push(Choice {
-                    label: format!("{name} — goldened, will be copied to the node"),
-                    value: name,
-                });
+                choices.push(Choice { label: name.clone(), value: name });
             }
         }
     }
@@ -213,23 +207,20 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
                 if !i.golden.is_empty() && have.contains(&i.golden) {
                     continue;
                 }
+                // The name, and nothing else.
+                //
+                // These read "alma 10 x86_64 — not goldened yet, will be
+                // built" and the like. Whether a golden exists yet is the
+                // operator's business, not a sentence in a dropdown: it makes
+                // every row a different length, it is the same words on most
+                // of them, and it tells somebody choosing an operating system
+                // about storage mechanics they did not ask about.
                 let what = if i.distro.is_empty() {
                     i.reference.clone()
                 } else {
                     format!("{} {}", i.distro, i.version)
                 };
-                let arch = if i.arch.is_empty() { String::new() } else { format!(" {}", i.arch) };
-                let prov = match i.provisioning.as_str() {
-                    // Worth saying in the list: an Ignition image ignores a
-                    // cloud-init seed entirely, so an SSH key typed into this
-                    // form would go nowhere and the VM would have no login.
-                    "ignition" => " · ignition, not cloud-init",
-                    _ => "",
-                };
-                choices.push(Choice {
-                    label: format!("{what}{arch} — not goldened yet, will be built{prov}"),
-                    value: i.reference,
-                });
+                choices.push(Choice { label: what, value: i.reference });
             }
         }
     }
