@@ -877,6 +877,7 @@ mod tests {
                 ]},
                 "status": {
                     "phase": "Running",
+                    "podIP": "10.0.0.5",
                     "conditions": [{"type": "Ready", "status": "True"}],
                     "containerStatuses": [{
                         "name": "app", "restartCount": 2, "ready": true,
@@ -914,7 +915,15 @@ mod tests {
         };
         assert_eq!(edge("namespace"), "k8s:ns:default");
         assert_eq!(edge("node"), "k8s:node:n1");
-        assert_eq!(pod.metrics[0].value, "2");
+        // By label, not by position: a metric added in front of this one
+        // should not fail a test about restarts, and one just was.
+        let metric = |label: &str| {
+            pod.metrics.iter().find(|m| m.label == label).map(|m| m.value.clone())
+        };
+        assert_eq!(metric("restarts"), Some("2".into()));
+        // The pod's own facts, which were not in the feed at all before.
+        assert_eq!(metric("ready"), Some("1/1".into()));
+        assert_eq!(metric("IP"), Some("10.0.0.5".into()));
         assert!(pod.actions.iter().any(|a| a.id == "delete"));
     }
 
