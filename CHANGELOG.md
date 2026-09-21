@@ -438,3 +438,12 @@
   so a field stormcos adds reaches the node card without a release here.
   Absent fields render as absent: the emitter omits what it cannot read so a
   reader can tell "no role" from "role unknown".
+- **fix:** a select option now submits a value rather than its label. A VM was
+  created whose root disk was named "alma 10 x86_64 — not goldened yet, will
+  be built": the option carried one string, so the form posted the sentence a
+  person read and the server mapped it back afterwards — a mapping that missed
+  as soon as the catalogue changed between rendering and submitting.
+- **fix:** the cloud-init payload goes in a Secret (`userDataSecretRef`)
+  instead of inline in the VMI spec. A public key is not confidential, but
+  `userData` is the field that grows passwords and it travels in a spec that
+  anyone with `get` on virtualmachineinstances can read.
