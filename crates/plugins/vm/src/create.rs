@@ -442,13 +442,36 @@ mod tests {
     fn an_ssh_key_reaches_the_seed_because_a_guest_without_one_is_unreachable() {
         let mut f = form();
         f.ssh_key = "ssh-ed25519 AAAA gw".into();
-        let v = instance(&f).unwrap();
-        let seed = v["spec"]["volumes"][1]["cloudInitNoCloud"]["userData"].as_str().unwrap();
+        let seed = cloud_init(&f);
         assert!(seed.contains("ssh_authorized_keys"), "{seed}");
         assert!(seed.contains("ssh-ed25519 AAAA gw"), "{seed}");
         // Without one the seed is still valid cloud-config, not empty.
-        let plain = instance(&form()).unwrap();
-        assert_eq!(plain["spec"]["volumes"][1]["cloudInitNoCloud"]["userData"], "#cloud-config\n");
+        assert_eq!(cloud_init(&form()), "#cloud-config\n");
+    }
+
+    #[test]
+    fn the_seed_is_referenced_not_inlined() {
+        // A public key is not confidential, but userData is the field that
+        // grows passwords and it travels in the VMI spec, readable by anyone
+        // with get on virtualmachineinstances. KubeVirt has
+        // userDataSecretRef; the payload belongs there.
+        let mut f = form();
+        f.ssh_key = "ssh-ed25519 AAAA gw".into();
+        let v = instance(&f).unwrap();
+        let seed = &v["spec"]["volumes"][1]["cloudInitNoCloud"];
+        assert_eq!(seed["userDataSecretRef"]["name"], "web-1-cloudinit");
+        assert!(seed["userData"].is_null(), "the payload must not be inline: {seed}");
+        // And the key must not appear anywhere in the machine's spec.
+        let whole = serde_json::to_string(&v).unwrap();
+        assert!(!whole.contains("ssh-ed25519"), "the key leaked into the VMI: {whole}");
+    }
+
+    #[test]
+    fn the_secret_is_named_after_the_machine() {
+        // So deleting a VM leaves one obvious thing behind rather than an
+        // anonymous blob nobody will ever identify.
+        assert_eq!(seed_secret_name("web-1"), "web-1-cloudinit");
+        assert_eq!(seed_secret_name("  spaced  "), "spaced-cloudinit");
     }
 
     #[test]
