@@ -231,12 +231,22 @@ async fn poll(inner: &Inner) {
     // Which references already have a golden: a catalogue row that is
     // already the fleet's says so and points at it, rather than inviting a
     // second click that does nothing.
-    let goldened: Vec<(String, String)> = images
+    // The phase travels with the name, because the catalogue row reports it.
+    //
+    // Without it the two views of one image contradicted each other: a
+    // catalogue entry was hardcoded Ok while its golden was Warn or Error,
+    // so an image that was still building — or had failed — read "ready" in
+    // the list somebody browses to decide what to build.
+    let goldened: Vec<(String, String, String)> = images
         .iter()
         .filter_map(|i| {
             let name = field(i, &["name"])?;
             let reference = i.get("spec").and_then(|s| field(s, &["reference"]))?;
-            Some((reference, name))
+            let phase = i
+                .get("status")
+                .and_then(|st| field(st, &["phase"]))
+                .unwrap_or_else(|| "Pending".into());
+            Some((reference, name, phase))
         })
         .collect();
 
@@ -325,14 +335,17 @@ fn operator(health: Health, detail: &str, metrics: Vec<Metric>, groups: &[(&str,
 /// of choosing it. `rolling` is the other one: the distribution publishes
 /// only `latest` in that path, so the same reference is different bytes
 /// next month.
-fn catalog_row(v: &Value, goldened: &[(String, String)]) -> ComponentSummary {
+fn catalog_row(v: &Value, goldened: &[(String, String, String)]) -> ComponentSummary {
     let reference = field(v, &["reference"]).unwrap_or_default();
     let arch = field(v, &["arch"]).unwrap_or_default();
     let provisioning = field(v, &["provisioning"]).unwrap_or_default();
     let rolling = v.get("rolling").and_then(Value::as_bool).unwrap_or(false);
     let source = field(v, &["source"]).unwrap_or_default();
     let note = field(v, &["note"]).unwrap_or_default();
-    let existing = goldened.iter().find(|(r, _)| *r == reference).map(|(_, n)| n.clone());
+    let existing = goldened
+        .iter()
+        .find(|(r, _, _)| *r == reference)
+        .map(|(_, n, p)| (n.clone(), p.clone()));
 
     let mut metrics = vec![
         Metric::new("arch", arch),
@@ -348,7 +361,7 @@ fn catalog_row(v: &Value, goldened: &[(String, String)]) -> ComponentSummary {
     }
 
     let mut relations = vec![Relation::belongs_to("operator", "img:operator")];
-    if let Some(name) = &existing {
+    if let Some((name, _)) = &existing {
         relations.push(Relation::has_one("golden", format!("img:golden:{name}")));
     }
 
@@ -356,12 +369,30 @@ fn catalog_row(v: &Value, goldened: &[(String, String)]) -> ComponentSummary {
         id: format!("img:catalog:{reference}"),
         kind: "cloudimage".into(),
         label: reference.clone(),
-        health: Health::Ok,
+        // The golden's own state when there is one, and Idle when there is
+        // not. Hardcoded Ok said "ready" about an image nobody had built and
+        // about one whose build had failed, which are the two things a
+        // person reads this list to tell apart.
+        health: match &existing {
+            Some((_, phase)) => health_of(phase),
+            None => Health::Idle,
+        },
         detail: match &existing {
-            Some(name) => format!("goldened as {name} · {note}"),
+            Some((name, phase)) if phase != "Available" => {
+                format!("goldening as {name} — {phase} · {note}")
+            }
+            Some((name, _)) => format!("goldened as {name} · {note}"),
             None => note,
         },
         metrics,
+        // Green once the golden exists.
+        //
+        // The label already changed, and a label does not carry: down a list
+        // of thirty catalogue entries, "Golden again" and "Make golden" are
+        // the same shape in the same place and the eye does not separate
+        // them. What somebody is scanning that list *for* is which images
+        // the fleet already has, and that should be answerable without
+        // reading a word.
         actions: vec![Action {
             id: "golden".into(),
             label: if existing.is_some() { "Golden again".into() } else { "Make golden".into() },
@@ -369,6 +400,11 @@ fn catalog_row(v: &Value, goldened: &[(String, String)]) -> ComponentSummary {
             path: format!("{PROXY}/api/v1/catalog/{reference}"),
             enabled: true,
             danger: false,
+            // Green only when the golden is actually usable. A build in
+            // flight or a failed one must not look like a finished image.
+            tone: existing.as_ref().map(|(_, phase)| {
+                if phase == "Available" { "ok".to_string() } else { "warn".to_string() }
+            }),
         }],
         relations,
         link: None,
@@ -484,6 +520,7 @@ fn placement(v: &Value) -> ComponentSummary {
             path: format!("{PROXY}/api/v1/local/{name}"),
             enabled: true,
             danger: true,
+            tone: None,
         }],
         relations,
         link: None,

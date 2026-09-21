@@ -316,6 +316,7 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
             path: format!("/api/plugins/k8s/pods/{key}/delete"),
             enabled: true,
             danger: true,
+            tone: None,
         });
         out.push(c);
         out.extend(containers_of(key, obj));
@@ -405,6 +406,7 @@ fn delete_action(path: &str) -> console_core::Action {
         path: format!("/api/plugins/k8s/raw{path}"),
         enabled: true,
         danger: true,
+        tone: None,
     }
 }
 

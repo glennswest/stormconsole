@@ -241,6 +241,7 @@ mod tests {
                 path: "/api/v1/drives/abc/locate/on".into(),
                 enabled: true,
                 danger: false,
+                tone: None,
             }],
             relations: vec![Relation::belongs_to("shelf", "shelf:1")],
             link: Some("#/drives".into()),

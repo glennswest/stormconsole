@@ -268,6 +268,7 @@ fn volume(v: &Value) -> ComponentSummary {
             path: format!("{PROXY}/api/v1/volumes/{id}"),
             enabled: true,
             danger: true,
+            tone: None,
         }],
         relations,
         link: None,
