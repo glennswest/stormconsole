@@ -161,6 +161,25 @@ fn containers_of(key: &str, pod: &Value) -> Vec<ComponentSummary> {
                     c.metrics.push(Metric::new("imageID", id.to_string()).tone("muted"));
                 }
             }
+            // What it asked for and what it is allowed.
+            //
+            // Requests are what the scheduler placed it on and limits are
+            // what kills it, and a container OOMKilled at 128Mi is only
+            // explicable next to the number. Both, because the pair is the
+            // fact: a request with no limit and a limit equal to the request
+            // are different machines to operate.
+            for (field, label) in [("requests", "requests"), ("limits", "limits")] {
+                let r = spec.pointer(&format!("/resources/{field}"));
+                let cpu = r.and_then(|v| s(v, "/cpu"));
+                let mem = r.and_then(|v| s(v, "/memory"));
+                let text = match (cpu, mem) {
+                    (Some(c), Some(m)) => format!("{c} cpu · {m}"),
+                    (Some(c), None) => format!("{c} cpu"),
+                    (None, Some(m)) => m.to_string(),
+                    (None, None) => continue,
+                };
+                c.metrics.push(Metric::new(label, text).tone("muted"));
+            }
             if let Some(ports) = spec.pointer("/ports").and_then(Value::as_array) {
                 let list: Vec<String> = ports
                     .iter()
@@ -288,10 +307,50 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         let label = short_label(name, node);
         let mut c = base("pod", key, name, health, detail);
         c.label = label;
+        // How many of its containers are up, before anything else.
+        //
+        // "Running" with 0/1 ready is the commonest way a pod lies: the phase
+        // is correct — a container in CrashLoopBackOff does not change it —
+        // and the only thing that says so is this ratio.
+        if let Some(cs) = obj.pointer("/status/containerStatuses").and_then(Value::as_array) {
+            let ready = cs
+                .iter()
+                .filter(|c| c.pointer("/ready").and_then(Value::as_bool).unwrap_or(false))
+                .count();
+            c.metrics.push(
+                Metric::new("ready", format!("{ready}/{}", cs.len()))
+                    .tone(if ready == cs.len() { "muted" } else { "warn" }),
+            );
+        }
         c.metrics.push(
             Metric::new("restarts", restarts.to_string())
                 .tone(if restarts > 0 { "warn" } else { "muted" }),
         );
+        // The address, which is the one fact you cannot get anywhere else in
+        // the console and the first thing wanted to reach the thing directly.
+        if let Some(ip) = s(obj, "/status/podIP") {
+            c.metrics.push(Metric::new("IP", ip.to_string()).tone("muted"));
+        }
+        // What the scheduler promised it. Burstable and BestEffort are the
+        // two that get evicted first under pressure, so it is worth seeing
+        // without opening YAML.
+        if let Some(qos) = s(obj, "/status/qosClass") {
+            c.metrics.push(
+                Metric::new("QoS", qos.to_string())
+                    .tone(if qos == "Guaranteed" { "muted" } else { "accent" }),
+            );
+        }
+        // The pod's totals, summed across its containers — what it costs the
+        // node, which is not derivable by eye from a list of containers.
+        let (cpu_req, mem_req) = pod_requests(obj);
+        if !cpu_req.is_empty() || !mem_req.is_empty() {
+            let text = match (cpu_req.is_empty(), mem_req.is_empty()) {
+                (false, false) => format!("{cpu_req} cpu · {mem_req}"),
+                (false, true) => format!("{cpu_req} cpu"),
+                _ => mem_req.clone(),
+            };
+            c.metrics.push(Metric::new("requests", text).tone("muted"));
+        }
         c.relations.extend(ns_relation(key));
         if let Some(nd) = node {
             // **belongs_to, not has_one.** A pod does not own its node — it is
@@ -697,6 +756,92 @@ fn workload(kind: &'static str, key: &str, desired: i64, ready: i64) -> Componen
 /// Only when it is exactly `-<node>` at the end: a pod genuinely named after
 /// a machine, or one whose ReplicaSet hash happens to look like one, keeps
 /// what it was called. Trimming by guesswork would rename real pods.
+/// A pod's summed CPU and memory requests, rendered the way they were written.
+///
+/// Kubernetes quantities are not numbers — `100m`, `1`, `256Mi`, `1Gi` — so
+/// they are parsed into a common unit to add and then rendered back. Summed
+/// because the pod is what the scheduler places and what the node pays for;
+/// a list of per-container numbers is not something anyone adds up by eye.
+///
+/// Init containers are deliberately **not** summed with the rest. Kubernetes
+/// takes the *maximum* of the init containers and the sum of the app
+/// containers, because inits run before the app ones and their resources are
+/// released — adding them would overstate what the pod actually holds.
+fn pod_requests(pod: &Value) -> (String, String) {
+    let sum = |field: &str| -> i64 {
+        pod.pointer("/spec/containers")
+            .and_then(Value::as_array)
+            .map(|cs| {
+                cs.iter()
+                    .filter_map(|c| c.pointer(&format!("/resources/requests/{field}")))
+                    .filter_map(|q| q.as_str())
+                    .map(parse_quantity)
+                    .sum()
+            })
+            .unwrap_or(0)
+    };
+    let cpu = sum("cpu");
+    let mem = sum("memory");
+    (
+        if cpu > 0 { render_cpu(cpu) } else { String::new() },
+        if mem > 0 { render_mem(mem) } else { String::new() },
+    )
+}
+
+/// A Kubernetes quantity as an integer: millicores for CPU, bytes for memory.
+fn parse_quantity(q: &str) -> i64 {
+    let q = q.trim();
+    // CPU's `m` suffix is millicores; every other suffix here is a byte scale.
+    for (suffix, scale) in [
+        ("Ki", 1024_i64),
+        ("Mi", 1024 * 1024),
+        ("Gi", 1024 * 1024 * 1024),
+        ("Ti", 1024_i64.pow(4)),
+        ("k", 1000),
+        ("M", 1_000_000),
+        ("G", 1_000_000_000),
+    ] {
+        if let Some(head) = q.strip_suffix(suffix) {
+            return head.trim().parse::<f64>().map(|n| (n * scale as f64) as i64).unwrap_or(0);
+        }
+    }
+    if let Some(head) = q.strip_suffix('m') {
+        return head.trim().parse::<f64>().map(|n| n as i64).unwrap_or(0);
+    }
+    // A bare CPU value is whole cores; a bare memory value is bytes. The
+    // caller knows which it asked for, and both scale the same way here
+    // because CPU is kept in millicores.
+    q.parse::<f64>().map(|n| n as i64).unwrap_or(0)
+}
+
+fn render_cpu(millis: i64) -> String {
+    // A bare CPU request parses to whole cores, so anything under 1000 that
+    // came from an `m` suffix stays milli and anything else is cores.
+    if millis >= 1000 && millis % 1000 == 0 {
+        format!("{}", millis / 1000)
+    } else if millis >= 1000 {
+        format!("{:.1}", millis as f64 / 1000.0)
+    } else {
+        format!("{millis}m")
+    }
+}
+
+fn render_mem(bytes: i64) -> String {
+    const UNIT: [(i64, &str); 3] =
+        [(1024 * 1024 * 1024, "Gi"), (1024 * 1024, "Mi"), (1024, "Ki")];
+    for (scale, name) in UNIT {
+        if bytes >= scale {
+            let v = bytes as f64 / scale as f64;
+            return if v.fract() == 0.0 {
+                format!("{}{name}", v as i64)
+            } else {
+                format!("{v:.1}{name}")
+            };
+        }
+    }
+    format!("{bytes}")
+}
+
 fn short_label(name: &str, node: Option<&str>) -> String {
     match node {
         Some(nd) if !nd.is_empty() => match name.strip_suffix(nd) {
@@ -1095,5 +1240,61 @@ mod tests {
     fn a_partial_match_is_not_trimmed() {
         // "…-storm-06f96" is not the node, and a name is not a place to guess.
         assert_eq!(short_label("thing-storm-06f96", Some("storm-06f96d")), "thing-storm-06f96");
+    }
+
+    #[test]
+    fn quantities_parse_the_way_kubernetes_writes_them() {
+        assert_eq!(parse_quantity("100m"), 100);
+        assert_eq!(parse_quantity("1"), 1);
+        assert_eq!(parse_quantity("256Mi"), 256 * 1024 * 1024);
+        assert_eq!(parse_quantity("1Gi"), 1024 * 1024 * 1024);
+        assert_eq!(parse_quantity("512k"), 512_000);
+        assert_eq!(parse_quantity(""), 0);
+        assert_eq!(parse_quantity("nonsense"), 0);
+    }
+
+    #[test]
+    fn memory_renders_in_the_unit_it_was_written_in() {
+        assert_eq!(render_mem(256 * 1024 * 1024), "256Mi");
+        assert_eq!(render_mem(1024 * 1024 * 1024), "1Gi");
+        assert_eq!(render_mem(1536 * 1024 * 1024), "1.5Gi");
+    }
+
+    #[test]
+    fn cpu_renders_as_millis_or_cores() {
+        assert_eq!(render_cpu(100), "100m");
+        assert_eq!(render_cpu(2000), "2");
+        assert_eq!(render_cpu(1500), "1.5");
+    }
+
+    #[test]
+    fn a_pods_requests_are_its_app_containers_summed() {
+        let pod = json!({"spec": {"containers": [
+            {"name": "a", "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}}},
+            {"name": "b", "resources": {"requests": {"cpu": "150m", "memory": "128Mi"}}}
+        ]}});
+        assert_eq!(pod_requests(&pod), ("250m".to_string(), "256Mi".to_string()));
+    }
+
+    #[test]
+    fn init_containers_are_not_added_to_the_total() {
+        // Kubernetes takes the max of the inits and the sum of the app
+        // containers, because inits run first and release what they held.
+        // Adding them would overstate what the pod actually holds.
+        let pod = json!({"spec": {
+            "initContainers": [
+                {"name": "setup", "resources": {"requests": {"cpu": "900m", "memory": "2Gi"}}}
+            ],
+            "containers": [
+                {"name": "a", "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}}}
+            ]
+        }});
+        assert_eq!(pod_requests(&pod), ("100m".to_string(), "128Mi".to_string()));
+    }
+
+    #[test]
+    fn a_pod_with_no_requests_reports_none_rather_than_zero() {
+        let pod = json!({"spec": {"containers": [{"name": "a"}]}});
+        assert_eq!(pod_requests(&pod), (String::new(), String::new()));
     }
 }
