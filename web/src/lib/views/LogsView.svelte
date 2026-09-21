@@ -25,9 +25,17 @@
 
   let rows = $state([])
   let hosts = $state([])
+  let apps = $state([])
   let ring = $state({ total: 0, received: 0, duplicates: 0 })
   // A node card links here with ?host=; the filter starts on that node.
   let host = $state(route.current.query.get('host') || '')
+  // A container or service links here with ?app=; the filter starts on it.
+  //
+  // This is what "show me this container's logs" means, and it is not the
+  // same as searching for its name: a search finds every line that mentions
+  // the container, including other components talking about it, which is the
+  // wrong answer at the moment it is crashing.
+  let app = $state(route.current.query.get('app') || '')
   let minSeverity = $state('')
   let search = $state('')
   let follow = $state(true)
@@ -39,6 +47,7 @@
   function params() {
     const p = new URLSearchParams()
     if (host) p.set('host', host)
+    if (app) p.set('app', app)
     if (minSeverity) p.set('min_severity', minSeverity)
     if (search) p.set('search', search)
     return p
@@ -67,6 +76,7 @@
     try {
       const s = await get('/api/plugins/logs/summary')
       hosts = s.hosts || []
+      apps = s.apps || []
       ring = {
         total: s.total || 0,
         received: s.received || 0,
@@ -125,7 +135,7 @@
   <PageHeader
     crumbs={[{ label: 'Observe' }, { label: 'Fleet logs' }]}
     title="Fleet logs"
-    scope={host ? `from ${host}` : ''}
+    scope={[app && `from ${app}`, host && `on ${host}`].filter(Boolean).join(' ')}
   >
     {#snippet actions()}
       <button class:following={follow} onclick={toggleFollow} title={follow ? 'Pause the live tail' : 'Follow the live tail'}>
@@ -144,6 +154,12 @@
       <option value="">All hosts</option>
       {#each hosts as h}
         <option value={h.host}>{h.host} ({h.count})</option>
+      {/each}
+    </select>
+    <select bind:value={app} onchange={refresh} aria-label="Filter by container">
+      <option value="">All containers</option>
+      {#each apps as a}
+        <option value={a}>{a}</option>
       {/each}
     </select>
     <select bind:value={minSeverity} onchange={refresh} aria-label="Filter by severity">

@@ -563,6 +563,27 @@ impl Store {
         Ok(rows)
     }
 
+    /// Every emitter the ring has heard from, so a container can be picked
+    /// rather than typed.
+    ///
+    /// Scanned rather than kept in a table like hosts: an app list is read
+    /// when somebody opens a filter, not on every insert, and a second index
+    /// maintained on the hot path to answer a question asked twice an hour is
+    /// the wrong trade. Bounded by the ring, which is bounded.
+    pub fn apps(&self) -> Result<Vec<String>> {
+        let tx = self.db.begin_read()?;
+        let events = tx.open_table(EVENTS)?;
+        let mut seen = std::collections::BTreeSet::new();
+        for item in events.iter()? {
+            let (_, v) = item?;
+            let record: StoredEvent = serde_json::from_slice(v.value())?;
+            if !record.app.is_empty() {
+                seen.insert(record.app);
+            }
+        }
+        Ok(seen.into_iter().collect())
+    }
+
     pub fn hosts(&self) -> Result<Vec<HostSummary>> {
         let tx = self.db.begin_read()?;
         let hosts = tx.open_table(HOSTS)?;

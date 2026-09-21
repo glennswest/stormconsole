@@ -134,6 +134,18 @@ impl ConsolePlugin for FleetPlugin {
                     c.kind = "service".into();
                     c.metrics.insert(0, Metric::new("port", svc.port.to_string()).tone("muted"));
                     c.relations.push(Relation::belongs_to("node", "fleet:node:local"));
+                    // Straight to this service's own lines.
+                    //
+                    // The ring has held every container's output all along —
+                    // a service that crash-looped ten times had its reason on
+                    // the group the whole time — and the only way to reach it
+                    // was the fleet log page and a guess at a search term. A
+                    // search is the wrong instrument anyway: it finds every
+                    // line that *mentions* the service, including other
+                    // components talking about it.
+                    if c.link.is_none() {
+                        c.link = Some(format!("#/logs?app={}", urlencode(&svc.name)));
+                    }
                 }
                 out.push(c);
             }
@@ -149,7 +161,10 @@ impl ConsolePlugin for FleetPlugin {
                     metrics: vec![Metric::new("port", svc.port.to_string()).tone("muted")],
                     actions: vec![],
                     relations: vec![Relation::belongs_to("node", "fleet:node:local")],
-                    link: None,
+                    // A service whose feed is down is exactly the one whose
+                    // logs are wanted, so the link matters more here than on
+                    // a healthy one.
+                    link: Some(format!("#/logs?app={}", urlencode(&svc.name))),
                 });
             }
             svc_ids.push(sys_id);
@@ -637,4 +652,20 @@ mod beacon_render_tests {
         assert!(m.iter().any(|m| m.label == "services" && m.value == "2"));
         assert!(!m.iter().any(|m| m.label == "cores"));
     }
+}
+
+/// Percent-encode a path segment for a hash route.
+///
+/// Service names are plain today, but a name with a space or a `#` in it
+/// would silently truncate the route rather than fail, and a link that goes
+/// somewhere else is worse than one that does not work.
+fn urlencode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }

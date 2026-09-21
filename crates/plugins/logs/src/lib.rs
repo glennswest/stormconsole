@@ -280,11 +280,12 @@ async fn summary(State(inner): State<Arc<Inner>>) -> Response {
     let Some(store) = inner.store.read().await.clone() else {
         return Json(json!({
             "total": 0, "received": 0, "duplicates": 0,
-            "hosts": [], "severities": [],
+            "hosts": [], "apps": [], "severities": [],
         }))
         .into_response();
     };
     let hosts = store.hosts().unwrap_or_default();
+    let apps = store.apps().unwrap_or_default();
     let severities: Vec<_> = store
         .severity_counts()
         .unwrap_or_default()
@@ -300,6 +301,7 @@ async fn summary(State(inner): State<Arc<Inner>>) -> Response {
         "retain_hours": inner.retain_ms / 3_600_000,
         "cap": inner.cap,
         "hosts": hosts,
+        "apps": apps,
         "severities": severities,
     }))
     .into_response()
@@ -312,6 +314,10 @@ async fn stream(
     let rx = inner.tail.subscribe();
     let stream = futures_util::stream::unfold(rx, move |mut rx| {
         let host = q.host.clone();
+        // The live tail has to agree with the query it follows. Filtering the
+        // page by one container and then streaming every container into it
+        // would fill the view with the lines the filter just excluded.
+        let app = q.app.clone();
         let min_severity = q.min_severity;
         async move {
             loop {
@@ -319,6 +325,11 @@ async fn stream(
                     Ok(e) => {
                         if let Some(h) = &host {
                             if e.host != *h {
+                                continue;
+                            }
+                        }
+                        if let Some(a) = &app {
+                            if e.app != *a {
                                 continue;
                             }
                         }
