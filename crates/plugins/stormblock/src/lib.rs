@@ -223,18 +223,41 @@ fn engine(health: Health, detail: &str, metrics: Vec<Metric>, groups: &[(&str, V
     }
 }
 
+/// What a volume *is*, which is the first thing anyone wants of a list of 481.
+///
+/// A golden is sealed and read-only and everything clones from it; a clone
+/// descends from one and costs only what it has written; a blank is a
+/// template waiting to be cloned. They were all rendered identically, so the
+/// list said nothing about the structure it was showing.
+fn volume_kind(v: &Value) -> &'static str {
+    let sealed = v.get("sealed").and_then(Value::as_bool).unwrap_or(false);
+    let has_parent = field(v, &["parent"]).is_some();
+    match (sealed, has_parent) {
+        // A sealed volume with a parent is a golden taken from another —
+        // still a golden, because what matters is that clones descend from it.
+        (true, _) => "golden",
+        (false, true) => "clone",
+        (false, false) => "volume",
+    }
+}
+
 fn volume(v: &Value) -> ComponentSummary {
     let id = field(v, &["id"]).unwrap_or_default();
-    let health = match field(v, &["health"]).as_deref() {
-        Some("healthy") => Health::Ok,
-        Some("degraded") => Health::Warn,
-        Some("failed") => Health::Error,
+    let health_word = field(v, &["health"]).unwrap_or_else(|| "unknown".into());
+    let health = match health_word.as_str() {
+        "healthy" => Health::Ok,
+        "degraded" => Health::Warn,
+        "failed" => Health::Error,
         _ => Health::Unknown,
     };
     let size = field(v, &["virtual_size_human"]).unwrap_or_default();
     let alloc = field(v, &["allocated_human"]).unwrap_or_default();
+    let shared = field(v, &["shared_human"]).unwrap_or_default();
     let redundancy = field(v, &["redundancy"]).unwrap_or_else(|| "none".into());
     let sealed = v.get("sealed").and_then(Value::as_bool).unwrap_or(false);
+    let writable = v.get("writable").and_then(Value::as_bool).unwrap_or(false);
+    let kind = volume_kind(v);
+
     let mut relations = vec![Relation::belongs_to("engine", "sb:engine")];
     if let Some(p) = field(v, &["parent"]) {
         relations.push(Relation::has_one("parent", format!("sb:volume:{p}")));
@@ -242,24 +265,56 @@ fn volume(v: &Value) -> ComponentSummary {
     if let Some(a) = field(v, &["array_id"]) {
         relations.push(Relation::belongs_to("array", format!("sb:array:{a}")));
     }
+
+    // Kind first, because it is what the eye should land on.
     let mut metrics = vec![
+        Metric::new("kind", kind).tone(match kind {
+            "golden" => "accent",
+            "clone" => "ok",
+            _ => "muted",
+        }),
         Metric::new("size", size.clone()),
+        // What it actually costs, which for a clone is nearly nothing.
         Metric::new("allocated", alloc.clone()),
-        Metric::new("redundancy", redundancy.clone()).tone("muted"),
     ];
+    if !shared.is_empty() && shared != "0 B" {
+        // Read through but not owned. Without this a clone shows a few
+        // megabytes allocated and reads as empty, when what is true is
+        // "costs almost nothing, and contains five gigabytes".
+        metrics.push(Metric::new("shared", shared.clone()).tone("muted"));
+    }
+    // Booleans as marks rather than prose: a column of ✓ and · can be scanned
+    // down a list of hundreds, where "· sealed" buried in a sentence cannot.
+    metrics.push(Metric::new("sealed", if sealed { "✓" } else { "·" })
+        .tone(if sealed { "accent" } else { "muted" }));
+    metrics.push(Metric::new("healthy", if health == Health::Ok { "✓" } else { "✗" })
+        .tone(if health == Health::Ok { "ok" } else { "error" }));
+    if !writable && !sealed {
+        metrics.push(Metric::new("read-only", "✓").tone("warn"));
+    }
+    if redundancy != "none" {
+        metrics.push(Metric::new("redundancy", redundancy.clone()).tone("muted"));
+    }
     if let Some(p) = u64_field(v, "physical_bytes") {
         metrics.push(Metric::new("physical", human_bytes(p)).tone("muted"));
     }
+    if let Some(r) = field(v, &["role"]) {
+        metrics.push(Metric::new("role", r).tone("muted"));
+    }
+
     ComponentSummary {
         id: format!("sb:volume:{id}"),
         kind: "volume".into(),
         label: field(v, &["name"]).unwrap_or_else(|| id.clone()),
         health,
-        detail: format!(
-            "{size} · {alloc} allocated · {redundancy}{}{}",
-            if sealed { " · sealed" } else { "" },
-            field(v, &["health"]).map(|h| format!(" · {h}")).unwrap_or_default()
-        ),
+        // What it is and what it costs. The facts that were repeated here
+        // from the metrics — redundancy, sealed, the health word — are in
+        // their own columns now, and a sentence repeating a column is a
+        // sentence nobody reads.
+        detail: match kind {
+            "clone" => format!("{kind} · {alloc} of {size} written"),
+            _ => format!("{kind} · {size}"),
+        },
         metrics,
         actions: vec![Action {
             id: "delete".into(),
@@ -291,10 +346,22 @@ fn slab(v: &Value) -> ComponentSummary {
     };
     let tier = field(v, &["tier"]).unwrap_or_default();
     let domain = field(v, &["domain"]).unwrap_or_default();
+    // `drive=SB0003+16804478976` — the drive this slab is cut from and the
+    // offset it starts at. That is the only place the physical location of
+    // anything appears, and it was rendered as an opaque label.
+    let drive = domain
+        .strip_prefix("drive=")
+        .and_then(|d| d.split('+').next())
+        .unwrap_or("")
+        .to_string();
     ComponentSummary {
         id: format!("sb:slab:{id}"),
         kind: "slab".into(),
-        label: format!("{tier} · {domain}"),
+        label: if drive.is_empty() {
+            format!("{tier} · {domain}")
+        } else {
+            format!("{drive} · {tier}")
+        },
         health,
         detail: format!(
             "{} free of {} · {} slots of {}",
@@ -304,6 +371,18 @@ fn slab(v: &Value) -> ComponentSummary {
             human_bytes(u64_field(v, "slot_size").unwrap_or(0))
         ),
         metrics: vec![
+            // Free space, in the units somebody asks the question in. It was
+            // in the detail sentence only, where it cannot be sorted and
+            // cannot be compared down a list of slabs.
+            Metric::new("free", human_bytes(free)).tone(match health {
+                Health::Ok => "ok",
+                Health::Warn => "warn",
+                _ => "error",
+            }),
+            Metric::new("capacity", human_bytes(total)).tone("muted"),
+            Metric::new("drive", if drive.is_empty() { "—".into() } else { drive.clone() })
+                .tone("muted"),
+            Metric::new("role", field(v, &["role"]).unwrap_or_else(|| "—".into())).tone("muted"),
             Metric::new("used", used_pct.to_string()).unit("%").tone(match health {
                 Health::Ok => "ok",
                 Health::Warn => "warn",
