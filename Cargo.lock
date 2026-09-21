@@ -1700,7 +1700,7 @@ dependencies = [
 [[package]]
 name = "stormview"
 version = "0.1.0"
-source = "git+https://github.com/glennswest/stormview?branch=main#81ef1d2875d9c8247cb1b41fd7db2985bdf2ce60"
+source = "git+https://github.com/glennswest/stormview?branch=main#5ea5e60d471b3a09c3f4fd2923423046391744b2"
 dependencies = [
  "serde",
 ]
