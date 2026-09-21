@@ -490,18 +490,47 @@ mod tests {
         }));
         assert_eq!(c.id, "sb:volume:1f4c");
         assert_eq!(c.health, Health::Ok);
-        assert!(c.detail.contains("128.0 MB") && c.detail.contains("sealed"));
+        // Sealed, so a golden — what clones descend from — and the detail
+        // says that rather than repeating facts that have their own columns.
+        let metric = |l: &str| c.metrics.iter().find(|m| m.label == l).map(|m| m.value.clone());
+        assert_eq!(metric("kind"), Some("golden".into()));
+        assert!(c.detail.starts_with("golden"), "{}", c.detail);
+        assert!(c.detail.contains("128.0 MB"), "{}", c.detail);
+        // Marks, not prose: scannable down a list of hundreds.
+        assert_eq!(metric("sealed"), Some("✓".into()));
+        assert_eq!(metric("healthy"), Some("✓".into()));
         assert_eq!(c.actions[0].method, "DELETE");
         assert_eq!(c.actions[0].path, "/api/plugins/sb/proxy/api/v1/volumes/1f4c");
         assert!(c.relations.iter().any(|r| r.targets == vec!["sb:volume:aa"]));
         assert_eq!(volume(&json!({"id": "x", "health": "degraded"})).health, Health::Warn);
+
+        // A clone: not sealed, has a parent, and costs only what it wrote.
+        let c = volume(&json!({
+            "id": "c1", "name": "misc", "virtual_size_human": "33.0 MB",
+            "allocated_human": "1.0 MB", "shared_human": "32.0 MB",
+            "health": "healthy", "sealed": false, "parent": "aa", "writable": true
+        }));
+        let metric = |l: &str| c.metrics.iter().find(|m| m.label == l).map(|m| m.value.clone());
+        assert_eq!(metric("kind"), Some("clone".into()));
+        assert_eq!(metric("shared"), Some("32.0 MB".into()));
+        assert_eq!(metric("sealed"), Some("·".into()));
+        // The one sentence that matters about a clone: what it actually cost.
+        assert_eq!(c.detail, "clone · 1.0 MB of 33.0 MB written");
     }
 
     #[test]
     fn a_slab_warns_when_nearly_full() {
-        let c = slab(&json!({"id": "s", "tier": "hot", "domain": "drive=file", "slot_size": 1048576u64,
+        let c = slab(&json!({"id": "s", "tier": "hot", "domain": "drive=SB0003+168044",
+            "slot_size": 1048576u64, "role": "system",
             "total_bytes": 1000u64, "free_bytes": 100u64, "free_slots": 1u64}));
         assert_eq!(c.health, Health::Warn);
-        assert_eq!(c.metrics[0].value, "90");
+        let metric = |l: &str| c.metrics.iter().find(|m| m.label == l).map(|m| m.value.clone());
+        // By label, not position: free space was added in front of used.
+        assert_eq!(metric("used"), Some("90".into()));
+        // Free space and the drive it is cut from, which is the only place
+        // the physical location of anything appears.
+        assert_eq!(metric("free"), Some("100 B".into()));
+        assert_eq!(metric("drive"), Some("SB0003".into()));
+        assert!(c.label.starts_with("SB0003"), "{}", c.label);
     }
 }
