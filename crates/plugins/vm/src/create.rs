@@ -38,6 +38,7 @@ use console_core::{Creator, Field, Viewer};
 
 use crate::images::{self, Catalogue};
 use serde_json::{json, Value};
+use tracing::{info, warn};
 
 use crate::Inner;
 
@@ -198,7 +199,15 @@ pub async fn create(
     viewer: Viewer,
     Json(form): Json<Form>,
 ) -> Response {
+    // Every exit from here says what happened, and says it on the log group
+    // rather than only into the dialog that asked.
+    //
+    // A create that fails in a modal is gone the moment it is dismissed:
+    // there is nothing to go back to, nothing to show somebody else, and
+    // nothing for anyone who was not the person who clicked. The dialog
+    // still shows the reason — this is the copy that outlives it.
     let Some(client) = &inner.client else {
+        warn!("vm create refused: no apiserver configured for this console");
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
     };
@@ -216,6 +225,7 @@ pub async fn create(
         match golden_from_reference(&inner, &form.golden, &form.node).await {
             Ok(name) => form.golden = name,
             Err(e) => {
+                warn!(reference = %form.golden, error = %e, "vm create: could not golden the image");
                 return (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response()
             }
         }
@@ -223,7 +233,10 @@ pub async fn create(
 
     let doc = match instance(&form) {
         Ok(d) => d,
-        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+        Err(e) => {
+            warn!(name = %form.name, error = %e, "vm create rejected");
+            return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response();
+        }
     };
     let ns = doc.pointer("/metadata/namespace").and_then(Value::as_str).unwrap_or("default");
     if let Some(refusal) = crate::refuse_hidden(&inner, &viewer, ns).await {
@@ -234,17 +247,29 @@ pub async fn create(
         Ok((status, body)) if status.is_success() => {
             let name = doc.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
             let _ = body;
+            info!(name, namespace = ns, golden = %form.golden, "virtual machine created");
             Json(json!({"message": format!("virtual machine {name} created")})).into_response()
         }
         Ok((status, body)) => {
+            // The apiserver's own words when it has any. A bare status code
+            // is the answer that sends somebody to read source, and the
+            // message is usually the whole diagnosis — a missing CRD, a
+            // field it will not take, a namespace that does not exist.
             let msg = body
                 .get("message")
                 .and_then(Value::as_str)
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("apiserver returned {}", status.as_u16()));
+            warn!(
+                name = %form.name, namespace = ns, status = status.as_u16(), error = %msg,
+                "vm create: apiserver refused it"
+            );
             (StatusCode::BAD_GATEWAY, Json(json!({"error": msg}))).into_response()
         }
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+        Err(e) => {
+            warn!(name = %form.name, error = %e, "vm create: could not reach the apiserver");
+            (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response()
+        }
     }
 }
 
