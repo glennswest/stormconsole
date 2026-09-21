@@ -377,20 +377,20 @@ fn catalog_row(v: &Value, goldened: &[(String, String, String)]) -> ComponentSum
             Some((_, phase)) => health_of(phase),
             None => Health::Idle,
         },
+        // What it is, in as few words as carry meaning.
+        //
+        // This read "goldened as fedora-43-x86_64 · cleanest cloud-init story
+        // and the newest kernel; ~13 months of support per release" — the
+        // golden name is a column, and the distribution's own blurb is the
+        // same for every version of it. What somebody scanning this list
+        // wants is whether the fleet has it, and if it is being built, how
+        // far along.
         detail: match &existing {
             Some((_, phase)) if phase == "Available" => "in the fleet".to_string(),
             Some((_, phase)) => phase.to_lowercase(),
             None => note,
         },
         metrics,
-        // What it is, in as few words as carry meaning.
-        //
-        // This read "goldened as fedora-43-x86_64 · cleanest cloud-init story
-        // and the newest kernel; ~13 months of support per release" — the
-        // golden name is a column, and the distribution's own blurb is the
-        // same for every version of it. What a person scanning this list
-        // wants is whether the fleet has it, and if it is being built, how
-        // far along.
         actions: catalog_actions(&reference, &existing),
         relations,
         link: None,
@@ -441,11 +441,6 @@ fn catalog_actions(reference: &str, existing: &Option<(String, String)>) -> Vec<
             danger: false,
             tone: Some("warn".into()),
         }],
-    }
-}
-
-/// One golden the fleet has.        relations,
-        link: None,
     }
 }
 
