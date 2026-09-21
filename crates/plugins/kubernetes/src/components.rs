@@ -750,10 +750,23 @@ mod tests {
         let out = map(&pod_snap(), None);
         let pod = find(&out, "k8s:pod:default/web");
         assert_eq!(pod.health, Health::Ok);
-        // The namespace is on the pod, not only in its id: a pod whose
-        // namespace appears nowhere cannot be told apart from the
-        // identically-named pod next door.
-        assert_eq!(pod.detail, "default · Running · n1");
+        // The phase, and only the phase. Namespace and node were in this
+        // string until they became sortable columns; leaving them here would
+        // spend a card's one line repeating what is already on screen.
+        assert_eq!(pod.detail, "Running");
+        // They still have to be *somewhere*, and they are — as the edges the
+        // table builds those columns from. A pod whose namespace appears
+        // nowhere cannot be told apart from the identically-named pod next
+        // door, which is what the old assertion was protecting.
+        let edge = |name: &str| {
+            pod.relations
+                .iter()
+                .find(|r| r.name == name)
+                .map(|r| r.targets.join(","))
+                .unwrap_or_default()
+        };
+        assert_eq!(edge("namespace"), "k8s:ns:default");
+        assert_eq!(edge("node"), "k8s:node:n1");
         assert_eq!(pod.metrics[0].value, "2");
         assert!(pod.actions.iter().any(|a| a.id == "delete"));
     }
