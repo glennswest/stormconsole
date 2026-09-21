@@ -246,6 +246,81 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
     Catalogue { choices, note }
 }
 
+/// Make sure a node has a local copy of a golden, and say what happened.
+///
+/// A golden in the registry is not a disk a VM can clone: the fleet holds it,
+/// and a node holds a *placement* of it. Nothing created placements, so the
+/// create form offered "will be copied to the node" and then created a
+/// machine whose root disk did not exist:
+///
+/// ```text
+/// cloning golden fedora-43-x86_64 for disk root:
+///   404 Not Found: {"error":"no volume fedora-43-x86_64","code":404}
+/// ```
+///
+/// Returns `Ok(true)` when the copy is already there and the VM can start at
+/// once, `Ok(false)` when one has been asked for and is being made — that is
+/// minutes for a cloud image, so the caller says so rather than pretending.
+pub async fn ensure_local(
+    http: &reqwest::Client,
+    base: &str,
+    node: &str,
+    golden: &str,
+) -> Result<bool, String> {
+    let base = base.trim_end_matches('/');
+    if node.is_empty() {
+        // Nothing to place it on. Not an error: a VM the scheduler will place
+        // has no node yet, and refusing here would block the ordinary case on
+        // a cluster where the golden is already everywhere.
+        return Ok(false);
+    }
+    // Already there? The engine's own listing, not the placement records:
+    // what matters is whether the volume exists, and a placement that was
+    // deleted leaves the volume behind on purpose.
+    if let Ok(r) = http.get(format!("{base}/api/v1/nodes/{node}/images")).send().await {
+        if let Ok(list) = r.json::<NodeImages>().await {
+            if list.items.iter().any(|i| i.name == golden) {
+                return Ok(true);
+            }
+        }
+    }
+    // Which image owns this golden name. A placement is made from the image,
+    // not from the name a VM asks for.
+    let image = image_for_golden(http, base, golden).await.ok_or_else(|| {
+        format!("no image in the catalogue produces the golden {golden}")
+    })?;
+    let body = json_body(&image, node);
+    let r = http
+        .post(format!("{base}/api/v1/local"))
+        .body(body)
+        .header("content-type", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("image operator at {base}: {e}"))?;
+    if !r.status().is_success() {
+        let code = r.status();
+        let text = r.text().await.unwrap_or_default();
+        return Err(format!("could not place {golden} on {node}: {code} {}", text.trim()));
+    }
+    Ok(false)
+}
+
+fn json_body(image: &str, node: &str) -> String {
+    // Hand-built rather than through serde_json, so this module keeps no
+    // dependency it does not otherwise need.
+    format!("{{\"image\":\"{image}\",\"node\":\"{node}\"}}")
+}
+
+/// The image whose `localName` is this golden.
+async fn image_for_golden(http: &reqwest::Client, base: &str, golden: &str) -> Option<String> {
+    let r = http.get(format!("{base}/api/v1/images")).send().await.ok()?;
+    let list = r.json::<ImageList>().await.ok()?;
+    list.items
+        .into_iter()
+        .find(|i| i.status.local_name == golden || i.name == golden)
+        .map(|i| i.name)
+}
+
 /// Is this value a catalogue reference rather than an existing golden?
 ///
 /// The operator's references are `<distro>:<version>`; golden names never

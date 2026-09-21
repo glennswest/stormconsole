@@ -267,6 +267,27 @@ pub async fn create(
         }
     }
 
+    // Make sure the node has the disk before creating a machine that clones
+    // it.
+    //
+    // A golden in the registry is the fleet's; a node holds a *placement* of
+    // it. Nothing created placements, so this form offered "will be copied to
+    // the node" and then created a VM whose root disk did not exist —
+    // `no volume fedora-43-x86_64`, from the kubelet, minutes later, with
+    // nothing connecting it back to the choice made here.
+    let mut placing = false;
+    if let Some(base) = inner.image_operator.clone() {
+        match images::ensure_local(&inner.http, &base, form.node.trim(), &form.golden).await {
+            Ok(true) => {}
+            Ok(false) => placing = !form.node.trim().is_empty(),
+            Err(e) => {
+                warn!(golden = %form.golden, node = %form.node, error = %e,
+                      "vm create: could not place the root disk");
+                return (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response();
+            }
+        }
+    }
+
     let doc = match instance(&form) {
         Ok(d) => d,
         Err(e) => {
@@ -319,8 +340,19 @@ pub async fn create(
         Ok((status, body)) if status.is_success() => {
             let name = doc.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
             let _ = body;
-            info!(name, namespace = ns, golden = %form.golden, "virtual machine created");
-            Json(json!({"message": format!("virtual machine {name} created")})).into_response()
+            info!(name, namespace = ns, golden = %form.golden, placing, "virtual machine created");
+            // Say that the disk is still arriving, rather than letting it
+            // look created-and-broken for the minutes an import takes.
+            let message = if placing {
+                format!(
+                    "virtual machine {name} created — its root disk is still being \
+                     copied to {}, so it will start once that finishes",
+                    form.node.trim()
+                )
+            } else {
+                format!("virtual machine {name} created")
+            };
+            Json(json!({"message": message})).into_response()
         }
         Ok((status, body)) => {
             // The apiserver's own words when it has any. A bare status code
