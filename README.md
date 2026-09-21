@@ -26,6 +26,11 @@ own part.
   locate, lifecycle
 - **stormblock** — volumes, exports, slabs, arrays from the block engine
 - **sbregistry** — goldens, clones, pallets, warm-up
+- **vmimages** — cloud images in three tiers, through
+  [vmcloud-image-operator](https://github.com/glennswest/vmcloud-image-operator):
+  the public catalogue a cluster could golden from (one button a row), the
+  goldens the fleet has, and which nodes carry a local copy — each copy
+  pointing at the stormblock volume it became
 
 Not part of this project: mkube. The orchestrator side is rustkube and
 rustkube-node only.
