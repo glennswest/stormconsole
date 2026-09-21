@@ -28,6 +28,7 @@
 
   let search = $state('')
   let state = $state('')
+  let node = $state('')
 
   const resolveId = (id) => feed.components.find((c) => c.id === id)
   const invoke = (a) => call(a.method, a.path)
@@ -39,12 +40,28 @@
   )
 
   const all = $derived((idsForRoute(at) || []).map(resolveId).filter(Boolean))
+
+  // Which machine a thing is on, from the edge the table builds its Node
+  // column from. Read here as well so the filter and the column can never
+  // disagree about what a row's node is.
+  function nodeOf(c) {
+    const rel = (c.relations || []).find(
+      (r) => r.kind === 'belongs_to' && r.name === 'node'
+    )
+    return rel?.targets?.[0]?.split(':').pop() || ''
+  }
+
+  // Only offered when there is a choice to make. On a single-node cluster a
+  // node filter is a control that can only ever do nothing.
+  const nodes = $derived([...new Set(all.map(nodeOf).filter(Boolean))].sort())
+
   const rows = $derived(
     all.filter((c) => {
       if (state && c.health !== state) return false
+      if (node && nodeOf(c) !== node) return false
       if (!search) return true
       const q = search.toLowerCase()
-      return `${c.label} ${c.detail || ''}`.toLowerCase().includes(q)
+      return `${c.label} ${c.detail || ''} ${nodeOf(c)}`.toLowerCase().includes(q)
     })
   )
   const filtered = $derived(rows.length !== all.length)
@@ -92,6 +109,14 @@
       hint={filtered ? `${rows.length} of ${all.length}` : `${all.length} items`}
     >
       {#snippet filters()}
+        {#if nodes.length > 1}
+          <select bind:value={node} aria-label="Filter by node">
+            <option value="">All nodes</option>
+            {#each nodes as n}
+              <option value={n}>{n}</option>
+            {/each}
+          </select>
+        {/if}
         <select bind:value={state} aria-label="Filter by state">
           <option value="">All states</option>
           <option value="ok">Ready</option>
