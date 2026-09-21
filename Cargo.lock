@@ -1115,6 +1115,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-vmimages"
+version = "0.8.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "console-core",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1670,6 +1684,7 @@ dependencies = [
  "plugin-stormdrive",
  "plugin-stormstorage",
  "plugin-vm",
+ "plugin-vmimages",
  "rust-embed",
  "serde",
  "serde_json",
