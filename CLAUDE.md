@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.9.0**
+Current: **0.10.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -324,41 +324,64 @@ Left open on #18: what is still not editable — cores, memory, disk bus and
 network (#14), a disk added to a running machine, and the address the guest
 actually holds, which needs the agent at `agent.sock` that nothing reads
 
-### The batch filed 2026-09-22 (#13–#17) — in progress
+### The batch filed 2026-09-22 (#13–#17) ✅ v0.10.0
 Read stormvm's `docs/console.md` before writing any of the VM half: it is
 the authority, and it says three things this repo was guessing at — the
 replay is already served on attach, minting is loopback-only and exists
 for `--require-token` nodes, and there is a whole set of **control verbs**
 beside the doors that nothing here has ever called.
 
-- [ ] **#16 collapse the navigation.** A `kind` on `NavSection` —
+- [x] **#16 collapse the navigation.** A `kind` on `NavSection` —
       `work` or `admin` — declared by the plugin that contributes it, not
       a list in the SPA. Admin sections start shut; an explicit choice
       wins and persists. A collapsed section carries its total, so it
       stays discoverable
-- [ ] **#13 the console doors, the rest of them.** Mint a token and
+- [x] **#13 the console doors, the rest of them.** Mint a token and
       present it, so a `--require-token` node works; surface `replay` and
       say in the terminal where the history ends and the live stream
       begins; read-only as an explicit capability rather than a side
       effect of being able to see the VM
-- [ ] **#13/#14/#18 the control verbs.** `pause`, `unpause`,
+- [x] **#13/#14/#18 the control verbs.** `pause`, `unpause`,
       `softreboot`, `reset`, `freeze`, `thaw` — served by stormvm on every
       node, reported per machine (`control.lifecycle`, `control.freeze`),
       and called by nothing. This is most of what "a person can see a VM
       exists and cannot power it off" was asking for
-- [ ] **#14 settings, honestly.** An edit form that says per field
+- [x] **#14 settings, honestly.** An edit form that says per field
       whether it applies now or at next boot, and a machine that reports
       it has **pending changes** rather than silently diverging from its
       spec. Metrics: what is actually measurable today, and an honest
       absence where it is not (cadvisor is not wired here yet)
-- [ ] **#17 the network's view, inside the views people use.** The half
+- [x] **#17 the network's view, inside the views people use.** The half
       that comes from CRDs the kubernetes plugin already watches —
       identity and what it resolves to, endpoint state, the policies that
       select a workload — on the pod and VM views. Flows stay gated on
       stormpump#11 (tracked on #4)
-- [ ] **#15 identity.** Steps 1 and 2 of the issue's own order: a login
-      that produces a viewer, and `access()` consulting it. Users, groups
-      and audit are step 3 and 4 and are not this pass
+- [x] **#15 identity.** Step 1 landed in parallel (7408a47: argon2,
+      roles, per-user SSH keys). Step 2 is the write gate — **one check,
+      in the host, by method**, not per route, because the proxies are
+      `any` and could never be enumerated
+
+**Verified live on dev** against the seeded fastetcd + rustkube: the nav
+collapsed to four open sections with totals on the shut ones; a settings
+edit written to the definition, the row turning warn with `pending:
+cores` and the page reading "Waiting for a restart. vCPU has been
+changed"; refusals for a fractional vCPU, the network binding and the SSH
+key; 409 for a machine with no definition; and with two users configured,
+a reader getting 403 on both a settings PUT and a pod delete while an
+operator got 200. Cilium seeded as CRDs: `datapath = ready` and
+`regenerating`, `identity = app=web tier=frontend`, the right policy
+selected and the `app=db` one not, and `addresses = 1 free of 20` warning
+on the node. 172 tests.
+
+**Left open, and why.** #14's metrics half — per-VM CPU, memory, disk and
+network over time — needs cadvisor, which runs on nodes as a pallet and
+is wired to nothing here; the container↔VM matching cannot be verified
+without a node actually running machines, and a metrics client shipped
+unverified is worse than none. #17's flows and per-module agent health
+are gated on stormpump#11 (tracked on #4). #15's steps 3 and 4 — users
+and groups manageable without editing a file on an immutable root,
+certificate identity from stormcert, and an audit of consoles, deletes
+and goldens — are their own pass
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

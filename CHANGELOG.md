@@ -3,6 +3,96 @@
 ## [Unreleased]
 
 ### 2026-09-22
+- **feat(vm):** the verbs the hypervisor serves, which nothing was calling
+  (#13, #14, #18). stormvm has served `pause`, `unpause`, `softreboot`,
+  `reset`, `freeze` and `thaw` beside the console doors since the doors
+  landed, and reports per machine which of them it can take. The console
+  called none. The probe already fetched `/api/v1/vms` to decide whether
+  stormvm was answering and threw the body away — it is the only place
+  the control verbs are reported, so it is kept now, and a machine is
+  offered only what it can actually take. A button that 404s makes a
+  client report that *the VM* refused, which sends whoever pressed it
+  looking at the guest (stormvm#9). Ordered by what a guest survives: a
+  soft reboot is a request the guest can honour and sits with Pause; a
+  reset is the button on the front of the box and is shelved with the
+  destructive ones. Freeze and thaw come as a pair, because a guest left
+  frozen has every write blocked and from inside that looks like a hang.
+- **feat(vm):** settings that say **when the change lands**, and a machine
+  that admits it has diverged (#14). Changing a running VM has four
+  different answers depending on the field, and a page that appears to
+  apply everything and quietly applies some is worse than one that
+  refuses. Every field carries when it takes effect, and the answer
+  depends on the machine: on a stopped one everything simply applies, and
+  warning somebody about a restart they do not need is how real warnings
+  stop being read. The network binding and the SSH key are refused on
+  purpose and say where to go instead — one moves the guest's address and
+  this form cannot say what the new one will be, and the other is read
+  once at first boot. And **pending changes**: a VirtualMachine is the
+  definition, a VirtualMachineInstance is what is running, and nothing
+  makes them agree — edit one and they diverge silently until somebody
+  reboots and finds out. A diverged machine now says which fields, what
+  was asked for beside what is running, on its page and as a metric on
+  its row.
+- **feat(vm):** a token when the node wants one (#13). stormvm admits
+  loopback without one, but `--require-token` exists for a node that has
+  decided its own loopback is not a boundary, and there the plain dial was
+  refused with a 401 that reads as "the console is broken". Mint first,
+  use it if minting worked, dial plainly if it did not.
+- **feat(vm):** read-only is a capability, not an accident (#13, #15). A
+  serial console is a root shell on most guests, so watching one and
+  driving it are different permissions — and the second came free with the
+  first. The relay drops what a read-only browser sends rather than
+  refusing the door, because watching a guest boot is the whole point of
+  it; keepalives still pass. And the replay is said out loud: stormvm
+  sends the tail of the guest's console log on attach, so a console opened
+  ten minutes into a boot prints the boot, and a reader who does not know
+  that is reading history as though it were now.
+- **feat(net):** what the network knows, where people already look (#17).
+  Cilium knew which identity a workload had, whether its datapath was
+  programmed and which policies selected it — as five lists under
+  Networking, which is not where anybody is when they are asking why a pod
+  cannot be reached. Now on the pod, the node and the machine: the
+  identity **resolved** (12345 answers nothing, `app=web tier=frontend`
+  does, and it is what policy is written against), the datapath state (a
+  pod can be Running with an endpoint still regenerating, and during that
+  window nothing reaches it), the policies that select it — evaluated
+  against the labels Cilium itself decided the workload has, because those
+  are the labels policy is applied to — and the addresses left in a node's
+  pod CIDR, which is the number that predicts pods stuck Pending. A
+  selector carrying `matchExpressions` reports as selecting nothing rather
+  than being guessed at. All from CRDs the plugin already watches: the
+  agent is a DaemonSet and they can disagree, and a CRD is the cluster's
+  own record. Flows and per-module agent health stay gated on stormpump#11
+  (tracked on #4).
+- **feat(auth):** a reader may not write, enforced **once and by method**
+  (#15). The roles landed and almost nothing consulted them: two routes
+  checked, and delete-a-pod, apply-YAML, replace-an-object, raw delete,
+  every VM verb, create, and everything behind the storage and registry
+  proxies did not. Per-route is how this is usually done and how it goes
+  wrong — one route added without the check is the whole hole, and the
+  proxies are `any` and could never be enumerated. One check in the host,
+  by method, scoped to `/api/plugins/`. The refusal names who is signed in
+  and which role is missing, because "forbidden" on a console somebody is
+  already logged into reads as a broken console.
+- **fix(auth):** a console with no credentials configured is not a
+  read-only console. Roles now decide things and an anonymous viewer holds
+  none, so turning authentication *off* had made the console read-only —
+  a silent break for every deployment that has never configured a user. A
+  refusal has to come from having decided to enforce something, not from
+  having decided nothing.
+- **feat(table):** a reference shows every target rather than the first
+  (the policies selecting a pod are several, and showing one is worse than
+  showing none because nothing says there were others), and a placement
+  column takes only single-target edges that resolve in the feed — a
+  placement is singular by definition, and a plugin publishes an edge
+  without being able to know whether the other side exists on this
+  console.
+- **fix:** three constructors that listed every field of a struct and
+  stopped compiling when it grew one — `Viewer` twice and the VM create
+  `Form` three times in a day, each break taking the whole workspace's
+  tests with it. They spread the default now.
+
+### 2026-09-22
 - **feat(nav):** sections declare whether they are **work** or
   **administration**, and the administration ones start shut (#16). First
   login was a wall: ten sections, every one expanded, thirty-five items,

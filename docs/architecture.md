@@ -247,6 +247,12 @@ assume:
   inside an `overflow-x` wrapper, where it can never fire; the console's
   table bounds its own height so the header actually sticks.
 - **Name first, destructive actions last** and right-aligned.
+- **A reference shows every target**, not the first: a placement is
+  usually one thing (the node a VM is on) but the policies selecting a pod
+  are several, and showing one of them is worse than showing none, because
+  nothing says there were others. A reference whose target is not in this
+  console's feed is dropped where it is drawn — a plugin publishes an edge
+  without being able to know whether the other side exists here.
 - **Placement is a column**, read off the `belongs_to` edges rather than
   written out per kind. Namespace, node, shelf, array, definition — any
   placement whose values differ down the list earns a column and a sort;
@@ -279,6 +285,74 @@ machine landed in node details (#18). A volume published its parent the
 same way and expanded upwards through its own ancestry. Plugins therefore
 publish an edge in the direction the thing actually points, and the
 renderers do not have to guess.
+
+### Navigation: work and administration
+
+A `NavSection` declares a `kind` — `work` or `admin` — and the SPA starts
+the administration ones shut, with their total beside them (#16). The
+split is not "basic" against "advanced", which ages badly and is faintly
+insulting; it is the person creating a virtual machine against the person
+deciding whether a drive is failing, and the second one knows where to
+look.
+
+The kind is declared by the plugin that contributes the section, because
+the plugin is the thing that knows, and `Work` is the default, so a
+section nobody classified stays open and nothing is hidden that was not
+deliberately classified. A section two plugins contribute to is work if
+*either* calls it that — which is how Storage stays open for the PVCs
+somebody asked for while stormblock's slabs sit in the same section.
+
+Shut is a third state, not the absence of a choice: the stored map holds
+only choices somebody actually made, so an explicit choice always wins and
+a section that changes kind on the server changes for everybody who never
+touched it.
+
+### Who may do what
+
+Authentication is optional and off by default on a single node. When it is
+off, every viewer holds `admin` — a console with no credentials configured
+is one where everybody who can reach the port is an administrator, and
+`main` warns about exactly that on every start. A refusal has to come from
+having decided to enforce something, not from having decided nothing.
+
+When it is on, a viewer carries **roles**, named for what the console
+offers rather than for Kubernetes verbs: "may open a console" and "may
+delete a volume" do not line up with get/list/watch, and pretending they
+do produces a model nobody can reason about. `admin` holds every role, so
+no check has to remember to list it.
+
+The read/write boundary is enforced **once, in the host, by method**: any
+POST, PUT, PATCH or DELETE under `/api/plugins/` needs `operator`. Not
+per route — one route added without the check is the whole hole, and the
+storage and registry proxies are `any` and could never be enumerated. A
+route that read with a POST would be refused, and would be a route worth
+changing rather than an exception worth carving. Namespace scoping
+(`access()`) is a separate and narrower question and is unchanged.
+
+Still open (#15): users and groups that can be managed without editing a
+file on an immutable root, certificate identity from `stormcert`, and an
+audit of the capabilities that matter — consoles, deletes, goldens.
+
+### The network's view, inside the views people use
+
+Cilium's facts are attached to the pod, the node and the machine rather
+than living only in the five lists under Networking (#17): the identity
+*resolved* to the labels policy is written against, the datapath state,
+the policies that select the workload, and the addresses left in a node's
+pod CIDR.
+
+Two constraints shape it. The agent is a DaemonSet — every node has one
+and they can disagree — so everything here comes from a CRD, which is the
+cluster's own record and says the same thing to everybody. And a policy
+selector is evaluated against the labels *Cilium* decided the workload
+has, because those are the labels policy is applied to; a match computed
+against the pod's own labels would differ from the datapath's on exactly
+the workloads where it matters. A selector carrying `matchExpressions` is
+reported as selecting nothing rather than guessed at.
+
+Flows — allowed and denied, the actual answer to "why can nothing reach
+this" — and per-module agent health come from Hubble and the agent's own
+REST API, neither enabled in the image yet (stormpump#11, tracked on #4).
 
 ## Built-in plugins
 
@@ -490,10 +564,46 @@ answer. Stopping an instance that nothing will restart is destructive and
 is published `danger`, which is what keeps it behind the row menu beside
 Delete.
 
+**The verbs beside the doors.** stormvm serves `pause`, `unpause`,
+`softreboot`, `reset`, `freeze` and `thaw`, and reports per machine which
+of them it can take — `control.lifecycle` for the control socket,
+`control.freeze` for the guest's own agent. The console proxies them
+(`POST …/machines/{ns}/{name}/verb/{verb}`) rather than reimplementing
+them: pausing a guest is QMP or cloud-hypervisor's HTTP API depending on
+which hypervisor started it, and which one that is was recorded at start
+precisely so nothing else has to guess. A machine is offered only what it
+can take, because a button that 404s makes a client report that *the VM*
+refused.
+
+**Settings, and when they land.** `GET`/`PUT
+…/vms/{ns}/{name}/settings` gives every editable field with the answer to
+"when does this take effect" — which depends on the machine, since on a
+stopped one everything simply applies. Edits are merge patches against the
+`VirtualMachine`, never the instance: a patch to a running VMI's spec is
+read by nothing and lost when it stops, so a machine with no definition is
+refused rather than half-changed. Two fields are refused on purpose and
+say where to go instead — the network binding moves the guest's address
+and a one-field form cannot say what the new one will be, and the SSH key
+lives in a cloud-init seed the guest reads once at first boot.
+
+**Pending changes.** A `VirtualMachine` is the definition and a
+`VirtualMachineInstance` is the machine that is running, and nothing makes
+them agree. A diverged machine reports which fields, what was asked for
+beside what is actually running, rather than leaving somebody to find out
+at the next reboot.
+
 The console doors are relayed through the console's own origin
 (`/api/plugins/vm/console/{ns}/{name}/{serial,vnc}`) and addressed by VM
 rather than node, so the browser never learns a node address and the URL
-survives a live migration. stormvm is probed for its **VM collection**,
+survives a live migration. A token is minted per attach and presented if
+minting worked, so a `--require-token` node works; on an ordinary node it
+is one extra request that changes nothing. **Read-only is a capability**:
+a serial console is a root shell on most guests, so a viewer without
+`operator` has what the browser sends dropped at the relay rather than the
+door refused — watching a guest boot is the whole point of the door.
+Keepalives still pass. The **replay** (stormvm sends the tail of the
+guest's console log on attach) is labelled, because a reader who does not
+know the first screenful is history is reading it as though it were now. stormvm is probed for its **VM collection**,
 not `/healthz` — every daemon here answers `/healthz`, and a health probe
 would have the console offering a terminal that dials a stranger.
 
