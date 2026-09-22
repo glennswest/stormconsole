@@ -746,3 +746,7 @@
   from the manifest the image carries), so it is what *booted* rather than
   what was published. Nodes that disagree are all named — that is what a
   half-finished rollout looks like.
+- **fix(ui):** Console and Start take the line, ahead of restart and stop. The
+  inline slots went to the first two actions declared, which buried a VM's
+  Console behind the kebab — the one action people open the list for, two
+  clicks away, while rarely-used ones sat in the open.

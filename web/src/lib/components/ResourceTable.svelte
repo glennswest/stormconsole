@@ -304,9 +304,25 @@
   // OpenShift's kebab and ESXi's Actions menu follow.
   const INLINE = 2
 
+  // Which two get the line, in order of what somebody came to the row to do.
+  //
+  // Taking the first two in declaration order buried a VM's Console behind
+  // the kebab under restart and stop -- the one action people open the list
+  // *for*, two clicks away, while the ones they use rarely sat in the open.
+  // Getting to a screen is the reason a virtual machine list exists.
+  //
+  // Anything not named keeps declaration order after the named ones, so a
+  // plugin that grows a new action does not have to be known about here.
+  const FIRST = ['console', 'start']
+
   function split(row) {
     const acts = row.actions || []
-    const inline = acts.filter((a) => !a.danger).slice(0, INLINE)
+    const safe = acts.filter((a) => !a.danger)
+    const ranked = [
+      ...FIRST.map((id) => safe.find((a) => a.id === id)).filter(Boolean),
+      ...safe.filter((a) => !FIRST.includes(a.id)),
+    ]
+    const inline = ranked.slice(0, INLINE)
     return { inline, menu: acts.filter((a) => !inline.includes(a)) }
   }
 
