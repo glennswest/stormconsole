@@ -97,7 +97,12 @@
     // After the render, not before it: scrolling to a height the browser has
     // not laid out yet leaves the view one frame short of the bottom, which
     // reads as a console that stops just before the line you want.
-    queueMicrotask(() => serialBox?.scrollTo(0, serialBox.scrollHeight))
+    // scrollTop alone: `scrollTo(0, h)` also sets scrollLeft to 0, which
+    // would drag the view back to the left edge every frame now that there
+    // is somewhere to scroll sideways to.
+    queueMicrotask(() => {
+      if (serialBox) serialBox.scrollTop = serialBox.scrollHeight
+    })
   }
 
   function openSerial() {
@@ -462,14 +467,19 @@
   .right button { font-size: var(--sc-t-meta); padding: 3px 10px; }
 
   .term {
-    height: 62vh;
+    /* Taller, because a console is the view you sit and watch. */
+    height: 78vh;
     overflow: auto;
     padding: 10px var(--sc-row-px);
     font-family: var(--mono);
     font-size: var(--sc-t-meta);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-all;
+    line-height: 1.4;
+    /* `pre`, not `pre-wrap`: wrapping breaks alignment, and alignment is
+       most of what serial output is for. `dmesg`, a partition table, a
+       systemd boot -- all of them are columns, and a wrapped line silently
+       becomes two and stops lining up with the ones around it. Long lines
+       scroll sideways instead. */
+    white-space: pre;
     background: #000;
     color: #d0d0d0;
     outline: none;

@@ -277,9 +277,37 @@ export function initStyle() {
   applyStyle(load('stormconsole-style', 'openshift'))
 }
 
-export function toggleSection(label) {
-  prefs.collapsed = { ...prefs.collapsed, [label]: !prefs.collapsed[label] }
+/// Whether a section is shut right now.
+///
+/// Three states, not two: an explicit choice, and *no* choice, which falls
+/// back to what the section declares itself to be. An `admin` section —
+/// engine internals, drives, goldens, the registry, fleet plumbing —
+/// starts shut; a `work` section starts open. The stored map only ever
+/// holds choices somebody actually made, so a section that changes kind
+/// on the server changes here too for everybody who never touched it.
+export function sectionShut(section) {
+  const choice = prefs.collapsed[section.label]
+  if (choice !== undefined) return !!choice
+  return section.kind === 'admin'
+}
+
+export function toggleSection(section) {
+  const label = typeof section === 'string' ? section : section.label
+  const now = typeof section === 'string' ? !!prefs.collapsed[label] : sectionShut(section)
+  prefs.collapsed = { ...prefs.collapsed, [label]: !now }
   save('stormconsole-nav-collapsed', prefs.collapsed)
+}
+
+/// What a shut section holds, so shutting it hides nothing you needed to
+/// know to decide whether to open it. Null when nothing under it counts
+/// (the overview, the log tail) rather than 0, which would read as empty.
+export function sectionCount(section) {
+  let total = null
+  for (const item of section.items || []) {
+    const n = navCount(item.href)
+    if (n !== null) total = (total ?? 0) + n
+  }
+  return total
 }
 
 // --- Feed helpers -----------------------------------------------------

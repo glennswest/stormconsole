@@ -4,7 +4,7 @@
   // the active item carries an accent rail, and every countable route
   // shows how many objects it holds, so the tree answers "is anything
   // there?" before you click it.
-  import { nav, navCount, prefs, toggleSection } from '../stores.svelte.js'
+  import { nav, navCount, prefs, sectionCount, sectionShut, toggleSection } from '../stores.svelte.js'
   import { iconFor } from '../ui/icons.js'
   import Icon from './Icon.svelte'
 
@@ -17,15 +17,19 @@
 <aside class:collapsed={!prefs.navOpen}>
   <nav aria-label="Console navigation">
     {#each nav.sections as section (section.label)}
-      {@const shut = !!prefs.collapsed[section.label]}
+      {@const shut = sectionShut(section)}
+      {@const total = shut ? sectionCount(section) : null}
       <div class="section">
         <button
           class="section-label"
           aria-expanded={!shut}
-          onclick={() => toggleSection(section.label)}
+          onclick={() => toggleSection(section)}
         >
           <span class="caret" class:shut><Icon name="down" size={12} stroke={2} /></span>
           {section.label}
+          <!-- A shut section carries its total, so shutting it hides
+               nothing you needed in order to decide whether to open it. -->
+          {#if total !== null}<span class="total" class:zero={total === 0}>{total}</span>{/if}
         </button>
         {#if !shut}
           <ul>
@@ -76,6 +80,19 @@
     text-align: left;
   }
   .section-label:hover { background: none; color: var(--text-dim); }
+  .total {
+    margin-left: auto;
+    font-size: var(--sc-t-eyebrow);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    color: var(--text-faint);
+    background: var(--panel-raised);
+    border-radius: 999px;
+    padding: 0 6px;
+    min-width: 20px;
+    text-align: center;
+  }
+  .total.zero { opacity: 0.45; }
   .caret { display: grid; place-items: center; transition: transform 0.15s ease; }
   .caret.shut { transform: rotate(-90deg); }
 

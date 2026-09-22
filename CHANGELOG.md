@@ -3,6 +3,29 @@
 ## [Unreleased]
 
 ### 2026-09-22
+- **feat(nav):** sections declare whether they are **work** or
+  **administration**, and the administration ones start shut (#16). First
+  login was a wall: ten sections, every one expanded, thirty-five items,
+  most of it infrastructure nobody is looking at when they sit down to do
+  something. Nothing is removed — the default state was the problem. The
+  split is not "basic" against "advanced", which ages badly and is faintly
+  insulting; it is the person creating a VM against the person deciding
+  whether a drive is failing, and the second one knows where to look. So
+  Home, Workloads, Virtualization and Storage stay open, and Compute,
+  Networking, Observe, Images, Hardware and Administration start shut. The
+  kind is declared by the plugin that contributes the section, so a new
+  plugin classifies itself and the SPA still renders whatever it is given;
+  `Work` is the default, so nothing is hidden that was not deliberately
+  classified. A section contributed by two plugins is work if *either*
+  calls it that — which is how Storage stays open for the PVCs somebody
+  asked for while stormblock's engine internals sit in it.
+- **feat(nav):** a shut section carries its total ("Storage 119"), so
+  shutting it hides nothing you needed in order to decide whether to open
+  it. The stored map holds only choices somebody actually made, so a
+  section that changes kind on the server changes for everybody who never
+  touched it, and an explicit choice always wins.
+
+### 2026-09-22
 - **fix(console):** a relation is containment or context, never a
   destination — in every plugin (#18). A VM pushed its node as `has_one`
   and nothing else, and both renderers read more into that than it says:
