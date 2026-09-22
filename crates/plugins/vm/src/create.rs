@@ -592,8 +592,14 @@ mod tests {
         let seed = cloud_init(&f);
         assert!(seed.contains("ssh_authorized_keys"), "{seed}");
         assert!(seed.contains("ssh-ed25519 AAAA gw"), "{seed}");
-        // Without one the seed is still valid cloud-config, not empty.
-        assert_eq!(cloud_init(&form()), "#cloud-config\n");
+        // Without one the seed is still valid cloud-config, and still
+        // carries the hostname 203d5b8 made unconditional — a guest that
+        // keeps the name its image was built with is a guest DNS cannot
+        // tell apart from every other Fedora on the segment.
+        assert_eq!(
+            cloud_init(&form()),
+            "#cloud-config\nhostname: web-1\nprefer_fqdn_over_hostname: false\n"
+        );
     }
 
     #[test]
