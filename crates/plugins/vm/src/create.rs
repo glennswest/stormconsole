@@ -97,7 +97,11 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
     ]
 }
 
-#[derive(serde::Deserialize)]
+/// `Default` is derived so tests can spread it. This struct has grown a
+/// field three times in a day — `network`, `hostname`, `display` — and
+/// each time the test constructor listed every field and stopped
+/// compiling, taking the whole workspace's tests with it.
+#[derive(Default, serde::Deserialize)]
 pub struct Form {
     name: String,
     #[serde(default)]
@@ -610,15 +614,11 @@ mod tests {
     fn form() -> Form {
         Form {
             name: "web-1".into(),
-            namespace: String::new(),
             node: "storm-1".into(),
             cores: "4".into(),
             memory: "8Gi".into(),
             golden: "rocky-10-cloud".into(),
-            bus: String::new(),
-            ssh_key: String::new(),
-            network: String::new(),
-            hostname: String::new(),
+            ..Default::default()
         }
     }
 
