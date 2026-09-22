@@ -499,7 +499,31 @@ fn golden(v: &Value, local: &[Value]) -> ComponentSummary {
             message
         },
         metrics,
-        actions: vec![],
+        // Kick it, when it is not finished.
+        //
+        // A download of several gigabytes across somebody else's mirror does
+        // not always finish, and when it did not there was nothing to do: the
+        // row sat at `Building` with no progress and the only recovery was
+        // deleting the image and asking again, which throws away whatever did
+        // arrive.
+        //
+        // Offered on anything that is not `Available`, including a phase
+        // nobody recognises — the case where a person most wants a button is
+        // the one nobody anticipated. Not `danger`: it restarts an import and
+        // keeps the partial volume, so pressing it when unsure costs nothing.
+        actions: if phase == "Available" {
+            vec![]
+        } else {
+            vec![Action {
+                id: "retry".into(),
+                label: "Retry".into(),
+                method: "POST".into(),
+                path: format!("{PROXY}/api/v1/images/{name}/retry"),
+                enabled: true,
+                danger: false,
+                tone: None,
+            }]
+        },
         relations,
         link: None,
     }
