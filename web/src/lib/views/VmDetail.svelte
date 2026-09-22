@@ -268,6 +268,16 @@
     closeVnc()
   })
 
+  // How an interface is attached, whatever the node called the key.
+  const binding = (n) =>
+    n['storm.io/binding'] || (n.bridge ? 'bridge' : n.masquerade ? 'masquerade' : n.pod ? 'pod' : '')
+
+  // Masquerade and qemu's `user` are the same thing under two names: a NAT
+  // inside the hypervisor process. The guest gets an address and nothing
+  // outside this node can route to it, which is worth saying on the page
+  // rather than discovering by trying.
+  const nat = (n) => ['masquerade', 'user'].includes(binding(n))
+
   const doors = $derived(
     vm?.console || { serial: false, vnc: false, replay: false, write: false, reason: '' }
   )
@@ -352,17 +362,30 @@
 
         <div class="card">
           <h2>Network</h2>
-          {#if !vm.networks?.length}
-            <p class="none">No networks.</p>
+          {#if !vm.interfaces?.length}
+            <p class="none">No interfaces. A machine with no network is reachable only from its console.</p>
           {:else}
-            <ul class="rows">
-              {#each vm.networks as n, i (n.name || i)}
-                <li>
-                  <span class="mono">{n.name}</span>
-                  <span class="dim">{Object.keys(n).filter((k) => k !== 'name').join(', ') || '—'}</span>
-                </li>
+            <!-- The three facts somebody asks about a machine they cannot
+                 reach: how it is attached, what its MAC is, and what
+                 address the guest actually holds. The last comes from the
+                 guest's own agent, so its absence is a fact about the
+                 machine rather than a blank. -->
+            <dl>
+              {#each vm.interfaces as n, i (n.name || i)}
+                <dt>{n.name || `interface ${i}`}</dt>
+                <dd>
+                  <span class="mono">{n.ipAddress || '—'}</span>
+                  {#if n.mac}<span class="dim mono">{n.mac}</span>{/if}
+                  {#if binding(n)}<span class="dim">{binding(n)}</span>{/if}
+                  {#if !n.ipAddress}
+                    <span class="note">no address reported — the guest agent supplies it, and this machine has none running</span>
+                  {/if}
+                  {#if nat(n)}
+                    <span class="note warn">behind a NAT inside the hypervisor: the guest has an address and nothing outside this node can route to it</span>
+                  {/if}
+                </dd>
               {/each}
-            </ul>
+            </dl>
           {/if}
         </div>
       </section>
@@ -550,6 +573,14 @@
     font-size: var(--sc-t-meta);
     color: var(--warn-strong);
   }
+
+  .note {
+    display: block;
+    margin-top: 3px;
+    font-size: var(--sc-t-meta);
+    color: var(--text-faint);
+  }
+  .note.warn { color: var(--warn-strong); }
 
   .tabs {
     display: flex;

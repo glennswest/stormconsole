@@ -730,11 +730,30 @@ async fn detail(
         .into_iter()
         .map(|(name, backing)| json!({"name": name, "backing": backing}))
         .collect();
-    let interfaces = spec
-        .pointer("/domain/devices/interfaces")
+    // What the machine's network actually *is*, not what was asked for.
+    //
+    // This read `spec.domain.devices.interfaces`, which carries the name
+    // and the binding and nothing else — no MAC, no address — so the page
+    // rendered the spec's key names as prose and answered none of the
+    // questions somebody asks about a machine they cannot reach.
+    //
+    // `status.interfaces[]` is the running answer: the name, the MAC the
+    // node built, the binding it built it with, and the address the guest
+    // holds. The last of those comes from the guest's own agent, so it is
+    // absent on a machine without one — which the page says, rather than
+    // showing a blank where an address should be.
+    let interfaces = instance
+        .as_ref()
+        .and_then(|v| v.pointer("/status/interfaces"))
         .and_then(Value::as_array)
         .cloned()
-        .unwrap_or_default();
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| {
+            spec.pointer("/domain/devices/interfaces")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        });
     let networks = spec.pointer("/networks").and_then(Value::as_array).cloned().unwrap_or_default();
     let caps = console::for_vm(
         &inner.http,
