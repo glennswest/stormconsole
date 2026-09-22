@@ -288,6 +288,13 @@ renderers do not have to guess.
 
 ### Navigation: work and administration
 
+Virtual machines live in **Workloads**, beside Pods, rather than in a
+section of their own. A VM here is a kube object the kubelet reconciles,
+so running one is the same activity as running a pod, and a navigator
+that separates them says otherwise. Workloads is therefore built by two
+plugins and numbers its items with gaps.
+
+
 A `NavSection` declares a `kind` — `work` or `admin` — and the SPA starts
 the administration ones shut, with their total beside them (#16). The
 split is not "basic" against "advanced", which ages badly and is faintly
@@ -585,6 +592,31 @@ refused rather than half-changed. Two fields are refused on purpose and
 say where to go instead — the network binding moves the guest's address
 and a one-field form cannot say what the new one will be, and the SSH key
 lives in a cloud-init seed the guest reads once at first boot.
+
+**Disks.** `POST`/`DELETE …/vms/{ns}/{name}/disks[/{disk}]` add and
+remove a disk — both halves together, since a disk is an entry in
+`domain.devices.disks` and a matching one in `volumes`, and two
+`format!`s in two places is a machine that boots with a disk pointing at
+nothing. The arrays are sent whole because a merge patch replaces rather
+than merges, which also means the console refuses to work from a spec it
+could not read rather than replacing a machine's disks with a list of
+one. **This is not hotplug**: stormvm serves no device verb
+(stormvm#18), so the guest sees a new disk at its next boot and every
+layer says so. The root disk and the seed refuse to be removed.
+
+The card merges the definition's disks with the running instance's, each
+saying whether it is `attached`. Reading either alone can state only half
+the truth: the instance alone loses a disk the moment it is added, and
+the definition alone loses one that is still in the guest after being
+removed.
+
+**Memory and the balloon.** `memory.guest` with a *lower* resource
+request is ballooning — stormvm reads it that way and builds a
+`virtio-balloon-pci` or passes `--balloon`. That floor is the only
+mechanism by which a machine's memory ever changes without a restart, so
+it is a setting, and it says which of the two situations a machine is in.
+A request equal to the size is not a floor. Moving the balloon once it
+exists needs a verb stormvm does not have (stormvm#19).
 
 **Pending changes.** A `VirtualMachine` is the definition and a
 `VirtualMachineInstance` is the machine that is running, and nothing makes

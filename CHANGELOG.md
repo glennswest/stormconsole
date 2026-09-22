@@ -3,6 +3,45 @@
 ## [Unreleased]
 
 ### 2026-09-22
+- **feat(nav):** a virtual machine is a workload, next to Pods. It had a
+  section of its own holding one item, which said the thing a console
+  should not: that running a machine is a different kind of activity from
+  running a pod. On this platform it is the same activity — a VM *is* a
+  kube object the kubelet reconciles — and somebody choosing what to run
+  wants the choice in front of them, not in another part of the navigator.
+  Workloads is built by two plugins now, so its items are numbered with
+  gaps: `.item()` counts 0, 1, 2, and there is no integer between 0 and 1.
+- **feat(vm):** add and remove a machine's disks. A disk is two things
+  that have to agree — an entry in `domain.devices.disks` and one in
+  `volumes` — and they are written and removed together, for the same
+  reason `stormvm_node::plan::Sockets` exists over there. The arrays go
+  whole, because a merge patch replaces an array rather than merging into
+  it. **Not hotplug, and it does not pretend to be:** stormvm serves no
+  device verb, so the disk is written to the definition and the guest sees
+  it at its next boot — said in the answer, in the form, and before the
+  button is pressed. Filed as stormvm#18. The root disk and the seed
+  refuse to be removed: one leaves a machine that cannot start and the
+  other leaves one whose next boot has no user and no key, and both look
+  like a machine that broke rather than one somebody edited.
+- **fix(vm):** a disk you add does not vanish from the page. The card read
+  the running instance, so a disk added to the definition disappeared the
+  moment it was added — written, correct, and reported as not there.
+  Reading the definition instead would only move the lie, since a removed
+  disk would vanish while the guest still had it. Both now, merged by
+  name, each saying whether it is **attached**: written-and-not-yet-there,
+  or removed-and-still-there-until-restart.
+- **feat(vm):** the memory floor, which is the one decision that governs
+  whether a machine's memory can ever change without a restart — and which
+  the console could neither see nor set. KubeVirt's `memory.guest` with a
+  *lower* resource request is exactly ballooning, and stormvm reads it that
+  way: a floor below the size makes it build a `virtio-balloon-pci` or pass
+  `--balloon`. It is a setting now and says which of the two situations a
+  machine is in. A request equal to the size is not a floor — a balloon
+  with nothing to deflate into is not adjustable memory, and reporting it
+  as one would promise something that is not there. Moving the balloon once
+  it exists still needs a verb stormvm does not have (stormvm#19).
+
+### 2026-09-22
 - **feat(vm):** the verbs the hypervisor serves, which nothing was calling
   (#13, #14, #18). stormvm has served `pause`, `unpause`, `softreboot`,
   `reset`, `freeze` and `thaw` beside the console doors since the doors

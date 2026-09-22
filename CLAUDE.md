@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.10.0**
+Current: **0.11.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -373,6 +373,26 @@ operator got 200. Cilium seeded as CRDs: `datapath = ready` and
 selected and the `app=db` one not, and `addresses = 1 free of 20` warning
 on the node. 172 tests.
 
+### Disks, memory and where virtual machines live (v0.11.0) ✅ 2026-09-22
+- [x] A virtual machine is a **workload**, next to Pods. A VM here is a
+      kube object the kubelet reconciles, so running one is the same
+      activity as running a pod; a navigator that separates them says
+      otherwise. `item_at` exists because Workloads is built by two
+      plugins now and `.item()` counts 0, 1, 2
+- [x] Add and remove a disk — both halves together, whole arrays, and
+      honest that the guest sees it at its next boot. The card merges the
+      definition's disks with the instance's, because reading either
+      alone states only half the truth: a disk added vanishes, or a disk
+      removed vanishes while the guest still has it
+- [x] The **memory floor**, the one decision governing whether memory can
+      ever change without a restart, which the console could neither see
+      nor set. stormvm builds the balloon from it already
+- [x] Filed the two upstream gaps: **stormvm#18** (a device verb — qemu's
+      `device_del` is a *request* the guest may ignore, chv's
+      `vm.remove-device` is not, and the asymmetry is worth reporting
+      rather than smoothing over) and **stormvm#19** (a memory resize
+      verb — the balloon is built and nothing can move it)
+
 **Left open, and why.** #14's metrics half — per-VM CPU, memory, disk and
 network over time — needs cadvisor, which runs on nodes as a pallet and
 is wired to nothing here; the container↔VM matching cannot be verified
@@ -424,6 +444,11 @@ and goldens — are their own pass
 
 Tracked in `docs/architecture.md` §Integration gaps. File with `gh issue
 create` on the owning repo; never fix in this repo (Core Rule 11).
+
+2026-09-22: stormvm#18 (disk hotplug — no device verb beside the console
+doors, and `Caps` carries no hotplug flag although `DESIGN.md` says it
+should), stormvm#19 (memory resize — the balloon device is built from
+`Memory::min` and there is no verb to move it).
 
 2026-09-09: stormcos#38 (fleet lifecycle has no API — join/promote/demote/
 drain are CLI-only, and the refusal a join can give is the interesting
