@@ -155,6 +155,55 @@ fn named(v: &Value) -> Option<&str> {
     v.get("name").and_then(Value::as_str)
 }
 
+/// Every disk the machine will have or does have, merged by name.
+///
+/// A disk the definition carries and the instance does not is written and
+/// not yet attached; one the instance carries and the definition does not
+/// was removed and is still there until the machine restarts. Both are
+/// facts the page has to be able to state, and reading either object
+/// alone can state only one of them.
+pub fn merged(definition: Option<&Value>, instance: Option<&Value>) -> Vec<Value> {
+    let listed = |spec: Option<&Value>| {
+        spec.map(|s| crate::components::disks(s)).unwrap_or_default()
+    };
+    let want = listed(definition);
+    let have = listed(instance);
+    // The definition's order where there is one, because that is the
+    // order somebody wrote; anything only the instance has goes after.
+    let mut out: Vec<Value> = Vec::new();
+    let mut push = |name: &str, backing: &str, attached: bool, written: bool| {
+        out.push(json!({
+            "name": name,
+            "backing": backing,
+            "attached": attached,
+            "written": written,
+            // The root disk and the seed are refused by `remove`, and a
+            // button that exists in order to be refused is worse than no
+            // button. Decided here rather than in the view, so the rule
+            // lives beside the refusal it mirrors.
+            "removable": !matches!(name, "root" | "seed"),
+        }));
+    };
+    for (name, backing) in &want {
+        let attached = have.iter().any(|(n, _)| n == name);
+        push(name, backing, attached, true);
+    }
+    for (name, backing) in &have {
+        if !want.iter().any(|(n, _)| n == name) {
+            push(name, backing, true, false);
+        }
+    }
+    // A machine with no definition has only what is running, and every
+    // one of those is both written and attached as far as anyone can act
+    // on it.
+    if definition.is_none() {
+        for d in &mut out {
+            d["written"] = json!(true);
+        }
+    }
+    out
+}
+
 /// What to say after the write. A machine that is running has not got the
 /// disk yet, and the difference matters enough to be the whole message.
 pub fn effect(running: bool, verb: &str, name: &str) -> String {
@@ -275,6 +324,40 @@ mod tests {
         assert!(remove(&spec(), "root").unwrap_err().contains("cannot start"));
         assert!(remove(&spec(), "seed").unwrap_err().contains("nothing can log into it"));
         assert!(remove(&spec(), "nope").unwrap_err().contains("no disk called"));
+    }
+
+    #[test]
+    fn a_disk_written_but_not_attached_is_visible_and_says_so() {
+        let definition = add(&spec(), &Add {
+            name: "data".into(),
+            source: "pvc".into(),
+            from: "pg".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let definition = definition.pointer("/spec/template/spec").unwrap().clone();
+        let out = merged(Some(&definition), Some(&spec()));
+        let by = |n: &str| out.iter().find(|d| d["name"] == n).unwrap().clone();
+        // Added to the definition, not yet in the guest — and there,
+        // rather than vanishing from the page the moment it was added.
+        assert_eq!(by("data")["attached"], json!(false));
+        assert_eq!(by("data")["written"], json!(true));
+        assert_eq!(by("data")["removable"], json!(true));
+        assert_eq!(by("root")["attached"], json!(true));
+        assert_eq!(by("root")["removable"], json!(false));
+    }
+
+    #[test]
+    fn a_disk_removed_but_still_attached_is_visible_too() {
+        // Definition without `seed`, instance with it: removed, and the
+        // guest still has it until it restarts.
+        let mut definition = spec();
+        definition["domain"]["devices"]["disks"] = json!([{"name": "root", "disk": {"bus": "virtio"}}]);
+        definition["volumes"] = json!([{"name": "root", "dataVolume": {"name": "rocky-10"}}]);
+        let out = merged(Some(&definition), Some(&spec()));
+        let seed = out.iter().find(|d| d["name"] == "seed").unwrap();
+        assert_eq!(seed["written"], json!(false));
+        assert_eq!(seed["attached"], json!(true));
     }
 
     /// The whole point: a running machine has not got the disk yet, and

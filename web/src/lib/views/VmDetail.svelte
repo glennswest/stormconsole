@@ -396,10 +396,18 @@
           {:else}
             <ul class="rows">
               {#each vm.disks as d (d.name)}
-                <li>
+                <li class:pending={d.attached === false || d.written === false}>
                   <span class="mono">{d.name}</span>
                   <span class="dim">{d.backing}</span>
-                  {#if vm.disksEditable && d.removable}
+                  <!-- Written and not attached, or removed and still
+                       attached: both are states a running machine can be
+                       in, and both look like a bug if left unsaid. -->
+                  {#if d.attached === false}
+                    <span class="flag">added — at next boot</span>
+                  {:else if d.written === false}
+                    <span class="flag">removed — until next boot</span>
+                  {/if}
+                  {#if vm.disksEditable && d.removable && d.written !== false}
                     <button class="rm" onclick={() => removeDisk(d.name)}>Remove</button>
                   {/if}
                 </li>
@@ -657,6 +665,13 @@
     color: var(--warn-strong);
   }
 
+  .rows li .flag {
+    font-size: var(--sc-t-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--warn-strong);
+    white-space: nowrap;
+  }
   .rows li button.rm {
     margin-left: auto;
     font-size: var(--sc-t-eyebrow);

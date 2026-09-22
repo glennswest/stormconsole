@@ -810,16 +810,21 @@ async fn detail(
         .or_else(|| machine.as_ref().and_then(|v| v.pointer("/spec/template/spec").cloned()))
         .unwrap_or(Value::Null);
     let domain = spec.get("domain").cloned().unwrap_or(Value::Null);
-    // Which disks can be removed, decided here rather than in the view.
-    // The root disk and the seed are refused by `disks::remove`, and a
-    // button that exists in order to be refused is worse than no button.
-    let disks: Vec<Value> = components::disks(&spec)
-        .into_iter()
-        .map(|(name, backing)| {
-            let removable = !matches!(name.as_str(), "root" | "seed");
-            json!({"name": name, "backing": backing, "removable": removable})
-        })
-        .collect();
+    // What the machine will have, and what it has.
+    //
+    // Reading the instance alone — "the instance is the truth about a
+    // running machine" — meant a disk added to the definition vanished
+    // from the page the moment it was added, because nothing attaches one
+    // to a running guest. The answer is not to read the definition
+    // instead: then a disk removed from the definition would disappear
+    // while the guest still had it.
+    //
+    // So both, merged by name, each saying whether it is `attached` — the
+    // same shape as a pending setting, for the same reason.
+    let disks = disks::merged(
+        machine.as_ref().and_then(|v| v.pointer("/spec/template/spec")),
+        instance.as_ref().and_then(|v| v.get("spec")),
+    );
     // What the machine's network actually *is*, not what was asked for.
     //
     // This read `spec.domain.devices.interfaces`, which carries the name
