@@ -75,6 +75,16 @@ struct Inner {
     /// from the apiserver.
     stormvm: Option<String>,
     stormvm_up: RwLock<bool>,
+    /// What stormvm last said about each machine it is running, keyed
+    /// `ns/name` — `console.{serial,vnc,replay}` and
+    /// `control.{lifecycle,freeze}` (stormvm `docs/console.md`).
+    ///
+    /// The probe already fetched the collection to decide whether stormvm
+    /// was answering and threw the body away. It is the only place the
+    /// control verbs are reported, and a console that offers Pause on a
+    /// machine whose control socket was never bound is a button that
+    /// returns 404 and sends whoever pressed it looking at the guest.
+    stormvm_vms: RwLock<std::collections::HashMap<String, Value>>,
     http: reqwest::Client,
     /// The same namespace-authorization answer the kubernetes plugin
     /// uses. A VM is a kube object in a namespace, so it is hidden by
@@ -125,6 +135,7 @@ impl VmPlugin {
                 store: Arc::new(KubeStore::with_kinds(RESOURCES.len())),
                 stormvm,
                 stormvm_up: RwLock::new(false),
+                stormvm_vms: RwLock::new(std::collections::HashMap::new()),
                 http: reqwest::Client::new(),
                 access,
                 image_operator,
@@ -155,6 +166,10 @@ impl ConsolePlugin for VmPlugin {
             .route("/machines/{ns}/{name}/start", post(start))
             .route("/machines/{ns}/{name}/stop", post(stop))
             .route("/machines/{ns}/{name}/restart", post(restart))
+            // The verbs stormvm serves beside the doors. Proxied rather
+            // than reimplemented: the hypervisor is the thing that knows
+            // whether a guest took an ACPI powerdown.
+            .route("/machines/{ns}/{name}/verb/{verb}", post(control))
             .route("/machines/{ns}/{name}", delete(delete_machine))
             .route("/instances/{ns}/{name}/stop", post(delete_instance))
             .route("/vms/{ns}/{name}", get(detail))
@@ -166,7 +181,10 @@ impl ConsolePlugin for VmPlugin {
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
-        components::map(&self.inner.store.snapshot().await)
+        components::map_with(
+            &self.inner.store.snapshot().await,
+            &*self.inner.stormvm_vms.read().await,
+        )
     }
 
     async fn health(&self) -> Health {
@@ -300,16 +318,32 @@ impl ConsolePlugin for VmPlugin {
         // same API the console doors hang off.
         loop {
             if let Some(url) = &self.inner.stormvm {
-                let up = self
+                let answer = self
                     .inner
                     .http
                     .get(format!("{}/api/v1/vms", url.trim_end_matches('/')))
                     .timeout(Duration::from_secs(3))
                     .send()
-                    .await
-                    .map(|r| r.status().is_success())
-                    .unwrap_or(false);
+                    .await;
+                let mut running = std::collections::HashMap::new();
+                let up = match answer {
+                    Ok(r) if r.status().is_success() => {
+                        // The same body, read rather than discarded: it
+                        // carries what each machine can be asked to do.
+                        let v: Value = r.json().await.unwrap_or(Value::Null);
+                        for item in v.get("items").and_then(Value::as_array).into_iter().flatten() {
+                            let ns = item.get("namespace").and_then(Value::as_str).unwrap_or("");
+                            let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+                            if !name.is_empty() {
+                                running.insert(format!("{ns}/{name}"), item.clone());
+                            }
+                        }
+                        true
+                    }
+                    _ => false,
+                };
                 *self.inner.stormvm_up.write().await = up;
+                *self.inner.stormvm_vms.write().await = running;
             }
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_secs(15)) => {}
@@ -504,6 +538,72 @@ async fn delete_instance(
         Ok(s) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", s.as_u16())})))
             .into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// The verbs stormvm serves beside the doors: `pause`, `unpause`,
+/// `softreboot`, `reset`, `freeze`, `thaw` (stormvm `docs/console.md`).
+///
+/// Proxied rather than reimplemented. Pausing a guest is QMP or
+/// cloud-hypervisor's HTTP API depending on which hypervisor started it,
+/// and which one that is was recorded at start precisely so nothing else
+/// has to guess. The console's job is to be the origin the browser talks
+/// to, and to refuse a verb for a namespace this viewer cannot see.
+///
+/// Not every verb every machine: `control.lifecycle` says whether the
+/// control socket was bound and `control.freeze` whether the guest has its
+/// own agent, and the components only offer what is reported. A verb sent
+/// anyway is stormvm's to refuse, and its refusal is passed through in its
+/// own words.
+const VERBS: &[&str] = &["pause", "unpause", "softreboot", "reset", "freeze", "thaw"];
+
+async fn control(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name, verb)): Path<(String, String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    if !VERBS.contains(&verb.as_str()) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("{verb:?} is not a verb this console sends")})),
+        )
+            .into_response();
+    }
+    let Some(base) = inner.stormvm.as_deref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "no stormvm configured — set [vm] url to the node's stormvm"})),
+        )
+            .into_response();
+    };
+    let url = format!("{}/api/v1/vms/{ns}/{name}/{verb}", base.trim_end_matches('/'));
+    // Freeze and thaw are the pair where a timeout is the dangerous
+    // outcome: a guest left frozen has every write blocked, which from
+    // inside looks like a machine that has hung. stormvm bounds its own
+    // wait, so this one only has to be longer than that.
+    match inner.http.put(&url).timeout(Duration::from_secs(20)).send().await {
+        Ok(r) => {
+            let status = r.status();
+            let body: Value = r.json().await.unwrap_or(Value::Null);
+            if status.is_success() {
+                return Json(json!({"message": format!("{verb} sent to {ns}/{name}")}))
+                    .into_response();
+            }
+            let msg = body
+                .get("error")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("stormvm refused {verb} ({})", status.as_u16()));
+            (StatusCode::BAD_GATEWAY, Json(json!({"error": msg}))).into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": format!("stormvm did not answer {verb}: {e}")})),
+        )
+            .into_response(),
     }
 }
 

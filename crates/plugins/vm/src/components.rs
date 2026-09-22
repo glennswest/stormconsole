@@ -115,7 +115,17 @@ fn action(id: &str, label: &str, method: &str, path: String, enabled: bool, dang
     Action { id: id.into(), label: label.into(), method: method.into(), path, enabled, danger, tone: None }
 }
 
+/// What stormvm says about the machines it is running, keyed `ns/name`.
+/// Empty when there is no stormvm, or it is not answering, or it is not
+/// running this machine — all of which mean the same thing here: no verb
+/// is offered that cannot be served.
+pub type Running = HashMap<String, Value>;
+
 pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
+    map_with(snap, &Running::new())
+}
+
+pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
     let empty = HashMap::new();
     let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
     let mut out = Vec::new();
@@ -209,15 +219,75 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
                 phase == "Running",
                 !defined,
             ),
-            action(
-                "delete",
-                "Delete",
-                "DELETE",
-                format!("/api/plugins/vm/machines/{ns}/{name}"),
-                true,
-                true,
-            ),
         ];
+        // The verbs the hypervisor itself serves, offered only where
+        // stormvm reports the machine can take them.
+        //
+        // `control.lifecycle` is whether the control socket was bound and
+        // `control.freeze` whether the guest has its own agent — a spec
+        // that did not ask for the channel can never have one. Offering a
+        // button that 404s makes a client report that *the VM* refused,
+        // which sends whoever pressed it looking at the guest.
+        //
+        // The ordering is deliberate: what a guest survives, first. A soft
+        // reboot is a request the guest can honour; a reset is the button
+        // on the front of the box and is marked as such.
+        if let Some(seen) = running.get(key) {
+            let can = |k: &str| {
+                seen.pointer(&format!("/control/{k}")).and_then(Value::as_bool).unwrap_or(false)
+            };
+            let verb = |id: &str, label: &str, danger: bool| {
+                action(
+                    id,
+                    label,
+                    "POST",
+                    format!("/api/plugins/vm/machines/{ns}/{name}/verb/{id}"),
+                    true,
+                    danger,
+                )
+            };
+            if can("lifecycle") {
+                c.actions.push(verb("softreboot", "Soft reboot", false));
+                c.actions.push(verb("pause", "Pause", false));
+                c.actions.push(verb("unpause", "Resume", false));
+                // No warning to the guest, so it is shelved with the
+                // destructive ones rather than sitting beside Pause.
+                c.actions.push(verb("reset", "Reset", true));
+            }
+            if can("freeze") {
+                // Quiescing is what makes a disk copy trustworthy, and a
+                // guest left frozen has every write blocked — which from
+                // inside looks like a machine that has hung. Both halves
+                // are offered together so the way back is never further
+                // away than the way in.
+                c.actions.push(verb("freeze", "Freeze filesystems", true));
+                c.actions.push(verb("thaw", "Thaw filesystems", false));
+            }
+            // What the doors can actually do, as a fact about the machine
+            // rather than something to find out by opening a tab.
+            let door = |k: &str| {
+                seen.pointer(&format!("/console/{k}")).and_then(Value::as_bool).unwrap_or(false)
+            };
+            let doors = match (door("serial"), door("vnc")) {
+                (true, true) => "serial + screen",
+                (true, false) => "serial",
+                (false, true) => "screen",
+                (false, false) => "none",
+            };
+            c.metrics.push(Metric::new("console", doors).tone(if doors == "none" {
+                "muted"
+            } else {
+                "accent"
+            }));
+        }
+        c.actions.push(action(
+            "delete",
+            "Delete",
+            "DELETE",
+            format!("/api/plugins/vm/machines/{ns}/{name}"),
+            true,
+            true,
+        ));
         out.push(c);
     }
 
@@ -375,6 +445,7 @@ mod tests {
         let acts = &map(&sn)[0].actions;
         let ids: Vec<&str> = acts.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids, vec!["restart", "stop", "delete"]);
+        assert_eq!(ids.len(), ids.iter().collect::<std::collections::HashSet<_>>().len());
     }
 
     /// Restart is the instance deleted with something there to put it
@@ -402,6 +473,45 @@ mod tests {
         assert!(!inst.actions.iter().find(|a| a.id == "stop").unwrap().danger);
         let def = out.iter().find(|c| c.id == "vm:machine:default/web-1").unwrap();
         assert!(def.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
+    }
+
+    /// stormvm reports per machine what it can be asked to do; a verb is
+    /// offered only where it can actually be served. A button that 404s
+    /// makes a client report that *the VM* refused, which sends whoever
+    /// pressed it looking at the guest (stormvm#9).
+    #[test]
+    fn a_verb_is_offered_only_where_the_hypervisor_serves_it() {
+        let sn = snap("vmi", "default/web-1", json!({"status": {"phase": "Running"}}));
+
+        // No stormvm, or not running this machine: kube verbs only.
+        let ids: Vec<String> =
+            map(&sn)[0].actions.iter().map(|a| a.id.clone()).collect();
+        assert_eq!(ids, vec!["restart", "stop", "delete"]);
+
+        // A control socket, no guest agent.
+        let running = Running::from([(
+            "default/web-1".to_string(),
+            json!({"control": {"lifecycle": true, "freeze": false},
+                   "console": {"serial": true, "vnc": false}}),
+        )]);
+        let c = &map_with(&sn, &running)[0];
+        let ids: Vec<&str> = c.actions.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, vec!["restart", "stop", "softreboot", "pause", "unpause", "reset", "delete"]);
+        // Reset is the button on the front of the box; a soft reboot is a
+        // request the guest can honour. Only one of them says so.
+        let danger = |id: &str| c.actions.iter().find(|a| a.id == id).unwrap().danger;
+        assert!(danger("reset") && !danger("softreboot"));
+        assert_eq!(c.metrics.iter().find(|m| m.label == "console").unwrap().value, "serial");
+
+        // With an agent, both halves of freeze — the way back is never
+        // further away than the way in.
+        let running = Running::from([(
+            "default/web-1".to_string(),
+            json!({"control": {"lifecycle": true, "freeze": true}}),
+        )]);
+        let c = &map_with(&sn, &running)[0];
+        assert!(c.actions.iter().any(|a| a.id == "freeze"));
+        assert!(c.actions.iter().any(|a| a.id == "thaw"));
     }
 
     #[test]
