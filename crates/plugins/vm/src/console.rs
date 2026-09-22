@@ -38,6 +38,18 @@ use tokio_tungstenite::tungstenite::Message as UpMessage;
 pub struct Capabilities {
     pub serial: bool,
     pub vnc: bool,
+    /// Whether an attach will be sent the tail of the guest's own console
+    /// log before the live stream (stormvm `docs/console.md`, "Replay is
+    /// the log qemu already writes"). It matters to say so: a console
+    /// opened ten minutes into a boot prints the boot, and a reader who
+    /// does not know that is reading history as though it were now.
+    pub replay: bool,
+    /// Whether this viewer may **type**. A serial console is a root shell
+    /// on most guests, so being able to watch one and being able to drive
+    /// it are different permissions, and the difference should be an
+    /// explicit capability rather than a side effect of being able to see
+    /// the VM at all (#13, #15).
+    pub write: bool,
     /// The stormvm this console would dial, described for a reader rather
     /// than addressed (a node-local URL means nothing in a browser).
     pub upstream: String,
@@ -58,6 +70,7 @@ pub async fn for_vm(
     reachable: bool,
     ns: &str,
     name: &str,
+    write: bool,
 ) -> Capabilities {
     let base = match (upstream, reachable) {
         (Some(u), true) => u,
@@ -74,6 +87,8 @@ pub async fn for_vm(
             Capabilities {
                 serial,
                 vnc,
+                replay: door("replay"),
+                write,
                 upstream: described,
                 reason: match (serial, vnc) {
                     (true, true) => String::new(),
@@ -90,6 +105,8 @@ pub async fn for_vm(
         Ok(r) if r.status().as_u16() == 404 => Capabilities {
             serial: false,
             vnc: false,
+            replay: false,
+            write: false,
             upstream: described,
             reason: "stormvm on this node is not running this machine — it may have stopped, \
                      or it may be running somewhere else"
@@ -106,12 +123,16 @@ pub fn capabilities(upstream: Option<&str>, reachable: bool) -> Capabilities {
         (None, _) => Capabilities {
             serial: false,
             vnc: false,
+            replay: false,
+            write: false,
             upstream: String::new(),
             reason: "no stormvm configured — set [vm] url to the node's stormvm".into(),
         },
         (Some(url), false) => Capabilities {
             serial: false,
             vnc: false,
+            replay: false,
+            write: false,
             upstream: console_core::upstream::describe(url),
             reason: "stormvm is not answering on this node, so there is no console to open. \
                      It serves the doors (`stormvm serve`), and it binds loopback by default — \
@@ -122,6 +143,8 @@ pub fn capabilities(upstream: Option<&str>, reachable: bool) -> Capabilities {
         (Some(url), true) => Capabilities {
             serial: true,
             vnc: true,
+            replay: false,
+            write: false,
             upstream: console_core::upstream::describe(url),
             reason: String::new(),
         },

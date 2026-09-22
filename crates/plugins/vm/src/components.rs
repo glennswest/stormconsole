@@ -171,6 +171,35 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             c.metrics.push(Metric::new("memory", m));
         }
         c.metrics.push(Metric::new("disks", ds.len().to_string()).tone("muted"));
+        // The address, and how it is reached — the two facts somebody scanning
+        // a list of machines is actually looking for.
+        //
+        // `status.interfaces[]` carries both: the address from the guest
+        // agent, the binding from what the node built. A machine on
+        // `masquerade` is behind a NAT inside the hypervisor process and
+        // nothing outside the node can route to it, which is worth seeing on
+        // the row rather than discovering by trying.
+        if let Some(ifs) = v.pointer("/status/interfaces").and_then(Value::as_array) {
+            if let Some(ip) = ifs
+                .iter()
+                .filter_map(|i| i.get("ipAddress").and_then(Value::as_str))
+                .find(|s| !s.is_empty())
+            {
+                c.metrics.push(Metric::new("ip", ip.to_string()));
+            }
+            if let Some(b) = ifs.first().and_then(|i| i.get("storm.io/binding")).and_then(Value::as_str) {
+                c.metrics.push(
+                    Metric::new("network", b.to_string()).tone(match b {
+                        // Reachable.
+                        "bridge" => "ok",
+                        // A NAT inside the hypervisor: the guest has an
+                        // address and nothing outside can use it.
+                        "user" => "warn",
+                        _ => "muted",
+                    }),
+                );
+            }
+        }
         if let Some(n) = node {
             // Where the machine *is*, which is a placement and not
             // something the machine contains — so `belongs_to`, the
