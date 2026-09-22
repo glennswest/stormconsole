@@ -21,9 +21,12 @@ export async function call(method, path) {
   return resp.json().catch(() => ({}))
 }
 
-export async function postJson(path, body) {
+/// A JSON body with a method. PUT is a replace or a patch and POST is a
+/// create; the caller knows which it is doing, and defaulting to POST
+/// meant every PUT route grew a POST alias to be reachable from here.
+export async function postJson(path, body, method = 'POST') {
   const resp = await fetch(path, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })

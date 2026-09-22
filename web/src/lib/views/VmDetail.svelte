@@ -11,7 +11,7 @@
   import { onDestroy } from 'svelte'
   import { route } from '../router.svelte.js'
   import { feed } from '../stores.svelte.js'
-  import { get, call, wsUrl, ansiToHtml } from '../api.js'
+  import { get, call, postJson, wsUrl, ansiToHtml } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import StatusPill from '../components/StatusPill.svelte'
@@ -21,7 +21,7 @@
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
 
-  const TABS = ['Overview', 'Serial console', 'Graphical console', 'YAML']
+  const TABS = ['Overview', 'Settings', 'Serial console', 'Graphical console', 'YAML']
   let tab = $state('Overview')
 
   let vm = $state(null)
@@ -60,6 +60,44 @@
       error = e.message
     }
     acting = ''
+  }
+
+  // --- settings -------------------------------------------------------
+  // What can be changed, and when the change lands. The plugin decides
+  // both — this view renders the answer and holds no model of its own,
+  // because "does this need a restart" depends on whether the machine is
+  // running, which is a fact about the machine and not about the form.
+
+  const settings = $derived(vm?.settings || null)
+  let editing = $state(null)
+  let draft = $state('')
+  let saving = $state(false)
+  let saved = $state('')
+
+  function startEdit(f) {
+    editing = f.name
+    draft = f.value === null || f.value === undefined ? '' : String(f.value)
+    saved = ''
+    error = ''
+  }
+
+  async function save(f) {
+    saving = true
+    error = ''
+    saved = ''
+    try {
+      const r = await postJson(
+        `/api/plugins/vm/vms/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/settings`,
+        { field: f.name, value: draft },
+        'PUT'
+      )
+      saved = r.message || `${f.label} written`
+      editing = null
+      await load()
+    } catch (e) {
+      error = e.message
+    }
+    saving = false
   }
 
   // --- serial ---------------------------------------------------------
@@ -323,6 +361,59 @@
           {/if}
         </div>
       </section>
+    {:else if tab === 'Settings'}
+      {#if settings?.pending?.length}
+        <!-- Written, and not yet in force. Left unsaid, this is the gap
+             between what the console shows and what the guest is running,
+             and it closes at a restart nobody scheduled. -->
+        <p class="pending">
+          <strong>Waiting for a restart.</strong>
+          {settings.pending.join(', ')}
+          {settings.pending.length === 1 ? 'has' : 'have'} been changed on this machine's
+          definition and {settings.pending.length === 1 ? 'is' : 'are'} not what it is running.
+        </p>
+      {/if}
+      {#if !settings?.editable}
+        <p class="pending muted">{settings?.why || 'This machine cannot be edited.'}</p>
+      {/if}
+      {#if saved}<p class="saved">{saved}</p>{/if}
+
+      <section class="cards">
+        <div class="card wide">
+          <h2>Machine</h2>
+          <table class="settings">
+            <tbody>
+              {#each settings?.fields || [] as f (f.name)}
+                <tr>
+                  <th>{f.label}</th>
+                  <td class="val">
+                    {#if editing === f.name}
+                      <input
+                        bind:value={draft}
+                        aria-label={f.label}
+                        onkeydown={(e) => e.key === 'Enter' && save(f)}
+                      />
+                      <button class="sc-primary" disabled={saving} onclick={() => save(f)}>Save</button>
+                      <button disabled={saving} onclick={() => (editing = null)}>Cancel</button>
+                    {:else}
+                      <span class="mono">{f.value === null || f.value === '' ? '—' : f.value}</span>
+                      {#if f.running !== null && f.running !== undefined}
+                        <span class="diverged">running: <span class="mono">{f.running}</span></span>
+                      {/if}
+                    {/if}
+                  </td>
+                  <td class="when">{f.note}</td>
+                  <td class="act">
+                    {#if settings.editable && editing !== f.name}
+                      <button onclick={() => startEdit(f)}>Change</button>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
     {:else if tab === 'Serial console'}
       {#if !doors.serial}
         <EmptyState icon="logs" title="No serial console yet" hint={doors.reason} />
@@ -409,6 +500,50 @@
 </div>
 
 <style>
+  .pending {
+    margin: 0 0 12px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--warn-bg);
+    color: var(--warn-strong);
+    border: 1px solid var(--warn-border);
+    font-size: var(--sc-t-body);
+  }
+  .pending.muted {
+    background: var(--panel-raised);
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+  .saved {
+    margin: 0 0 12px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--ok-bg);
+    color: var(--ok);
+    border: 1px solid var(--ok-border);
+    font-size: var(--sc-t-meta);
+  }
+  .card.wide { grid-column: 1 / -1; }
+  table.settings { width: 100%; border-collapse: collapse; }
+  table.settings th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-dim);
+    width: 130px;
+    padding: 7px 10px 7px 0;
+    font-size: var(--sc-t-body);
+  }
+  table.settings td { padding: 7px 10px 7px 0; font-size: var(--sc-t-body); vertical-align: middle; }
+  table.settings tr + tr > * { border-top: 1px solid var(--sc-hairline); }
+  table.settings .when { color: var(--text-faint); font-size: var(--sc-t-meta); }
+  table.settings .act { text-align: right; width: 90px; }
+  table.settings input { width: 190px; margin-right: 6px; }
+  .diverged {
+    margin-left: 10px;
+    font-size: var(--sc-t-meta);
+    color: var(--warn-strong);
+  }
+
   .tabs {
     display: flex;
     gap: 2px;
