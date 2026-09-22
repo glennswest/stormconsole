@@ -266,6 +266,25 @@ fn volume(v: &Value) -> ComponentSummary {
         relations.push(Relation::belongs_to("array", format!("sb:array:{a}")));
     }
 
+    // What claims it (stormblock#115).
+    //
+    // Until this was recorded the only thing carrying ownership was the
+    // *name*: `vmimages-data` meant "vmimages' data volume" because somebody
+    // wrote it that way, not because anything recorded it.
+    let owner = v.get("owner").and_then(|o| {
+        let kind = o.get("kind").and_then(Value::as_str).unwrap_or("");
+        let name = o.get("name").and_then(Value::as_str).unwrap_or("");
+        if kind.is_empty() || name.is_empty() {
+            return None;
+        }
+        let ns = o.get("namespace").and_then(Value::as_str).unwrap_or("");
+        Some(if ns.is_empty() {
+            format!("{kind}/{name}")
+        } else {
+            format!("{kind}/{ns}/{name}")
+        })
+    });
+
     // Kind first, because it is what the eye should land on.
     let mut metrics = vec![
         Metric::new("kind", kind).tone(match kind {
@@ -300,6 +319,18 @@ fn volume(v: &Value) -> ComponentSummary {
     }
     if let Some(r) = field(v, &["role"]) {
         metrics.push(Metric::new("role", r).tone("muted"));
+    }
+    match &owner {
+        Some(o) => metrics.push(Metric::new("owner", o.clone()).tone("accent")),
+        // Said out loud rather than left blank. A golden or a blank having no
+        // owner is correct and uninteresting; a *clone* with none is the
+        // orphan question — and an empty cell cannot be told from a column
+        // nothing ever wrote to, which is exactly how this looked when the
+        // field shipped and no writer existed yet.
+        None if kind == "clone" => {
+            metrics.push(Metric::new("owner", "unclaimed").tone("warn"))
+        }
+        None => {}
     }
 
     ComponentSummary {
