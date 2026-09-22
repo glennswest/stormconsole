@@ -577,11 +577,11 @@ mod tests {
             )]),
         );
         let out = map(&defined);
-        let inst = out.iter().find(|c| c.id == "vm:instance:default/web-1").unwrap();
-        assert!(inst.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
-        assert!(!inst.actions.iter().find(|a| a.id == "stop").unwrap().danger);
-        let def = out.iter().find(|c| c.id == "vm:machine:default/web-1").unwrap();
-        assert!(def.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
+        let m = out.iter().find(|c| c.id == "vm:machine:default/web-1").unwrap();
+        assert!(m.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
+        // Stop is ordinary for a machine a definition can put back, and
+        // destructive for one it cannot.
+        assert!(!m.actions.iter().find(|a| a.id == "stop").unwrap().danger);
     }
 
     /// stormvm reports per machine what it can be asked to do; a verb is
@@ -721,12 +721,49 @@ mod tests {
             )]),
         );
         let out = map(&sn);
-        let inst = out.iter().find(|c| c.id == "vm:instance:default/web-1").unwrap();
-        let def = out.iter().find(|c| c.id == "vm:machine:default/web-1").unwrap();
-        assert!(inst.relations.iter().any(|r| r.targets == vec!["vm:machine:default/web-1"]));
-        assert!(def.relations.iter().any(|r| r.targets == vec!["vm:instance:default/web-1"]));
-        assert_eq!(def.health, Health::Ok);
-        assert!(!def.actions.iter().find(|a| a.id == "start").unwrap().enabled);
+        // One machine, one row, under the definition's id.
+        let machines: Vec<_> =
+            out.iter().filter(|c| c.id.starts_with("vm:") && c.label == "web-1").collect();
+        assert_eq!(machines.len(), 1, "one machine is one row: {:?}",
+                   machines.iter().map(|c| &c.id).collect::<Vec<_>>());
+        assert_eq!(machines[0].id, "vm:machine:default/web-1",
+                   "the identity does not change when the machine stops");
+        // And it carries the running instance's answers, not a stopped
+        // machine's.
+        assert_eq!(machines[0].health, Health::Ok);
+        assert!(machines[0].detail.contains("Running"), "{}", machines[0].detail);
+    }
+
+    /// A machine whose instance failed is not also reported healthy.
+    ///
+    /// The definition said ok/"running" whenever an instance existed, whatever
+    /// phase it was in, so a failed machine showed one red row and one green
+    /// one -- for itself.
+    #[test]
+    fn a_failed_machine_has_no_second_row_claiming_it_is_fine() {
+        let mut sn = snap("vm", "default/web-1", json!({"spec": {"running": true}}));
+        sn.insert(
+            "vmi",
+            HashMap::from([(
+                "default/web-1".to_string(),
+                json!({"status": {"phase": "Failed", "reason": "the hypervisor exited with 1"}}),
+            )]),
+        );
+        let out = map(&sn);
+        let rows: Vec<_> = out.iter().filter(|c| c.label == "web-1").collect();
+        assert_eq!(rows.len(), 1, "{:?}", rows.iter().map(|c| &c.id).collect::<Vec<_>>());
+        assert_eq!(rows[0].health, Health::Error);
+        assert!(rows[0].detail.contains("hypervisor exited"), "{}", rows[0].detail);
+    }
+
+    /// A VMI applied on its own keeps the lesser identity.
+    ///
+    /// Nothing durable behind it: nothing to edit, nothing to restart from.
+    #[test]
+    fn a_bare_instance_is_still_an_instance() {
+        let sn = snap("vmi", "default/loose", json!({"status": {"phase": "Running"}}));
+        let out = map(&sn);
+        assert_eq!(out[0].id, "vm:instance:default/loose");
     }
 
     #[test]
