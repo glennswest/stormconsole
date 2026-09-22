@@ -72,7 +72,9 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                            the machine's name. Without it every Fedora guest calls \
                            itself `fedora` and DNS cannot tell them apart"),
                 Field::text("ssh_key", "SSH public key")
-                    .hint("goes into the cloud-init seed; a guest with no key and no password is a machine nothing can log into"),
+                    .hint("leave blank to use your own key. Goes into the cloud-init \
+                           seed; a guest with no key and no password is a machine \
+                           nothing can log into"),
             ],
         )
         .describe("A VM on this cluster, from a golden")
@@ -303,8 +305,23 @@ pub fn value_of(catalogue: &Catalogue, submitted: &str) -> String {
 pub async fn create(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
-    Json(form): Json<Form>,
+    Json(mut form): Json<Form>,
 ) -> Response {
+    // The owner's key, when they did not paste one.
+    //
+    // The person creating a machine is the person who will need to log into
+    // it, and asking them to paste a key every time is how the habit that
+    // replaces it takes hold: a password in the cloud-init seed, which is
+    // readable by anyone who can read the VMI. That happened here, on a VM
+    // that turned out to be reachable on the real network.
+    //
+    // Only when the field is empty: somebody who pasted a key meant that
+    // key, possibly for somebody else.
+    if form.ssh_key.trim().is_empty() {
+        if let Some(k) = viewer.ssh_keys.first() {
+            form.ssh_key = k.clone();
+        }
+    }
     // Every exit from here says what happened, and says it on the log group
     // rather than only into the dialog that asked.
     //

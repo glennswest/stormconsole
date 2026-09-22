@@ -18,6 +18,13 @@ plugin-sbregistry.workspace = true
 plugin-vmimages.workspace = true
 plugin-vm.workspace = true
 
+# Password hashing. argon2 rather than a digest: a password store is the
+# one place where being *slow* is the feature, and SHA-256 is fast enough
+# that a leaked config is a list of passwords by the afternoon. `subtle`
+# for the token comparison, which was `==` and therefore timing-visible.
+argon2 = "0.5"
+subtle = "2"
+
 stormview.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

@@ -37,6 +37,17 @@ pub struct Viewer {
     /// A credential to act as this viewer against an upstream — for
     /// kubernetes, the bearer token whose RBAC decides what they may read.
     pub token: Option<String>,
+    /// What this viewer may do.
+    ///
+    /// Named for what the console actually offers rather than for
+    /// Kubernetes verbs: "may open a console", "may delete a volume" do not
+    /// line up with get/list/watch, and pretending they do produces a role
+    /// model nobody can reason about. Empty means `viewer`.
+    pub roles: Vec<String>,
+    /// This viewer's SSH public keys, so a machine they create is one they
+    /// can log into without pasting a key — or, worse, without the habit
+    /// that grows in its place, which is a password in the cloud-init seed.
+    pub ssh_keys: Vec<String>,
 }
 
 /// A plugin's routes get the viewer the host put on the request, so a
@@ -60,6 +71,24 @@ impl Viewer {
     /// identity to authorize against.
     pub fn is_anonymous(&self) -> bool {
         self.user.is_none() && self.token.is_none()
+    }
+
+    /// Does this viewer hold a role?
+    ///
+    /// `admin` holds every role, which is the one special case worth having:
+    /// the alternative is every check listing `admin` beside it and one of
+    /// them eventually not doing so.
+    pub fn has_role(&self, role: &str) -> bool {
+        self.roles.iter().any(|r| r == role || r == "admin")
+    }
+
+    /// May this viewer change things, as opposed to look at them?
+    ///
+    /// The single distinction worth drawing before a full capability model
+    /// exists: a console that cannot tell a reader from an operator is one
+    /// where every reader is an operator, which is where this started.
+    pub fn may_write(&self) -> bool {
+        self.has_role("operator") || self.has_role("admin")
     }
 }
 

@@ -88,7 +88,38 @@ fn default_bind() -> String {
 #[serde(deny_unknown_fields)]
 pub struct User {
     pub name: String,
-    pub password: String,
+    /// An argon2 PHC string — `$argon2id$v=19$m=...$...`.
+    ///
+    /// Generate one with `stormconsole hash-password`. argon2 rather than a
+    /// digest because a password store is the one place where being slow is
+    /// the feature: SHA-256 is fast enough that a leaked config is a list of
+    /// passwords by the afternoon.
+    #[serde(default)]
+    pub password_hash: Option<String>,
+    /// A plaintext password, still read so existing configs keep working.
+    ///
+    /// **Deprecated and warned about at startup.** It was the only option
+    /// and the comparison was `==` on the raw string, so anyone who could
+    /// read the config could log in as anyone, and a timing difference told
+    /// them when they were close.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// What this user may do. Empty means `viewer`: a config that predates
+    /// roles should not silently grant more than it used to.
+    #[serde(default)]
+    pub roles: Vec<String>,
+    /// This user's SSH public keys.
+    ///
+    /// So a machine they create is one they can log into, without pasting a
+    /// key into a form every time — and, more importantly, without the habit
+    /// that grows in its place: a password in the cloud-init seed. That
+    /// happened here, on a VM that turned out to be reachable on the real
+    /// network, and the seed is readable by anyone who can read the VMI.
+    ///
+    /// Several, because people have more than one machine, and a key that
+    /// has to be replaced should not mean a VM that cannot be reached.
+    #[serde(default)]
+    pub ssh_keys: Vec<String>,
     /// This user's own kubernetes identity — a ServiceAccount token or
     /// any bearer rustkube's RBAC knows. When set, what they see of the
     /// cluster is what the apiserver says they may see, asked as them
@@ -397,6 +428,35 @@ impl Config {
     /// Auth is on the moment any credential is configured.
     pub fn auth_required(&self) -> bool {
         !self.api.users.is_empty() || self.api.auth_token.is_some()
+    }
+
+    /// A named user's SSH public keys.
+    ///
+    /// Read by the VM create form so a machine defaults to its owner's key:
+    /// the person creating it is the person who will need to log in.
+    pub fn ssh_keys_for(&self, user: &str) -> Vec<String> {
+        self.api
+            .users
+            .iter()
+            .find(|u| u.name == user)
+            .map(|u| u.ssh_keys.clone())
+            .unwrap_or_default()
+    }
+
+    /// What a named user may do, defaulting to `viewer`.
+    pub fn roles_for(&self, user: &str) -> Vec<String> {
+        self.api
+            .users
+            .iter()
+            .find(|u| u.name == user)
+            .map(|u| {
+                if u.roles.is_empty() {
+                    vec!["viewer".to_string()]
+                } else {
+                    u.roles.clone()
+                }
+            })
+            .unwrap_or_default()
     }
 
     /// A named user's kubernetes bearer, if they have one.

@@ -65,14 +65,24 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
     }
     if let Some(user) = cookie_session(req).and_then(|id| state.sessions.user_of(&id)) {
         let token = state.config.kube_token_for(&user);
-        return Viewer { user: Some(user), token };
+        let roles = state.config.roles_for(&user);
+        let ssh_keys = state.config.ssh_keys_for(&user);
+        return Viewer { user: Some(user), token, roles, ssh_keys };
     }
     // A machine on the bearer token acts as the console itself: it is the
     // console's own credential, not a person's, so it carries no
     // kubernetes identity of its own.
     if bearer(req).as_deref() == state.config.api.auth_token.as_deref() {
         if let Some(_) = state.config.api.auth_token.as_deref() {
-            return Viewer { user: Some("token".into()), token: None };
+            // The console's own credential, not a person's. It is how the
+            // console talks to itself, so it gets the role that lets it
+            // finish the job and no identity of its own upstream.
+            return Viewer {
+                user: Some("token".into()),
+                token: None,
+                roles: vec!["admin".into()],
+                ssh_keys: vec![],
+            };
         }
     }
     Viewer::anonymous()
@@ -129,10 +139,58 @@ pub struct LoginBody {
     password: String,
 }
 
+/// Does this password match what is recorded for this user?
+///
+/// `password_hash` first and plaintext only as a fallback, so a config that
+/// carries both is verified against the hash — otherwise adding a hash beside
+/// a forgotten plaintext line would change nothing.
+fn verify(u: &crate::config::User, given: &str) -> bool {
+    if let Some(phc) = u.password_hash.as_deref() {
+        use argon2::{Argon2, PasswordHash, PasswordVerifier};
+        return match PasswordHash::new(phc) {
+            Ok(parsed) => Argon2::default().verify_password(given.as_bytes(), &parsed).is_ok(),
+            // A hash that does not parse is a misconfiguration, and the safe
+            // reading of it is "nobody logs in as this user" rather than
+            // "fall through to whatever else is lying around".
+            Err(e) => {
+                tracing::error!(user = %u.name, "password_hash does not parse: {e}");
+                false
+            }
+        };
+    }
+    match u.password.as_deref() {
+        Some(p) => constant_time_eq(p, given),
+        None => false,
+    }
+}
+
+/// Compare without leaking how much of it matched.
+///
+/// The token check was `==` on a `&str`, which returns at the first
+/// differing byte. That is a timing oracle: it tells somebody guessing when
+/// their first character is right, and a token falls in a few thousand
+/// requests rather than never.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    use subtle::ConstantTimeEq;
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    // Lengths are compared in the clear because they are not the secret;
+    // `ct_eq` needs equal lengths to be meaningful.
+    a.len() == b.len() && bool::from(a.ct_eq(b))
+}
+
 pub async fn login(State(state): State<AppState>, Json(body): Json<LoginBody>) -> Response {
-    let ok = state.config.api.users.iter().any(|u| {
-        u.name == body.username && u.password == body.password
-    }) || (state.config.api.auth_token.as_deref() == Some(body.password.as_str()));
+    let ok = state
+        .config
+        .api
+        .users
+        .iter()
+        .any(|u| u.name == body.username && verify(u, &body.password))
+        || state
+            .config
+            .api
+            .auth_token
+            .as_deref()
+            .is_some_and(|t| constant_time_eq(t, &body.password));
     if !ok {
         return (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid credentials"})))
             .into_response();

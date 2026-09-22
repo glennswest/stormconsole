@@ -19,6 +19,16 @@ struct Args {
     /// Path to config.toml; defaults apply if the file is absent.
     #[arg(long, default_value = "/etc/stormconsole/config.toml")]
     config: String,
+    /// Hash a password for `password_hash` in the config, and exit.
+    ///
+    /// Here rather than in a separate tool because the alternative is
+    /// somebody pasting a plaintext password into the config and meaning to
+    /// come back to it. Reads the password from stdin so it does not end up
+    /// in a shell history:
+    ///
+    ///     printf %s 'the password' | stormconsole --hash-password
+    #[arg(long)]
+    hash_password: bool,
 }
 
 /// Exit status for a config the console cannot run on (sysexits EX_CONFIG).
@@ -44,6 +54,25 @@ async fn main() {
         .init();
 
     let args = Args::parse();
+    if args.hash_password {
+        use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+        let mut pw = String::new();
+        if std::io::Read::read_to_string(&mut std::io::stdin(), &mut pw).is_err() {
+            fatal("could not read the password from stdin", EX_CONFIG);
+        }
+        let pw = pw.trim_end_matches(['\n', '\r']);
+        if pw.is_empty() {
+            fatal("no password on stdin", EX_CONFIG);
+        }
+        let salt = SaltString::generate(&mut OsRng);
+        match argon2::Argon2::default().hash_password(pw.as_bytes(), &salt) {
+            Ok(h) => {
+                println!("{h}");
+                std::process::exit(0);
+            }
+            Err(e) => fatal(&format!("could not hash: {e}"), EX_CONFIG),
+        }
+    }
     let config = if std::path::Path::new(&args.config).exists() {
         match config::Config::load(&args.config) {
             Ok(c) => c,
@@ -53,6 +82,29 @@ async fn main() {
         info!(path = %args.config, "no config file — running on defaults");
         config::Config::default()
     };
+
+    // Say it every start, not once in a release note.
+    //
+    // A plaintext password in the config means anyone who can read the file
+    // can log in as that user, and until now the comparison was `==` on the
+    // raw string, so a timing difference told a guesser when they were
+    // close. Both are fixed; a config still carrying one is not.
+    for u in &config.api.users {
+        if u.password_hash.is_none() && u.password.is_some() {
+            tracing::warn!(
+                user = %u.name,
+                "plaintext password in the config. Replace it with password_hash: \
+                 printf %s '<password>' | stormconsole --hash-password"
+            );
+        }
+    }
+    if !config.auth_required() {
+        tracing::warn!(
+            "no users and no auth_token configured: every request is an \
+             authenticated administrator. Anyone who can reach this port can \
+             open a serial console, delete a volume, or destroy a machine."
+        );
+    }
     let config = Arc::new(config);
 
     // Every upstream defaults to this node's own daemon (the golden runs on
