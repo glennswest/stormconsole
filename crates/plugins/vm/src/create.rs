@@ -75,10 +75,21 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                 // every machine the console made was serial-only, and the
                 // Graphical console tab could only ever say there was
                 // nothing to draw.
-                Field::select("display", "Display", &["none", "vga", "virtio", "qxl"])
-                    .hint("a screen, for a firmware setup menu, an installer, or any \
-                           guest with a desktop. `vga` is the one that works before a \
-                           driver exists. None means serial console only"),
+                // Only what the qemu golden actually has.
+                //
+                // `virtio` and `qxl` were offered and neither is in the
+                // build: `-device virtio-gpu-pci: 'virtio-gpu-pci' is not a
+                // valid device` killed every machine that asked for one.
+                // Offering a choice that fails every time is worse than not
+                // offering it, and the dropdown is not the place to discover
+                // what the hypervisor was compiled with.
+                //
+                // `vga` is `VGA`, which this build does have — and which is
+                // the one that draws in firmware and an installer anyway.
+                // The others come back when the qemu golden carries them.
+                Field::select("display", "Display", &["vga", "none"])
+                    .hint("a screen, for a firmware setup menu, an installer, or a \
+                           desktop. None means serial console only"),
                 Field::text("hostname", "Hostname")
                     .hint("what the guest calls itself and asks DHCP for — defaults to \
                            the machine's name. Without it every Fedora guest calls \
@@ -311,8 +322,28 @@ fn root_disk(catalogue: &Catalogue) -> Field {
     // carried the label, and the server mapped it back to a value after the
     // fact. That mapping missed the moment the catalogue changed between
     // rendering the form and submitting it, and there is no mapping now.
-    let options = catalogue
-        .choices
+    // Newest Fedora first, so the form opens on the answer most people want.
+    //
+    // The catalogue comes back in the operator's order, which is
+    // alphabetical by distribution — so the default was `alma 9`, and
+    // somebody who did not change it got a machine they did not mean. A
+    // default is a recommendation whether or not it was meant as one.
+    let mut choices: Vec<_> = catalogue.choices.clone();
+    choices.sort_by_key(|c| {
+        let l = c.label.to_ascii_lowercase();
+        let fedora = l.starts_with("fedora") || c.value.starts_with("fedora");
+        // Within Fedora, the highest version. Parsed from the label's digits
+        // rather than assumed, because `rawhide` has none and should sort
+        // below a numbered release rather than above it.
+        let version: u32 = l
+            .split(|ch: char| !ch.is_ascii_digit())
+            .filter(|p| !p.is_empty())
+            .next_back()
+            .and_then(|d| d.parse().ok())
+            .unwrap_or(0);
+        (!fedora, std::cmp::Reverse(version), c.label.clone())
+    });
+    let options = choices
         .iter()
         .map(|c| console_core::FieldOption::new(c.value.clone(), c.label.clone()))
         .collect();
