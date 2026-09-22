@@ -68,9 +68,37 @@
   // they are typed — nothing here interprets the stream.
 
   let serialSocket = null
+  // What has arrived since the last frame, and the frame that will apply it.
+  let pending = []
+  let flush = null
   let serialText = $state('')
   let serialState = $state('idle')
   let serialBox = $state(null)
+  let serialFocused = $state(false)
+
+  // One frame's worth of output, applied together.
+  //
+  // The tail is kept rather than the whole stream: a console is for watching
+  // what is happening, and an archive of the boot is the log the hypervisor
+  // is already writing. Trimming on a character count would cut mid-escape
+  // and leave the terminal in a colour; trimming to a line boundary does not.
+  const SERIAL_MAX = 200000
+  function applyPending() {
+    flush = null
+    if (!pending.length) return
+    let next = serialText + pending.join('')
+    pending = []
+    if (next.length > SERIAL_MAX) {
+      const cut = next.length - SERIAL_MAX
+      const nl = next.indexOf('\n', cut)
+      next = next.slice(nl === -1 ? cut : nl + 1)
+    }
+    serialText = next
+    // After the render, not before it: scrolling to a height the browser has
+    // not laid out yet leaves the view one frame short of the bottom, which
+    // reads as a console that stops just before the line you want.
+    queueMicrotask(() => serialBox?.scrollTo(0, serialBox.scrollHeight))
+  }
 
   function openSerial() {
     if (serialSocket) return
@@ -79,13 +107,33 @@
       wsUrl(`/api/plugins/vm/console/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/serial`)
     )
     s.binaryType = 'arraybuffer'
-    s.onopen = () => (serialState = 'open')
+    s.onopen = () => {
+      serialState = 'open'
+      // Focus on connect.
+      //
+      // Keystrokes only reach the socket when this div has focus, and
+      // nothing took it or said so — so connecting, typing, and seeing
+      // nothing happen was the expected experience. It reads as a console
+      // with no echo, which is a very different bug from the one it is.
+      queueMicrotask(() => serialBox?.focus())
+    }
     s.onmessage = (e) => {
       const chunk =
         typeof e.data === 'string' ? e.data : new TextDecoder().decode(new Uint8Array(e.data))
-      // Bounded: a boot log is long and a console is not an archive.
-      serialText = (serialText + chunk).slice(-200000)
-      queueMicrotask(() => serialBox?.scrollTo(0, serialBox.scrollHeight))
+      // Batched to a frame, not applied per message.
+      //
+      // This concatenated a 200 KB string, re-sliced it and re-rendered the
+      // whole buffer on *every* chunk. A kernel boot emits hundreds of small
+      // writes a second, so the work per second grew with the length of the
+      // log — the console fell further behind the longer it watched, which
+      // is exactly when you are watching it.
+      //
+      // Now the chunks pile up in an array and one frame's worth is applied
+      // at a time: at most ~60 renders a second whatever the guest does, and
+      // the concatenation happens once per frame over what arrived in it
+      // rather than once per message over everything so far.
+      pending.push(chunk)
+      if (flush === null) flush = requestAnimationFrame(applyPending)
     }
     s.onclose = () => {
       serialState = 'closed'
@@ -99,6 +147,11 @@
     serialSocket?.close()
     serialSocket = null
     serialState = 'idle'
+    // A frame still queued against a closed socket would apply one more
+    // batch and then hold a reference to it.
+    if (flush !== null) cancelAnimationFrame(flush)
+    flush = null
+    pending = []
   }
 
   function typeInto(e) {
@@ -274,12 +327,26 @@
           </div>
           <div
             class="term"
+            class:focused={serialFocused}
             bind:this={serialBox}
             tabindex="0"
             role="textbox"
             aria-label="Serial console for {name}"
             onkeydown={typeInto}
+            onfocus={() => (serialFocused = true)}
+            onblur={() => (serialFocused = false)}
           >{@html ansiToHtml(serialText)}</div>
+          <!-- Whether typing goes anywhere, said out loud. -->
+          <p class="termhint">
+            {#if serialState !== 'open'}
+              Not connected.
+            {:else if serialFocused}
+              Typing goes to the guest. Echo comes back from it — a guest with
+              no getty on its serial line will show nothing.
+            {:else}
+              Click the console to type into it.
+            {/if}
+          </p>
         </div>
       {/if}
     {:else if tab === 'Graphical console'}
@@ -408,6 +475,11 @@
     outline: none;
   }
   .term:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+  .termhint {
+    margin: 6px 0 0;
+    font-size: var(--sc-t-meta);
+    color: var(--muted);
+  }
   .fb { height: 62vh; background: #000; }
   .sc-back { font-size: var(--sc-t-body); }
 </style>

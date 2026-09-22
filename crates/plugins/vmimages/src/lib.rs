@@ -100,6 +100,7 @@ impl ConsolePlugin for VmImagesPlugin {
     /// places images are.
     fn nav(&self) -> Vec<NavSection> {
         vec![NavSection::new("Images", 50)
+            .admin()
             .item("VM catalogue", "#/grid?id=img:operator&rel=catalogue")
             .item("VM goldens", "#/grid?id=img:operator&rel=goldens")
             .item("Local copies", "#/grid?id=img:operator&rel=local")]

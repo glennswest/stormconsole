@@ -54,6 +54,7 @@ impl ConsolePlugin for SbregistryPlugin {
 
     fn nav(&self) -> Vec<NavSection> {
         vec![NavSection::new("Images", 50)
+            .admin()
             .item("Goldens", "#/grid?id=reg:registry&rel=goldens")
             .item("Clones", "#/grid?id=reg:registry&rel=clones")
             .item("Pallets", "#/grid?id=reg:registry&rel=pallets")

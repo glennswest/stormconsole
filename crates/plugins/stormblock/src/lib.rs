@@ -56,6 +56,7 @@ impl ConsolePlugin for StormblockPlugin {
 
     fn nav(&self) -> Vec<NavSection> {
         vec![NavSection::new("Storage", 40)
+            .admin()
             .item("Volumes", "#/grid?id=sb:engine&rel=volumes")
             .item("Slabs", "#/grid?id=sb:engine&rel=slabs")
             .item("Arrays", "#/grid?id=sb:engine&rel=arrays")

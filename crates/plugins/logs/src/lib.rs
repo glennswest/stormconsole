@@ -131,7 +131,7 @@ impl ConsolePlugin for LogsPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
-        vec![NavSection::new("Observe", 30).item("Fleet logs", "#/logs")]
+        vec![NavSection::new("Observe", 30).admin().item("Fleet logs", "#/logs")]
     }
 
     fn routes(&self) -> Router {

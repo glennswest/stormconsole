@@ -14,6 +14,6 @@
 use console_core::FeedPlugin;
 
 pub fn plugin(url: &str) -> FeedPlugin {
-    FeedPlugin::new("drive", "stormdrive", "Hardware", 45, "Drives", url)
+    FeedPlugin::new("drive", "stormdrive", "Hardware", 45, "Drives", url).admin()
         .nav_items(&[("Drives", "#/drives"), ("Shelves", "#/drives?group=shelf")])
 }

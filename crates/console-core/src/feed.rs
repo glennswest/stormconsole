@@ -11,7 +11,7 @@ use stormview::{ComponentSummary, Health};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-use crate::nav::NavSection;
+use crate::nav::{NavKind, NavSection};
 use crate::plugin::ConsolePlugin;
 
 #[derive(Debug, Clone)]
@@ -146,6 +146,7 @@ pub struct FeedPlugin {
     daemon: &'static str,
     section: &'static str,
     order: i32,
+    kind: NavKind,
     items: Vec<(String, String)>,
     feed: Arc<Feed>,
     client: reqwest::Client,
@@ -166,10 +167,18 @@ impl FeedPlugin {
             daemon,
             section,
             order,
+            kind: NavKind::Work,
             items: vec![(item.to_string(), format!("#/grid?id=plugin:{name}"))],
             feed,
             client: reqwest::Client::new(),
         }
+    }
+
+    /// This upstream's section is one people come to diagnose in rather
+    /// than work in, so it starts shut (#16).
+    pub fn admin(mut self) -> Self {
+        self.kind = NavKind::Admin;
+        self
     }
 
     /// Replace the single generated nav item — a feed whose contents want
@@ -192,6 +201,9 @@ impl ConsolePlugin for FeedPlugin {
 
     fn nav(&self) -> Vec<NavSection> {
         let mut section = NavSection::new(self.section, self.order);
+        if self.kind == NavKind::Admin {
+            section = section.admin();
+        }
         for (label, href) in &self.items {
             section = section.item(label, href.clone());
         }

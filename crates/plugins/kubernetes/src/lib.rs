@@ -106,7 +106,11 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("DaemonSets", "#/k8s/ds")
                 .item("Jobs", "#/k8s/job")
                 .item("CronJobs", "#/k8s/cronjob"),
+            // Diagnosis, all of it. A person reaching for Cilium
+            // identities, endpoints and clusterwide policies is asking why
+            // something cannot be reached, not shipping a workload (#16).
             NavSection::new("Networking", 25)
+                .admin()
                 .item("Services", "#/k8s/svc")
                 .item("Network policies", "#/k8s/netpol")
                 .item("Cilium policies", "#/k8s/cnp")
@@ -114,10 +118,10 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("Cilium endpoints", "#/k8s/cep")
                 .item("Cilium nodes", "#/k8s/cn")
                 .item("Identities", "#/k8s/cid"),
-            NavSection::new("Compute", 20).item("Cluster nodes", "#/k8s/node"),
+            NavSection::new("Compute", 20).admin().item("Cluster nodes", "#/k8s/node"),
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
-            NavSection::new("Observe", 30).item("Events", "#/k8s/events"),
-            NavSection::new("Administration", 60).item("Namespaces", "#/k8s/ns"),
+            NavSection::new("Observe", 30).admin().item("Events", "#/k8s/events"),
+            NavSection::new("Administration", 60).admin().item("Namespaces", "#/k8s/ns"),
         ]
     }
 

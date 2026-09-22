@@ -99,6 +99,7 @@ impl ConsolePlugin for FleetPlugin {
         // row that has to be expanded before it shows anything. The badge
         // beside it said 1 however many nodes were on the segment.
         vec![NavSection::new("Compute", 20)
+            .admin()
             .item("Nodes", "#/nodes")
             .item("Node services", "#/grid?id=fleet:node:local&rel=services")]
     }
