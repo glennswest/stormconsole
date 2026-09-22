@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use console_core::{Action, ComponentSummary, Health, Metric, Relation};
 use serde_json::Value;
 
-type Snapshot = HashMap<&'static str, HashMap<String, Value>>;
+pub type Snapshot = HashMap<&'static str, HashMap<String, Value>>;
 
 fn s<'a>(v: &'a Value, ptr: &str) -> Option<&'a str> {
     v.pointer(ptr).and_then(Value::as_str)
@@ -368,6 +368,11 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         if !ids.is_empty() {
             c.relations.push(Relation::has_many("containers", ids));
         }
+        // What the network knows about this pod, on the pod (#17). It was
+        // all in the console already, as five lists under Networking —
+        // which is not where anybody is when they are asking why a pod
+        // cannot be reached.
+        crate::network::describe(snap, key, &mut c);
         c.actions.push(Action {
             id: "delete".into(),
             label: "Delete".into(),
@@ -593,6 +598,11 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
         let mut c = base("cn", key, key, Health::Ok, format!("{ip} · pod CIDR {cidr}"));
         c.metrics.push(Metric::new("ip", ip));
         c.metrics.push(Metric::new("pod cidr", cidr).tone("muted"));
+        // Addresses left. "No addresses" is a failure that presents as
+        // pods stuck Pending with a message about nothing in particular,
+        // and the number that would have predicted it has been sitting in
+        // this object the whole time (#17).
+        crate::network::ipam_metric(obj, &mut c);
         if of("node").contains_key(key) {
             c.relations.push(Relation::belongs_to("node", format!("k8s:node:{key}")));
         }

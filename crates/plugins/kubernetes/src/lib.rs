@@ -11,6 +11,7 @@ pub mod authz;
 pub mod cache;
 pub mod client;
 mod components;
+pub mod network;
 
 use std::sync::Arc;
 use std::time::Duration;

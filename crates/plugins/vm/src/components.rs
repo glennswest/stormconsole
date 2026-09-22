@@ -317,6 +317,16 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
                 "accent"
             }));
         }
+        // A machine is on the same network as everything else and gets the
+        // same questions asked of it, so it points at its own Cilium
+        // endpoint — filed under the same `ns/name` key a pod's is (#17).
+        //
+        // Published unconditionally and resolved by the renderer: this
+        // plugin watches VMs, not endpoints, and cannot know whether the
+        // kubernetes plugin has one. A reference whose target is not in the
+        // feed is dropped where it is drawn, which is the only place that
+        // can tell.
+        c.relations.push(Relation::belongs_to("endpoint", format!("k8s:cep:{key}")));
         c.actions.push(action(
             "delete",
             "Delete",

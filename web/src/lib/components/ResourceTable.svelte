@@ -72,8 +72,12 @@
     const rel = (row.relations || []).find(
       (r) => r.kind === 'belongs_to' && r.name === name
     )
-    const target = rel?.targets?.[0]
-    if (!target) return ''
+    // A placement is singular by definition: a pod is in one namespace and
+    // on one node. An edge with several targets is a set of references —
+    // the policies selecting a workload — and a column showing the first
+    // of them would read as the only one.
+    if (rel?.targets?.length !== 1) return ''
+    const target = rel.targets[0]
     return byId.get(target)?.label || target.split(':').pop()
   }
 
@@ -117,15 +121,26 @@
   function refs(row) {
     return (row.relations || [])
       .filter((r) => r.kind !== 'has_many')
-      .map((r) => {
-        const id = r.targets?.[0]
-        const target = id ? byId.get(id) : null
-        if (!id) return null
+      .flatMap((r) =>
+        // Every target, not only the first. A reference relationship is
+        // usually to one thing — the node a VM is on — but not always:
+        // the policies that select a pod are several, and showing the
+        // first of them is worse than showing none, because nothing says
+        // there were others.
+        (r.targets || []).map((id) => ({ rel: r, id }))
+      )
+      .map(({ rel, id }) => {
+        const target = byId.get(id)
+        // A plugin publishes an edge without being able to know whether
+        // the other side is in the feed — a VM points at its Cilium
+        // endpoint, and this console may have no Cilium. The renderer is
+        // the only place that can tell, so it is where the dead ones go.
+        if (!target && !rel.href) return null
         return {
-          name: r.name,
+          name: rel.name,
           label: target?.label || id.split(':').pop(),
           health: target?.health,
-          href: r.href || target?.link || (target ? `#/grid?id=${encodeURIComponent(id)}` : null),
+          href: rel.href || target?.link || `#/grid?id=${encodeURIComponent(id)}`,
         }
       })
       .filter(Boolean)
