@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 
-use console_core::{ComponentSummary, Health, Metric, Relation};
+use console_core::{ComponentSummary, Health, Metric, Relation, RelationKind};
 use serde_json::Value;
 
 use crate::components::Snapshot;
@@ -179,8 +179,15 @@ pub fn describe(snap: &Snapshot, key: &str, c: &mut ComponentSummary) {
         );
         if !policies.is_empty() {
             // Context, not containment: a pod does not contain the
-            // policies that select it (#18).
-            c.relations.push(Relation::belongs_to("policy", policies));
+            // policies that select it (#18) — but there are several of
+            // them, which no `Relation` constructor builds, since a
+            // reference edge is usually to one thing.
+            c.relations.push(Relation {
+                name: "policy".into(),
+                kind: RelationKind::BelongsTo,
+                targets: policies,
+                href: None,
+            });
         }
     }
     c.relations.push(Relation::belongs_to("endpoint", format!("k8s:cep:{key}")));
