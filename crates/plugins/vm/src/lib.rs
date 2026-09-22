@@ -652,6 +652,7 @@ async fn detail(
         *inner.stormvm_up.read().await,
         &ns,
         &name,
+        viewer.may_write(),
     )
     .await;
     let yaml = plugin_kubernetes::to_yaml(

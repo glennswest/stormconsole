@@ -179,7 +179,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         // `masquerade` is behind a NAT inside the hypervisor process and
         // nothing outside the node can route to it, which is worth seeing on
         // the row rather than discovering by trying.
-        if let Some(ifs) = v.pointer("/status/interfaces").and_then(Value::as_array) {
+        if let Some(ifs) = obj.pointer("/status/interfaces").and_then(Value::as_array) {
             if let Some(ip) = ifs
                 .iter()
                 .filter_map(|i| i.get("ipAddress").and_then(Value::as_str))
