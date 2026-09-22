@@ -153,8 +153,35 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             }
         }
 
+        // One machine, one identity, running or not.
+        //
+        // A `VirtualMachine` and its `VirtualMachineInstance` are one machine
+        // to whoever asked for one, and emitting both gave two rows for one
+        // request -- read, reasonably, as something having gone wrong and
+        // made a second. They also disagreed: the definition reported
+        // `Ok`/"running" whenever an instance existed *whatever phase it was
+        // in*, so a machine whose instance had Failed showed one red row and
+        // one green one, for itself.
+        //
+        // The first fix was to hide the definition while an instance existed.
+        // That was worse in a way that is easy to miss: the surviving row's
+        // *id* then changed with the machine's state, so a link, an event
+        // stream or an open drawer pointed at a different object after a stop
+        // than before it.
+        //
+        // So the machine is the definition, and the running instance fills it
+        // in. `vm:machine:<ns>/<name>` is the identity in both states, and a
+        // bare instance -- a VMI somebody applied with no VirtualMachine
+        // behind it -- keeps `vm:instance:` because that is genuinely a
+        // different and lesser thing: nothing durable, nothing to edit,
+        // nothing to restart from.
+        let defined = of("vm").contains_key(key);
         let mut c = ComponentSummary {
-            id: format!("vm:instance:{key}"),
+            id: if defined {
+                format!("vm:machine:{key}")
+            } else {
+                format!("vm:instance:{key}")
+            },
             kind: "vm".into(),
             label: name.to_string(),
             health: instance_health(phase),
@@ -215,9 +242,10 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             // the same fact printed twice.
             c.relations.push(Relation::belongs_to("node", format!("k8s:node:{n}")));
         }
-        let defined = of("vm").contains_key(key);
         if defined {
-            c.relations.push(Relation::belongs_to("definition", format!("vm:machine:{key}")));
+            // No `belongs_to("definition")` any more: the definition *is*
+            // this row. A relation from a thing to itself draws an edge in
+            // the graph view from a node back to the same node.
             // A definition edited while the machine runs diverges from it
             // silently — the console shows the new numbers and the guest
             // runs the old ones. The row says which fields, because the
@@ -377,9 +405,15 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
                 _ => None,
             });
         let live = of("vmi").contains_key(key);
-        let (health, detail) = match (running, live) {
-            (_, true) => (Health::Ok, "running".to_string()),
-            (Some(true), false) => (
+        // The instance already published this machine under the same id --
+        // see the note there. Nothing to add: it has the phase, the doors and
+        // the verbs, and this would only overwrite them with a stopped
+        // machine's answers.
+        if live {
+            continue;
+        }
+        let (health, detail) = match running {
+            Some(true) => (
                 Health::Warn,
                 "wanted running, no instance — nothing places one yet (stormvm docs/kube.md)"
                     .to_string(),
