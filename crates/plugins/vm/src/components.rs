@@ -571,7 +571,15 @@ mod tests {
         )]);
         let c = &map_with(&sn, &running)[0];
         let ids: Vec<&str> = c.actions.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, vec!["restart", "stop", "softreboot", "pause", "unpause", "reset", "delete"]);
+        assert_eq!(
+            ids,
+            vec!["restart", "stop", "softreboot", "pause", "unpause", "reset", "console", "delete"]
+        );
+        // Serial is the only door here, so Console opens it and offers no
+        // alternatives — a menu with one entry is a menu nobody wants.
+        let console = c.actions.iter().find(|a| a.id == "console").unwrap();
+        assert!(console.path.ends_with("?door=serial"), "{}", console.path);
+        assert!(!console.path.contains("alt="), "{}", console.path);
         // Reset is the button on the front of the box; a soft reboot is a
         // request the guest can honour. Only one of them says so.
         let danger = |id: &str| c.actions.iter().find(|a| a.id == id).unwrap().danger;
@@ -589,6 +597,39 @@ mod tests {
         assert!(c.actions.iter().any(|a| a.id == "thaw"));
     }
 
+
+    /// Console opens the screen when there is one, and says where else to go.
+    ///
+    /// "Console" means the screen to somebody who has one; a serial line is
+    /// the specialist answer, wanted exactly when the screen is blank. Two
+    /// buttons in every row would spend the space on the rarer case.
+    #[test]
+    fn console_defaults_to_the_screen_and_offers_serial_as_the_alternative() {
+        let sn = snap("vmi", "default/web-1", json!({"status": {"phase": "Running"}}));
+        let running = Running::from([(
+            "default/web-1".to_string(),
+            json!({"console": {"serial": true, "vnc": true}}),
+        )]);
+        let c = &map_with(&sn, &running)[0];
+        let console = c.actions.iter().find(|a| a.id == "console").expect("a way in");
+        assert!(console.path.contains("door=screen"), "{}", console.path);
+        assert!(console.path.contains("alt=serial"), "{}", console.path);
+    }
+
+    /// No doors, no button.
+    ///
+    /// A button that opens a console the machine does not have is a black
+    /// window nobody can tell from a broken one.
+    #[test]
+    fn a_machine_with_no_doors_is_not_offered_a_console() {
+        let sn = snap("vmi", "default/web-1", json!({"status": {"phase": "Running"}}));
+        let running = Running::from([(
+            "default/web-1".to_string(),
+            json!({"console": {"serial": false, "vnc": false}}),
+        )]);
+        let c = &map_with(&sn, &running)[0];
+        assert!(!c.actions.iter().any(|a| a.id == "console"));
+    }
     #[test]
     fn a_failed_instance_carries_the_reason_it_did_not_start() {
         let sn = snap(
