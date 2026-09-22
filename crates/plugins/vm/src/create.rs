@@ -60,6 +60,13 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                 Field::text("memory", "Memory").default("4Gi"),
                 root_disk(catalogue),
                 Field::select("bus", "Disk bus", &["virtio", "nvme", "scsi", "sata"]),
+                // Where the guest's address comes from, which decides
+                // whether anything can reach it.
+                Field::select("network", "Network", &["pod", "stormbr0"])
+                    .hint("pod: the cluster network — today that is a NAT inside the \
+                           hypervisor, which nothing outside the node can route to \
+                           (stormvm#16). stormbr0: the node's own network, a real \
+                           DHCP address, reachable — but no Service and no NetworkPolicy"),
                 Field::text("ssh_key", "SSH public key")
                     .hint("goes into the cloud-init seed; a guest with no key and no password is a machine nothing can log into"),
             ],
@@ -89,6 +96,35 @@ pub struct Form {
     bus: String,
     #[serde(default)]
     ssh_key: String,
+    /// Which network the guest is on: `pod`, or a host bridge by name.
+    #[serde(default)]
+    network: String,
+}
+
+/// The host bridge this form asked for, if it asked for one.
+///
+/// Two answers a person actually wants, and until now the form could only
+/// produce the one that does not work here:
+///
+/// * **pod** — the cluster network, which is what a workload wants. On this
+///   platform it currently means masquerade, and masquerade is a NAT inside
+///   the hypervisor process: the guest gets a `10.155.0.x` that nothing
+///   outside that process can route to (stormvm#16).
+/// * **a host bridge** — `stormbr0` and the like. The guest lands on the
+///   node's own network, takes a real DHCP address, and is reachable. Not
+///   the pod network, so no NetworkPolicy and no Service — a stopgap, and an
+///   honest one, which is more than the default manages.
+///
+/// The network stanza is the same either way: the interface names a network
+/// and `storm.io/bridge` overrides where it actually lands, which is what
+/// makes this one annotation rather than a second spec shape.
+fn bridge_of(f: &Form) -> Option<String> {
+    let n = f.network.trim();
+    if n.is_empty() || n == "pod" {
+        None
+    } else {
+        Some(n.to_string())
+    }
 }
 
 /// The form, as an object the apiserver takes. Everything the form does
@@ -113,7 +149,7 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     let mut vmi = json!({
         "apiVersion": "kubevirt.io/v1",
         "kind": "VirtualMachineInstance",
-        "metadata": {"name": f.name.trim(), "namespace": ns},
+        "metadata": {"name": f.name.trim(), "namespace": ns, "annotations": {}},
         "spec": {
             "domain": {
                 "cpu": {"cores": cores},
@@ -156,6 +192,13 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     // user did not set, so the key is absent unless it means something.
     if !f.node.trim().is_empty() {
         vmi["spec"]["nodeName"] = json!(f.node.trim());
+    }
+    if let Some(b) = bridge_of(f) {
+        // Named on the object rather than decided on the node, so the choice
+        // travels with the machine: it is the same after a restart, and
+        // readable by anyone asking why this guest is reachable and that one
+        // is not.
+        vmi["metadata"]["annotations"]["storm.io/bridge"] = json!(b);
     }
     Ok(vmi)
 }
