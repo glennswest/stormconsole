@@ -218,6 +218,14 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         let defined = of("vm").contains_key(key);
         if defined {
             c.relations.push(Relation::belongs_to("definition", format!("vm:machine:{key}")));
+            // A definition edited while the machine runs diverges from it
+            // silently — the console shows the new numbers and the guest
+            // runs the old ones. The row says which fields, because the
+            // next restart is when somebody finds out otherwise (#14).
+            crate::settings::pending_metric(
+                &mut c,
+                &crate::settings::of(of("vm").get(key), Some(obj)),
+            );
         }
         // On the row, so the common things do not need a detail view first.
         //

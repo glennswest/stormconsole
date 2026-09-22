@@ -26,6 +26,7 @@ pub mod components;
 pub mod console;
 mod create;
 pub mod images;
+pub mod settings;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -173,6 +174,7 @@ impl ConsolePlugin for VmPlugin {
             .route("/machines/{ns}/{name}", delete(delete_machine))
             .route("/instances/{ns}/{name}/stop", post(delete_instance))
             .route("/vms/{ns}/{name}", get(detail))
+            .route("/vms/{ns}/{name}/settings", get(settings_of).put(settings_set))
             .route("/console/{ns}/{name}", get(console_caps))
             .route("/console/{ns}/{name}/serial", get(serial))
             .route("/console/{ns}/{name}/vnc", get(vnc))
@@ -607,6 +609,91 @@ async fn control(
     }
 }
 
+/// What can be changed about this machine, and when each change lands.
+async fn settings_of(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let key = format!("{ns}/{name}");
+    let machine = inner.store.object("vm", &key).await;
+    let instance = inner.store.object("vmi", &key).await;
+    if machine.is_none() && instance.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no virtual machine {key}")})))
+            .into_response();
+    }
+    let mut s = settings::of(machine.as_ref(), instance.as_ref());
+    // Being able to see a machine is not being able to change it.
+    if !viewer.may_write() {
+        s.editable = false;
+        s.why = "changing a machine needs the `operator` role".into();
+    }
+    Json(s).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct Change {
+    field: String,
+    #[serde(default)]
+    value: String,
+}
+
+/// One field at a time, as a merge patch against the `VirtualMachine`.
+///
+/// Against the definition, never the instance: a patch to a running VMI's
+/// spec is read by nothing and is gone when it stops. So a machine with no
+/// definition is refused rather than half-changed.
+async fn settings_set(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+    Json(change): Json<Change>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    if !viewer.may_write() {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "changing a machine needs the `operator` role"})),
+        )
+            .into_response();
+    }
+    let key = format!("{ns}/{name}");
+    if inner.store.object("vm", &key).await.is_none() {
+        let s = settings::of(None, inner.store.object("vmi", &key).await.as_ref());
+        return (StatusCode::CONFLICT, Json(json!({"error": s.why}))).into_response();
+    }
+    let body = match settings::patch(&change.field, &change.value) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    let Some(client) = &inner.client else { return no_apiserver() };
+    let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
+    // As the viewer, so the apiserver's RBAC decides — the same rule the
+    // read that showed them the field was subject to.
+    match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
+        Ok((status, b)) => {
+            let running = inner.store.object("vmi", &key).await.is_some();
+            if !status.is_success() {
+                return from_apiserver(status, b, "");
+            }
+            Json(json!({
+                "message": if running {
+                    format!("{} written — in force after a restart", change.field)
+                } else {
+                    format!("{} written", change.field)
+                }
+            }))
+            .into_response()
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
 /// Everything a VM page shows, in one answer: the definition, the running
 /// instance, the disks with what backs each, the interfaces, and the two
 /// console doors' state.
@@ -672,6 +759,7 @@ async fn detail(
         "hasDefinition": machine.is_some(),
         "running": instance.is_some(),
         "console": caps,
+        "settings": settings::of(machine.as_ref(), instance.as_ref()),
         "yaml": yaml,
     }))
     .into_response()
