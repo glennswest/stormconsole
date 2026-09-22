@@ -708,8 +708,12 @@ mod tests {
         assert!(patch("cores", "0").unwrap_err().contains("at least one"));
         assert!(patch("memory", "lots").unwrap_err().contains("4Gi"));
         assert!(patch("bus", "ide").unwrap_err().contains("not a disk bus"));
-        // The two that are refused on purpose point somewhere that works.
-        assert!(patch("network", "br0").unwrap_err().contains("YAML"));
+        // The network is no longer refused — it is the thing somebody wants
+        // to change about a machine that came up unreachable.
+        assert!(patch("network", "br0").is_ok());
+        // The one still refused on purpose points somewhere that works: the
+        // key is in the cloud-init seed, which a booted guest has read.
         assert!(patch("ssh_key", "ssh-ed25519 x").unwrap_err().contains("reads once"));
+        assert!(patch("vga_memory", "lots").unwrap_err().contains("MiB"));
     }
 }
