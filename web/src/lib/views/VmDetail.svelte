@@ -68,6 +68,47 @@
   // because "does this need a restart" depends on whether the machine is
   // running, which is a fact about the machine and not about the form.
 
+  // --- disks -----------------------------------------------------------
+  let addingDisk = $state(false)
+  let newDisk = $state({ name: '', source: 'golden', from: '', bus: 'virtio' })
+
+  async function addDisk() {
+    saving = true
+    error = ''
+    saved = ''
+    try {
+      const r = await postJson(
+        `/api/plugins/vm/vms/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/disks`,
+        newDisk
+      )
+      saved = r.message
+      addingDisk = false
+      newDisk = { name: '', source: 'golden', from: '', bus: 'virtio' }
+      await load()
+    } catch (e) {
+      error = e.message
+    }
+    saving = false
+  }
+
+  async function removeDisk(disk) {
+    if (!confirm(`Remove ${disk} from ${name}?`)) return
+    saving = true
+    error = ''
+    saved = ''
+    try {
+      const r = await call(
+        'DELETE',
+        `/api/plugins/vm/vms/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/disks/${encodeURIComponent(disk)}`
+      )
+      saved = r.message
+      await load()
+    } catch (e) {
+      error = e.message
+    }
+    saving = false
+  }
+
   const settings = $derived(vm?.settings || null)
   const pendingLabels = $derived(
     (settings?.pending || []).map(
@@ -331,6 +372,7 @@
     {#if error}<p class="error">{error}</p>{/if}
 
     {#if tab === 'Overview'}
+      {#if saved}<p class="saved">{saved}</p>{/if}
       <section class="cards">
         <div class="card">
           <h2>Machine</h2>
@@ -354,9 +396,50 @@
           {:else}
             <ul class="rows">
               {#each vm.disks as d (d.name)}
-                <li><span class="mono">{d.name}</span><span class="dim">{d.backing}</span></li>
+                <li>
+                  <span class="mono">{d.name}</span>
+                  <span class="dim">{d.backing}</span>
+                  {#if vm.disksEditable && d.removable}
+                    <button class="rm" onclick={() => removeDisk(d.name)}>Remove</button>
+                  {/if}
+                </li>
               {/each}
             </ul>
+          {/if}
+          {#if vm.disksEditable}
+            {#if addingDisk}
+              <div class="adddisk">
+                <input bind:value={newDisk.name} placeholder="name" aria-label="Disk name" />
+                <select bind:value={newDisk.source} aria-label="Disk source">
+                  <option value="golden">from a golden</option>
+                  <option value="pvc">a claim</option>
+                  <option value="empty">empty, of size</option>
+                </select>
+                <input
+                  bind:value={newDisk.from}
+                  placeholder={newDisk.source === 'empty' ? '10Gi' : 'name'}
+                  aria-label="Disk source name"
+                />
+                <select bind:value={newDisk.bus} aria-label="Disk bus">
+                  <option value="virtio">virtio</option>
+                  <option value="scsi">scsi</option>
+                  <option value="sata">sata</option>
+                </select>
+                <button class="sc-primary" disabled={saving} onclick={addDisk}>Add</button>
+                <button disabled={saving} onclick={() => (addingDisk = false)}>Cancel</button>
+              </div>
+              <!-- The one thing somebody must know before they press it. -->
+              <p class="note">
+                {#if vm.running}
+                  The guest sees a new disk at its next boot — nothing attaches one to a running
+                  machine on this platform.
+                {:else}
+                  The machine is stopped, so this is simply what it will have.
+                {/if}
+              </p>
+            {:else}
+              <button onclick={() => (addingDisk = true)}>Add disk</button>
+            {/if}
           {/if}
         </div>
 
@@ -573,6 +656,19 @@
     font-size: var(--sc-t-meta);
     color: var(--warn-strong);
   }
+
+  .rows li button.rm {
+    margin-left: auto;
+    font-size: var(--sc-t-eyebrow);
+    padding: 2px 8px;
+  }
+  .adddisk {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .adddisk input { width: 110px; }
 
   .note {
     display: block;

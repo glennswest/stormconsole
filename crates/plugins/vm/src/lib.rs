@@ -25,6 +25,7 @@
 pub mod components;
 pub mod console;
 mod create;
+pub mod disks;
 pub mod images;
 pub mod settings;
 
@@ -185,6 +186,8 @@ impl ConsolePlugin for VmPlugin {
             .route("/instances/{ns}/{name}/stop", post(delete_instance))
             .route("/vms/{ns}/{name}", get(detail))
             .route("/vms/{ns}/{name}/settings", get(settings_of).put(settings_set))
+            .route("/vms/{ns}/{name}/disks", post(disk_add))
+            .route("/vms/{ns}/{name}/disks/{disk}", delete(disk_remove))
             .route("/console/{ns}/{name}", get(console_caps))
             .route("/console/{ns}/{name}/serial", get(serial))
             .route("/console/{ns}/{name}/vnc", get(vnc))
@@ -619,6 +622,90 @@ async fn control(
     }
 }
 
+/// The machine's own `spec.template.spec`, and the refusal when there is
+/// none to edit. Shared by the disk verbs and the settings write, because
+/// they are the same question: is there something durable to patch?
+async fn definition_spec(inner: &Inner, ns: &str, name: &str) -> Result<Value, Response> {
+    let key = format!("{ns}/{name}");
+    match inner.store.object("vm", &key).await {
+        Some(m) => Ok(m.pointer("/spec/template/spec").cloned().unwrap_or(Value::Null)),
+        None => {
+            let s = settings::of(None, inner.store.object("vmi", &key).await.as_ref());
+            Err((StatusCode::CONFLICT, Json(json!({"error": s.why}))).into_response())
+        }
+    }
+}
+
+/// Apply a merge patch to the `VirtualMachine`, as the viewer.
+async fn patch_machine(
+    inner: &Inner,
+    viewer: &Viewer,
+    ns: &str,
+    name: &str,
+    body: Value,
+    done: String,
+) -> Response {
+    let Some(client) = &inner.client else { return no_apiserver() };
+    let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
+    match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
+        Ok((status, b)) if status.is_success() => {
+            let _ = b;
+            Json(json!({"message": done})).into_response()
+        }
+        Ok((status, b)) => from_apiserver(status, b, ""),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// Add a disk to a machine.
+///
+/// Written to the definition, so the guest sees it at its next boot —
+/// nothing on this platform attaches a disk to a running machine, and the
+/// answer says so rather than letting somebody watch for a device that is
+/// never going to appear.
+async fn disk_add(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+    Json(add): Json<disks::Add>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let spec = match definition_spec(&inner, &ns, &name).await {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let body = match disks::add(&spec, &add) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    let running = inner.store.object("vmi", &format!("{ns}/{name}")).await.is_some();
+    let done = disks::effect(running, "added", add.name.trim());
+    patch_machine(&inner, &viewer, &ns, &name, body, done).await
+}
+
+async fn disk_remove(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name, disk)): Path<(String, String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let spec = match definition_spec(&inner, &ns, &name).await {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let body = match disks::remove(&spec, &disk) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    let running = inner.store.object("vmi", &format!("{ns}/{name}")).await.is_some();
+    let done = disks::effect(running, "removed", disk.trim());
+    patch_machine(&inner, &viewer, &ns, &name, body, done).await
+}
+
 /// What can be changed about this machine, and when each change lands.
 async fn settings_of(
     State(inner): State<Arc<Inner>>,
@@ -676,35 +763,22 @@ async fn settings_set(
             .into_response();
     }
     let key = format!("{ns}/{name}");
-    if inner.store.object("vm", &key).await.is_none() {
-        let s = settings::of(None, inner.store.object("vmi", &key).await.as_ref());
-        return (StatusCode::CONFLICT, Json(json!({"error": s.why}))).into_response();
+    if let Err(r) = definition_spec(&inner, &ns, &name).await {
+        return r;
     }
     let body = match settings::patch(&change.field, &change.value) {
         Ok(b) => b,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
-    let Some(client) = &inner.client else { return no_apiserver() };
-    let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
+    let running = inner.store.object("vmi", &key).await.is_some();
+    let done = if running {
+        format!("{} written — in force after a restart", change.field)
+    } else {
+        format!("{} written", change.field)
+    };
     // As the viewer, so the apiserver's RBAC decides — the same rule the
     // read that showed them the field was subject to.
-    match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
-        Ok((status, b)) => {
-            let running = inner.store.object("vmi", &key).await.is_some();
-            if !status.is_success() {
-                return from_apiserver(status, b, "");
-            }
-            Json(json!({
-                "message": if running {
-                    format!("{} written — in force after a restart", change.field)
-                } else {
-                    format!("{} written", change.field)
-                }
-            }))
-            .into_response()
-        }
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
-    }
+    patch_machine(&inner, &viewer, &ns, &name, body, done).await
 }
 
 /// Everything a VM page shows, in one answer: the definition, the running
@@ -736,9 +810,15 @@ async fn detail(
         .or_else(|| machine.as_ref().and_then(|v| v.pointer("/spec/template/spec").cloned()))
         .unwrap_or(Value::Null);
     let domain = spec.get("domain").cloned().unwrap_or(Value::Null);
+    // Which disks can be removed, decided here rather than in the view.
+    // The root disk and the seed are refused by `disks::remove`, and a
+    // button that exists in order to be refused is worse than no button.
     let disks: Vec<Value> = components::disks(&spec)
         .into_iter()
-        .map(|(name, backing)| json!({"name": name, "backing": backing}))
+        .map(|(name, backing)| {
+            let removable = !matches!(name.as_str(), "root" | "seed");
+            json!({"name": name, "backing": backing, "removable": removable})
+        })
         .collect();
     // What the machine's network actually *is*, not what was asked for.
     //
@@ -789,6 +869,9 @@ async fn detail(
         "interfaces": interfaces,
         "networks": networks,
         "hasDefinition": machine.is_some(),
+        // Whether a disk can be added at all: there has to be something
+        // durable to write it to.
+        "disksEditable": machine.is_some() && viewer.may_write(),
         "running": instance.is_some(),
         "console": caps,
         "settings": settings::of(machine.as_ref(), instance.as_ref()),

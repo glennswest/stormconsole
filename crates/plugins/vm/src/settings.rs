@@ -77,6 +77,13 @@ impl Setting {
         Self { name, label, value, running: Value::Null, applies, note: applies.note().into() }
     }
 
+    /// A note of its own, where "applies on restart" is true and not the
+    /// interesting half of the answer.
+    fn noting(mut self, note: &str) -> Self {
+        self.note = format!("{} · {note}", self.applies.note());
+        self
+    }
+
     fn against(mut self, running: Option<Value>) -> Self {
         if let Some(r) = running {
             if r != self.value && !r.is_null() {
@@ -129,6 +136,34 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
             when(Applies::OnRestart),
         )
         .against(memory(&run_domain).map(Value::from)),
+        // The floor a balloon may deflate to, which is the only mechanism
+        // by which a machine's memory ever changes without a restart.
+        //
+        // KubeVirt's `memory.guest` with a *lower* resource request is
+        // exactly ballooning, and stormvm reads it that way — a floor
+        // below the size makes it build a `virtio-balloon-pci` (qemu) or
+        // pass `--balloon` (cloud-hypervisor). No floor, no balloon, and
+        // then memory cannot be changed at all until the machine
+        // restarts. The console ignored the field entirely, so the one
+        // decision that governs whether memory is adjustable was
+        // invisible and unreachable.
+        //
+        // Adding or moving the floor still needs a restart, because the
+        // device is built at start. What it buys is everything after that.
+        Setting::new(
+            "memory_floor",
+            "Memory floor",
+            Value::from(floor(&domain)),
+            when(Applies::OnRestart),
+        )
+        .against(Some(Value::from(floor(&run_domain))))
+        .noting(if floor(&domain).is_empty() {
+            "no floor, so this machine has no balloon and its memory cannot change while it \
+             runs. A floor below the size gives it one."
+        } else {
+            "the machine has a balloon: its memory may be squeezed to this floor without a \
+             restart, once something asks it to"
+        }),
         Setting::new("bus", "Disk bus", Value::from(bus(&domain)), when(Applies::OnRestart))
             .against(Some(Value::from(bus(&run_domain)))),
         Setting::new(
@@ -177,6 +212,23 @@ pub struct Settings {
     /// about — changes written but not yet in force.
     pub pending: Vec<String>,
     pub fields: Vec<Setting>,
+}
+
+/// The balloon floor: a memory *request* lower than the guest size.
+///
+/// Equal or absent is not a floor — a request that matches the size gives
+/// a balloon nothing to deflate into, and reporting it as one would
+/// promise adjustable memory that is not.
+fn floor(domain: &Value) -> String {
+    let req = domain
+        .pointer("/resources/requests/memory")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let size = memory(domain).unwrap_or_default();
+    if req.is_empty() || req == size {
+        return String::new();
+    }
+    req.to_string()
 }
 
 /// The first disk's bus, which is the one a form can honestly offer: a
@@ -260,6 +312,22 @@ pub fn patch(field: &str, value: &str) -> Result<Value, String> {
                 return Err(format!("{value:?} is not a disk bus this console offers"));
             }
             Ok(template(json!({"domain": {"devices": {"disks": [{"disk": {"bus": value}}]}}})))
+        }
+        "memory_floor" => {
+            let m = value.trim();
+            if m.is_empty() {
+                // Removing the floor removes the balloon at the next
+                // restart, which is a real choice: a balloon returns
+                // memory by taking it away from a guest that thought it
+                // had it, and that is wrong for anything latency-
+                // sensitive.
+                return Ok(template(json!({"domain": {"resources": {"requests":
+                    {"memory": Value::Null}}}})));
+            }
+            if !m.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                return Err(format!("{m:?} is not a memory quantity — try 2Gi"));
+            }
+            Ok(template(json!({"domain": {"resources": {"requests": {"memory": m}}}})))
         }
         "hostname" => Ok(template(json!({"hostname": value.trim()}))),
         // Deliberately not patchable here. Changing the binding moves the
@@ -356,6 +424,49 @@ mod tests {
         let s = of(None, Some(&i));
         assert!(!s.editable);
         assert!(s.why.contains("lost when it stops"), "{}", s.why);
+    }
+
+    /// The floor is the only mechanism by which memory ever changes
+    /// without a restart, and the console could neither see nor set it.
+    #[test]
+    fn the_memory_floor_says_whether_this_machine_has_a_balloon() {
+        let none = machine(2, "4Gi");
+        let s = of(Some(&none), None);
+        let f = field(&s, "memory_floor");
+        assert_eq!(f.value, json!(""));
+        assert!(f.note.contains("no balloon"), "{}", f.note);
+
+        let mut ballooned = machine(2, "4Gi");
+        ballooned["spec"]["template"]["spec"]["domain"]["resources"] =
+            json!({"requests": {"memory": "1Gi"}});
+        let s = of(Some(&ballooned), None);
+        let f = field(&s, "memory_floor");
+        assert_eq!(f.value, json!("1Gi"));
+        assert!(f.note.contains("squeezed to this floor"), "{}", f.note);
+
+        // A request equal to the size is not a floor: a balloon with
+        // nothing to deflate into is not adjustable memory.
+        let mut equal = machine(2, "4Gi");
+        equal["spec"]["template"]["spec"]["domain"]["resources"] =
+            json!({"requests": {"memory": "4Gi"}});
+        assert_eq!(field(&of(Some(&equal), None), "memory_floor").value, json!(""));
+    }
+
+    #[test]
+    fn the_floor_is_written_and_can_be_taken_away() {
+        let p = patch("memory_floor", "2Gi").unwrap();
+        assert_eq!(
+            p.pointer("/spec/template/spec/domain/resources/requests/memory"),
+            Some(&json!("2Gi"))
+        );
+        // Blank removes it, which removes the balloon at the next restart
+        // — a real choice, not a no-op.
+        let p = patch("memory_floor", "").unwrap();
+        assert_eq!(
+            p.pointer("/spec/template/spec/domain/resources/requests/memory"),
+            Some(&Value::Null)
+        );
+        assert!(patch("memory_floor", "lots").unwrap_err().contains("2Gi"));
     }
 
     #[test]
