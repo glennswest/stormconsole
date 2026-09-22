@@ -324,6 +324,42 @@ Left open on #18: what is still not editable — cores, memory, disk bus and
 network (#14), a disk added to a running machine, and the address the guest
 actually holds, which needs the agent at `agent.sock` that nothing reads
 
+### The batch filed 2026-09-22 (#13–#17) — in progress
+Read stormvm's `docs/console.md` before writing any of the VM half: it is
+the authority, and it says three things this repo was guessing at — the
+replay is already served on attach, minting is loopback-only and exists
+for `--require-token` nodes, and there is a whole set of **control verbs**
+beside the doors that nothing here has ever called.
+
+- [ ] **#16 collapse the navigation.** A `kind` on `NavSection` —
+      `work` or `admin` — declared by the plugin that contributes it, not
+      a list in the SPA. Admin sections start shut; an explicit choice
+      wins and persists. A collapsed section carries its total, so it
+      stays discoverable
+- [ ] **#13 the console doors, the rest of them.** Mint a token and
+      present it, so a `--require-token` node works; surface `replay` and
+      say in the terminal where the history ends and the live stream
+      begins; read-only as an explicit capability rather than a side
+      effect of being able to see the VM
+- [ ] **#13/#14/#18 the control verbs.** `pause`, `unpause`,
+      `softreboot`, `reset`, `freeze`, `thaw` — served by stormvm on every
+      node, reported per machine (`control.lifecycle`, `control.freeze`),
+      and called by nothing. This is most of what "a person can see a VM
+      exists and cannot power it off" was asking for
+- [ ] **#14 settings, honestly.** An edit form that says per field
+      whether it applies now or at next boot, and a machine that reports
+      it has **pending changes** rather than silently diverging from its
+      spec. Metrics: what is actually measurable today, and an honest
+      absence where it is not (cadvisor is not wired here yet)
+- [ ] **#17 the network's view, inside the views people use.** The half
+      that comes from CRDs the kubernetes plugin already watches —
+      identity and what it resolves to, endpoint state, the policies that
+      select a workload — on the pod and VM views. Flows stay gated on
+      stormpump#11 (tracked on #4)
+- [ ] **#15 identity.** Steps 1 and 2 of the issue's own order: a login
+      that produces a viewer, and `access()` consulting it. Users, groups
+      and audit are step 3 and 4 and are not this pass
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

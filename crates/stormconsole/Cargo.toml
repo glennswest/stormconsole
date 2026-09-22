@@ -22,7 +22,7 @@ plugin-vm.workspace = true
 # one place where being *slow* is the feature, and SHA-256 is fast enough
 # that a leaked config is a list of passwords by the afternoon. `subtle`
 # for the token comparison, which was `==` and therefore timing-visible.
-argon2 = "0.5"
+argon2 = { version = "0.5", features = ["std"] }
 subtle = "2"
 
 stormview.workspace = true
