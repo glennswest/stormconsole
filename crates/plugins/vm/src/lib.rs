@@ -516,15 +516,54 @@ async fn delete_machine(
         return refusal;
     }
     let Some(client) = &inner.client else { return no_apiserver() };
+    // Delete whatever this machine actually is.
+    //
+    // This deleted a `virtualmachines` and nothing else, so deleting a
+    // machine created directly as a VMI — which is what the console's own
+    // create form makes, and what a `sc apply` of an instance makes —
+    // returned 404 with no explanation. The row offered Delete and the
+    // delete did not work, which is worse than not offering it.
+    //
+    // The definition first, because deleting it takes the instance with it.
+    // Then the instance, for a machine that never had one. A 404 on the
+    // definition is not an error here: it is the ordinary case.
+    let key = format!("{ns}/{name}");
+    let has_definition = inner.store.object("vm", &key).await.is_some();
+    let mut last: Option<String> = None;
+    if has_definition {
+        match client
+            .delete(
+                &format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}"),
+                viewer.token.as_deref(),
+            )
+            .await
+        {
+            Ok(s) if s.is_success() => {
+                return Json(json!({"message": format!("{ns}/{name} deleted")})).into_response()
+            }
+            Ok(s) => last = Some(format!("apiserver returned {} for the definition", s.as_u16())),
+            Err(e) => last = Some(e.to_string()),
+        }
+    }
     match client
         .delete(
-            &format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}"),
+            &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
             viewer.token.as_deref(),
         )
         .await
     {
-        Ok(s) if s.is_success() => Json(json!({"message": format!("{ns}/{name} deleted")})).into_response(),
-        Ok(s) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", s.as_u16())})))
+        Ok(s) if s.is_success() => {
+            Json(json!({"message": format!("{ns}/{name} deleted")})).into_response()
+        }
+        Ok(s) if s.as_u16() == 404 && last.is_none() => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("no virtual machine {key}")})),
+        )
+            .into_response(),
+        Ok(s) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": last.unwrap_or_else(|| format!("apiserver returned {}", s.as_u16()))})),
+        )
             .into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
     }
