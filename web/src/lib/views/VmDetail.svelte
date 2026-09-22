@@ -323,18 +323,63 @@
   // the tab is opened, so the 350 KB is not in the console's first paint.
 
   let vncBox = $state(null)
+  let vncCanvas = $state(null)
   let vncState = $state('idle')
   let rfb = null
+  let stormSession = null
+
+  // Which RFB client draws the screen.
+  //
+  // stormrfb is ours -- one Rust codec for both ends, 88 KB of wasm against
+  // noVNC's 182 KB of JavaScript -- and it is the reason a VMM with no
+  // display of its own can have one at all. It is not the default yet, and
+  // that is stormrfb's own call: its validation notes say to keep noVNC
+  // until a Linux guest and a Windows installer have been driven through
+  // this relay. That gate could not be attempted before the framebuffer
+  // worked; now it can, which is what this switch is for. `?rfb=storm`
+  // selects it, and the choice is remembered.
+  //
+  // Known gaps against noVNC while it is being validated: no
+  // ExtendedDesktopSize, so the guest is drawn at its own resolution and
+  // scaled by CSS rather than resized; DOM keys and Latin-1 clipboard only.
+  let client = $state(
+    route.current.query.get('rfb') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('vm.rfb')) ||
+      'novnc'
+  )
+  function useClient(which) {
+    if (which === client) return
+    closeVnc()
+    client = which
+    try {
+      localStorage.setItem('vm.rfb', which)
+    } catch {}
+  }
+
+  const vncPath = $derived(
+    `/api/plugins/vm/console/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/vnc`
+  )
 
   async function openVnc() {
-    if (rfb || !vncBox) return
+    if (rfb || stormSession) return
     vncState = 'connecting'
     try {
+      if (client === 'storm') {
+        if (!vncCanvas) return
+        const { connect } = await import('../vendor/stormrfb/client.js')
+        stormSession = await connect(vncCanvas, wsUrl(vncPath), {
+          onready: () => (vncState = 'open'),
+          onerror: (e) => {
+            vncState = 'closed'
+            stormSession = null
+            error = `framebuffer (stormrfb): ${e?.message || e}`
+          },
+        })
+        return
+      }
+      if (!vncBox) return
       const { default: RFB } = await import('@novnc/novnc')
-      rfb = new RFB(
-        vncBox,
-        wsUrl(`/api/plugins/vm/console/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/vnc`)
-      )
+      rfb = new RFB(vncBox, wsUrl(vncPath))
       rfb.scaleViewport = true
       rfb.addEventListener('connect', () => (vncState = 'open'))
       rfb.addEventListener('disconnect', () => {
@@ -351,7 +396,11 @@
     try {
       rfb?.disconnect()
     } catch {}
+    try {
+      stormSession?.close()
+    } catch {}
     rfb = null
+    stormSession = null
     vncState = 'idle'
   }
 
@@ -670,6 +719,10 @@
           <div class="bar">
             <span class="state {vncState}">{vncState}</span>
             <span class="right">
+              <span class="picker" role="group" aria-label="Framebuffer client">
+                <button class:sel={client === 'novnc'} onclick={() => useClient('novnc')}>noVNC</button>
+                <button class:sel={client === 'storm'} onclick={() => useClient('storm')} title="stormrfb — ours, in Rust">stormrfb</button>
+              </span>
               <button onclick={toggleFull} title="Escape leaves full screen">
                 {full ? 'Exit full screen' : 'Full screen'}
               </button>
@@ -680,7 +733,11 @@
               {/if}
             </span>
           </div>
-          <div class="fb" class:full bind:this={vncBox}></div>
+          {#if client === 'storm'}
+            <canvas class="fb" class:full bind:this={vncCanvas}></canvas>
+          {:else}
+            <div class="fb" class:full bind:this={vncBox}></div>
+          {/if}
         </div>
       {/if}
     {:else}
@@ -851,6 +908,20 @@
      border -- so this takes the viewport and leaves the browser alone.
      Escape gets out, and the button says so, because a console with no
      visible way back is a trap. */
+  .picker button {
+    font-size: var(--sc-t-meta);
+    padding: 3px 9px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+  }
+  .picker button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  .picker button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-left: none; }
+  .picker button.sel { background: var(--nav-hover); color: var(--text); font-weight: 600; }
+  /* stormrfb draws at the guest's resolution; without
+     ExtendedDesktopSize there is no resize, so CSS does the scaling. */
+  canvas.fb { width: 100%; object-fit: contain; background: #000; }
+
   .term.full,
   .fb.full {
     position: fixed;
