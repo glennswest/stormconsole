@@ -721,7 +721,7 @@ fn golden_of(v: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachineInstance\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  domain:\n    cpu:\n      cores: 2\n    memory:\n      guest: 4Gi\n    firmware:\n      bootloader:\n        efi:\n          secureBoot: false\n    devices:\n      disks:\n        - name: root\n          disk:\n            bus: virtio\n        - name: seed\n          disk:\n            bus: virtio\n      interfaces:\n        - name: default\n  networks:\n    - name: default\n      pod: {}\n  volumes:\n    - name: root\n      dataVolume:\n        name: rocky-10-cloud\n    - name: seed\n      cloudInitNoCloud:\n        userData: |\n          #cloud-config\n";
+const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachine\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  running: true\n  template:\n    metadata:\n      annotations: {}\n    spec:\n      domain:\n        cpu:\n          cores: 2\n        memory:\n          guest: 4Gi\n        firmware:\n          bootloader:\n            efi:\n              secureBoot: false\n        devices:\n          autoattachGraphicsDevice: false\n          disks:\n            - name: root\n              disk:\n                bus: virtio\n            - name: seed\n              disk:\n                bus: virtio\n          interfaces:\n            - name: default\n      networks:\n        - name: default\n          pod: {}\n      volumes:\n        - name: root\n          dataVolume:\n            name: rocky-10-cloud\n        - name: seed\n          cloudInitNoCloud:\n            userData: |\n              #cloud-config\n";
 
 #[cfg(test)]
 mod tests {
@@ -868,7 +868,10 @@ mod tests {
         let docs = plugin_kubernetes::apply::parse_documents(VMI).unwrap();
         assert_eq!(docs.len(), 1);
         let (kind, name, path) = plugin_kubernetes::apply::target(&docs[0]).unwrap();
-        assert_eq!(kind, "VirtualMachineInstance");
+        // A VirtualMachine, matching what the form builds. A template that
+        // pastes a bare instance teaches the shape that cannot be edited,
+        // deleted or stopped afterwards.
+        assert_eq!(kind, "VirtualMachine");
         assert_eq!(name, "web-1");
         assert_eq!(path, "/apis/kubevirt.io/v1/namespaces/default/virtualmachines");
     }
