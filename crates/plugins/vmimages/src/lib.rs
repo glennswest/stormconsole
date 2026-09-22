@@ -25,7 +25,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use console_core::value::{field, human_bytes, u64_field};
 use console_core::{
-    Action, ComponentSummary, ConsolePlugin, Creator, Field, Health, Metric, NavSection, Relation,
+    Action, ComponentSummary, ConsolePlugin, Creator, Events, Field, Health, Metric, NavSection,
+    Relation, Viewer,
 };
 use serde_json::Value;
 use tokio::sync::RwLock;
@@ -53,6 +54,15 @@ struct Picks {
 struct Inner {
     base: String,
     client: reqwest::Client,
+    /// The apiserver, for the events the operator records against each image.
+    ///
+    /// The operator writes `CloudImage` events -- resolved, importing,
+    /// sealed, failed -- and this plugin drew none of them, so an image that
+    /// sat at "Building" for twenty minutes had its whole story in the
+    /// cluster and nothing on the page. `None` when the console has no
+    /// apiserver, which is the same condition that makes every other
+    /// kubernetes-backed panel empty.
+    kube: Option<plugin_kubernetes::Client>,
     state: RwLock<State>,
     picks: std::sync::RwLock<Picks>,
 }
@@ -63,10 +73,23 @@ pub struct VmImagesPlugin {
 
 impl VmImagesPlugin {
     pub fn new(url: &str) -> Self {
+        Self::with_kube(url, None, None, false)
+    }
+
+    /// The same, with the apiserver that holds each image's events.
+    pub fn with_kube(
+        url: &str,
+        server: Option<String>,
+        token: Option<String>,
+        insecure: bool,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 base: url.trim_end_matches('/').to_string(),
                 client: reqwest::Client::new(),
+                kube: server
+                    .as_ref()
+                    .map(|s| plugin_kubernetes::Client::new(s, token.as_deref(), insecure)),
                 state: RwLock::new(State {
                     health: Health::Unknown,
                     detail: "not yet polled".into(),
@@ -177,6 +200,43 @@ impl ConsolePlugin for VmImagesPlugin {
     async fn detail(&self) -> String {
         let s = self.inner.state.read().await;
         console_core::upstream::detail("vm images", &self.inner.base, &s.detail)
+    }
+
+    /// What happened to one image.
+    ///
+    /// An image is the slowest thing on this console -- a download, a decode
+    /// and a seal, minutes to tens of minutes -- and for all of it the page
+    /// said `Building` and nothing else. The operator records the steps as
+    /// `CloudImage` events and nobody drew them, so the one panel where
+    /// somebody is genuinely waiting was the one with no progress in it.
+    ///
+    /// Answered for the image rows -- `img:golden:<name>` and
+    /// `img:catalog:<reference>` -- because those are the objects the
+    /// operator writes about.
+    async fn events(&self, _viewer: &Viewer, id: &str) -> Option<Events> {
+        let name = id
+            .strip_prefix("img:golden:")
+            .or_else(|| id.strip_prefix("img:local:"))?;
+        let client = self.inner.kube.as_ref()?;
+        let list = match client.get("/api/v1/events").await {
+            Ok(l) => l,
+            Err(e) => {
+                return Some(Events::none(format!("the apiserver did not answer for events: {e}")))
+            }
+        };
+        // `CloudImage` is cluster-scoped here, so the namespace is not part
+        // of the identity and `about` is asked with an empty one.
+        let items: Vec<_> = list
+            .get("items")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter(|e| plugin_kubernetes::objevents::about(e, "CloudImage", "", name))
+                    .map(plugin_kubernetes::objevents::event)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Events::of(items).newest(20))
     }
 
     async fn run(&self, shutdown: CancellationToken) {

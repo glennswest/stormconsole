@@ -159,7 +159,13 @@ async fn main() {
     // copies are. Beside sbregistry in the nav, because both answer "where
     // does an image come from" and a person should find one list.
     if config.vmimages.enabled {
-        plugins.push(Arc::new(plugin_vmimages::VmImagesPlugin::new(&config.vmimages_url())));
+        // With the apiserver, so an image's own events can be drawn beside it.
+        plugins.push(Arc::new(plugin_vmimages::VmImagesPlugin::with_kube(
+            &config.vmimages_url(),
+            config.kubernetes.enabled.then(|| config.kubernetes_server()),
+            config.kubernetes.token.clone(),
+            config.kubernetes_insecure(),
+        )));
     }
     // VMs are kube objects here — the plugin watches the same apiserver
     // with the same credential, and only reaches stormvm for the console
