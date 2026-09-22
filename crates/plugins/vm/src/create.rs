@@ -87,9 +87,11 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                 // `vga` is `VGA`, which this build does have — and which is
                 // the one that draws in firmware and an installer anyway.
                 // The others come back when the qemu golden carries them.
-                Field::select("display", "Display", &["vga", "none"])
-                    .hint("a screen, for a firmware setup menu, an installer, or a \
-                           desktop. None means serial console only"),
+                Field::select("display", "Display", &["vga", "virtio", "none"])
+                    .hint("vga draws in firmware, GRUB and an installer — before any \
+                           driver loads. virtio is faster and higher resolution once \
+                           the guest's driver binds, and shows nothing before it. \
+                           None means serial console only"),
                 Field::text("hostname", "Hostname")
                     .hint("what the guest calls itself and asks DHCP for — defaults to \
                            the machine's name. Without it every Fedora guest calls \

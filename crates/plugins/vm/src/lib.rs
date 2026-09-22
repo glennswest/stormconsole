@@ -54,6 +54,7 @@ use tokio_util::sync::CancellationToken;
 const RESOURCES: &[ResourceSpec] = &[
     ResourceSpec {
         kind: "vm",
+        api_kind: "VirtualMachine",
         title: "Virtual machines",
         list_path: "/apis/kubevirt.io/v1/virtualmachines",
         namespaced: true,
@@ -62,6 +63,7 @@ const RESOURCES: &[ResourceSpec] = &[
     },
     ResourceSpec {
         kind: "vmi",
+        api_kind: "VirtualMachineInstance",
         title: "Virtual machine instances",
         list_path: "/apis/kubevirt.io/v1/virtualmachineinstances",
         namespaced: true,
