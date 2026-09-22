@@ -310,6 +310,46 @@ export function sectionCount(section) {
   return total
 }
 
+// --- The bottom dock --------------------------------------------------
+
+export const dock = $state({ open: load('stormconsole-dock', true) })
+
+export function toggleDock() {
+  dock.open = !dock.open
+  save('stormconsole-dock', dock.open)
+}
+
+/// What *this console* did, as opposed to what it observed.
+///
+/// Appended the instant an action returns, so a click is acknowledged in
+/// the same frame rather than after the next poll — and because nothing
+/// upstream knows a button was pressed, this is the only place that can
+/// say "your request was sent". Whether it worked is the cluster's half,
+/// and arrives underneath it a moment later.
+///
+/// In memory only: it is this session's record of what this person did,
+/// and persisting it would put a stale list of somebody else's actions on
+/// a shared browser.
+export const localActivity = $state({ items: [] })
+
+let activitySeq = 0
+
+export function noteActivity({ reason, message, source = '', warning = false }) {
+  localActivity.items = [
+    {
+      id: `local-${++activitySeq}`,
+      time: new Date().toISOString(),
+      type: warning ? 'Warning' : 'Normal',
+      reason,
+      message: message || '',
+      source,
+      count: 1,
+      mine: true,
+    },
+    ...localActivity.items,
+  ].slice(0, 40)
+}
+
 // --- Feed helpers -----------------------------------------------------
 
 /// Every component under one id prefix, sorted.

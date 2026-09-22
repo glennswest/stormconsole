@@ -25,6 +25,8 @@
   // the references as links, and every action including the ones kept off
   // the row.
   import StatusPill from './StatusPill.svelte'
+  import EventBox from './EventBox.svelte'
+  import { noteActivity } from '../stores.svelte.js'
   import Icon from './Icon.svelte'
   import ResourceTable from './ResourceTable.svelte'
 
@@ -197,6 +199,9 @@
   // was nothing on the page to say why.
   let notice = $state(null)
   let noticeTimer = null
+  // Bumped after an action so an opened row re-reads its events: "did my
+  // stop work" is asked immediately and answered a moment later.
+  let eventTick = $state(0)
 
   function say(kind, text) {
     notice = { kind, text }
@@ -220,9 +225,21 @@
     if (action.danger && !confirm(`${action.label} ${row.label}?`)) return
     try {
       const data = await run(action)
-      say('ok', (data && (data.message || data.detail)) || `${action.label}: ${row.label}`)
+      const msg = (data && (data.message || data.detail)) || `${action.label}: ${row.label}`
+      say('ok', msg)
+      eventTick++
+      // Into the dock as well as onto the page. The notice here vanishes
+      // when somebody navigates away, and "did that work" is asked for
+      // rather longer than they stay on one list.
+      noteActivity({ reason: action.label, message: msg, source: row.label })
     } catch (e) {
       say('err', `${action.label} ${row.label}: ${e.message}`)
+      noteActivity({
+        reason: action.label,
+        message: e.message,
+        source: row.label,
+        warning: true,
+      })
     }
   }
 
@@ -470,6 +487,13 @@
                     </div>
                   </div>
                 {/if}
+
+                <!-- What happened to it, wherever a row opens. The
+                     object's own fields say what it is now; only this says
+                     how it got there. -->
+                <div class="section">
+                  <EventBox id={row.id} compact={true} refresh={eventTick} />
+                </div>
 
                 {#if !row.detail && !row.metrics?.length && !rs.length && !(row.actions || []).length && !kids.length}
                   <p class="full-detail dim">Nothing more than the row: no detail, metrics, references or actions.</p>

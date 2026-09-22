@@ -1,9 +1,10 @@
 <script>
   import { route } from './lib/router.svelte.js'
-  import { auth, checkAuth, startFeed, prefs } from './lib/stores.svelte.js'
+  import { auth, checkAuth, startFeed, prefs, dock } from './lib/stores.svelte.js'
   import TopBar from './lib/components/TopBar.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import CreateDialog from './lib/components/CreateDialog.svelte'
+  import EventDock from './lib/components/EventDock.svelte'
   import Overview from './lib/views/Overview.svelte'
   import GridView from './lib/views/GridView.svelte'
   import LogsView from './lib/views/LogsView.svelte'
@@ -43,7 +44,12 @@
 {:else if auth.required && !auth.authenticated}
   <Login />
 {:else}
-  <div class="shell" style="--sc-side: {prefs.navOpen ? 'var(--sc-nav-w)' : '0px'}">
+  <div
+    class="shell"
+    style="--sc-side: {prefs.navOpen ? 'var(--sc-nav-w)' : '0px'}; --sc-dock: {dock.open
+      ? '210px'
+      : 'auto'}"
+  >
     <TopBar />
     <Sidebar />
     <main id="main">
@@ -51,6 +57,7 @@
         <View />
       {/key}
     </main>
+    <EventDock />
     <CreateDialog />
   </div>
 {/if}
@@ -58,11 +65,15 @@
 <style>
   .shell {
     display: grid;
+    /* The dock spans the full width rather than sitting beside the
+       navigator: it is the console's own status line, not a panel of
+       whatever view is open. */
     grid-template-areas:
       'top top'
-      'side main';
+      'side main'
+      'dock dock';
     grid-template-columns: var(--sc-side) 1fr;
-    grid-template-rows: var(--nav-h) 1fr;
+    grid-template-rows: var(--nav-h) 1fr var(--sc-dock);
     height: 100vh;
     background: var(--bg);
   }

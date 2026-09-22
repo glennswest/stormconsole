@@ -17,6 +17,8 @@
   import StatusPill from '../components/StatusPill.svelte'
   import YamlPanel from '../components/YamlPanel.svelte'
   import Icon from '../components/Icon.svelte'
+  import EventBox from '../components/EventBox.svelte'
+  import { noteActivity } from '../stores.svelte.js'
 
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
@@ -50,14 +52,32 @@
     if (ns && name) load()
   })
 
+  // Bumped after anything that acts, so the events box re-reads. "Did my
+  // start work" is asked in the second after the click, and the answer —
+  // `FailedScheduling`, `Pulled`, nothing at all — arrives just after it.
+  let eventTick = $state(0)
+
   async function act(a) {
     if (a.danger && !confirm(`${a.label} ${name}?`)) return
     acting = a.id
     try {
-      await call(a.method, a.path)
+      const r = await call(a.method, a.path)
+      saved = (r && r.message) || `${a.label} ${name}`
+      noteActivity({ reason: a.label, message: saved, source: `VirtualMachine/${name}` })
       await load()
+      eventTick++
+      // Once more when the cluster has had a moment to react: an event is
+      // written after the request returns, not with it, so a single read
+      // shows the console's own click and nothing about what came of it.
+      setTimeout(() => eventTick++, 2500)
     } catch (e) {
       error = e.message
+      noteActivity({
+        reason: a.label,
+        message: e.message,
+        source: `VirtualMachine/${name}`,
+        warning: true,
+      })
     }
     acting = ''
   }
@@ -82,6 +102,7 @@
         newDisk
       )
       saved = r.message
+      noteActivity({ reason: 'Add disk', message: saved, source: `VirtualMachine/${name}` })
       addingDisk = false
       newDisk = { name: '', source: 'golden', from: '', bus: 'virtio' }
       await load()
@@ -102,6 +123,7 @@
         `/api/plugins/vm/vms/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/disks/${encodeURIComponent(disk)}`
       )
       saved = r.message
+      noteActivity({ reason: 'Remove disk', message: saved, source: `VirtualMachine/${name}` })
       await load()
     } catch (e) {
       error = e.message
@@ -138,8 +160,10 @@
         'PUT'
       )
       saved = r.message || `${f.label} written`
+      noteActivity({ reason: `Set ${f.label}`, message: saved, source: `VirtualMachine/${name}` })
       editing = null
       await load()
+      eventTick++
     } catch (e) {
       error = e.message
     }
@@ -480,6 +504,14 @@
           {/if}
         </div>
       </section>
+
+      <!-- Underneath the machine, not behind a tab.
+           The cards say what this machine is; this says what happened to
+           it, which is the question after every action and the only place
+           the reason lives when one did not work. -->
+      <section class="card events-card">
+        <EventBox id={`vm:instance:${ns}/${name}`} refresh={eventTick} />
+      </section>
     {:else if tab === 'Settings'}
       {#if settings?.pending?.length}
         <!-- Written, and not yet in force. Left unsaid, this is the gap
@@ -645,6 +677,7 @@
     font-size: var(--sc-t-meta);
   }
   .card.wide { grid-column: 1 / -1; }
+  .events-card { margin-top: 12px; }
   table.settings { width: 100%; border-collapse: collapse; }
   table.settings th {
     text-align: left;
