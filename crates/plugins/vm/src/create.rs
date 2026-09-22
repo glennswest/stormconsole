@@ -67,6 +67,18 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                            hypervisor, which nothing outside the node can route to \
                            (stormvm#16). stormbr0: the node's own network, a real \
                            DHCP address, reachable — but no Service and no NetworkPolicy"),
+                // A screen, or not.
+                //
+                // Defaulted off deliberately — a framebuffer forces a VMM
+                // that has one, so it is a real choice rather than a free
+                // extra. But it was not *offerable*, which is different:
+                // every machine the console made was serial-only, and the
+                // Graphical console tab could only ever say there was
+                // nothing to draw.
+                Field::select("display", "Display", &["none", "vga", "virtio", "qxl"])
+                    .hint("a screen, for a firmware setup menu, an installer, or any \
+                           guest with a desktop. `vga` is the one that works before a \
+                           driver exists. None means serial console only"),
                 Field::text("hostname", "Hostname")
                     .hint("what the guest calls itself and asks DHCP for — defaults to \
                            the machine's name. Without it every Fedora guest calls \
@@ -108,6 +120,15 @@ pub struct Form {
     /// The name the guest calls itself, and asks DHCP for.
     #[serde(default)]
     hostname: String,
+    /// Give the guest a screen.
+    #[serde(default)]
+    display: String,
+}
+
+/// Did this form ask for a screen?
+fn display_on(f: &Form) -> bool {
+    let d = f.display.trim();
+    !d.is_empty() && d != "none"
 }
 
 /// The host bridge this form asked for, if it asked for one.
@@ -165,6 +186,12 @@ pub fn instance(f: &Form) -> Result<Value, String> {
                 "memory": {"guest": memory},
                 "firmware": {"bootloader": {"efi": {"secureBoot": false}}},
                 "devices": {
+                    // Upstream defaults this to true; stormvm defaults it to
+                    // false because a framebuffer forces qemu over
+                    // cloud-hypervisor. Said explicitly either way, so the
+                    // spec records what was asked for rather than what some
+                    // layer's default happened to be.
+                    "autoattachGraphicsDevice": display_on(f),
                     "disks": [
                         {"name": "root", "disk": {"bus": bus}},
                         {"name": "seed", "disk": {"bus": bus}}
@@ -201,6 +228,12 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     // user did not set, so the key is absent unless it means something.
     if !f.node.trim().is_empty() {
         vmi["spec"]["nodeName"] = json!(f.node.trim());
+    }
+    // Which adapter, when a screen was asked for. stormvm maps this onto
+    // virtio-gpu-pci / VGA / qxl-vga; `vga` is the one that draws in a
+    // firmware setup screen and an installer, before any driver exists.
+    if display_on(f) {
+        vmi["metadata"]["annotations"]["storm.io/vga"] = json!(f.display.trim());
     }
     if let Some(b) = bridge_of(f) {
         // Named on the object rather than decided on the node, so the choice
