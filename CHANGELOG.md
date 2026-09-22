@@ -740,3 +740,9 @@
 - **feat(vm):** the display is editable — adapter and framebuffer memory, with
   the graphics device turned on or off to match. There was no field at all, on
   a console whose main use for a VM that will not boot is to look at it.
+- **feat:** the masthead reads `StormCOS <release>` instead of the console's
+  own name, and `/api/version` answers the same thing without a session. The
+  release comes from the nodes (`nodeInfo.osImage`, which the kubelet fills
+  from the manifest the image carries), so it is what *booted* rather than
+  what was published. Nodes that disagree are all named — that is what a
+  half-finished rollout looks like.

@@ -12,6 +12,24 @@
   import Icon from './Icon.svelte'
   import StatusPill from './StatusPill.svelte'
 
+  // Which StormCOS this is.
+  //
+  // The masthead said "StormConsole", which names the program you are looking
+  // at rather than the system you are looking *after* -- and the one question
+  // it could not answer was the first one anybody asks of a cluster. The
+  // release comes from the nodes themselves (nodeInfo.osImage, which the
+  // kubelet fills from the manifest the image carries), so it is what booted
+  // rather than what was published.
+  let release = $state('')
+  $effect(() => {
+    fetch('/api/version')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.release) release = d.release
+      })
+      .catch(() => {})
+  })
+
   // The namespaces this viewer may see — the feed is already
   // authorization-filtered on the server, so this list *is* the answer,
   // not a display of a longer one.
@@ -66,7 +84,10 @@
         <path d="m12 11-2.5 5H13l-1.5 5" />
       </svg>
     </span>
-    <span class="word">{nav.name}</span>
+    <span class="word">StormCOS</span>
+    {#if release}
+      <span class="rel" title="The release these nodes booted, from nodeInfo.osImage">{release}</span>
+    {/if}
   </a>
 
   {#if namespaces.length}
@@ -175,6 +196,14 @@
     white-space: nowrap;
   }
   .brand:hover { text-decoration: none; background: rgb(255 255 255 / 0.1); }
+  /* Quieter than the name: it is a fact about the system, not its
+     identity, and it changes far more often. */
+  .rel {
+    font-size: var(--sc-t-meta);
+    font-weight: 500;
+    opacity: 0.72;
+    letter-spacing: 0.01em;
+  }
   .mark { color: var(--brand); display: grid; place-items: center; }
   .word { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 
