@@ -316,6 +316,34 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             } else {
                 "accent"
             }));
+            // And a way in, not just a note that there is one.
+            //
+            // The row said "serial + screen" and offered no way to open
+            // either: the only route to a console was knowing the URL by
+            // heart.
+            //
+            // One button, not two. The screen is the default because it is
+            // what a person means by "console" when a machine has one; a
+            // serial line is the specialist answer, wanted when the screen is
+            // blank or the guest is text-only. Where both doors exist the
+            // other is on the right-click menu, and `alt` is how this says
+            // so: the action model carries one path, and a menu of
+            // alternatives on a resource row is not worth a new field in
+            // every renderer and every other plugin's construction sites.
+            //
+            // Only doors stormvm reports. A button that opens a console the
+            // machine does not have is a black window nobody can tell from a
+            // broken one.
+            let (serial, vnc) = (door("serial"), door("vnc"));
+            if serial || vnc {
+                // Screen by default, serial when that is all there is.
+                let primary = if vnc { "screen" } else { "serial" };
+                let mut path = format!("#/vm/{ns}/{name}?door={primary}");
+                if serial && vnc {
+                    path.push_str("&alt=serial");
+                }
+                c.actions.push(action("console", "Console", "GET", path, true, false));
+            }
         }
         // A machine is on the same network as everything else and gets the
         // same questions asked of it, so it points at its own Cilium

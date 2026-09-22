@@ -24,7 +24,34 @@
   const name = $derived(route.current.params.name)
 
   const TABS = ['Overview', 'Settings', 'Serial console', 'Graphical console', 'YAML']
-  let tab = $state('Overview')
+
+  // `?door=serial` / `?door=screen` opens straight onto a console.
+  //
+  // The row's Serial and Screen buttons come here, and landing on Overview
+  // and making somebody click again defeats the point of the button: the
+  // reason to open a console is usually that a machine is doing something
+  // now.
+  const DOORS = { serial: 'Serial console', screen: 'Graphical console', vnc: 'Graphical console' }
+  let tab = $state(DOORS[route.current.query.get('door')] || 'Overview')
+
+  // A console that fills the window.
+  //
+  // 78vh is enough to watch a boot and not enough to work in: a guest at
+  // 80x24 is fine, an installer at 1024x768 is scrolled in both axes, and a
+  // serial log wide enough not to wrap needs the width more than anything.
+  // `&full=1` arrives from the row's right-click menu, which offers each
+  // door both ways: full screen is about how you want to look at a console,
+  // not about which console it is.
+  let full = $state(route.current.query.get('full') === '1')
+  function toggleFull() {
+    full = !full
+  }
+  function onKey(e) {
+    if (e.key === 'Escape' && full) {
+      full = false
+      e.stopPropagation()
+    }
+  }
 
   let vm = $state(null)
   let error = $state('')
@@ -348,6 +375,9 @@
   )
 </script>
 
+
+<svelte:window onkeydown={onKey} />
+
 <div class="sc-page">
   <PageHeader
     crumbs={[
@@ -582,6 +612,9 @@
               {/if}
             </span>
             <span class="right">
+              <button onclick={toggleFull} title="Escape leaves full screen">
+                {full ? 'Exit full screen' : 'Full screen'}
+              </button>
               {#if serialState === 'open'}
                 <button onclick={closeSerial}>Disconnect</button>
               {:else}
@@ -591,6 +624,7 @@
           </div>
           <div
             class="term"
+            class:full
             class:focused={serialFocused}
             bind:this={serialBox}
             tabindex="0"
@@ -636,6 +670,9 @@
           <div class="bar">
             <span class="state {vncState}">{vncState}</span>
             <span class="right">
+              <button onclick={toggleFull} title="Escape leaves full screen">
+                {full ? 'Exit full screen' : 'Full screen'}
+              </button>
               {#if vncState === 'open'}
                 <button onclick={closeVnc}>Disconnect</button>
               {:else}
@@ -643,7 +680,7 @@
               {/if}
             </span>
           </div>
-          <div class="fb" bind:this={vncBox}></div>
+          <div class="fb" class:full bind:this={vncBox}></div>
         </div>
       {/if}
     {:else}
@@ -808,6 +845,22 @@
   .hint { font-size: var(--sc-t-meta); color: var(--text-faint); }
   .right { margin-left: auto; }
   .right button { font-size: var(--sc-t-meta); padding: 3px 10px; }
+
+  /* Full screen is the browser window, not the F11 kind.
+     The page chrome is what costs the space -- masthead, tabs, the card
+     border -- so this takes the viewport and leaves the browser alone.
+     Escape gets out, and the button says so, because a console with no
+     visible way back is a trap. */
+  .term.full,
+  .fb.full {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    border: none;
+  }
 
   .term {
     /* Taller, because a console is the view you sit and watch. */

@@ -213,6 +213,11 @@
 
   async function run(action) {
     if (invoke) return invoke(action)
+    // A route, not a request -- see `call()` in api.js.
+    if (typeof action.path === 'string' && action.path.startsWith('#/')) {
+      window.location.hash = action.path.slice(1)
+      return
+    }
     const resp = await fetch(action.path, { method: action.method || 'POST' })
     const data = await resp.json().catch(() => ({}))
     // A bare fetch resolves for a 500 as happily as for a 200, so the status
@@ -318,6 +323,51 @@
     window.addEventListener('click', close, { once: true })
     return () => window.removeEventListener('click', close)
   })
+
+  // Right-click on an action that has alternatives.
+  //
+  // A VM's Console button opens the screen, which is what "console" means
+  // when a machine has one. A serial line is the specialist answer — wanted
+  // exactly when the screen is blank — so it is on the menu rather than
+  // taking a second button in every row.
+  //
+  // The alternatives travel in the route as `alt=`, because a menu on one
+  // kind of row is not worth a new field in the action model and in every
+  // renderer that reads it.
+  let menu = $state(null)
+
+  function altsOf(action) {
+    if (typeof action?.path !== 'string' || !action.path.includes('?')) return []
+    const q = new URLSearchParams(action.path.split('?')[1])
+    const alt = q.get('alt')
+    if (!alt) return []
+    const here = q.get('door')
+    const label = (d) => (d === 'serial' ? 'Serial console' : 'Screen')
+    const base = action.path.split('?')[0]
+    // Each door twice: as it opens by default, and full screen.
+    //
+    // Full screen is a property of how you want to look at a console, not of
+    // which console it is, so it belongs beside each door rather than as a
+    // mode to find once you are already inside one.
+    const doors = [here, ...alt.split(',')].filter(Boolean)
+    return doors.flatMap((d) => [
+      { label: label(d), path: `${base}?door=${d}` },
+      { label: `${label(d)}, full screen`, path: `${base}?door=${d}&full=1` },
+    ])
+  }
+
+  function openMenu(e, action) {
+    const alts = altsOf(action)
+    if (!alts.length) return
+    e.preventDefault()
+    menu = { x: e.clientX, y: e.clientY, items: alts }
+  }
+
+  function pick(item) {
+    menu = null
+    window.location.hash = item.path.slice(1)
+  }
+
 </script>
 
 {#if notice}
@@ -481,6 +531,8 @@
                           class:warn={a.id === 'restart'}
                           class:danger={a.danger}
                           disabled={!a.enabled}
+                          title={altsOf(a).length ? 'Right-click for more' : null}
+                          oncontextmenu={(e) => openMenu(e, a)}
                           onclick={() => rowAction(row, a)}>{a.label}</button
                         >
                       {/each}
@@ -521,7 +573,51 @@
   </table>
 </div>
 
+{#if menu}
+  <!-- Click anywhere else to dismiss, which is what a menu does. -->
+  <div
+    class="menu-scrim"
+    role="presentation"
+    onclick={() => (menu = null)}
+    oncontextmenu={(e) => { e.preventDefault(); menu = null }}
+  ></div>
+  <ul class="ctxmenu" style="left:{menu.x}px; top:{menu.y}px" role="menu">
+    {#each menu.items as item}
+      <li role="none">
+        <button role="menuitem" onclick={() => pick(item)}>{item.label}</button>
+      </li>
+    {/each}
+  </ul>
+{/if}
+
 <style>
+  .menu-scrim { position: fixed; inset: 0; z-index: 70; }
+  .ctxmenu {
+    position: fixed;
+    z-index: 71;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    min-width: 168px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 6px 24px rgb(0 0 0 / 28%);
+  }
+  .ctxmenu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 10px;
+    border: none;
+    background: none;
+    color: var(--text);
+    font-size: var(--sc-t-meta);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .ctxmenu button:hover { background: var(--nav-hover); }
+
   .bulk {
     display: flex;
     align-items: center;

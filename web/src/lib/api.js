@@ -13,6 +13,17 @@ export async function post(path) {
 /// Invoke a component action exactly as the feed declares it — a
 /// stormblock delete is a DELETE, a stormd restart a POST.
 export async function call(method, path) {
+  // A path that is a route opens it, rather than being fetched.
+  //
+  // Some actions are "go and look at this" -- a serial console, a screen --
+  // and a row had no way to offer one: every action was a request, so the
+  // only way to reach a machine's console was to know the URL. Fetching
+  // `#/vm/default/web-1` asks the server for a document that does not exist
+  // and fails in a way that looks like the machine refused.
+  if (typeof path === 'string' && path.startsWith('#/')) {
+    window.location.hash = path.slice(1)
+    return {}
+  }
   const resp = await fetch(path, { method: method || 'POST' })
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}))
