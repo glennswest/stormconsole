@@ -119,7 +119,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     // a plugin route reads it to refuse what this identity may not see,
     // and to act as them upstream rather than as the console.
     let who = viewer(&state, &req);
-    req.extensions_mut().insert(who);
+    req.extensions_mut().insert(who.clone());
     if !state.auth_required {
         return next.run(req).await;
     }
