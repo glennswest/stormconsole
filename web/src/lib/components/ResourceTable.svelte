@@ -77,8 +77,13 @@
     // the policies selecting a workload — and a column showing the first
     // of them would read as the only one.
     if (rel?.targets?.length !== 1) return ''
-    const target = rel.targets[0]
-    return byId.get(target)?.label || target.split(':').pop()
+    // Only what is actually in the feed. A plugin publishes an edge
+    // without being able to know whether the other side exists here — a
+    // VM points at its Cilium endpoint on a console that may have no
+    // Cilium — and falling back to the id's tail would invent a column
+    // full of values naming objects that are not there.
+    const target = byId.get(rel.targets[0])
+    return target ? target.label : ''
   }
 
   // A placement earns a column when it tells the rows apart.
