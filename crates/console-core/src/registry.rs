@@ -293,7 +293,8 @@ mod tests {
         let open = r.components_for(&Viewer::anonymous()).await;
         assert_eq!(open.len(), 3, "card + two things");
 
-        let viewer = Viewer { user: Some("gw".into()), token: Some("t".into()) };
+        let viewer =
+            Viewer { user: Some("gw".into()), token: Some("t".into()), ..Default::default() };
         let seen = r.components_for(&viewer).await;
         let ids: Vec<&str> = seen.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(ids, vec!["plugin:sc", "sc:a"]);
@@ -313,7 +314,8 @@ mod tests {
         let open = r.access_report(&Viewer::anonymous()).await;
         assert_eq!(open["enforced"], false);
         assert_eq!(open["identified"], false);
-        let viewer = Viewer { user: Some("gw".into()), token: Some("t".into()) };
+        let viewer =
+            Viewer { user: Some("gw".into()), token: Some("t".into()), ..Default::default() };
         let closed = r.access_report(&viewer).await;
         assert_eq!(closed["enforced"], true);
         assert_eq!(closed["plugins"]["sc"]["hidden"], 1);

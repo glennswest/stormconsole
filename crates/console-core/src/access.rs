@@ -182,7 +182,9 @@ mod tests {
     #[test]
     fn an_anonymous_viewer_is_the_one_with_neither_half() {
         assert!(Viewer::anonymous().is_anonymous());
-        assert!(!Viewer { user: Some("gw".into()), token: None }.is_anonymous());
-        assert!(!Viewer { user: None, token: Some("t".into()) }.is_anonymous());
+        // Spread the default rather than listing every field: a Viewer
+        // that grows one should not break four constructors in tests.
+        assert!(!Viewer { user: Some("gw".into()), ..Default::default() }.is_anonymous());
+        assert!(!Viewer { token: Some("t".into()), ..Default::default() }.is_anonymous());
     }
 }
