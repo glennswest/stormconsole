@@ -12,6 +12,7 @@ pub mod cache;
 pub mod client;
 mod components;
 pub mod network;
+pub mod objevents;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,13 +24,25 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use console_core::{
-    Access, ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Probe, Viewer,
+    Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Probe, Viewer,
 };
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use cache::{watch_resource, Store, RESOURCES};
 use client::RkClient;
+
+/// How many events one object's box holds.
+///
+/// A box is for the last thing that happened, not an archive — the Events
+/// page is the archive. Twenty is more than fits on a screen and fewer
+/// than makes a table row unscrollable.
+const EVENT_CAP: usize = 20;
+
+/// How many the bottom dock holds. Larger, because it is a ticker across
+/// the whole cluster and the thing you are looking for scrolled past
+/// while you were reading the last one.
+const RECENT_CAP: usize = 60;
 
 /// The Cilium agent's health server (`cilium-health-api`), bound to
 /// loopback on every node that runs the agent.
@@ -181,6 +194,98 @@ impl ConsolePlugin for KubernetesPlugin {
     /// against, so the honest answer is `Unrestricted` — and the console
     /// says *that* (`/api/v1/console/access` reports `identified: false`)
     /// rather than implying a check it is not doing.
+    /// What happened to one of this plugin's objects.
+    ///
+    /// Read as the console and filtered to this viewer's namespaces, the
+    /// same way the Events page is — the cache's own credential is what
+    /// can see events at all, and the filter is what stops a hidden
+    /// namespace's activity leaking through a per-object question.
+    async fn events(&self, viewer: &Viewer, id: &str) -> Option<Events> {
+        let inner = &self.inner;
+        // A container first: its events belong to its pod and are
+        // narrowed by field path, so the id shape has to be checked
+        // before the general one, which would not match it anyway.
+        let (kind, ns, name, container) = match objevents::container_of(id) {
+            Some((ns, pod, c)) => ("Pod", ns, pod, Some(c)),
+            None => {
+                let (k, ns, n) = objevents::object_of(id)?;
+                (k, ns, n, None)
+            }
+        };
+        let client = inner.client.as_ref()?;
+        if !ns.is_empty() {
+            if let Some((hidden, _)) = inner.access.hidden(viewer).await {
+                if hidden.contains(&ns) {
+                    // The same answer an absent object gets: a per-object
+                    // route is not a way around the filtered feed.
+                    return Some(Events::none(format!("no {kind} {ns}/{name}")));
+                }
+            }
+        }
+        let list = match client.get(&objevents::list_path(&ns)).await {
+            Ok(l) => l,
+            Err(e) => {
+                return Some(Events::none(format!(
+                    "the apiserver did not answer for events: {e}"
+                )))
+            }
+        };
+        let items: Vec<_> = list
+            .get("items")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter(|e| objevents::about(e, kind, &ns, &name))
+                    .filter(|e| match &container {
+                        Some(c) => objevents::about_container(e, c),
+                        None => true,
+                    })
+                    .map(objevents::event)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Events::of(items).newest(EVENT_CAP))
+    }
+
+    /// Recent activity across the cluster, for the dock.
+    ///
+    /// The same read as the Events page and filtered the same way — this
+    /// is a more convenient window onto it, not a second source that can
+    /// disagree with it.
+    async fn recent_events(&self, viewer: &Viewer) -> Option<Events> {
+        let client = self.inner.client.as_ref()?;
+        let hidden = self.inner.access.hidden(viewer).await.map(|(h, _)| h);
+        let list = match client.get("/api/v1/events").await {
+            Ok(l) => l,
+            Err(e) => return Some(Events::none(format!("the apiserver did not answer: {e}"))),
+        };
+        let items: Vec<_> = list
+            .get("items")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter(|e| match (&hidden, e.pointer("/involvedObject/namespace").and_then(Value::as_str)) {
+                        (Some(h), Some(ns)) if !ns.is_empty() => !h.contains(ns),
+                        _ => true,
+                    })
+                    .map(|e| {
+                        let mut ev = objevents::event(e);
+                        // The dock is a ticker: a line has to say what it
+                        // is about, because there is no page around it to
+                        // supply that.
+                        ev.source = format!(
+                            "{}/{}",
+                            e.pointer("/involvedObject/kind").and_then(Value::as_str).unwrap_or(""),
+                            e.pointer("/involvedObject/name").and_then(Value::as_str).unwrap_or("")
+                        );
+                        ev
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Events::of(items).newest(RECENT_CAP))
+    }
+
     async fn access(&self, viewer: &Viewer) -> Access {
         let Some((hidden, note)) = self.inner.access.hidden(viewer).await else {
             return Access::Unrestricted;

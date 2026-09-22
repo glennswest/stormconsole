@@ -24,6 +24,12 @@ use crate::client::RkClient;
 /// hardcoded lists of it, which is three chances to disagree.
 pub struct ResourceSpec {
     pub kind: &'static str,
+    /// The API kind, as the apiserver spells it — `Pod`, `CronJob`,
+    /// `PersistentVolumeClaim`. Stated rather than derived: an event's
+    /// `involvedObject.kind` is matched against it, and deriving it from
+    /// the title works for "Pods" and produces "Network policie" for the
+    /// next one along.
+    pub api_kind: &'static str,
     pub title: &'static str,
     pub list_path: &'static str,
     pub namespaced: bool,
@@ -35,49 +41,77 @@ pub struct ResourceSpec {
     pub inventory: bool,
 }
 
-const fn ns_scoped(kind: &'static str, title: &'static str, list_path: &'static str) -> ResourceSpec {
-    ResourceSpec { kind, title, list_path, namespaced: true, optional: false, inventory: true }
+const fn ns_scoped(
+    kind: &'static str,
+    api_kind: &'static str,
+    title: &'static str,
+    list_path: &'static str,
+) -> ResourceSpec {
+    ResourceSpec {
+        kind,
+        api_kind,
+        title,
+        list_path,
+        namespaced: true,
+        optional: false,
+        inventory: true,
+    }
 }
 
-const fn cluster(kind: &'static str, title: &'static str, list_path: &'static str) -> ResourceSpec {
-    ResourceSpec { kind, title, list_path, namespaced: false, optional: false, inventory: false }
+const fn cluster(
+    kind: &'static str,
+    api_kind: &'static str,
+    title: &'static str,
+    list_path: &'static str,
+) -> ResourceSpec {
+    ResourceSpec {
+        kind,
+        api_kind,
+        title,
+        list_path,
+        namespaced: false,
+        optional: false,
+        inventory: false,
+    }
 }
 
 const fn crd(
     kind: &'static str,
+    api_kind: &'static str,
     title: &'static str,
     list_path: &'static str,
     namespaced: bool,
 ) -> ResourceSpec {
-    ResourceSpec { kind, title, list_path, namespaced, optional: true, inventory: namespaced }
+    ResourceSpec { kind, api_kind, title, list_path, namespaced, optional: true, inventory: namespaced }
 }
 
 pub const RESOURCES: &[ResourceSpec] = &[
-    cluster("ns", "Namespaces", "/api/v1/namespaces"),
-    cluster("node", "Nodes", "/api/v1/nodes"),
-    ns_scoped("pod", "Pods", "/api/v1/pods"),
-    ns_scoped("deploy", "Deployments", "/apis/apps/v1/deployments"),
-    ns_scoped("sts", "StatefulSets", "/apis/apps/v1/statefulsets"),
-    ns_scoped("ds", "DaemonSets", "/apis/apps/v1/daemonsets"),
-    ns_scoped("job", "Jobs", "/apis/batch/v1/jobs"),
-    ns_scoped("cronjob", "CronJobs", "/apis/batch/v1/cronjobs"),
-    ns_scoped("svc", "Services", "/api/v1/services"),
-    ns_scoped("pvc", "PersistentVolumeClaims", "/api/v1/persistentvolumeclaims"),
-    ns_scoped("cm", "ConfigMaps", "/api/v1/configmaps"),
-    ns_scoped("netpol", "Network policies", "/apis/networking.k8s.io/v1/networkpolicies"),
+    cluster("ns", "Namespace", "Namespaces", "/api/v1/namespaces"),
+    cluster("node", "Node", "Nodes", "/api/v1/nodes"),
+    ns_scoped("pod", "Pod", "Pods", "/api/v1/pods"),
+    ns_scoped("deploy", "Deployment", "Deployments", "/apis/apps/v1/deployments"),
+    ns_scoped("sts", "StatefulSet", "StatefulSets", "/apis/apps/v1/statefulsets"),
+    ns_scoped("ds", "DaemonSet", "DaemonSets", "/apis/apps/v1/daemonsets"),
+    ns_scoped("job", "Job", "Jobs", "/apis/batch/v1/jobs"),
+    ns_scoped("cronjob", "CronJob", "CronJobs", "/apis/batch/v1/cronjobs"),
+    ns_scoped("svc", "Service", "Services", "/api/v1/services"),
+    ns_scoped("pvc", "PersistentVolumeClaim", "PersistentVolumeClaims", "/api/v1/persistentvolumeclaims"),
+    ns_scoped("cm", "ConfigMap", "ConfigMaps", "/api/v1/configmaps"),
+    ns_scoped("netpol", "NetworkPolicy", "Network policies", "/apis/networking.k8s.io/v1/networkpolicies"),
     // A namespace's limits — what it may use, and what it is using. Both
     // are usually absent, and "no quota" is an answer worth showing
     // (issue #6) rather than an empty space.
-    ns_scoped("quota", "Resource quotas", "/api/v1/resourcequotas"),
-    ns_scoped("limits", "Limit ranges", "/api/v1/limitranges"),
+    ns_scoped("quota", "ResourceQuota", "Resource quotas", "/api/v1/resourcequotas"),
+    ns_scoped("limits", "LimitRange", "Limit ranges", "/api/v1/limitranges"),
     // Cilium, through its CRDs — the agent's own API is a unix socket and
     // Hubble is gRPC, neither reachable from a golden.
-    crd("cep", "Cilium endpoints", "/apis/cilium.io/v2/ciliumendpoints", true),
-    crd("cn", "Cilium nodes", "/apis/cilium.io/v2/ciliumnodes", false),
-    crd("cid", "Cilium identities", "/apis/cilium.io/v2/ciliumidentities", false),
-    crd("cnp", "Cilium network policies", "/apis/cilium.io/v2/ciliumnetworkpolicies", true),
+    crd("cep", "CiliumEndpoint", "Cilium endpoints", "/apis/cilium.io/v2/ciliumendpoints", true),
+    crd("cn", "CiliumNode", "Cilium nodes", "/apis/cilium.io/v2/ciliumnodes", false),
+    crd("cid", "CiliumIdentity", "Cilium identities", "/apis/cilium.io/v2/ciliumidentities", false),
+    crd("cnp", "CiliumNetworkPolicy", "Cilium network policies", "/apis/cilium.io/v2/ciliumnetworkpolicies", true),
     crd(
         "ccnp",
+        "CiliumClusterwideNetworkPolicy",
         "Cilium clusterwide policies",
         "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies",
         false,

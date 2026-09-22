@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Request, State};
+use axum::extract::{Query, Request, State};
 use axum::http::{header, StatusCode, Uri};
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
@@ -36,6 +36,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/console/nav", get(nav))
         .route("/api/v1/console/creators", get(creators))
         .route("/api/v1/console/access", get(access))
+        .route("/api/v1/console/events", get(object_events))
+        .route("/api/v1/console/events/recent", get(recent_events))
         .route("/ws/components", get(ws_components))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
@@ -58,6 +60,31 @@ pub fn router(state: AppState) -> Router {
 async fn components(State(state): State<AppState>, req: Request) -> Response {
     let viewer = auth::viewer(&state, &req);
     Json(state.registry.components_for(&viewer).await.as_ref().clone()).into_response()
+}
+
+/// What happened to one object, by component id.
+///
+/// One route for every kind of thing in the feed, because the question is
+/// the same one wherever it is asked — and because a view that has a
+/// component id should not also have to know which plugin owns it.
+async fn object_events(
+    State(state): State<AppState>,
+    Query(q): Query<EventsQuery>,
+    req: Request,
+) -> Response {
+    let viewer = auth::viewer(&state, &req);
+    Json(state.registry.events(&viewer, &q.id).await).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct EventsQuery {
+    id: String,
+}
+
+/// Recent activity across the whole console, for the bottom dock.
+async fn recent_events(State(state): State<AppState>, req: Request) -> Response {
+    let viewer = auth::viewer(&state, &req);
+    Json(state.registry.recent_events(&viewer).await).into_response()
 }
 
 /// What this viewer is not being shown, and whether anything is being

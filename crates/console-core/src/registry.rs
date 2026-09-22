@@ -107,6 +107,40 @@ impl Registry {
     /// What this viewer is not being shown, per plugin — so the UI can say
     /// "3 namespaces you cannot view" instead of showing a short list that
     /// reads like a broken console.
+    /// What happened to one object.
+    ///
+    /// Asked of every plugin in turn; the first to claim the id answers.
+    /// Nobody claiming it is itself an answer — said in terms of where
+    /// events come from here, because "none" in front of a volume that
+    /// has just failed to attach is a statement somebody will act on.
+    pub async fn events(&self, viewer: &Viewer, id: &str) -> crate::Events {
+        for p in &self.plugins {
+            if let Some(e) = p.events(viewer, id).await {
+                return e;
+            }
+        }
+        crate::events::unclaimed(id)
+    }
+
+    /// Recent activity across every plugin that records any, newest
+    /// first. Merged rather than first-wins: the dock is the one place
+    /// that wants everything at once.
+    pub async fn recent_events(&self, viewer: &Viewer) -> crate::Events {
+        let mut all = Vec::new();
+        let mut said = Vec::new();
+        for p in &self.plugins {
+            match p.recent_events(viewer).await {
+                Some(e) if e.available => all.extend(e.items),
+                Some(e) => said.push(e.reason),
+                None => {}
+            }
+        }
+        if all.is_empty() && !said.is_empty() {
+            return crate::Events::none(said.join(" · "));
+        }
+        crate::Events::of(all).newest(80)
+    }
+
     pub async fn access_report(&self, viewer: &Viewer) -> serde_json::Value {
         let limits = self.limits(viewer).await;
         let plugins: serde_json::Map<String, serde_json::Value> = limits

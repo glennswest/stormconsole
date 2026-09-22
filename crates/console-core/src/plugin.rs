@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::access::{Access, Viewer};
 use crate::create::Creator;
+use crate::events::Events;
 use crate::nav::NavSection;
 
 #[async_trait]
@@ -54,6 +55,30 @@ pub trait ConsolePlugin: Send + Sync {
     /// an authorization result and not a display choice.
     async fn access(&self, _viewer: &Viewer) -> Access {
         Access::Unrestricted
+    }
+
+    /// What happened to one object, asked by component id.
+    ///
+    /// `None` means "not mine" — the host asks every plugin and takes the
+    /// first that claims the id, so a plugin with no event source of its
+    /// own needs no change at all, and one that grows a source needs no
+    /// change anywhere else.
+    ///
+    /// Answering `Some(Events::none(...))` is different from answering
+    /// `None`: it claims the object *and* says nothing records events for
+    /// it. Both reach a viewer as a sentence rather than an empty box.
+    async fn events(&self, _viewer: &Viewer, _id: &str) -> Option<Events> {
+        None
+    }
+
+    /// Recent activity, for the console's bottom dock.
+    ///
+    /// Not per object: this is the ticker that says an action landed
+    /// without anybody opening a page for the thing it landed on. A
+    /// plugin with no event source answers `None`, and the dock shows
+    /// whatever the rest of them have.
+    async fn recent_events(&self, _viewer: &Viewer) -> Option<Events> {
+        None
     }
 
     /// Background work: watches, pollers, multicast listeners. Runs for the

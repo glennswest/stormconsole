@@ -39,7 +39,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use console_core::{Access, ComponentSummary, ConsolePlugin, Creator, Health, NavSection, Viewer};
+use console_core::{
+    Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Viewer,
+};
 use plugin_kubernetes::{Client, KubeStore, NamespaceAccess, ResourceSpec};
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
@@ -261,6 +263,56 @@ impl ConsolePlugin for VmPlugin {
 
     /// Every VM component is `vm:<sub>:<ns>/<name>`, so a hidden
     /// namespace hides them by the same rule that hides a pod.
+    /// What happened to one machine.
+    ///
+    /// A machine's events are recorded against two objects that share a
+    /// name — the `VirtualMachine` the scheduler and the controller write
+    /// about, and the `VirtualMachineInstance` the kubelet writes about —
+    /// and somebody asking "did my start work" does not care which. So
+    /// both are collected and merged, which is also why this is not left
+    /// to the kubernetes plugin: it would answer for one of them.
+    ///
+    /// This is the question the whole feature exists for. A machine that
+    /// will not start says `Running` nowhere and `Scheduling` forever, and
+    /// the reason — no node with enough memory, a golden that would not
+    /// clone, a bridge that does not exist on the node it was pinned to —
+    /// is in an event and nowhere else.
+    async fn events(&self, viewer: &Viewer, id: &str) -> Option<Events> {
+        let rest = id.strip_prefix("vm:")?;
+        let (sub, key) = rest.split_once(':')?;
+        if !matches!(sub, "instance" | "machine") {
+            return None;
+        }
+        let (ns, name) = key.split_once('/')?;
+        if refuse_hidden(&self.inner, viewer, ns).await.is_some() {
+            return Some(Events::none(format!("no virtual machine {ns}/{name}")));
+        }
+        let client = self.inner.client.as_ref()?;
+        let list = match client.get(&format!("/api/v1/namespaces/{ns}/events")).await {
+            Ok(l) => l,
+            Err(e) => {
+                return Some(Events::none(format!("the apiserver did not answer for events: {e}")))
+            }
+        };
+        let items: Vec<_> = list
+            .get("items")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter(|e| {
+                        // Both objects, because they are one machine to
+                        // whoever is looking at it.
+                        ["VirtualMachine", "VirtualMachineInstance"].iter().any(|k| {
+                            plugin_kubernetes::objevents::about(e, k, ns, name)
+                        })
+                    })
+                    .map(plugin_kubernetes::objevents::event)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Events::of(items).newest(20))
+    }
+
     async fn access(&self, viewer: &Viewer) -> Access {
         let Some(shared) = &self.inner.access else { return Access::Unrestricted };
         let Some((hidden, note)) = shared.hidden(viewer).await else {

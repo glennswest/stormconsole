@@ -8,6 +8,7 @@
 
 pub use stormview::{Action, ComponentSummary, Health, Metric, Relation, RelationKind};
 
+pub mod events;
 pub mod access;
 pub mod create;
 pub mod feed;
@@ -20,6 +21,7 @@ pub mod upstream;
 pub mod value;
 
 pub use access::{Access, Scope, Viewer};
+pub use events::{Event, Events};
 pub use create::{Creator, Field, FieldOption};
 pub use feed::{Feed, FeedPlugin, FeedState};
 pub use nav::{NavItem, NavKind, NavSection};
