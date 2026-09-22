@@ -626,8 +626,11 @@ async fn settings_of(
             .into_response();
     }
     let mut s = settings::of(machine.as_ref(), instance.as_ref());
-    // Being able to see a machine is not being able to change it.
-    if !viewer.may_write() {
+    // Being able to see a machine is not being able to change it — but
+    // only overwrite the reason when there was one to overwrite. A machine
+    // that cannot be edited because it has no definition should say that,
+    // not be reported as a permission problem it does not have.
+    if !viewer.may_write() && s.editable {
         s.editable = false;
         s.why = "changing a machine needs the `operator` role".into();
     }

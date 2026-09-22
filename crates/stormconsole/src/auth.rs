@@ -61,7 +61,18 @@ impl Sessions {
 /// console reports that rather than pretending to enforce anything.
 pub fn viewer(state: &AppState, req: &Request) -> Viewer {
     if !state.auth_required {
-        return Viewer::anonymous();
+        // A console with no credentials configured is one where everybody
+        // who can reach the port is an administrator. That is the state on
+        // a node today, and `main` warns about it on every start.
+        //
+        // It has to be said *here* as well, because the roles now decide
+        // things: without this, turning authentication off would make the
+        // console read-only — nobody could open a console, change a
+        // machine or delete a volume — which is both backwards and a
+        // silent break for every deployment that has never configured a
+        // user. The refusal has to come from having decided to enforce
+        // something, not from having decided nothing.
+        return Viewer { roles: vec!["admin".into()], ..Viewer::anonymous() };
     }
     if let Some(user) = cookie_session(req).and_then(|id| state.sessions.user_of(&id)) {
         let token = state.config.kube_token_for(&user);
