@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.8.0**
+Current: **0.9.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -284,31 +284,43 @@ and the browser terminal takes keystrokes to the guest.
 Next: Cilium's gated half (stormpump#11), the capability beacon
 (stormcos#26) and fleet lifecycle (stormcos#38).
 
-### Relations are references, not destinations (#18) — in progress
+### Relations are references, not destinations (#18) ✅ v0.9.0 2026-09-22
 A VM row pushed its node as a relation and nothing else; the table read
 that as something the row *contains* and the card as where the row
 *leads*, so opening a machine landed in node details. 203d5b8 patched it
 for VMs with a metric. The shape is everywhere, so the fix belongs in the
 rule, not in one plugin.
 
-- [ ] `ResourceTable`: only `has_many` nests. A `has_one` or `belongs_to`
+- [x] `ResourceTable`: only `has_many` nests. A `has_one` or `belongs_to`
       is context — the node a VM is on, the volume a clone is stored in —
       and is rendered as a reference chip, never as containment
-- [ ] Placement becomes a **column**, generically: any `belongs_to` whose
+- [x] Placement becomes a **column**, generically: any `belongs_to` whose
       values actually differ down the list earns one (so namespace, node,
       array, shelf appear; "engine", the same on every row, does not).
       Replaces the hardcoded namespace/node pair, and works for the
       `FeedPlugin` upstreams whose components this repo cannot edit
-- [ ] Every row expands, and the expanded row is worth expanding: the
+- [x] Every row expands, and the expanded row is worth expanding: the
       detail in full, every metric, the references as links, and **all**
       the actions — the destructive ones included and labelled. Clicking
       the line opens that object's own page where it has one; where it
       does not, the expansion is the detail
-- [ ] Plugin sweep: every `has_one` that points at a container, an owner
+- [x] Plugin sweep: every `has_one` that points at a container, an owner
       or a placement becomes `belongs_to` (vm, vmimages, sbregistry,
       stormblock, kubernetes/cilium)
-- [ ] VM lifecycle on the row: the duplicate Stop 203d5b8 left behind, and
-      a Restart that exists at all
+- [x] VM lifecycle on the row: the duplicate Stop 203d5b8 left behind, and
+      a Restart that exists at all — refused with a sentence, and disabled
+      on the row, where there is no definition to restart from
+- [x] Verified live on dev against a real fastetcd + rustkube seeded with
+      two nodes, four pods across two namespaces (one crashlooping), the
+      KubeVirt CRDs, a defined VM and an instance applied on its own:
+      Namespace/Node/Definition columns off the edges, the opened row
+      carrying references and every action, clicking a machine opening the
+      machine, the node chip reaching the node, restart 200 with the VMI
+      gone and 409 with the sentence for the undefined one. 155 tests
+
+Left open on #18: what is still not editable — cores, memory, disk bus and
+network (#14), a disk added to a running machine, and the address the guest
+actually holds, which needs the agent at `agent.sock` that nothing reads
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

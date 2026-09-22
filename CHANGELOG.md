@@ -2,6 +2,58 @@
 
 ## [Unreleased]
 
+### 2026-09-22
+- **fix(console):** a relation is containment or context, never a
+  destination — in every plugin (#18). A VM pushed its node as `has_one`
+  and nothing else, and both renderers read more into that than it says:
+  the table as something the row contained, the card as where following
+  the row went. Opening a virtual machine landed you in *node details*.
+  203d5b8 patched the symptom for VMs by publishing the node as a metric
+  as well. The shape was in every plugin, so the rule moved instead:
+  `has_many` nests, and everything else is a reference — a link in the
+  opened row and never where the line leads. The sweep, all of it the
+  same direction error: a VM's node, a local image's node and volume, a
+  golden's catalogue entry, a clone's volume, a volume's **parent** (a
+  table that expanded upwards through its own ancestry), a Cilium
+  endpoint's pod and identity, a CiliumNode's node.
+- **feat(console):** placement is a column, read off the `belongs_to`
+  edge. There were two such columns, namespace and node, written out by
+  hand in the table; every other placement in the feed was invisible. Any
+  placement whose values differ down the list earns a column and a sort
+  now — a VM's node and definition, a local image's node, a drive's
+  shelf, a volume's array — and so do the `FeedPlugin` upstreams whose
+  components this repo does not write. One that is the same on every row
+  (the `engine` on every stormblock volume) earns nothing, because a
+  column of one repeated value is a column of noise.
+- **feat(console):** every row opens, and the opened row is the object:
+  the detail unabbreviated, every metric as a labelled fact rather than
+  crushed into one line, the references as links, and **every** action —
+  including the destructive ones the row keeps behind its menu. Clicking
+  a line goes to that component's own page where it has one and opens it
+  in place where it has none, which is the only detail a pod, a container
+  or a volume has until #12 lands. The nested table also spans the whole
+  width at last; the colspan was a literal `7` that knew about Kind and
+  nothing else, so every placement column left the nested content short of
+  the right edge.
+- **fix(vm):** one Stop per machine. 203d5b8 added a Stop to the row
+  without removing the one already there, so an instance published two —
+  the same path, different `danger` — and the row showed one inline and
+  one in the menu that asked for confirmation first.
+- **feat(vm):** Restart, which did not exist. `POST
+  …/machines/{ns}/{name}/restart` deletes the instance and lets the
+  definition put it back, because KubeVirt has no verb that reboots a VMI
+  in place. Without a definition that is a delete wearing a reassuring
+  name: refused with `409` and the sentence saying why, and offered
+  disabled on the row rather than not at all, since "why can I not
+  restart this" is a question the row should answer. Stopping an instance
+  nothing will restart is published `danger` for the same reason.
+- **fix(vm):** the detail line stops repeating its own columns — the
+  node, the vCPU and the memory each have one now.
+- **fix(vm):** the test form builds again, and the seed assertion matches
+  the hostname 203d5b8 made unconditional. `network` and `hostname` were
+  added to `Form` without being carried into the test constructor, so the
+  workspace had not compiled its tests since.
+
 ### 2026-09-20
 - **feat(vmimages):** a plugin for cloud images: the catalogue a cluster could
   golden from, the goldens the fleet has, and which nodes carry a local copy —

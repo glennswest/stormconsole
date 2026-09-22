@@ -130,16 +130,11 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
         let mem = memory(&domain);
         let ds = disks(&spec);
 
+        // The node, the vCPU and the memory each have a column of their
+        // own now — the first from the placement edge, the other two from
+        // metrics — so the detail line stops repeating them. It says the
+        // one thing nothing else says.
         let mut detail = vec![phase.to_string()];
-        if let Some(n) = node {
-            detail.push(n.to_string());
-        }
-        if let Some(c) = cpus {
-            detail.push(format!("{c} vCPU"));
-        }
-        if let Some(m) = &mem {
-            detail.push(m.clone());
-        }
         // A VM that would not start says why here rather than in a log on
         // a node with no shell — the kubelet writes the reason.
         if let Some(msg) = s(obj, "/status/reason").or_else(|| s(obj, "/status/message")) {
@@ -338,7 +333,11 @@ mod tests {
         let vm = &out[0];
         assert_eq!(vm.id, "vm:instance:default/web-1");
         assert_eq!(vm.health, Health::Ok);
-        assert_eq!(vm.detail, "Running · storm-2c91b3 · 2 vCPU · 4Gi");
+        // The node, the vCPU and the memory are columns, so the detail
+        // line does not print them a second time.
+        assert_eq!(vm.detail, "Running");
+        assert_eq!(vm.metrics.iter().find(|m| m.label == "vcpu").unwrap().value, "2");
+        assert_eq!(vm.metrics.iter().find(|m| m.label == "memory").unwrap().value, "4Gi");
         assert_eq!(vm.link.as_deref(), Some("#/vm/default/web-1"));
         assert!(vm.relations.iter().any(|r| r.targets == vec!["k8s:node:storm-2c91b3"]));
         assert_eq!(vm.metrics.iter().find(|m| m.label == "disks").unwrap().value, "2");

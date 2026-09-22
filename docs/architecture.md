@@ -247,9 +247,38 @@ assume:
   inside an `overflow-x` wrapper, where it can never fire; the console's
   table bounds its own height so the header actually sticks.
 - **Name first, destructive actions last** and right-aligned.
+- **Placement is a column**, read off the `belongs_to` edges rather than
+  written out per kind. Namespace, node, shelf, array, definition — any
+  placement whose values differ down the list earns a column and a sort;
+  one that is the same on every row (an "engine" on every stormblock
+  volume) earns nothing. Upstreams reached through a `FeedPlugin` get the
+  same columns without this repo writing their components.
+- **Every row opens**, and what opens is the object: the detail
+  unabbreviated, every metric, the references as links, and every action
+  including the destructive ones the row keeps behind its menu. Clicking
+  a line goes to that component's own page where it has one, and opens it
+  in place where it does not.
 
-Everything else — nested relation expansion, multi-select with bulk
-lifecycle actions, sorting — matches `ComponentGrid`'s behaviour.
+Everything else — multi-select with bulk lifecycle actions, sorting —
+matches `ComponentGrid`'s behaviour.
+
+#### A relation is containment or context, never a destination
+
+`has_many` is containment: a pod's containers, a node's pods, a golden's
+local copies. It nests into a table inside the row.
+
+`has_one` and `belongs_to` are context: the node a VM runs on, the volume
+a clone is stored in, the parent a snapshot was cut from, the identity a
+Cilium endpoint carries. They are references — a chip in the opened row
+that links to that object — and never where the line leads.
+
+Getting this wrong is not cosmetic. A VM published its node as `has_one`
+and nothing else; the table read that as something the machine contained
+and the card as where following the row went, so opening a virtual
+machine landed in node details (#18). A volume published its parent the
+same way and expanded upwards through its own ancestry. Plugins therefore
+publish an edge in the direction the thing actually points, and the
+renderers do not have to guess.
 
 ## Built-in plugins
 
@@ -448,6 +477,18 @@ the machine that *is* running. vCPU is read however the spec spelled it
 page that understands one spelling is wrong for every VM that used
 another. Lifecycle is `spec.running` and nothing else; stopping an
 instance is deleting it, since a VMI *is* the running machine.
+
+The verbs are on the row, so the common ones need no detail page first —
+`POST …/machines/{ns}/{name}/{start,stop,restart}` and `DELETE
+…/machines/{ns}/{name}`. Restart is the instance deleted with a
+definition there to put it back, because KubeVirt has no verb that
+reboots a VMI in place. Without a definition that is a delete wearing a
+reassuring name, so it is refused with `409` and the sentence explaining
+why rather than performed; the row offers it disabled for the same
+reason, since "why can I not restart this" is a question the row should
+answer. Stopping an instance that nothing will restart is destructive and
+is published `danger`, which is what keeps it behind the row menu beside
+Delete.
 
 The console doors are relayed through the console's own origin
 (`/api/plugins/vm/console/{ns}/{name}/{serial,vnc}`) and addressed by VM
