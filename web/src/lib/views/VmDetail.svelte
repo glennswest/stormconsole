@@ -69,6 +69,11 @@
   // running, which is a fact about the machine and not about the form.
 
   const settings = $derived(vm?.settings || null)
+  const pendingLabels = $derived(
+    (settings?.pending || []).map(
+      (n) => settings.fields.find((f) => f.name === n)?.label || n
+    )
+  )
   let editing = $state(null)
   let draft = $state('')
   let saving = $state(false)
@@ -368,7 +373,9 @@
              and it closes at a restart nobody scheduled. -->
         <p class="pending">
           <strong>Waiting for a restart.</strong>
-          {settings.pending.join(', ')}
+          <!-- Named as the form names them: "cores" is the key this view
+               patches with, and "vCPU" is the row somebody is looking at. -->
+          {pendingLabels.join(', ')}
           {settings.pending.length === 1 ? 'has' : 'have'} been changed on this machine's
           definition and {settings.pending.length === 1 ? 'is' : 'are'} not what it is running.
         </p>
