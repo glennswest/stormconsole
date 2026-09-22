@@ -25,11 +25,67 @@ pub struct AppState {
     pub auth_required: bool,
 }
 
+impl AppState {
+    /// The StormCOS release the cluster's nodes booted.
+    ///
+    /// Read from `nodeInfo.osImage`, which the kubelet fills from the release
+    /// manifest the image carries. One node is enough to name the release; if
+    /// nodes disagree -- which is exactly what a half-finished rollout looks
+    /// like -- that is said rather than hidden behind whichever node answered
+    /// first, because "some nodes are still on the old one" is the single most
+    /// useful thing to know during an upgrade and the easiest to miss.
+    async fn release(&self) -> serde_json::Value {
+        let Some(server) = self.config.kubernetes.enabled.then(|| self.config.kubernetes_server())
+        else {
+            return serde_json::json!(null);
+        };
+        let client = plugin_kubernetes::Client::new(
+            &server,
+            self.config.kubernetes.token.as_deref(),
+            self.config.kubernetes_insecure(),
+        );
+        let Ok(list) = client.get("/api/v1/nodes").await else {
+            return serde_json::json!(null);
+        };
+        let mut seen: Vec<String> = list
+            .get("items")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|n| {
+                        n.pointer("/status/nodeInfo/osImage").and_then(|v| v.as_str())
+                    })
+                    .filter_map(|s| s.strip_prefix("StormCOS ").map(str::to_string))
+                    .map(|s| s.split_whitespace().next().unwrap_or_default().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        seen.sort();
+        seen.dedup();
+        match seen.len() {
+            0 => serde_json::json!(null),
+            1 => serde_json::json!(seen.remove(0)),
+            // Mid-rollout. Named in full rather than reduced to one of them.
+            _ => serde_json::json!(seen.join(", ")),
+        }
+    }
+}
+
 pub fn router(state: AppState) -> Router {
     // Stateful routes close over AppState; plugin routers carry their own
     // state, so they nest after with_state levels the type to Router<()>.
     let mut app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        // What this console is, and which StormCOS it is part of.
+        //
+        // Deliberately *not* folded into `/healthz`: stormpump probes that,
+        // and a liveness probe whose body changes shape is a service that
+        // stops being restarted for the wrong reason. This is the same idea
+        // one door along -- answerable without a session, so it can be
+        // scraped, curled from a laptop, or checked by something that has no
+        // credentials and only wants to know what is deployed.
+        .route("/api/version", get(version))
         .route("/readyz", get(readyz))
         .route("/api/summary", get(summary))
         .route("/api/v1/components", get(components))
@@ -101,6 +157,26 @@ async fn nav(State(state): State<AppState>) -> Response {
 
 async fn creators(State(state): State<AppState>) -> Response {
     Json(state.registry.creators()).into_response()
+}
+
+
+/// The release this node booted, and the console's own version.
+///
+/// The release comes from the node object rather than from a file: the
+/// kubelet reads `/etc/stormcos/release/version` and reports it in
+/// `nodeInfo.osImage`, which makes the apiserver the one place to ask and
+/// means this console does not need the release volume mounted into it.
+///
+/// Answered as `unknown` rather than guessed when there is no apiserver or no
+/// node -- a console attached to nothing should say so, not report the
+/// version of the binary it happens to be.
+async fn version(State(state): State<AppState>) -> impl IntoResponse {
+    let release = state.release().await;
+    Json(serde_json::json!({
+        "status": "ok",
+        "console": env!("CARGO_PKG_VERSION"),
+        "release": release,
+    }))
 }
 
 async fn readyz(State(state): State<AppState>) -> Response {
