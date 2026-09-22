@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.11.0**
+Current: **0.12.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -372,6 +372,26 @@ operator got 200. Cilium seeded as CRDs: `datapath = ready` and
 `regenerating`, `identity = app=web tier=frontend`, the right policy
 selected and the `app=db` one not, and `addresses = 1 free of 20` warning
 on the node. 172 tests.
+
+### Events, and a dock that says what happened (v0.12.0) ✅ 2026-09-22
+- [x] `ConsolePlugin::events(viewer, id)` — a contract, not a view. The
+      host asks every plugin and takes the first that claims the id
+- [x] **"Nothing happened" and "nothing records events for this" are
+      different answers.** `Events { available, reason, items }`
+- [x] `ResourceSpec::api_kind`, because an event is matched on
+      `involvedObject` and a Service and a Deployment share names
+- [x] A container's events are its pod's, narrowed by `fieldPath`
+- [x] A machine's are merged across `VirtualMachine` and
+      `VirtualMachineInstance` — one machine to whoever is looking
+- [x] The **bottom dock**: what this console did (appended on the spot,
+      because nothing upstream knows a button was pressed) over what the
+      cluster did about it (polled). Shut, the bar still shows the last
+      line
+- [x] Verified live with seeded events: a VM's box showing
+      `FailedScheduling ×14` beside `Started`, a crashing sidecar's
+      `BackOff` reaching that container and not its healthy neighbour, a
+      volume answering "the storage engine does not write any", and a
+      Restart click landing at the top of the dock at 0s
 
 ### Disks, memory and where virtual machines live (v0.11.0) ✅ 2026-09-22
 - [x] A virtual machine is a **workload**, next to Pods. A VM here is a

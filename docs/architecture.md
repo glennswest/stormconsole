@@ -314,6 +314,55 @@ only choices somebody actually made, so an explicit choice always wins and
 a section that changes kind on the server changes for everybody who never
 touched it.
 
+### Events: what happened, as opposed to what is
+
+An object's fields say its state; only an event says how it got there. The
+console had events in two places — a cluster-wide list and a namespace's
+tab — and neither answers "what happened to *this*", which is the question
+actually being asked.
+
+It is a **plugin contract**. `ConsolePlugin::events(viewer, id)` is asked
+for one component id and answers `None` if the id is not its own; the host
+takes the first plugin that claims it (`/api/v1/console/events?id=`). A
+plugin with an event source needs no change anywhere else, and one without
+needs no change at all.
+
+`Events { available, reason, items }` keeps two answers apart that a
+single empty list would conflate: **nothing happened** and **nothing
+records events for this**. stormblock, stormdrive and the registry write
+none, and a volume with no events is not a volume nothing has happened to.
+
+Matching is on `involvedObject`, which is why `ResourceSpec` carries
+`api_kind` — an event says `PersistentVolumeClaim`, not the console's
+`pvc`, and deriving one from the title works for "Pods" and produces
+"Network policie" for the next one along. Kind is matched as well as name
+because a Service and a Deployment routinely share one, and an event about
+the wrong object is worse than none: it gets acted on. A container has no
+events of its own — the kubelet records them against the pod with the
+container in `fieldPath` — so a container's box is its pod's events
+narrowed by that path.
+
+A virtual machine's events are recorded against two objects that share a
+name, the `VirtualMachine` and the `VirtualMachineInstance`, and somebody
+asking "did my start work" does not care which; the vm plugin merges them.
+
+#### The dock
+
+`/api/v1/console/events/recent` merges every plugin's recent activity, and
+the SPA docks it at the bottom of every screen — vSphere's Recent Tasks
+and Proxmox's task log, for the reason both exist: you press Create, and
+the question for the next ten seconds is "did that work". Answering it
+should not cost a navigation.
+
+Two sources, deliberately. **What this console did** is appended in the
+browser the instant an action returns — nothing upstream knows a button
+was pressed, so this is the only half that can say "your request was
+sent", and it is acknowledged in the same frame rather than after the next
+poll. **What the cluster did about it** is polled every five seconds, and
+is the half that carries the reason when it did not work. Shut, the bar
+still shows the last line, because a dock that hides everything when
+closed is a dock people leave open.
+
 ### Who may do what
 
 Authentication is optional and off by default on a single node. When it is

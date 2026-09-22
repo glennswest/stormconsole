@@ -3,6 +3,51 @@
 ## [Unreleased]
 
 ### 2026-09-22
+- **feat(events):** what happened to **this**, on the thing itself. The
+  console had events in two places and neither answered the question
+  people ask: a cluster-wide list is where you go when you do not know
+  what is wrong, and "what happened to this" is where you go when you do.
+  So a VM that would not start said `Scheduling` forever and the reason —
+  no node with enough memory, a golden that would not clone, a bridge that
+  does not exist on the node it was pinned to — was in an event and
+  nowhere a person would find it. It is a **plugin contract**, not a view:
+  a plugin is asked for one component id and answers `None` if it is not
+  its own, so a new plugin with an event source needs no change anywhere
+  else and one without needs no change at all. "Nothing happened" and
+  "nothing records events for this" render differently, because they are
+  different facts — stormblock, stormdrive and the registry write none,
+  and a volume with no events is not a volume nothing has happened to.
+- **feat(events):** the **bottom dock**, which vSphere and Proxmox both
+  have and are right about: you press Create, and the question for the
+  next ten seconds is "did that work". Answering it should not cost a
+  navigation — by the time somebody has found the Events page the thing
+  has happened or not and they have lost the thread. Two sources on
+  purpose: what this console *did*, appended the instant an action
+  returns, because nothing upstream knows a button was pressed and this is
+  the only half that can say "your request was sent"; and what the cluster
+  did about it, polled, which is the half carrying the reason when it did
+  not work. Shut, the bar still shows the last line — a dock that hides
+  everything when closed is a dock people leave open.
+- **feat(k8s):** `ResourceSpec` carries `api_kind`, because an event is
+  matched on `involvedObject` and that needs `PersistentVolumeClaim`, not
+  the console's `pvc`. Stated rather than derived: deriving it from the
+  title gives "Pod" for Pods and "Network policie" for the next one along.
+  Kind is matched as well as name because a Service and a Deployment
+  routinely share one, and an event about the wrong object is worse than
+  none — it gets acted on. A container's events are its pod's, narrowed by
+  `fieldPath`, so a crash-looping sidecar's `BackOff` reaches the
+  container that is crashing and not its healthy neighbour.
+- **feat(vm):** a machine's events come from two objects that share a name
+  — the `VirtualMachine` the controller writes about and the
+  `VirtualMachineInstance` the kubelet writes about — and somebody asking
+  "did my start work" does not care which, so they are merged rather than
+  left to the kubernetes plugin, which would answer for one of them.
+- **fix(vm):** a stopped machine has no pending disks. Every disk was
+  flagged "added — at next boot" when nothing was running, which is true
+  in a useless sense and the same mistake as warning somebody editing a
+  stopped machine about a restart it does not need.
+
+### 2026-09-22
 - **feat(nav):** a virtual machine is a workload, next to Pods. It had a
   section of its own holding one item, which said the thing a console
   should not: that running a machine is a different kind of activity from
