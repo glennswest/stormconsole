@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
 use console_core::Viewer;
-use axum::http::{header, StatusCode};
+use axum::http::{header, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -137,10 +137,57 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     }
     if let Some(id) = cookie_session(&req) {
         if state.sessions.user_of(&id).is_some() {
+            if let Some(refusal) = refuse_read_only(&who, &req) {
+                return refusal;
+            }
             return next.run(req).await;
         }
     }
     (StatusCode::UNAUTHORIZED, Json(json!({"error": "authentication required"}))).into_response()
+}
+
+/// A reader may not write, enforced **once, here, by method** (#15).
+///
+/// Per-route is how this is usually done and it is how it goes wrong: one
+/// route added without the check is the whole hole, and there are already
+/// a dozen — delete a pod, apply YAML, replace an object, start, stop,
+/// restart, the hypervisor's verbs, create a machine, and everything
+/// behind the storage and registry proxies, which are `any` and so cannot
+/// be enumerated at all.
+///
+/// The method is the honest boundary. Every mutating plugin route on this
+/// platform is a POST, PUT, PATCH or DELETE, and the proxies pass the
+/// browser's own method through, so a POST through a proxy is a write
+/// wherever it lands. A route that reads with a POST would be refused
+/// here — and would be a route worth changing rather than an exception
+/// worth carving.
+///
+/// Scoped to `/api/plugins/`: the console's own `/api/v1/auth/login` is a
+/// POST that must work for somebody who holds no roles yet, and the feed
+/// and nav are reads.
+fn refuse_read_only(who: &Viewer, req: &Request) -> Option<Response> {
+    let path = req.uri().path();
+    if !path.starts_with("/api/plugins/") {
+        return None;
+    }
+    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
+        return None;
+    }
+    if who.may_write() {
+        return None;
+    }
+    Some(
+        (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": format!(
+                    "{} is signed in as a reader: changing things needs the `operator` role",
+                    who.user.as_deref().unwrap_or("this session")
+                )
+            })),
+        )
+            .into_response(),
+    )
 }
 
 #[derive(Deserialize)]
@@ -233,4 +280,69 @@ pub async fn session(State(state): State<AppState>, req: Request) -> Response {
         "theme": state.config.general.theme,
     }))
     .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req(method: Method, path: &str) -> Request {
+        Request::builder().method(method).uri(path).body(axum::body::Body::empty()).unwrap()
+    }
+
+    fn reader() -> Viewer {
+        Viewer { user: Some("gw".into()), roles: vec!["viewer".into()], ..Viewer::anonymous() }
+    }
+
+    fn operator() -> Viewer {
+        Viewer { user: Some("gw".into()), roles: vec!["operator".into()], ..Viewer::anonymous() }
+    }
+
+    #[test]
+    fn a_reader_may_read_every_plugin_route() {
+        for path in ["/api/plugins/k8s/kinds", "/api/plugins/vm/vms/default/web-1"] {
+            assert!(refuse_read_only(&reader(), &req(Method::GET, path)).is_none(), "{path}");
+        }
+    }
+
+    /// The point of enforcing by method rather than per route: these are
+    /// the routes that never had a check, and none of them had to be
+    /// found for this to cover them.
+    #[test]
+    fn a_reader_may_not_write_through_any_of_them() {
+        let writes = [
+            (Method::POST, "/api/plugins/k8s/pods/default/web/delete"),
+            (Method::POST, "/api/plugins/k8s/apply"),
+            (Method::PUT, "/api/plugins/k8s/object/pod/default/web"),
+            (Method::DELETE, "/api/plugins/k8s/raw/api/v1/namespaces/default/pods/web"),
+            (Method::POST, "/api/plugins/vm/machines/default/web-1/verb/reset"),
+            (Method::DELETE, "/api/plugins/vm/machines/default/web-1"),
+            (Method::POST, "/api/plugins/vm/create"),
+            // The proxies are `any`, so they could never have been
+            // enumerated — a POST through one is a write wherever it lands.
+            (Method::DELETE, "/api/plugins/sb/proxy/api/v1/volumes/1f4c"),
+            (Method::POST, "/api/plugins/fleet/proxy/9080/api/v1/restart"),
+        ];
+        for (m, path) in writes {
+            assert!(refuse_read_only(&reader(), &req(m.clone(), path)).is_some(), "{m} {path}");
+            assert!(refuse_read_only(&operator(), &req(m, path)).is_none(), "{path}");
+        }
+    }
+
+    /// Signing in is a POST made by somebody who holds no roles yet, and
+    /// the console's own surface is not a plugin's.
+    #[test]
+    fn the_consoles_own_routes_are_not_caught_by_this() {
+        for path in ["/api/v1/auth/login", "/api/v1/auth/logout"] {
+            assert!(refuse_read_only(&reader(), &req(Method::POST, path)).is_none(), "{path}");
+        }
+    }
+
+    /// The refusal names who is signed in, because "forbidden" on a
+    /// console somebody is already logged into reads as a broken console.
+    #[test]
+    fn a_refusal_says_who_and_what_is_missing() {
+        let r = refuse_read_only(&reader(), &req(Method::POST, "/api/plugins/vm/create"));
+        assert!(r.is_some());
+    }
 }
