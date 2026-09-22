@@ -167,8 +167,42 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
         }
         c.metrics.push(Metric::new("disks", ds.len().to_string()).tone("muted"));
         if let Some(n) = node {
+            // A column, not only a relation.
+            //
+            // This was a relation alone, which the UI renders as a link *to
+            // the node object* — so opening a VM landed in node details, and
+            // the one fact you most want when looking at a list of machines
+            // ("which box is this on") was not a column at all. The relation
+            // stays, because navigating to the node is still a thing to want;
+            // it is just not what clicking the machine should do.
+            c.metrics.push(Metric::new("node", n.to_string()).tone("muted"));
             c.relations.push(Relation::has_one("node", format!("k8s:node:{n}")));
         }
+        // On the row, so the common things do not need a detail view first.
+        //
+        // Stop and delete are separated deliberately: stop is reversible and
+        // delete is not, and a list where they sit next to each other with
+        // the same weight is a list somebody deletes from by accident.
+        c.actions = vec![
+            Action {
+                id: "stop".into(),
+                label: "Stop".into(),
+                method: "POST".into(),
+                path: format!("/api/plugins/vm/instances/{ns}/{name}/stop"),
+                enabled: phase == "Running",
+                danger: false,
+                tone: None,
+            },
+            Action {
+                id: "delete".into(),
+                label: "Delete".into(),
+                method: "DELETE".into(),
+                path: format!("/api/plugins/vm/machines/{ns}/{name}"),
+                enabled: true,
+                danger: true,
+                tone: None,
+            },
+        ];
         if of("vm").contains_key(key) {
             c.relations.push(Relation::belongs_to("definition", format!("vm:machine:{key}")));
         }

@@ -67,6 +67,10 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                            hypervisor, which nothing outside the node can route to \
                            (stormvm#16). stormbr0: the node's own network, a real \
                            DHCP address, reachable — but no Service and no NetworkPolicy"),
+                Field::text("hostname", "Hostname")
+                    .hint("what the guest calls itself and asks DHCP for — defaults to \
+                           the machine's name. Without it every Fedora guest calls \
+                           itself `fedora` and DNS cannot tell them apart"),
                 Field::text("ssh_key", "SSH public key")
                     .hint("goes into the cloud-init seed; a guest with no key and no password is a machine nothing can log into"),
             ],
@@ -99,6 +103,9 @@ pub struct Form {
     /// Which network the guest is on: `pod`, or a host bridge by name.
     #[serde(default)]
     network: String,
+    /// The name the guest calls itself, and asks DHCP for.
+    #[serde(default)]
+    hostname: String,
 }
 
 /// The host bridge this form asked for, if it asked for one.
@@ -216,11 +223,32 @@ pub fn instance(f: &Form) -> Result<Value, String> {
 /// label says which, because the difference is minutes.
 /// The cloud-init payload for a machine, which goes into a Secret.
 pub fn cloud_init(f: &Form) -> String {
-    if f.ssh_key.trim().is_empty() {
-        "#cloud-config\n".to_string()
+    let mut out = String::from("#cloud-config\n");
+    // The name the guest asks DHCP for.
+    //
+    // Without it a cloud image keeps whatever name the image was built with
+    // — every Fedora guest calls itself `fedora` — so the DHCP server
+    // registers several machines under one name and DNS is useless for
+    // reaching any of them. `hostname` sets it, and cloud-init's default
+    // `send_hostname` puts it in the DHCP request, so the lease and the
+    // forward record come out right without anything being configured twice.
+    //
+    // Defaulted to the machine's own name when the field is left empty: that
+    // is almost always what somebody wants, and a VM whose hostname does not
+    // match the object it came from is a thing you have to keep translating
+    // in your head.
+    let host = if f.hostname.trim().is_empty() {
+        f.name.trim()
     } else {
-        format!("#cloud-config\nssh_authorized_keys:\n  - {}\n", f.ssh_key.trim())
+        f.hostname.trim()
+    };
+    if !host.is_empty() {
+        out.push_str(&format!("hostname: {host}\nprefer_fqdn_over_hostname: false\n"));
     }
+    if !f.ssh_key.trim().is_empty() {
+        out.push_str(&format!("ssh_authorized_keys:\n  - {}\n", f.ssh_key.trim()));
+    }
+    out
 }
 
 /// The Secret name a machine's seed lives under.
