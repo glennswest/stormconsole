@@ -615,18 +615,83 @@ async fn golden_from_reference(
         if let Some(g) = golden_of(&v) {
             return Ok(g);
         }
-        // A resolve that failed says so, and waiting out the rest of the
-        // deadline for it would only make the form slower to tell the truth.
-        if let Some(m) = v.pointer("/status/message").and_then(Value::as_str) {
-            if !m.is_empty() {
-                return Err(format!("{reference}: {m}"));
+        // A resolve that *failed* says so. Progress also says so, and the two
+        // are not the same thing.
+        //
+        // This treated any non-empty `status.message` as a failure and
+        // refused to create the machine. The operator writes progress there —
+        // `importing into http://127.0.0.1:5100` — so asking for a VM on an
+        // image that was downloading normally came back as an error naming a
+        // URL, and no VM was created. The same mistake as reporting a node
+        // degraded while an image pulls: an in-progress operation read as a
+        // broken one.
+        //
+        // So the phase decides, and only a phase that means failure fails.
+        if failed_phase(&v) {
+            let m = v
+                .pointer("/status/message")
+                .and_then(Value::as_str)
+                .filter(|m| !m.is_empty())
+                .unwrap_or("the image operator could not build it");
+            return Err(format!("{reference}: {m}"));
+        }
+    }
+
+    // Still building. Create the machine anyway, against the name its local
+    // copy will have.
+    //
+    // `status.golden` is the content digest and it does not exist until the
+    // image reaches `Available` — which is after the download, the decode and
+    // the seal, minutes to tens of minutes for a cloud image. No wait this
+    // form is allowed to make can cover that, so waiting for it meant "you
+    // cannot create a VM from an image you have not already got", which is
+    // exactly the thing a person is trying to do when they pick a new image.
+    //
+    // `status.localName` (`fedora-44-x86_64`) is assigned immediately and is
+    // the name the local placement carries, so it is a name that will exist.
+    // The kubelet already treats a golden that is not there yet as Pending and
+    // retries rather than failing, which is the same shape as a pod scheduled
+    // before its image is pulled.
+    //
+    // Only when the image was asked for on a specific node: `localOn` is what
+    // makes a local copy appear, and without it there is no placement to wait
+    // for and the name would never resolve.
+    if !node.trim().is_empty() {
+        if let Ok(r) = inner.http.get(&one).send().await {
+            if let Ok(v) = r.json::<Value>().await {
+                if !failed_phase(&v) {
+                    if let Some(local) = v
+                        .pointer("/status/localName")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                    {
+                        return Ok(local.to_string());
+                    }
+                }
             }
         }
     }
+
     Err(format!(
-        "image operator accepted {reference} but has not named its golden yet — \
-         it is still resolving; create the machine again in a moment"
+        "image operator accepted {reference} but has not named a disk for it yet — \
+         create the machine again in a moment"
     ))
+}
+
+/// Whether an image record says the build failed, as opposed to being busy.
+///
+/// Anything that is not a known failure is treated as progress: a phase this
+/// does not recognise is far more likely to be a new intermediate state than a
+/// new way to fail, and guessing "failed" refuses work that would have
+/// succeeded.
+fn failed_phase(v: &Value) -> bool {
+    v.pointer("/status/phase")
+        .and_then(Value::as_str)
+        .map(|p| {
+            let p = p.to_ascii_lowercase();
+            p == "failed" || p == "error" || p == "degraded"
+        })
+        .unwrap_or(false)
 }
 
 /// The volume an image record names, once it has one.

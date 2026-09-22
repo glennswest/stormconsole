@@ -123,17 +123,18 @@ struct CatalogList {
 
 #[derive(Debug, Deserialize)]
 struct CatalogItem {
+    #[serde(default, deserialize_with = "nullable")]
     reference: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     distro: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     version: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     arch: String,
     /// The golden name this would produce, which is what a VM spec asks for.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     golden: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     provisioning: String,
 }
 
@@ -145,12 +146,34 @@ struct ImageList {
 
 #[derive(Debug, Deserialize)]
 struct ImageItem {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     name: String,
     #[serde(default)]
     spec: ImageSpec,
     #[serde(default)]
     status: ImageStatus,
+}
+
+/// A string field that may arrive as `null`.
+///
+/// `#[serde(default)]` covers a field that is *absent*; it does nothing for
+/// one that is present and `null`, which fails with "invalid type: null,
+/// expected a string" and takes the whole response down with it.
+///
+/// That is not a hypothetical. `status.golden` is null on an image that is
+/// still building — it has no volume yet, which is the honest answer — and
+/// one such image in the list made `ImageList` fail to deserialise, so *every*
+/// fleet golden vanished from the create form at once. The symptom was
+/// "rawhide is not in the list", where rawhide was Available, had a golden,
+/// and was innocent: the image poisoning the list was a different one, still
+/// downloading.
+///
+/// One row that cannot be read must cost that row, never the list.
+fn nullable<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(d)?.unwrap_or_default())
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -159,17 +182,17 @@ struct ImageSpec {
     /// identity that says "this catalogue entry is already goldened", which
     /// a name cannot: two images of one reference differ by arch, not by
     /// being different things to golden.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     reference: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct ImageStatus {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     phase: String,
     /// What a person calls it: `fedora-43-x86_64`. **Not** a volume — see
     /// `golden`.
-    #[serde(default, rename = "localName")]
+    #[serde(default, rename = "localName", deserialize_with = "nullable")]
     local_name: String,
     /// The volume the engine actually holds, `media-846574c8a97c`.
     ///
@@ -177,9 +200,9 @@ struct ImageStatus {
     /// word, and that is the whole reason this field exists separately from
     /// `local_name`: a golden is content, and two Fedora 43 images that
     /// differ by a byte are two goldens with one pretty name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     golden: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     arch: String,
 }
 
@@ -192,7 +215,7 @@ struct NodeImages {
 
 #[derive(Debug, Deserialize)]
 struct NodeImage {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     name: String,
 }
 
@@ -398,6 +421,43 @@ pub fn is_reference(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One image still building must not empty the list.
+    ///
+    /// `status.golden` is null while an image downloads. With
+    /// `#[serde(default)]` alone that is "invalid type: null, expected a
+    /// string" for the whole `ImageList`, so every *Available* golden
+    /// disappeared from the create form too — reported as "rawhide is not in
+    /// the list", by someone looking at a rawhide that was Available, had a
+    /// golden, and had nothing wrong with it.
+    #[test]
+    fn a_building_image_with_no_golden_yet_does_not_take_the_list_with_it() {
+        let body = serde_json::json!({"items": [
+            {"name": "fedora-44", "spec": {"reference": "fedora:44"},
+             "status": {"phase": "Building", "golden": null,
+                        "localName": "fedora-44-x86_64", "message": null}},
+            {"name": "fedora-rawhide", "spec": {"reference": "fedora:rawhide"},
+             "status": {"phase": "Available", "golden": "media-55797d0c4e57",
+                        "localName": "fedora-rawhide-x86_64"}},
+        ]});
+        let list: ImageList = serde_json::from_value(body).expect("a null golden is not fatal");
+        assert_eq!(list.items.len(), 2, "both rows survive");
+        assert_eq!(list.items[0].status.golden, "", "the building one reads as no volume");
+        assert_eq!(list.items[1].status.golden, "media-55797d0c4e57",
+                   "and the one that is ready is still offerable");
+    }
+
+    /// The same for the catalogue half.
+    #[test]
+    fn a_null_field_in_the_catalogue_costs_one_field_not_the_list() {
+        let body = serde_json::json!({"items": [
+            {"reference": "alma:10", "distro": null, "version": "10", "golden": null},
+        ]});
+        let list: CatalogList = serde_json::from_value(body).expect("nulls are tolerated");
+        assert_eq!(list.items.len(), 1);
+        assert_eq!(list.items[0].distro, "");
+        assert_eq!(list.items[0].reference, "alma:10");
+    }
 
     #[test]
     fn a_reference_is_told_from_a_golden_by_its_colon() {

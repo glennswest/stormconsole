@@ -714,3 +714,20 @@
   every boot. An empty refresh now keeps the last good list and says it may be
   stale, and until the first good answer arrives the poll retries every 3s
   instead of every 60.
+- **fix(vm):** a null field no longer empties the image list. `status.golden`
+  is null while an image is still building, and `#[serde(default)]` covers an
+  *absent* field, not a present-and-null one — so one downloading image made
+  the whole `ImageList` fail to deserialise and every fleet golden vanished
+  from the create form at once. Reported as "rawhide is not showing", where
+  rawhide was Available, had a golden, and was not the image at fault. Every
+  string field in the image and catalogue models now tolerates null; one row
+  that cannot be read costs that row, never the list.
+- **fix(vm):** creating a VM from an image that is still downloading no longer
+  fails. Any non-empty `status.message` was treated as a failure, and the
+  operator writes progress there (`importing into http://…`), so the form
+  returned a URL as an error and created nothing. Only a phase that means
+  failure fails now. And because `status.golden` does not exist until the image
+  is `Available` — after the download, decode and seal — the machine is created
+  against `status.localName`, the name its local copy will carry, and the
+  kubelet waits for it exactly as a pod waits for an image that is still
+  pulling.
