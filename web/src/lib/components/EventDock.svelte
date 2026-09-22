@@ -50,10 +50,22 @@
   // The console's own actions first — they are newer than anything the
   // cluster has had time to say about them, and they are what the person
   // is waiting on.
-  const lines = $derived([...localActivity.items, ...cluster].slice(0, 80))
+  // Twenty, not eighty.
+  //
+  // Eighty lines is a page of scrollback in a dock that sits over the work,
+  // and nobody reads the eightieth. This is "what just happened", not a log:
+  // the log is the log, and a dock that tries to be one is in the way.
+  const lines = $derived([...localActivity.items, ...cluster].slice(0, 20))
+  // Nothing to say, so say nothing.
+  //
+  // The bar sat there taking a row of the window with 'Nothing has happened
+  // yet.' behind it. A dock that is always present whether or not it has
+  // content is a permanent tax on the view for an occasional benefit.
+  const idle = $derived(!lines.length)
   const warnings = $derived(lines.filter((e) => e.type === 'Warning').length)
 </script>
 
+{#if !idle}
 <section class="dock" class:open={dock.open} aria-label="Recent activity">
   <button class="bar" onclick={toggleDock} aria-expanded={dock.open}>
     <span class="caret" class:up={!dock.open}>▾</span>
@@ -74,6 +86,7 @@
   {#if dock.open}
     <div class="feed">
       {#if !lines.length}
+        <!-- Only reachable if the feed empties while the dock is open. -->
         <p class="none">{reason || 'Nothing has happened yet.'}</p>
       {:else}
         <ul>
@@ -91,6 +104,7 @@
     </div>
   {/if}
 </section>
+{/if}
 
 <style>
   .dock {

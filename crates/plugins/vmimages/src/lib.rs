@@ -589,11 +589,32 @@ fn placement(v: &Value) -> ComponentSummary {
     }
 }
 
+/// A phase, as health.
+///
+/// **Working is not degraded.** Every non-terminal phase mapped to `Warn`,
+/// so an image being downloaded — which is minutes of a thing going
+/// correctly — made the node report itself degraded, and a fleet view showed
+/// a fault where there was progress. That is the status equivalent of crying
+/// wolf: a console that says degraded while nothing is wrong is one nobody
+/// reads when something is.
+///
+/// `Idle` is the closest thing the shared vocabulary has to "in hand". It is
+/// not perfect — the work is active rather than idle — but it is the one
+/// state that is neither a fault nor a claim that the image is ready, and it
+/// does not roll up as a problem. A dedicated `Busy` belongs in stormview if
+/// this shape recurs.
 fn health_of(phase: &str) -> Health {
     match phase {
         "Available" => Health::Ok,
         "Failed" => Health::Error,
-        "" => Health::Unknown,
+        // In progress: resolving a digest, importing, sealing.
+        "Resolving" | "Building" | "Pending" | "Importing" => Health::Idle,
+        // No phase at all is a record the operator has not looked at yet,
+        // which is a moment old rather than a mystery.
+        "" => Health::Idle,
+        // Anything unrecognised *is* worth a second look, which is what Warn
+        // is for — but it is now the exception rather than every image that
+        // is not finished.
         _ => Health::Warn,
     }
 }
@@ -602,6 +623,8 @@ fn tone(phase: &str) -> &'static str {
     match phase {
         "Available" => "ok",
         "Failed" => "error",
+        // Muted rather than warn: in progress is not a caution.
+        "Resolving" | "Building" | "Pending" | "Importing" | "" => "muted",
         _ => "warn",
     }
 }
