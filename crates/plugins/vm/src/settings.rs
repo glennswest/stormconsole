@@ -182,7 +182,12 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
             Value::from(network(&spec)),
             when(Applies::OnRestart),
         )
-        .against(Some(Value::from(network(&run_spec)))),
+        .against(Some(Value::from(network(&run_spec))))
+        .noting(
+            "`pod` for the cluster network, or the name of a bridge on the node. Changing it \
+             moves the guest's address, and nothing here can tell you what the new one will \
+             be until it has one",
+        ),
         Setting::new("hostname", "Hostname", Value::from(hostname(&spec)), when(Applies::NextBoot))
             .against(Some(Value::from(hostname(&run_spec)))),
         Setting::new("ssh_key", "SSH key", Value::from(ssh_key(&spec)), when(Applies::NextBoot)),
@@ -206,6 +211,25 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
             .noting(
                 "MiB, and only the VGA-family adapters have it — virtio sizes itself from what \
                  the guest asks to draw",
+            ),
+        Setting::new(
+            "secure_boot",
+            "Secure boot",
+            Value::from(secure_boot(&domain)),
+            when(Applies::OnRestart),
+        )
+        .against(Some(Value::from(secure_boot(&run_domain))))
+        .noting(
+            "off unless the guest needs it. Turning it on means the firmware will refuse an \
+             unsigned kernel, which is a machine that stops booting if its guest was not \
+             prepared for it",
+        ),
+        // Where the machine runs. A pin, and blank means the scheduler picks.
+        Setting::new("node", "Node", Value::from(node(&spec)), when(Applies::OnRestart))
+            .against(Some(Value::from(node(&run_spec))))
+            .noting(
+                "blank lets the scheduler place it. Naming a node pins it there — the \
+                 scheduler treats a pinned machine as already placed and leaves it alone",
             ),
     ];
 
@@ -243,6 +267,19 @@ pub struct Settings {
     /// about — changes written but not yet in force.
     pub pending: Vec<String>,
     pub fields: Vec<Setting>,
+}
+
+/// Whether the machine boots with secure boot on.
+fn secure_boot(domain: &Value) -> bool {
+    domain
+        .pointer("/firmware/bootloader/efi/secureBoot")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// The node a machine is pinned to, empty when the scheduler places it.
+fn node(spec: &Value) -> String {
+    spec.get("nodeName").and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
 /// The display adapter a machine asks for, from its template annotations.
@@ -433,10 +470,39 @@ pub fn patch(field: &str, value: &str) -> Result<Value, String> {
         // no way to say what the new address will be — which is the whole
         // question somebody asks immediately afterwards. The YAML tab
         // takes it, with the whole spec visible.
-        "network" => Err("the network binding is changed in the YAML, not here: it moves the \
-                          guest's address, and this form has no way to tell you what the new \
-                          one will be"
-            .into()),
+        "secure_boot" => {
+            let on = matches!(value.trim(), "true" | "on" | "yes" | "1");
+            Ok(template(
+                json!({"domain": {"firmware": {"bootloader": {"efi": {"secureBoot": on}}}}}),
+            ))
+        }
+        "node" => {
+            let n = value.trim();
+            // Absent, not empty. `nodeName: ""` is a field that was set, and
+            // the scheduler reads a machine carrying one as already placed —
+            // so blanking the pin by writing an empty string pins it to
+            // nowhere and the machine never starts.
+            Ok(template(json!({"nodeName": if n.is_empty() { Value::Null } else { json!(n) }})))
+        }
+        // The network binding moves the guest between the pod network and a
+        // bridge on the node.
+        //
+        // This was refused on the grounds that the form could not say what
+        // the new address would be. That is true and is not a reason to make
+        // the setting unreachable: it is a reason to say so, which the note
+        // does. Refusing it meant the one thing somebody wants to change on a
+        // VM that came up unreachable could only be changed in YAML.
+        "network" => {
+            let want = value.trim();
+            if want.is_empty() || want == "pod" {
+                return Ok(json!({"spec": {"template": {"metadata": {"annotations": {
+                    "storm.io/bridge": Value::Null
+                }}}}}));
+            }
+            Ok(json!({"spec": {"template": {"metadata": {"annotations": {
+                "storm.io/bridge": want
+            }}}}}))
+        }
         "ssh_key" => Err("the SSH key lives in the cloud-init seed, which the guest reads once \
                           at first boot. Changing it here would change nothing on a machine that \
                           has already booted; add the key to the guest, or rebuild the machine"
@@ -578,6 +644,64 @@ mod tests {
         );
     }
 
+
+    /// Blanking the node pin removes the field rather than emptying it.
+    ///
+    /// `nodeName: ""` is a field that was set, and the scheduler reads a
+    /// machine carrying one as already placed — so an empty string pins the
+    /// machine to nowhere and it never starts.
+    #[test]
+    fn clearing_the_node_removes_the_pin_instead_of_emptying_it() {
+        let p = patch("node", "  ").unwrap();
+        assert!(p.pointer("/spec/template/spec/nodeName").unwrap().is_null());
+        let p = patch("node", "storm-2").unwrap();
+        assert_eq!(p.pointer("/spec/template/spec/nodeName").unwrap(), "storm-2");
+    }
+
+    /// Setting a display turns the graphics device on in the same patch.
+    ///
+    /// Writing only the annotation names an adapter on a machine with no
+    /// graphics device: a setting that appears to save and does nothing.
+    #[test]
+    fn the_display_patch_also_turns_the_screen_on() {
+        let p = patch("display", "virtio").unwrap();
+        assert_eq!(
+            p.pointer("/spec/template/metadata/annotations/storm.io~1vga").unwrap(),
+            "virtio"
+        );
+        assert_eq!(
+            p.pointer("/spec/template/spec/domain/devices/autoattachGraphicsDevice").unwrap(),
+            true
+        );
+        // And blank takes the screen away again.
+        let p = patch("display", "").unwrap();
+        assert_eq!(
+            p.pointer("/spec/template/spec/domain/devices/autoattachGraphicsDevice").unwrap(),
+            false
+        );
+        assert!(p
+            .pointer("/spec/template/metadata/annotations/storm.io~1vga")
+            .unwrap()
+            .is_null());
+        // An adapter this platform does not have is refused rather than
+        // written and discovered at start.
+        assert!(patch("display", "matrox").is_err());
+    }
+
+    /// The network is editable, not a referral to the YAML.
+    #[test]
+    fn the_network_can_be_moved_between_the_pod_network_and_a_bridge() {
+        let p = patch("network", "stormbr0").unwrap();
+        assert_eq!(
+            p.pointer("/spec/template/metadata/annotations/storm.io~1bridge").unwrap(),
+            "stormbr0"
+        );
+        let p = patch("network", "pod").unwrap();
+        assert!(p
+            .pointer("/spec/template/metadata/annotations/storm.io~1bridge")
+            .unwrap()
+            .is_null());
+    }
     #[test]
     fn a_refusal_says_what_to_do_instead() {
         assert!(patch("cores", "half").unwrap_err().contains("fraction"));
