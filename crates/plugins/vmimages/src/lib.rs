@@ -450,6 +450,8 @@ fn golden(v: &Value, local: &[Value]) -> ComponentSummary {
     let name = field(v, &["name"]).unwrap_or_default();
     let status = v.get("status").cloned().unwrap_or(Value::Null);
     let phase = field(&status, &["phase"]).unwrap_or_else(|| "Pending".into());
+    // Built here, because `name` is moved into `label` below.
+    let retry_path = format!("{PROXY}/api/v1/images/{name}/retry");
     let local_name = field(&status, &["localName"]).unwrap_or_default();
     let message = field(&status, &["message"]).unwrap_or_default();
 
@@ -518,7 +520,7 @@ fn golden(v: &Value, local: &[Value]) -> ComponentSummary {
                 id: "retry".into(),
                 label: "Retry".into(),
                 method: "POST".into(),
-                path: format!("{PROXY}/api/v1/images/{name}/retry"),
+                path: retry_path,
                 enabled: true,
                 danger: false,
                 tone: None,
