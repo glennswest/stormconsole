@@ -111,6 +111,16 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
     let domain = spec.get("domain").cloned().unwrap_or(Value::Null);
     let run_spec = instance.and_then(|v| v.get("spec").cloned()).unwrap_or(Value::Null);
     let run_domain = run_spec.get("domain").cloned().unwrap_or(Value::Null);
+    // Annotations live on the *template* of a definition and on the object
+    // itself for a running instance: the instance is what the template
+    // became, so the same keys are in two places depending which you hold.
+    let annotations = machine
+        .and_then(|v| v.pointer("/spec/template/metadata/annotations").cloned())
+        .or_else(|| instance.and_then(|v| v.pointer("/metadata/annotations").cloned()))
+        .unwrap_or(Value::Null);
+    let run_annotations = instance
+        .and_then(|v| v.pointer("/metadata/annotations").cloned())
+        .unwrap_or(Value::Null);
 
     // On a stopped machine every edit is simply what it will be. Telling
     // somebody editing a machine that is not running that a field "needs a
@@ -176,6 +186,27 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
         Setting::new("hostname", "Hostname", Value::from(hostname(&spec)), when(Applies::NextBoot))
             .against(Some(Value::from(hostname(&run_spec)))),
         Setting::new("ssh_key", "SSH key", Value::from(ssh_key(&spec)), when(Applies::NextBoot)),
+        // The screen.
+        //
+        // This was not here at all, so the answer to "why can I not edit the
+        // display" was that no field existed — on a console whose whole
+        // purpose for a VM that will not boot is to let somebody look at it.
+        //
+        // Blank means no adapter; setting one turns the screen on, which also
+        // moves the machine from cloud-hypervisor to qemu, because a
+        // framebuffer is the thing cloud-hypervisor does not have.
+        Setting::new("display", "Display", Value::from(display(&spec, &annotations)), when(Applies::OnRestart))
+            .against(Some(Value::from(display(&run_spec, &run_annotations))))
+            .noting(
+                "blank for no screen. A screen makes this machine run under qemu rather than \
+                 cloud-hypervisor, which is the only hypervisor here with a framebuffer",
+            ),
+        Setting::new("vga_memory", "Display memory", Value::from(vga_memory(&annotations)), when(Applies::OnRestart))
+            .against(Some(Value::from(vga_memory(&run_annotations))))
+            .noting(
+                "MiB, and only the VGA-family adapters have it — virtio sizes itself from what \
+                 the guest asks to draw",
+            ),
     ];
 
     let pending: Vec<&'static str> =
@@ -212,6 +243,36 @@ pub struct Settings {
     /// about — changes written but not yet in force.
     pub pending: Vec<String>,
     pub fields: Vec<Setting>,
+}
+
+/// The display adapter a machine asks for, from its template annotations.
+///
+/// Empty means no screen: `autoattachGraphicsDevice` false, or simply never
+/// asked for. That is a real answer and is offered as one, because turning a
+/// screen on afterwards is the common case — somebody made a VM, it will not
+/// boot, and they want to see why.
+fn display(spec: &Value, annotations: &Value) -> String {
+    let on = spec
+        .pointer("/domain/devices/autoattachGraphicsDevice")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if !on {
+        return String::new();
+    }
+    annotations
+        .get("storm.io/vga")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("virtio")
+        .to_string()
+}
+
+/// How much framebuffer memory, for the adapters that have any.
+fn vga_memory(annotations: &Value) -> String {
+    annotations
+        .get("storm.io/vga-memory")
+        .and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_i64().map(|n| n.to_string())))
+        .unwrap_or_default()
 }
 
 /// The balloon floor: a memory *request* lower than the guest size.
@@ -330,6 +391,43 @@ pub fn patch(field: &str, value: &str) -> Result<Value, String> {
             Ok(template(json!({"domain": {"resources": {"requests": {"memory": m}}}})))
         }
         "hostname" => Ok(template(json!({"hostname": value.trim()}))),
+        // The display is two edits: the annotation naming the adapter, and
+        // the device flag that decides whether there is a screen at all.
+        // Writing only the annotation leaves a model named on a machine with
+        // no graphics device, which is a setting that appears to be saved and
+        // does nothing.
+        "display" => {
+            let want = value.trim();
+            let on = !want.is_empty();
+            if on && !matches!(want, "virtio" | "vga" | "std" | "qxl") {
+                return Err(format!(
+                    "{want:?} is not a display this platform has — virtio, vga or qxl"
+                ));
+            }
+            Ok(json!({"spec": {"template": {
+                "metadata": {"annotations": {
+                    "storm.io/vga": if on { json!(want) } else { Value::Null }
+                }},
+                "spec": {"domain": {"devices": {"autoattachGraphicsDevice": on}}}
+            }}}))
+        }
+        "vga_memory" => {
+            let v = value.trim();
+            if v.is_empty() {
+                return Ok(json!({"spec": {"template": {"metadata": {"annotations": {
+                    "storm.io/vga-memory": Value::Null
+                }}}}}));
+            }
+            let mb: i64 = v
+                .parse()
+                .map_err(|_| format!("{v:?} is not a number of MiB"))?;
+            if mb < 1 {
+                return Err("display memory must be at least 1 MiB".into());
+            }
+            Ok(json!({"spec": {"template": {"metadata": {"annotations": {
+                "storm.io/vga-memory": mb.to_string()
+            }}}}}))
+        }
         // Deliberately not patchable here. Changing the binding moves the
         // guest's address, and doing that through a one-field form gives
         // no way to say what the new address will be — which is the whole

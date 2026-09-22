@@ -731,3 +731,12 @@
   against `status.localName`, the name its local copy will carry, and the
   kubelet waits for it exactly as a pod waits for an image that is still
   pulling.
+- **fix(vm):** the create form makes a `VirtualMachine`, not a bare
+  `VirtualMachineInstance`. A VMI applied on its own has no durable definition
+  behind it, and all three of these were that one missing object: every setting
+  in the drawer was read-only ("nothing durable to write to"), delete asked for
+  a `virtualmachines/<name>` that had never existed and returned 404, and stop
+  would have destroyed the machine instead of stopping it.
+- **feat(vm):** the display is editable — adapter and framebuffer memory, with
+  the graphics device turned on or off to match. There was no field at all, on
+  a console whose main use for a VM that will not boot is to look at it.

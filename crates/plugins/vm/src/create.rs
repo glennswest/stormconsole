@@ -193,11 +193,26 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     let bus = if f.bus.trim().is_empty() { "virtio" } else { f.bus.trim() };
     let ns = if f.namespace.trim().is_empty() { "default" } else { f.namespace.trim() };
     let _ = cloud_init(f);
+    // A `VirtualMachine`, not a bare `VirtualMachineInstance`.
+    //
+    // A VMI applied on its own has no durable definition behind it. Nothing
+    // reads a patch to a running instance's spec, so every setting in the
+    // machine's drawer was uneditable and said so; deleting one through the
+    // console asked for a `virtualmachines/<name>` that had never existed and
+    // came back 404; and stopping one destroyed it, because there was nothing
+    // to restart from. All three were the same missing object.
+    //
+    // `running: true` because somebody who filled in a create form wants a
+    // machine, not a definition of one.
     let mut vmi = json!({
         "apiVersion": "kubevirt.io/v1",
-        "kind": "VirtualMachineInstance",
-        "metadata": {"name": f.name.trim(), "namespace": ns, "annotations": {}},
+        "kind": "VirtualMachine",
+        "metadata": {"name": f.name.trim(), "namespace": ns},
         "spec": {
+          "running": true,
+          "template": {
+            "metadata": {"annotations": {}},
+            "spec": {
             "domain": {
                 "cpu": {"cores": cores},
                 "memory": {"guest": memory},
@@ -234,6 +249,8 @@ pub fn instance(f: &Form) -> Result<Value, String> {
                     "userDataSecretRef": {"name": format!("{}-cloudinit", f.name.trim())}
                 }}
             ]
+            }
+          }
         }
     });
     // A node only when one was asked for.
@@ -244,20 +261,21 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     // other machine. Writing an empty string would be writing a field the
     // user did not set, so the key is absent unless it means something.
     if !f.node.trim().is_empty() {
-        vmi["spec"]["nodeName"] = json!(f.node.trim());
+        vmi["spec"]["template"]["spec"]["nodeName"] = json!(f.node.trim());
     }
     // Which adapter, when a screen was asked for. stormvm maps this onto
     // virtio-gpu-pci / VGA / qxl-vga; `vga` is the one that draws in a
     // firmware setup screen and an installer, before any driver exists.
     if display_on(f) {
-        vmi["metadata"]["annotations"]["storm.io/vga"] = json!(f.display.trim());
+        vmi["spec"]["template"]["metadata"]["annotations"]["storm.io/vga"] =
+            json!(f.display.trim());
     }
     if let Some(b) = bridge_of(f) {
         // Named on the object rather than decided on the node, so the choice
         // travels with the machine: it is the same after a restart, and
         // readable by anyone asking why this guest is reachable and that one
         // is not.
-        vmi["metadata"]["annotations"]["storm.io/bridge"] = json!(b);
+        vmi["spec"]["template"]["metadata"]["annotations"]["storm.io/bridge"] = json!(b);
     }
     Ok(vmi)
 }
@@ -492,7 +510,7 @@ pub async fn create(
         }
     }
 
-    let path = format!("{}/namespaces/{ns}/virtualmachineinstances", crate::VM_API);
+    let path = format!("{}/namespaces/{ns}/virtualmachines", crate::VM_API);
     match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
         Ok((status, body)) if status.is_success() => {
             let name = doc.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
@@ -709,6 +727,40 @@ const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachineInstance\nmet
 mod tests {
     use super::*;
 
+    /// The definition is what makes a machine editable, deletable and
+    /// stoppable.
+    ///
+    /// Created as a bare VirtualMachineInstance, every setting in the drawer
+    /// was read-only ("nothing durable to write to"), delete asked for a
+    /// virtualmachines/<name> that had never existed and got a 404, and stop
+    /// would have destroyed the machine rather than stopped it.
+    #[test]
+    fn the_machine_is_a_definition_so_it_can_be_edited_afterwards() {
+        let v = instance(&form()).unwrap();
+        assert_eq!(v["kind"], "VirtualMachine");
+        let tmpl = &v["spec"]["template"]["spec"];
+        assert!(tmpl.is_object(), "the instance spec lives under the template");
+        assert_eq!(tmpl["domain"]["cpu"]["cores"], 4);
+        // settings::of() reads exactly this path; if it moves, editing breaks
+        // silently and everything reads as "not editable".
+        assert!(v.pointer("/spec/template/spec/domain").is_some(),
+                "settings::of() reads /spec/template/spec");
+    }
+
+    /// Annotations belong to the *template*, not the definition.
+    ///
+    /// stormvm reads them from the instance it is handed. On the outer
+    /// object they are metadata about a record nobody boots.
+    #[test]
+    fn the_display_and_bridge_annotations_reach_the_instance() {
+        let mut f = form();
+        f.display = "virtio".into();
+        let v = instance(&f).unwrap();
+        assert_eq!(v["spec"]["template"]["metadata"]["annotations"]["storm.io/vga"], "virtio");
+        assert!(v["metadata"].get("annotations").is_none(),
+                "not on the outer object, where nothing would read them");
+    }
+
     fn form() -> Form {
         Form {
             name: "web-1".into(),
@@ -723,14 +775,15 @@ mod tests {
     #[test]
     fn the_form_builds_an_instance_the_apiserver_takes() {
         let v = instance(&form()).unwrap();
-        assert_eq!(v["kind"], "VirtualMachineInstance");
+        assert_eq!(v["kind"], "VirtualMachine", "a durable definition, not a bare instance");
+        assert_eq!(v["spec"]["running"], true, "a create form means: run it");
         assert_eq!(v["apiVersion"], "kubevirt.io/v1");
         assert_eq!(v["metadata"]["namespace"], "default", "namespace defaults");
-        assert_eq!(v["spec"]["nodeName"], "storm-1");
-        assert_eq!(v["spec"]["domain"]["cpu"]["cores"], 4);
-        assert_eq!(v["spec"]["domain"]["memory"]["guest"], "8Gi");
-        assert_eq!(v["spec"]["domain"]["devices"]["disks"][0]["disk"]["bus"], "virtio");
-        assert_eq!(v["spec"]["volumes"][0]["dataVolume"]["name"], "rocky-10-cloud");
+        assert_eq!(v["spec"]["template"]["spec"]["nodeName"], "storm-1");
+        assert_eq!(v["spec"]["template"]["spec"]["domain"]["cpu"]["cores"], 4);
+        assert_eq!(v["spec"]["template"]["spec"]["domain"]["memory"]["guest"], "8Gi");
+        assert_eq!(v["spec"]["template"]["spec"]["domain"]["devices"]["disks"][0]["disk"]["bus"], "virtio");
+        assert_eq!(v["spec"]["template"]["spec"]["volumes"][0]["dataVolume"]["name"], "rocky-10-cloud");
     }
 
     #[test]
@@ -759,7 +812,7 @@ mod tests {
         let mut f = form();
         f.ssh_key = "ssh-ed25519 AAAA gw".into();
         let v = instance(&f).unwrap();
-        let seed = &v["spec"]["volumes"][1]["cloudInitNoCloud"];
+        let seed = &v["spec"]["template"]["spec"]["volumes"][1]["cloudInitNoCloud"];
         assert_eq!(seed["userDataSecretRef"]["name"], "web-1-cloudinit");
         assert!(seed["userData"].is_null(), "the payload must not be inline: {seed}");
         // And the key must not appear anywhere in the machine's spec.
@@ -797,7 +850,7 @@ mod tests {
         f.node = String::new();
         let v = instance(&f).expect("a VM with no node is a VM the scheduler places");
         assert!(
-            v["spec"]["nodeName"].is_null(),
+            v["spec"]["template"]["spec"]["nodeName"].is_null(),
             "the key must be absent, not empty: the scheduler treats a VMI \
              carrying spec.nodeName as already placed, so an empty string \
              would pin the VM to a node called \"\" and it would never run"
@@ -807,7 +860,7 @@ mod tests {
     #[test]
     fn a_named_node_still_pins_the_machine() {
         let v = instance(&form()).unwrap();
-        assert_eq!(v["spec"]["nodeName"], "storm-1");
+        assert_eq!(v["spec"]["template"]["spec"]["nodeName"], "storm-1");
     }
 
     #[test]
@@ -817,7 +870,7 @@ mod tests {
         let (kind, name, path) = plugin_kubernetes::apply::target(&docs[0]).unwrap();
         assert_eq!(kind, "VirtualMachineInstance");
         assert_eq!(name, "web-1");
-        assert_eq!(path, "/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances");
+        assert_eq!(path, "/apis/kubevirt.io/v1/namespaces/default/virtualmachines");
     }
 
     use crate::images::Choice;
