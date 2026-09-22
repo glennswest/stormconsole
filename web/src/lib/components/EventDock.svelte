@@ -115,6 +115,11 @@
     font-size: var(--sc-t-meta);
     color: var(--text-dim);
     min-width: 0;
+    /* The bar is a button, and the esxi style upper-cases buttons. A
+       whole event line in capitals is unreadable; only the label wants
+       it. */
+    text-transform: none;
+    letter-spacing: normal;
   }
   .bar:hover { color: var(--text); }
   .caret { transition: transform 0.15s ease; }

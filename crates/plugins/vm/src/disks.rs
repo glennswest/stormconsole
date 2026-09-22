@@ -168,6 +168,14 @@ pub fn merged(definition: Option<&Value>, instance: Option<&Value>) -> Vec<Value
     };
     let want = listed(definition);
     let have = listed(instance);
+    // A machine that is not running has nothing to be pending against.
+    //
+    // Flagging every disk "added — at next boot" on a stopped machine is
+    // the same mistake as telling somebody editing a stopped machine that
+    // a field needs a restart: true in a useless sense, and the way real
+    // warnings stop being read. With no instance, the definition simply
+    // *is* what the machine has.
+    let running = instance.is_some();
     // The definition's order where there is one, because that is the
     // order somebody wrote; anything only the instance has goes after.
     let mut out: Vec<Value> = Vec::new();
@@ -185,7 +193,7 @@ pub fn merged(definition: Option<&Value>, instance: Option<&Value>) -> Vec<Value
         }));
     };
     for (name, backing) in &want {
-        let attached = have.iter().any(|(n, _)| n == name);
+        let attached = !running || have.iter().any(|(n, _)| n == name);
         push(name, backing, attached, true);
     }
     for (name, backing) in &have {
@@ -345,6 +353,22 @@ mod tests {
         assert_eq!(by("data")["removable"], json!(true));
         assert_eq!(by("root")["attached"], json!(true));
         assert_eq!(by("root")["removable"], json!(false));
+    }
+
+    /// The same mistake as warning a stopped machine about a restart it
+    /// does not need.
+    #[test]
+    fn a_stopped_machine_has_no_pending_disks() {
+        let definition = add(&spec(), &Add {
+            name: "data".into(),
+            source: "pvc".into(),
+            from: "pg".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let definition = definition.pointer("/spec/template/spec").unwrap().clone();
+        let out = merged(Some(&definition), None);
+        assert!(out.iter().all(|d| d["attached"] == json!(true)), "{out:?}");
     }
 
     #[test]
