@@ -184,10 +184,64 @@ pub fn ws_url(base: &str, path: &str) -> String {
     format!("{dialled}{path}")
 }
 
+/// A credential for one attach, if the node wants one.
+///
+/// stormvm admits loopback without a token, because a token minted by the
+/// same unauthenticated port it guards is theatre — and everything that
+/// legitimately opens a console is on the node. But `--require-token`
+/// exists for a node that has decided its own loopback is not a boundary,
+/// and on such a node the relay's plain dial is refused with a 401 that
+/// reads, to whoever is waiting for a screen, as "the console is broken".
+///
+/// So: mint first, use it if minting worked, and dial plainly if it did
+/// not. On an ordinary node the mint is one extra request that changes
+/// nothing; on a `--require-token` node it is the difference between a
+/// console and a refusal. Minting is itself loopback-only, so a console
+/// running off the node still cannot help itself — and says so.
+///
+/// The token is spent when it is used and lives sixty seconds, which is
+/// why it is fetched per attach rather than cached.
+pub async fn mint(
+    client: &reqwest::Client,
+    base: &str,
+    kind: Door,
+    ns: &str,
+    name: &str,
+) -> Option<String> {
+    let url = format!(
+        "{}/api/v1/vms/{ns}/{name}/console/{}/token",
+        base.trim_end_matches('/'),
+        kind.as_str()
+    );
+    let resp = client.post(&url).timeout(Duration::from_secs(5)).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let v: serde_json::Value = resp.json().await.ok()?;
+    v.get("token").and_then(serde_json::Value::as_str).filter(|t| !t.is_empty()).map(str::to_string)
+}
+
+/// Append a minted token to a door URL. `?token=` rather than a header,
+/// because a browser cannot set headers on a websocket and the upstream
+/// accepts both — and this URL never leaves the process.
+pub fn with_token(url: &str, token: Option<&str>) -> String {
+    match token {
+        Some(t) => format!("{url}{}token={t}", if url.contains('?') { '&' } else { '?' }),
+        None => url.to_string(),
+    }
+}
+
 /// Relay one browser socket to one stormvm socket until either end goes.
 /// Nothing here reads the payload: a terminal's bytes and RFB's framing
 /// are the endpoints' business.
-pub async fn relay(browser: WebSocket, url: String) {
+///
+/// `write` is the one thing it does decide. A serial console is a root
+/// shell on most guests, so a viewer who may watch one is not
+/// automatically a viewer who may drive it. Read-only drops what the
+/// browser sends rather than never opening the door: watching a guest
+/// boot is the whole point of the door, and a reader who cannot watch is
+/// a reader who has to ask somebody else what the screen said.
+pub async fn relay(browser: WebSocket, url: String, write: bool) {
     let upstream = match tokio::time::timeout(
         Duration::from_secs(10),
         tokio_tungstenite::connect_async(&url),
@@ -211,6 +265,12 @@ pub async fn relay(browser: WebSocket, url: String) {
     let to_upstream = async move {
         while let Some(Ok(msg)) = br_rx.next().await {
             let out = match msg {
+                // Dropped for a read-only viewer, not refused: the guest
+                // never hears it and the socket stays up, so the stream
+                // keeps arriving. Keepalives still pass, because a console
+                // that silently stops being kept alive is one that closes
+                // itself halfway through a boot.
+                AxumMessage::Text(_) | AxumMessage::Binary(_) if !write => continue,
                 AxumMessage::Text(t) => UpMessage::Text(t.as_str().into()),
                 AxumMessage::Binary(b) => UpMessage::Binary(b),
                 AxumMessage::Close(_) => break,
@@ -297,6 +357,13 @@ mod tests {
     }
 
     #[test]
+    fn a_token_is_appended_wherever_the_query_already_is() {
+        assert_eq!(with_token("ws://n/x", None), "ws://n/x");
+        assert_eq!(with_token("ws://n/x", Some("9f2c")), "ws://n/x?token=9f2c");
+        assert_eq!(with_token("ws://n/x?a=1", Some("9f2c")), "ws://n/x?a=1&token=9f2c");
+    }
+
+    #[test]
     fn the_scheme_follows_the_upstream() {
         assert_eq!(ws_url("http://127.0.0.1:9095", "/x"), "ws://127.0.0.1:9095/x");
         assert_eq!(ws_url("https://n:9095/", "/x"), "wss://n:9095/x");
@@ -338,5 +405,9 @@ mod tests {
         let up = capabilities(Some("http://127.0.0.1:9095"), true);
         assert!(up.serial && up.vnc);
         assert!(up.reason.is_empty());
+        // Typing is never assumed. This answer is the one given without
+        // asking stormvm about a specific machine, and it says nothing
+        // about who is asking — so it says no.
+        assert!(!up.write);
     }
 }

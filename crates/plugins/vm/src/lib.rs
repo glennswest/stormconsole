@@ -691,6 +691,7 @@ async fn console_caps(
             *inner.stormvm_up.read().await,
             &ns,
             &name,
+            viewer.may_write(),
         )
         .await,
     )
@@ -717,8 +718,15 @@ async fn door(
         )
             .into_response();
     };
-    let url = console::ws_url(&base, &console::upstream_path(kind, &ns, &name));
-    ws.on_upgrade(move |socket| console::relay(socket, url))
+    // A viewer who may watch a console is not automatically one who may
+    // type into it: on most guests the serial door is a root shell.
+    let write = viewer.may_write();
+    let token = console::mint(&inner.http, &base, kind, &ns, &name).await;
+    let url = console::with_token(
+        &console::ws_url(&base, &console::upstream_path(kind, &ns, &name)),
+        token.as_deref(),
+    );
+    ws.on_upgrade(move |socket| console::relay(socket, url, write))
 }
 
 async fn serial(

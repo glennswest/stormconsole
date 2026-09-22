@@ -161,6 +161,13 @@
 
   function typeInto(e) {
     if (!serialSocket || serialSocket.readyState !== 1) return
+    // A read-only viewer is stopped here as well as at the relay. The
+    // relay is the boundary that matters — this one only exists so a
+    // keystroke does not look like it went somewhere and was ignored.
+    if (!doors.write) {
+      e.preventDefault()
+      return
+    }
     let out = e.key
     if (e.key === 'Enter') out = '\r'
     else if (e.key === 'Backspace') out = '\x7f'
@@ -218,7 +225,9 @@
     closeVnc()
   })
 
-  const doors = $derived(vm?.console || { serial: false, vnc: false, reason: '' })
+  const doors = $derived(
+    vm?.console || { serial: false, vnc: false, replay: false, write: false, reason: '' }
+  )
 </script>
 
 <div class="sc-page">
@@ -321,7 +330,13 @@
         <div class="console">
           <div class="bar">
             <span class="state {serialState}">{serialState}</span>
-            <span class="hint">Click the terminal and type — keys go straight to the guest.</span>
+            <span class="hint">
+              {#if !doors.write}
+                Read-only — you can watch this console, not type into it.
+              {:else}
+                Click the terminal and type — keys go straight to the guest.
+              {/if}
+            </span>
             <span class="right">
               {#if serialState === 'open'}
                 <button onclick={closeSerial}>Disconnect</button>
@@ -342,12 +357,23 @@
             onblur={() => (serialFocused = false)}
           >{@html ansiToHtml(serialText)}</div>
           <!-- Whether typing goes anywhere, said out loud. -->
+          <!-- Where the history ends and the live stream begins.
+               stormvm sends the tail of the guest's own console log on
+               attach (64 KiB, cut at a line boundary), so a console opened
+               ten minutes into a boot prints the boot. A reader who does
+               not know that is reading history as though it were now. -->
           <p class="termhint">
             {#if serialState !== 'open'}
               Not connected.
+            {:else if !doors.write}
+              Read-only. This console shows what the guest is printing; typing
+              into it needs the <code>operator</code> role, because a serial
+              line is a root shell on most guests.
             {:else if serialFocused}
               Typing goes to the guest. Echo comes back from it — a guest with
-              no getty on its serial line will show nothing.
+              no getty on its serial line will show nothing.{#if doors.replay}
+                The first screenful is replayed from the guest's console log,
+                not live.{/if}
             {:else}
               Click the console to type into it.
             {/if}
