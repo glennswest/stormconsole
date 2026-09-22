@@ -316,7 +316,9 @@ rule, not in one plugin.
       Namespace/Node/Definition columns off the edges, the opened row
       carrying references and every action, clicking a machine opening the
       machine, the node chip reaching the node, restart 200 with the VMI
-      gone and 409 with the sentence for the undefined one. 155 tests
+      gone and 409 with the sentence for the undefined one. 154 tests.
+      Live on dev while that cluster is up: http://dev.g8.lo:9094/ — the
+      seed and the restart script are /build/cache/sc18/
 
 Left open on #18: what is still not editable — cores, memory, disk bus and
 network (#14), a disk added to a running machine, and the address the guest
