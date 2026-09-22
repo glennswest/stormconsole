@@ -167,56 +167,62 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
         }
         c.metrics.push(Metric::new("disks", ds.len().to_string()).tone("muted"));
         if let Some(n) = node {
-            // A column, not only a relation.
+            // Where the machine *is*, which is a placement and not
+            // something the machine contains — so `belongs_to`, the
+            // direction that says so. It was `has_one`, which the table
+            // read as containment and the card as where the row leads, so
+            // opening a VM landed in node details (#18).
             //
-            // This was a relation alone, which the UI renders as a link *to
-            // the node object* — so opening a VM landed in node details, and
-            // the one fact you most want when looking at a list of machines
-            // ("which box is this on") was not a column at all. The relation
-            // stays, because navigating to the node is still a thing to want;
-            // it is just not what clicking the machine should do.
-            c.metrics.push(Metric::new("node", n.to_string()).tone("muted"));
-            c.relations.push(Relation::has_one("node", format!("k8s:node:{n}")));
+            // 203d5b8 published the node as a metric as well, to get it
+            // into the list at all. That was the workaround: the table now
+            // gives every `belongs_to` whose values differ down the list a
+            // column of its own, so the node is a sortable column here
+            // without this plugin asking for one, and the metric would be
+            // the same fact printed twice.
+            c.relations.push(Relation::belongs_to("node", format!("k8s:node:{n}")));
+        }
+        let defined = of("vm").contains_key(key);
+        if defined {
+            c.relations.push(Relation::belongs_to("definition", format!("vm:machine:{key}")));
         }
         // On the row, so the common things do not need a detail view first.
         //
-        // Stop and delete are separated deliberately: stop is reversible and
-        // delete is not, and a list where they sit next to each other with
-        // the same weight is a list somebody deletes from by accident.
+        // Stopping a running instance is deleting the instance: there is no
+        // other verb, and nothing about a VMI survives being stopped except
+        // its definition, if it has one. So "stop" is destructive for an
+        // instance applied on its own — there is nothing left to start it
+        // again — and ordinary for one a VirtualMachine defines.
+        //
+        // Restart is the same delete with the definition present to put the
+        // machine back; without one it is a delete wearing a reassuring
+        // name, so it is offered disabled rather than not at all, because
+        // "why can I not restart this" is a question the row should answer.
         c.actions = vec![
-            Action {
-                id: "stop".into(),
-                label: "Stop".into(),
-                method: "POST".into(),
-                path: format!("/api/plugins/vm/instances/{ns}/{name}/stop"),
-                enabled: phase == "Running",
-                danger: false,
-                tone: None,
-            },
-            Action {
-                id: "delete".into(),
-                label: "Delete".into(),
-                method: "DELETE".into(),
-                path: format!("/api/plugins/vm/machines/{ns}/{name}"),
-                enabled: true,
-                danger: true,
-                tone: None,
-            },
+            action(
+                "restart",
+                "Restart",
+                "POST",
+                format!("/api/plugins/vm/machines/{ns}/{name}/restart"),
+                defined && phase == "Running",
+                false,
+            ),
+            action(
+                "stop",
+                "Stop",
+                "POST",
+                format!("/api/plugins/vm/instances/{ns}/{name}/stop"),
+                phase == "Running",
+                !defined,
+            ),
+            action(
+                "delete",
+                "Delete",
+                "DELETE",
+                format!("/api/plugins/vm/machines/{ns}/{name}"),
+                true,
+                true,
+            ),
         ];
-        if of("vm").contains_key(key) {
-            c.relations.push(Relation::belongs_to("definition", format!("vm:machine:{key}")));
-        }
-        // Stopping a running instance is deleting the instance: without a
-        // definition there is nothing to restart it, which is exactly what
-        // "stop" means for a VMI applied on its own.
-        c.actions.push(action(
-            "stop",
-            "Stop",
-            "POST",
-            format!("/api/plugins/vm/instances/{key}/stop"),
-            true,
-            true,
-        ));
         out.push(c);
     }
 
@@ -271,6 +277,14 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
             false,
         ));
         c.actions.push(action(
+            "restart",
+            "Restart",
+            "POST",
+            format!("/api/plugins/vm/machines/{key}/restart"),
+            live,
+            false,
+        ));
+        c.actions.push(action(
             "stop",
             "Stop",
             "POST",
@@ -295,6 +309,7 @@ pub fn map(snap: &Snapshot) -> Vec<ComponentSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console_core::RelationKind;
     use serde_json::json;
 
     fn snap(kind: &'static str, key: &str, obj: Value) -> Snapshot {
@@ -327,6 +342,67 @@ mod tests {
         assert_eq!(vm.link.as_deref(), Some("#/vm/default/web-1"));
         assert!(vm.relations.iter().any(|r| r.targets == vec!["k8s:node:storm-2c91b3"]));
         assert_eq!(vm.metrics.iter().find(|m| m.label == "disks").unwrap().value, "2");
+    }
+
+    /// The node is where the machine *is*, and the direction of that edge
+    /// is what stops the table nesting a node inside a VM and the card
+    /// treating it as where the row leads (#18).
+    #[test]
+    fn the_node_a_machine_runs_on_is_a_placement_not_a_destination() {
+        let sn = snap(
+            "vmi",
+            "default/web-1",
+            json!({"status": {"phase": "Running", "nodeName": "storm-2c91b3"}}),
+        );
+        let vm = &map(&sn)[0];
+        let node = vm
+            .relations
+            .iter()
+            .find(|r| r.name == "node")
+            .expect("a running instance says which node");
+        assert_eq!(node.kind, RelationKind::BelongsTo);
+        assert_eq!(node.targets, vec!["k8s:node:storm-2c91b3"]);
+        // And not the same fact a second time: the column comes off the
+        // edge, so the metric 203d5b8 added as a workaround is gone.
+        assert!(!vm.metrics.iter().any(|m| m.label == "node"), "{:?}", vm.metrics);
+    }
+
+    /// Stop was published twice — once on the row and once in the menu,
+    /// pointing at the same path with different danger — so a machine
+    /// offered two Stops and one of them asked for confirmation.
+    #[test]
+    fn an_instance_offers_each_verb_once() {
+        let sn = snap("vmi", "default/web-1", json!({"status": {"phase": "Running"}}));
+        let acts = &map(&sn)[0].actions;
+        let ids: Vec<&str> = acts.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, vec!["restart", "stop", "delete"]);
+    }
+
+    /// Restart is the instance deleted with something there to put it
+    /// back. Without a definition that is a delete, so it is offered
+    /// disabled rather than performed under a reassuring name.
+    #[test]
+    fn restart_needs_a_definition_to_restart_from() {
+        let alone = snap("vmi", "default/web-1", json!({"status": {"phase": "Running"}}));
+        let inst = &map(&alone)[0];
+        assert!(!inst.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
+        // Stopping a machine nothing will restart is destructive, and says so.
+        assert!(inst.actions.iter().find(|a| a.id == "stop").unwrap().danger);
+
+        let mut defined = snap("vm", "default/web-1", json!({"spec": {"running": true}}));
+        defined.insert(
+            "vmi",
+            HashMap::from([(
+                "default/web-1".to_string(),
+                json!({"status": {"phase": "Running"}}),
+            )]),
+        );
+        let out = map(&defined);
+        let inst = out.iter().find(|c| c.id == "vm:instance:default/web-1").unwrap();
+        assert!(inst.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
+        assert!(!inst.actions.iter().find(|a| a.id == "stop").unwrap().danger);
+        let def = out.iter().find(|c| c.id == "vm:machine:default/web-1").unwrap();
+        assert!(def.actions.iter().find(|a| a.id == "restart").unwrap().enabled);
     }
 
     #[test]

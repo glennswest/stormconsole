@@ -9,8 +9,21 @@
   // hundred pods, and destructive actions kept to the right where they
   // are hard to hit by accident.
   //
-  // Rows are feed components. Relations that point downward expand into
-  // nested tables; `belongs_to` stays upward and is not expanded.
+  // Rows are feed components, and a relation is one of two things.
+  //
+  // `has_many` is containment — a pod's containers, a node's pods, a
+  // golden's local copies — and nests into a table inside the row.
+  // Everything else (`has_one`, `belongs_to`) is *context*: the node a VM
+  // runs on, the volume a clone is stored in, the parent a snapshot was
+  // cut from. Context is a reference, never containment and never where
+  // clicking the row leads — reading it as a destination is how opening a
+  // virtual machine landed in node details (#18).
+  //
+  // Clicking a line gives you that object. Where it has a page of its own
+  // the row goes there; where it does not, the row opens in place, and
+  // what opens is the whole of it: the detail unabbreviated, every metric,
+  // the references as links, and every action including the ones kept off
+  // the row.
   import StatusPill from './StatusPill.svelte'
   import Icon from './Icon.svelte'
   import ResourceTable from './ResourceTable.svelte'
@@ -41,53 +54,91 @@
   const kinds = $derived(new Set(rows.map((r) => r.kind)))
   const withKind = $derived(showKind && kinds.size > 1)
 
-  // Which namespace a row is in.
+  // Where a row *is*, whatever that means for this kind of thing.
   //
-  // Read from the `belongs_to namespace` edge every namespaced component
-  // already publishes, rather than parsed out of the id: the relation is
-  // the fact, and a table that splits ids on '/' is a table that guesses
-  // wrong the first time a name contains one.
+  // Any `belongs_to` edge is a placement: a pod is in a namespace and on a
+  // node, a drive is in a shelf, a volume is on an array, a local image is
+  // on a node. Each one used to need its own hardcoded column here — there
+  // were two, namespace and node, and every other placement in the feed
+  // was invisible. They are read off the edge instead, which also gives
+  // the column to the `FeedPlugin` upstreams whose components this repo
+  // does not write.
   //
-  // Generic on purpose — nothing here knows what a pod is. Anything that
-  // belongs to a namespace gets the column, which is why deployments,
-  // services and the rest gain it at the same time as pods did.
-  function nsOf(row) {
+  // The name is the fact, not the id: a component id is not a path and
+  // splitting it on ':' or '/' is a guess that goes wrong the first time a
+  // name contains one. The feed's own label wins where the target is in
+  // it.
+  function placement(row, name) {
     const rel = (row.relations || []).find(
-      (r) => r.kind === 'belongs_to' && r.name === 'namespace'
-    )
-    const target = rel?.targets?.[0]
-    if (!target) return ''
-    // `k8s:ns:default` → `default`. Prefer the component's own label when
-    // the feed carries it, so a renamed display name is honoured.
-    return byId.get(target)?.label || target.split(':').pop()
-  }
-
-  // Where a thing is placed, read the same generic way as its namespace.
-  //
-  // A pod carries `belongs_to node`; anything that does gets the column. It
-  // was only ever in `detail`, which cannot be sorted, cannot be compared
-  // down a list, and disappears into a sentence next to the phase.
-  function nodeOf(row) {
-    const rel = (row.relations || []).find(
-      (r) => r.kind === 'belongs_to' && r.name === 'node'
+      (r) => r.kind === 'belongs_to' && r.name === name
     )
     const target = rel?.targets?.[0]
     if (!target) return ''
     return byId.get(target)?.label || target.split(':').pop()
   }
 
-  // Earns its column the same way Kind does: only when some row has one.
-  // A cluster-scoped list (nodes, storage classes) gets no empty column.
-  const withNs = $derived(rows.some((r) => nsOf(r)))
-  const withNode = $derived(rows.some((r) => nodeOf(r)))
+  // A placement earns a column when it tells the rows apart.
+  //
+  // "engine" is on every stormblock volume and is the same engine every
+  // time; a column of one repeated value is a column of noise. Namespace
+  // and node lead because that is the order people read them in, and the
+  // rest follow in the order the feed declares them. Capped, because a
+  // table with nine placement columns is as unreadable as one with none.
+  const PLACEMENT_FIRST = ['namespace', 'node']
+  const MAX_PLACEMENTS = 4
+
+  const placements = $derived.by(() => {
+    const names = []
+    for (const r of rows) {
+      for (const rel of r.relations || []) {
+        if (rel.kind === 'belongs_to' && !names.includes(rel.name)) names.push(rel.name)
+      }
+    }
+    return names
+      .filter((n) => {
+        const seen = new Set(rows.map((r) => placement(r, n)))
+        seen.delete('')
+        // Differing values, or present on some rows and not others — both
+        // are facts about this list. One value on every row is not.
+        return seen.size > 1 || (seen.size === 1 && rows.some((r) => !placement(r, n)))
+      })
+      .sort((a, b) => {
+        const ia = PLACEMENT_FIRST.indexOf(a)
+        const ib = PLACEMENT_FIRST.indexOf(b)
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+      })
+      .slice(0, MAX_PLACEMENTS)
+  })
+
+  // References: every relation that is not containment, resolved to
+  // somewhere to go. `href` on the relation wins (the feed saying where
+  // this edge leads), then the target's own page, and failing both the
+  // target as the root of a grid — so a reference is never a dead chip.
+  function refs(row) {
+    return (row.relations || [])
+      .filter((r) => r.kind !== 'has_many')
+      .map((r) => {
+        const id = r.targets?.[0]
+        const target = id ? byId.get(id) : null
+        if (!id) return null
+        return {
+          name: r.name,
+          label: target?.label || id.split(':').pop(),
+          health: target?.health,
+          href: r.href || target?.link || (target ? `#/grid?id=${encodeURIComponent(id)}` : null),
+        }
+      })
+      .filter(Boolean)
+  }
 
   const sorted = $derived.by(() => {
     const k = sortKey
     const dir = sortDir
     return [...rows].sort((a, b) => {
       if (k === 'health') return ((RANK[a.health] ?? 9) - (RANK[b.health] ?? 9)) * dir
-      if (k === 'namespace') return nsOf(a).localeCompare(nsOf(b)) * dir
-      if (k === 'node') return nodeOf(a).localeCompare(nodeOf(b)) * dir
+      if (k.startsWith('@')) {
+        return placement(a, k.slice(1)).localeCompare(placement(b, k.slice(1))) * dir
+      }
       return String(a[k] ?? '').localeCompare(String(b[k] ?? '')) * dir
     })
   })
@@ -102,7 +153,7 @@
 
   function children(row) {
     return (row.relations || [])
-      .filter((r) => r.kind !== 'belongs_to')
+      .filter((r) => r.kind === 'has_many')
       .map((r) => ({
         name: r.name,
         ids: r.targets.filter((t) => !ancestors.has(t) && byId.has(t)),
@@ -183,8 +234,25 @@
     selected = []
   }
 
-  const open = (row) => { if (row.link) location.hash = row.link }
+  // Clicking a line gives you that object: its own page where it has one,
+  // and where it has none the row opens in place rather than doing
+  // nothing — which is what a pod, a container and a volume did.
+  const open = (row) => {
+    if (row.link) location.hash = row.link
+    else expanded[row.id] = !expanded[row.id]
+  }
   const arrow = (key) => (sortKey !== key ? '' : sortDir > 0 ? '▲' : '▼')
+
+  // A relation name is written for a machine (`has_many`, `local_copies`);
+  // a column heading is read by a person.
+  const title = (n) => n.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+
+  // The expanded row spans the table. This was a literal that counted
+  // seven columns and knew about Kind, so every placement column it did
+  // not know about left the nested content short of the right edge.
+  const cols = $derived(
+    2 + 1 + placements.length + 1 + (withKind ? 1 : 0) + 1 + 1 + 1
+  )
 
   // A drive carries nine operations and a VM half a dozen. Nine buttons
   // on every row is a wall, not a set of choices — and it puts a
@@ -246,16 +314,11 @@
           />
         </th>
         <th class="sortable name" onclick={() => sortBy('label')}>Name <i>{arrow('label')}</i></th>
-        {#if withNs}
-          <th class="sortable ns" onclick={() => sortBy('namespace')}
-            >Namespace <i>{arrow('namespace')}</i></th
+        {#each placements as pname (pname)}
+          <th class="sortable place" onclick={() => sortBy(`@${pname}`)}
+            >{title(pname)} <i>{arrow(`@${pname}`)}</i></th
           >
-        {/if}
-        {#if withNode}
-          <th class="sortable node" onclick={() => sortBy('node')}
-            >Node <i>{arrow('node')}</i></th
-          >
-        {/if}
+        {/each}
         <th class="sortable status" onclick={() => sortBy('health')}>Status <i>{arrow('health')}</i></th>
         {#if withKind}
           <th class="sortable kind" onclick={() => sortBy('kind')}>Kind <i>{arrow('kind')}</i></th>
@@ -275,16 +338,14 @@
           onclick={() => open(row)}
         >
           <td class="ctl">
-            {#if kids.length}
-              <button
-                class="expander"
-                aria-label={expanded[row.id] ? 'Collapse' : 'Expand'}
-                aria-expanded={!!expanded[row.id]}
-                onclick={(e) => { e.stopPropagation(); expanded[row.id] = !expanded[row.id] }}
-              >
-                <span class="caret" class:down={expanded[row.id]}><Icon name="chevron" size={12} stroke={2.2} /></span>
-              </button>
-            {/if}
+            <button
+              class="expander"
+              aria-label={expanded[row.id] ? 'Collapse' : 'Expand'}
+              aria-expanded={!!expanded[row.id]}
+              onclick={(e) => { e.stopPropagation(); expanded[row.id] = !expanded[row.id] }}
+            >
+              <span class="caret" class:down={expanded[row.id]}><Icon name="chevron" size={12} stroke={2.2} /></span>
+            </button>
           </td>
           <td class="ctl" onclick={(e) => e.stopPropagation()}>
             <input
@@ -295,8 +356,9 @@
             />
           </td>
           <td class="name">{row.label}</td>
-          {#if withNs}<td class="ns">{nsOf(row)}</td>{/if}
-          {#if withNode}<td class="node">{nodeOf(row)}</td>{/if}
+          {#each placements as pname (pname)}
+            <td class="place">{placement(row, pname)}</td>
+          {/each}
           <td class="status"><StatusPill health={row.health} /></td>
           {#if withKind}<td class="kind">{row.kind}</td>{/if}
           <td class="detail">{row.detail ?? ''}</td>
@@ -341,22 +403,72 @@
             {/if}
           </td>
         </tr>
-        {#if expanded[row.id] && kids.length}
+        {#if expanded[row.id]}
+          {@const rs = refs(row)}
           <tr class="child">
-            <td colspan={withKind ? 8 : 7}>
-              {#each kids as s (s.name)}
-                <div class="section">
-                  <div class="section-title">{s.name.replace(/_/g, ' ')} <span>{s.ids.length}</span></div>
-                  <ResourceTable
-                    {components}
-                    rootIds={s.ids}
-                    {invoke}
-                    {showKind}
-                    level={level + 1}
-                    ancestors={new Set([...ancestors, row.id])}
-                  />
-                </div>
-              {/each}
+            <td colspan={cols}>
+              <div class="open">
+                {#if row.detail}
+                  <p class="full-detail">{row.detail}</p>
+                {/if}
+
+                {#if row.metrics?.length}
+                  <dl class="facts">
+                    {#each row.metrics as m}
+                      <div><dt>{m.label}</dt><dd class="{m.tone || ''}">{m.value}{m.unit || ''}</dd></div>
+                    {/each}
+                  </dl>
+                {/if}
+
+                {#if rs.length}
+                  <div class="section">
+                    <div class="section-title">references</div>
+                    <div class="chips">
+                      {#each rs as r}
+                        <a class="chip" href={r.href}>
+                          <span class="cn">{title(r.name)}</span>
+                          <span class="cv">{r.label}</span>
+                        </a>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                {#if (row.actions || []).length}
+                  <div class="section">
+                    <div class="section-title">actions</div>
+                    <div class="all-acts">
+                      {#each row.actions as a}
+                        <button
+                          class:ok={a.id === 'start'}
+                          class:warn={a.id === 'restart'}
+                          class:danger={a.danger}
+                          disabled={!a.enabled}
+                          onclick={() => rowAction(row, a)}>{a.label}</button
+                        >
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                {#if !row.detail && !row.metrics?.length && !rs.length && !(row.actions || []).length && !kids.length}
+                  <p class="full-detail dim">Nothing more than the row: no detail, metrics, references or actions.</p>
+                {/if}
+
+                {#each kids as s (s.name)}
+                  <div class="section">
+                    <div class="section-title">{title(s.name)} <span>{s.ids.length}</span></div>
+                    <ResourceTable
+                      {components}
+                      rootIds={s.ids}
+                      {invoke}
+                      {showKind}
+                      level={level + 1}
+                      ancestors={new Set([...ancestors, row.id])}
+                    />
+                  </div>
+                {/each}
+              </div>
             </td>
           </tr>
         {/if}
@@ -459,8 +571,7 @@
     background: none; border: 0; color: inherit; cursor: pointer;
     font-size: 16px; line-height: 1; padding: 0 2px;
   }
-  .node { white-space: nowrap; color: var(--text-dim); }
-  .ns { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
+  .place { white-space: nowrap; color: var(--text-dim); }
   .detail { color: var(--text-dim); }
 
   .metrics { white-space: nowrap; }
@@ -520,7 +631,61 @@
   }
 
   .child > td { padding: 6px 14px 14px 40px; background: color-mix(in srgb, var(--panel-raised) 35%, transparent); }
-  .section + .section { margin-top: 10px; }
+  .open { display: grid; gap: 10px; }
+  .full-detail { margin: 0; font-size: var(--sc-t-body); color: var(--text); }
+  .full-detail.dim { color: var(--text-faint); }
+
+  /* Every metric, laid out to be read rather than scanned past — the row
+     shows them in one line and runs out of width long before the feed
+     runs out of facts. */
+  .facts { display: flex; flex-wrap: wrap; gap: 4px 22px; margin: 0; }
+  .facts > div { display: grid; gap: 1px; }
+  .facts dt {
+    font-size: var(--sc-t-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+  }
+  .facts dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--sc-t-meta);
+    font-weight: 600;
+    color: var(--text);
+  }
+  .facts dd.ok { color: var(--ok); }
+  .facts dd.warn { color: var(--warn-strong); }
+  .facts dd.error { color: var(--error); }
+  .facts dd.muted { color: var(--text-dim); font-weight: 400; }
+  .facts dd.accent { color: var(--accent); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 3px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+    text-decoration: none;
+    font-size: var(--sc-t-meta);
+    color: var(--text);
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip .cn {
+    font-size: var(--sc-t-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+  }
+  .chip .cv { font-family: var(--mono); }
+
+  .all-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .all-acts button { font-size: var(--sc-t-meta); padding: 4px 11px; }
+  .all-acts button.danger { color: var(--error); border-color: var(--error-border); }
+
+  .section + .section { margin-top: 0; }
   .section-title {
     font-size: var(--sc-t-eyebrow);
     text-transform: uppercase;

@@ -564,14 +564,15 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
         if let Some(id) = identity {
             c.metrics.push(Metric::new("identity", id.to_string()).tone("muted"));
             if of("cid").contains_key(&id.to_string()) {
-                c.relations.push(Relation::has_one("identity", format!("k8s:cid:{id}")));
+                c.relations.push(Relation::belongs_to("identity", format!("k8s:cid:{id}")));
             }
         }
         if let Some(r) = ns_relation(key) {
             c.relations.push(r);
         }
         if of("pod").contains_key(key) {
-            c.relations.push(Relation::has_one("pod", format!("k8s:pod:{key}")));
+            // The endpoint is the pod's; the pod is not the endpoint's.
+            c.relations.push(Relation::belongs_to("pod", format!("k8s:pod:{key}")));
         }
         endpoint_ids.push(c.id.clone());
         out.push(c);
@@ -593,7 +594,7 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
         c.metrics.push(Metric::new("ip", ip));
         c.metrics.push(Metric::new("pod cidr", cidr).tone("muted"));
         if of("node").contains_key(key) {
-            c.relations.push(Relation::has_one("node", format!("k8s:node:{key}")));
+            c.relations.push(Relation::belongs_to("node", format!("k8s:node:{key}")));
         }
         node_ids.push(c.id.clone());
         out.push(c);

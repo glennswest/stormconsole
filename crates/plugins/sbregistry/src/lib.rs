@@ -261,7 +261,7 @@ fn clone_(v: &Value) -> ComponentSummary {
         relations.push(Relation::belongs_to("golden", format!("reg:golden:{golden}")));
     }
     if let Some(vol) = field(v, &["volume_id"]) {
-        relations.push(Relation::has_one("volume", format!("sb:volume:{vol}")));
+        relations.push(Relation::belongs_to("volume", format!("sb:volume:{vol}")));
     }
     let attached = v.get("attach").map(|a| !a.is_null()).unwrap_or(false);
     ComponentSummary {

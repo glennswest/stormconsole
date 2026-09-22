@@ -260,7 +260,10 @@ fn volume(v: &Value) -> ComponentSummary {
 
     let mut relations = vec![Relation::belongs_to("engine", "sb:engine")];
     if let Some(p) = field(v, &["parent"]) {
-        relations.push(Relation::has_one("parent", format!("sb:volume:{p}")));
+        // Upward: a clone does not contain the volume it was cut from,
+        // and nesting a parent inside its child builds a table that walks
+        // backwards up the chain (#18).
+        relations.push(Relation::belongs_to("parent", format!("sb:volume:{p}")));
     }
     if let Some(a) = field(v, &["array_id"]) {
         relations.push(Relation::belongs_to("array", format!("sb:array:{a}")));
@@ -510,7 +513,20 @@ fn drive(v: &Value) -> ComponentSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console_core::RelationKind;
     use serde_json::json;
+
+    /// A clone was published as `has_one parent`, so the table nested the
+    /// volume it was cut from *inside* it and walked backwards up the
+    /// chain — a snapshot of a snapshot opened three levels of ancestor
+    /// and no contents (#18).
+    #[test]
+    fn a_clones_parent_is_upward() {
+        let c = volume(&json!({"id": "v2", "name": "v2", "parent": "v1"}));
+        let parent = c.relations.iter().find(|r| r.name == "parent").unwrap();
+        assert_eq!(parent.kind, RelationKind::BelongsTo);
+        assert_eq!(parent.targets, vec!["sb:volume:v1"]);
+    }
 
     #[test]
     fn a_volume_maps_health_size_and_delete() {

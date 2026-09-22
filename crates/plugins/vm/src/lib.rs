@@ -154,6 +154,7 @@ impl ConsolePlugin for VmPlugin {
         Router::new()
             .route("/machines/{ns}/{name}/start", post(start))
             .route("/machines/{ns}/{name}/stop", post(stop))
+            .route("/machines/{ns}/{name}/restart", post(restart))
             .route("/machines/{ns}/{name}", delete(delete_machine))
             .route("/instances/{ns}/{name}/stop", post(delete_instance))
             .route("/vms/{ns}/{name}", get(detail))
@@ -400,6 +401,61 @@ async fn stop(
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
     set_running(&inner, &viewer, &ns, &name, false).await
+}
+
+/// Restart is the instance deleted out from under a definition that wants
+/// it running: the definition puts it back, and that is the only restart
+/// KubeVirt has — there is no verb on a VMI that reboots it in place.
+///
+/// Refused without a definition, rather than performed and reported as a
+/// restart. Deleting a VMI nothing will recreate is a delete, and a button
+/// that quietly means something else on half the rows is worse than one
+/// that says no.
+async fn restart(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let Some(client) = &inner.client else { return no_apiserver() };
+    let defined = client
+        .get_as(
+            &format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}"),
+            viewer.token.as_deref(),
+        )
+        .await
+        .is_ok();
+    if !defined {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!(
+                    "{ns}/{name} has no VirtualMachine defining it — stopping the instance would \
+                     not bring it back, so there is nothing to restart"
+                )
+            })),
+        )
+            .into_response();
+    }
+    match client
+        .delete(
+            &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
+            viewer.token.as_deref(),
+        )
+        .await
+    {
+        Ok(s) if s.is_success() => {
+            Json(json!({"message": format!("{ns}/{name} restarting")})).into_response()
+        }
+        Ok(s) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": format!("apiserver returned {}", s.as_u16())})),
+        )
+            .into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    }
 }
 
 async fn delete_machine(

@@ -476,7 +476,8 @@ fn golden(v: &Value, local: &[Value]) -> ComponentSummary {
         relations.push(Relation::has_many("local", copies));
     }
     if let Some(reference) = v.get("spec").and_then(|s| field(s, &["reference"])) {
-        relations.push(Relation::has_one("catalogue", format!("img:catalog:{reference}")));
+        // Where the golden came from, not something it contains.
+        relations.push(Relation::belongs_to("catalogue", format!("img:catalog:{reference}")));
     }
 
     ComponentSummary {
@@ -524,12 +525,13 @@ fn placement(v: &Value) -> ComponentSummary {
 
     let mut relations = vec![
         Relation::belongs_to("golden", format!("img:golden:{image}")),
-        Relation::has_one("node", format!("k8s:node:{node}")),
+        // A placement: the copy is *on* the node (#18).
+        Relation::belongs_to("node", format!("k8s:node:{node}")),
     ];
     // The volume is stormblock's, and the stormblock plugin already shows
     // it — so this edge crosses to it rather than describing it twice.
     if let Some(vol) = field(&status, &["volumeId"]) {
-        relations.push(Relation::has_one("volume", format!("sb:volume:{vol}")));
+        relations.push(Relation::belongs_to("volume", format!("sb:volume:{vol}")));
     }
 
     ComponentSummary {
