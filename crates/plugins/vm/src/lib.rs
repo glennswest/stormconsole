@@ -153,7 +153,17 @@ impl ConsolePlugin for VmPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
-        vec![NavSection::new("Virtualization", 15).item("Virtual machines", "#/vms")]
+        // A virtual machine is a workload, not a category of its own.
+        //
+        // It had a section to itself holding one item, which said the
+        // thing a console should not: that running a machine is a
+        // different kind of activity from running a pod. On this platform
+        // it is the same activity — a VM *is* a kube object the kubelet
+        // reconciles — and somebody choosing what to run wants the choice
+        // in front of them rather than in another part of the navigator.
+        //
+        // Next to Pods, at a position the kubernetes plugin left free.
+        vec![NavSection::new("Workloads", 10).item_at("Virtual machines", "#/vms", 10)]
     }
 
     fn creators(&self) -> Vec<Creator> {

@@ -286,7 +286,7 @@
 <div class="sc-page">
   <PageHeader
     crumbs={[
-      { label: 'Virtualization' },
+      { label: 'Workloads' },
       { label: 'Virtual machines', href: '#/vms' },
       { label: name },
     ]}

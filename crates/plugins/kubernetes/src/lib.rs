@@ -100,13 +100,16 @@ impl ConsolePlugin for KubernetesPlugin {
     fn nav(&self) -> Vec<NavSection> {
         vec![
             NavSection::new("Home", 0).item("Overview", "#/"),
+            // Numbered with gaps, because the vm plugin puts virtual
+            // machines in this section too and there is no integer
+            // between 0 and 1.
             NavSection::new("Workloads", 10)
-                .item("Pods", "#/k8s/pod")
-                .item("Deployments", "#/k8s/deploy")
-                .item("StatefulSets", "#/k8s/sts")
-                .item("DaemonSets", "#/k8s/ds")
-                .item("Jobs", "#/k8s/job")
-                .item("CronJobs", "#/k8s/cronjob"),
+                .item_at("Pods", "#/k8s/pod", 0)
+                .item_at("Deployments", "#/k8s/deploy", 20)
+                .item_at("StatefulSets", "#/k8s/sts", 30)
+                .item_at("DaemonSets", "#/k8s/ds", 40)
+                .item_at("Jobs", "#/k8s/job", 50)
+                .item_at("CronJobs", "#/k8s/cronjob", 60),
             // Diagnosis, all of it. A person reaching for Cilium
             // identities, endpoints and clusterwide policies is asking why
             // something cannot be reached, not shipping a workload (#16).

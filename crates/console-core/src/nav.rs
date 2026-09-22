@@ -63,6 +63,17 @@ impl NavSection {
         self.items.push(NavItem { label: label.to_string(), href: href.into(), order });
         self
     }
+
+    /// An item at a stated position, for a section two plugins build.
+    ///
+    /// Sequential positions are fine while one plugin owns a section, and
+    /// useless the moment another has to slot something between two of
+    /// them — `.item()` numbers 0, 1, 2, and there is no integer between
+    /// 0 and 1. Sections built by more than one plugin leave gaps.
+    pub fn item_at(mut self, label: &str, href: impl Into<String>, order: i32) -> Self {
+        self.items.push(NavItem { label: label.to_string(), href: href.into(), order });
+        self
+    }
 }
 
 /// Merge sections from all plugins: same label folds into one section (the

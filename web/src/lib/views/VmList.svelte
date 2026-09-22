@@ -34,7 +34,7 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Virtualization' }, { label: 'Virtual machines' }]}
+    crumbs={[{ label: 'Workloads' }, { label: 'Virtual machines' }]}
     title="Virtual machines"
     scope={k8sns.selected ? `in ${k8sns.selected}` : ''}
     count={feed.loaded ? all.length : null}
