@@ -567,6 +567,8 @@ mod tests {
             golden: "rocky-10-cloud".into(),
             bus: String::new(),
             ssh_key: String::new(),
+            network: String::new(),
+            hostname: String::new(),
         }
     }
 
