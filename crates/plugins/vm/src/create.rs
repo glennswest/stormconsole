@@ -316,7 +316,27 @@ pub fn cloud_init(f: &Form) -> String {
         out.push_str(&format!("hostname: {host}\nprefer_fqdn_over_hostname: false\n"));
     }
     if !f.ssh_key.trim().is_empty() {
-        out.push_str(&format!("ssh_authorized_keys:\n  - {}\n", f.ssh_key.trim()));
+        let key = f.ssh_key.trim();
+        // The default user *and* root.
+        //
+        // Top-level `ssh_authorized_keys` authorizes the image's default
+        // user -- `fedora`, `debian`, `alpine` -- and nothing else. Every
+        // cloud image also ships root's SSH disabled. So a machine created
+        // here with a perfectly good key still refused `ssh root@<vm>`,
+        // which is what somebody types, and the refusal is
+        // `Permission denied (publickey)`: identical to having no key at
+        // all, and it sends you looking at the key.
+        //
+        // `disable_root: false` re-enables root's login, and root gets the
+        // key explicitly because cloud-init does not copy the default
+        // user's. `users: [default, ...]` keeps the image's own user as
+        // well -- listing users *replaces* the default set, so writing only
+        // root would take `fedora` away from anyone expecting it.
+        out.push_str(&format!(
+            "ssh_authorized_keys:\n  - {key}\n\
+             disable_root: false\n\
+             users:\n  - default\n  - name: root\n    ssh_authorized_keys:\n      - {key}\n"
+        ));
     }
     out
 }
@@ -527,6 +547,28 @@ pub async fn create(
             } else {
                 format!("virtual machine {name} created")
             };
+            // A machine with no key is a machine nobody can log into.
+            //
+            // Cloud images have no password by design, so a seed with no
+            // SSH key produces a guest that boots perfectly and refuses
+            // every login, including on the serial console. That is
+            // indistinguishable from a broken image, and the only moment it
+            // can be said cheaply is now -- afterwards the seed has been
+            // read and a rebuild is the fix.
+            //
+            // Said rather than refused: a machine nobody logs into is a
+            // legitimate thing to make, and the console does not get to
+            // decide that it is not.
+            let message = if form.ssh_key.trim().is_empty() {
+                format!(
+                    "{message}. No SSH key was included, and cloud images have no \
+                     password — nothing will be able to log into it, including the \
+                     serial console. Add a key to your console user, or put one in \
+                     the SSH key field, and recreate it"
+                )
+            } else {
+                message
+            };
             Json(json!({"message": message})).into_response()
         }
         Ok((status, body)) => {
@@ -726,6 +768,35 @@ const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachine\nmetadata:\n
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The key reaches root as well as the image's default user.
+    ///
+    /// Top-level `ssh_authorized_keys` authorizes only the default user, and
+    /// cloud images ship root's SSH disabled, so `ssh root@<vm>` -- which is
+    /// what people type -- failed with `Permission denied (publickey)`:
+    /// identical to having no key at all, which sends you looking at the key.
+    #[test]
+    fn the_key_authorizes_root_too_because_that_is_what_people_type() {
+        let mut f = form();
+        f.ssh_key = "ssh-ed25519 AAAA gw".into();
+        let seed = cloud_init(&f);
+        assert!(seed.contains("disable_root: false"), "{seed}");
+        assert!(seed.contains("name: root"), "{seed}");
+        // The image's own user survives: listing users replaces the default
+        // set, so root-only would take `fedora` away.
+        assert!(seed.contains("- default"), "{seed}");
+        assert_eq!(seed.matches("ssh-ed25519 AAAA gw").count(), 2, "{seed}");
+    }
+
+    /// No key, no `users:` block at all -- an image's defaults are left alone.
+    #[test]
+    fn without_a_key_the_seed_does_not_touch_users() {
+        let mut f = form();
+        f.ssh_key = String::new();
+        let seed = cloud_init(&f);
+        assert!(!seed.contains("disable_root"), "{seed}");
+        assert!(!seed.contains("users:"), "{seed}");
+    }
 
     /// The definition is what makes a machine editable, deletable and
     /// stoppable.
