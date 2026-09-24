@@ -152,6 +152,15 @@ async fn main() {
     if config.stormblock.enabled {
         plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::new(&config.stormblock_url())));
     }
+    // The datastore rustkube stands on, so the relation is drawn only
+    // when there is an apiserver component to draw it to.
+    if config.fastetcd.enabled {
+        plugins.push(Arc::new(plugin_fastetcd::FastetcdPlugin::new(
+            &config.fastetcd_url(),
+            &config.fastetcd_metrics_url(),
+            config.kubernetes.enabled.then(|| "plugin:k8s".to_string()),
+        )));
+    }
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
     }

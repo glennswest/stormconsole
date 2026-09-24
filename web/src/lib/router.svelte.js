@@ -10,6 +10,9 @@ const routes = [
   { pattern: '#/drives', name: 'drives' },
   { pattern: '#/vms', name: 'vmlist' },
   { pattern: '#/nodes', name: 'nodes' },
+  // The datastore's keyspace; the prefix and an opened key travel in the
+  // query because both are full of '/'.
+  { pattern: '#/etcd/keys', name: 'etcdkeys' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },

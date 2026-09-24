@@ -12,6 +12,7 @@ members = [
     "crates/plugins/sbregistry",
     "crates/plugins/vm",
     "crates/plugins/vmimages",
+    "crates/plugins/fastetcd",
 ]
 
 [workspace.package]
@@ -31,6 +32,7 @@ plugin-stormblock = { path = "crates/plugins/stormblock" }
 plugin-sbregistry = { path = "crates/plugins/sbregistry" }
 plugin-vmimages = { path = "crates/plugins/vmimages" }
 plugin-vm = { path = "crates/plugins/vm" }
+plugin-fastetcd = { path = "crates/plugins/fastetcd" }
 
 stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
 tokio = { version = "1", features = ["full"] }
@@ -62,6 +64,8 @@ socket2 = "0.5"
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3"
+# The v3 gateway speaks base64 for keys, values and snapshot chunks.
+base64 = "0.22"
 
 [profile.release]
 strip = true

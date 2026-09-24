@@ -40,6 +40,8 @@ pub struct Config {
     pub vm: Vm,
     #[serde(default)]
     pub vmimages: VmImages,
+    #[serde(default)]
+    pub fastetcd: Fastetcd,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -331,6 +333,25 @@ impl Default for VmImages {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fastetcd {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// The client port, e.g. "http://127.0.0.1:2379": `/health`, and
+    /// etcd's v3 JSON gateway when it is served (fastetcd#28).
+    pub url: Option<String>,
+    /// The metrics listener. fastetcd binds it to loopback :2381 by
+    /// default, which is why the console reads it from the node.
+    pub metrics_url: Option<String>,
+}
+
+impl Default for Fastetcd {
+    fn default() -> Self {
+        Self { enabled: true, url: None, metrics_url: None }
+    }
+}
+
 fn on() -> bool {
     true
 }
@@ -401,6 +422,14 @@ impl Config {
 
     pub fn sbregistry_url(&self) -> String {
         self.sbregistry.url.clone().unwrap_or_else(|| "http://127.0.0.1:5100".to_string())
+    }
+
+    pub fn fastetcd_url(&self) -> String {
+        self.fastetcd.url.clone().unwrap_or_else(|| "http://127.0.0.1:2379".to_string())
+    }
+
+    pub fn fastetcd_metrics_url(&self) -> String {
+        self.fastetcd.metrics_url.clone().unwrap_or_else(|| "http://127.0.0.1:2381".to_string())
     }
 
     pub fn stormdrive_url(&self) -> String {
@@ -508,6 +537,8 @@ data_dir    = \"/var/lib/stormconsole\"
         assert!(c.kubernetes_insecure());
         assert_eq!(c.stormblock_url(), "http://127.0.0.1:9090");
         assert_eq!(c.sbregistry_url(), "http://127.0.0.1:5100");
+        assert_eq!(c.fastetcd_url(), "http://127.0.0.1:2379");
+        assert_eq!(c.fastetcd_metrics_url(), "http://127.0.0.1:2381");
         assert_eq!(c.vmimages_url(), "http://127.0.0.1:9099");
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");

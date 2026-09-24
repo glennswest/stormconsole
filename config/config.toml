@@ -89,3 +89,13 @@ enabled = true
 # page says which upstream is missing rather than showing a terminal that
 # will never print.
 # url = "http://127.0.0.1:9095"
+
+[fastetcd]
+enabled = true
+# The cluster's datastore. /health and etcd's v3 JSON gateway on the
+# client port — the gateway carries members, leader, raft, alarms, the
+# keyspace and compact/defrag/disarm/snapshot, and fastetcd does not serve
+# it yet (fastetcd#28), so until it does the card says so. /metrics is on
+# its own listener, loopback by default.
+# url = "http://127.0.0.1:2379"
+# metrics_url = "http://127.0.0.1:2381"
