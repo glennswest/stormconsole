@@ -26,6 +26,12 @@ own part.
   locate, lifecycle
 - **stormblock** — volumes, exports, slabs, arrays from the block engine
 - **sbregistry** — goldens, clones, pallets, warm-up
+- **fastetcd** — the cluster's datastore: revision, compaction, DB size
+  against quota, what a defrag would free, alarms, leader; with etcd's v3
+  JSON gateway (served by etcd, asked of fastetcd in
+  [fastetcd#28](https://github.com/glennswest/fastetcd/issues/28)) also
+  members, raft term and index, a read-only keyspace browser with decoded
+  values, and compact/defrag/disarm/snapshot for `admin`
 - **vmimages** — cloud images in three tiers, through
   [vmcloud-image-operator](https://github.com/glennswest/vmcloud-image-operator):
   the public catalogue a cluster could golden from (one button a row), the
@@ -191,6 +197,7 @@ lights up with the two-line config above and nothing else:
 | kubernetes | `https://127.0.0.1:6443`, TLS unverified (stormcert self-signed, no CA in the golden; sno is anonymous-admin) | `[kubernetes] server`, `token`, `insecure_skip_tls_verify` — a configured server is verified unless told otherwise |
 | stormblock | `http://127.0.0.1:9090` | `[stormblock] url` |
 | sbregistry | `http://127.0.0.1:5100` | `[sbregistry] url` |
+| fastetcd | client port `http://127.0.0.1:2379` (`/health`, the v3 gateway); metrics `http://127.0.0.1:2381` | `[fastetcd] url`, `metrics_url` |
 | stormdrive | `http://127.0.0.1:9092` (its stormview feed) | `[stormdrive] url` |
 | stormstorage | `http://127.0.0.1:9093` (its stormview feed) | `[stormstorage] url` |
 | vm | the apiserver above for the objects; `http://127.0.0.1:9095` for the console doors only | `[vm] url` |

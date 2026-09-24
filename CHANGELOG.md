@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### 2026-09-24
+- **feat(etcd):** a fastetcd plugin (#20). The datastore rustkube stands
+  on was the one part of the control plane the console showed nothing
+  about. From `/metrics`: revision, compact revision, DB size against
+  quota and space used, what a defrag would free, disk free, snapshots,
+  NOSPACE, leader and leader changes — an alarm or no leader is an error,
+  80% of quota a warning. From etcd's v3 JSON gateway when it answers:
+  members as rows with the leader marked, raft term and index, alarms on
+  the member that raised them, and compact / defragment / disarm as
+  confirmed actions. fastetcd does not serve that gateway yet, so the
+  store's row says what it cannot show and names fastetcd#28, rather than
+  drawing an empty member table. The store `serves` the apiserver, as a
+  reference.
+- **feat(etcd):** a keyspace browser at `#/etcd/keys` — the flat keyspace
+  grouped into directories with counts, a value opened decoded (JSON, the
+  Kubernetes protobuf envelope by its type, text, bytes), and a snapshot
+  download that `etcdutl` reads back. `admin` only, checked in the route:
+  the keyspace is every object beneath Kubernetes RBAC, Secrets included.
+- **chore:** `deploy/verify-etcd.sh`, the live check — a real etcd for the
+  gateway path and a real fastetcd for today's, run with
+  `sc-build deploy/verify-etcd.sh`.
+
 ### 2026-09-22
 - **feat(events):** what happened to **this**, on the thing itself. The
   console had events in two places and neither answered the question

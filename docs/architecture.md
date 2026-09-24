@@ -699,6 +699,65 @@ their volume) and the engine's drives, all under an `sb:engine` card whose
 `has_many` relations are what the Storage nav items open. Creates: a
 volume form and an export form, posted through the proxy.
 
+### fastetcd (the datastore, #20)
+
+The store rustkube stands on, and until this plugin the one component of
+the control plane the console said nothing about. fastetcd serves two
+things over HTTP, and the plugin reads both:
+
+- **`/metrics`** on its own listener (loopback :2381 by default, which is
+  why the console reads it from the node): revision, compact revision, DB
+  size and in-use, the effective quota and how much of it is used, disk
+  free, snapshots, NOSPACE, has-leader and leader changes. Enough for the
+  store's health — an alarm or no leader is an error, 80% of quota a
+  warning — and for the one derived number worth having, **what a defrag
+  would free** (size minus in-use).
+- **etcd's v3 JSON gateway**, `POST /v3/…` on the client port: status
+  (leader, raft term and index, version), the member list, alarms by
+  member, `range` for the keyspace, and the maintenance verbs. etcd serves
+  it; fastetcd does not yet ([fastetcd#28]). Everything that needs it is
+  read from it when it answers and **said to be missing** when it does not
+  — the store's row names the issue, and there is no member table at all
+  rather than an empty one that reads as a cluster with no members.
+
+No gRPC client, deliberately: that was the owner's call on #20, and
+#28 is the alternative — one HTTP surface every tool can use, in etcd's
+own shape so `curl` recipes written for etcd work unchanged. The gateway
+readers take either spelling of a field and 64-bit integers as strings or
+numbers, since protobuf's JSON mapping and grpc-gateway's `OrigName` have
+both moved between etcd releases.
+
+Components: `etcd:store` (a `has_many` to its members, and a `has_one`
+**serves** reference to `plugin:k8s` — the apiserver depends on the store;
+it is not *in* it), and one `etcd:member:<hex id>` per member with its role
+(leader, follower, learner), URLs, and its own alarms. Actions — compact to
+the current revision, defragment (this node's member from the store, any
+member through its client URL), disarm an alarm — are all `danger`, so
+confirmed, and exist only when the gateway does: a button that cannot work
+is worse than none.
+
+**The keyspace is beneath Kubernetes RBAC.** Reading it is reading every
+Secret in the cluster, so key names, values and the snapshot need the
+`admin` role, checked in the route; a count is on the card for everyone.
+`#/etcd/keys` groups the flat keyspace on the next `/` into directories
+with counts (a keys-only scan, bounded at 50,000 per prefix and saying so
+when it is cut short), and opens a value decoded — JSON as JSON, the
+upstream `k8s\0` protobuf envelope by the type its `TypeMeta` names (the
+body needs a schema and is shown as bytes), text as text. rustkube writes
+JSON. The snapshot is streamed through, un-base64'd chunk by chunk, so the
+file a browser saves is one `etcdutl snapshot status` reads.
+
+Traffic — puts/ranges/txns per second, watchers, lagging watchers — is
+computed from counter deltas between polls when `/metrics` exports the
+counters, and fastetcd does not yet ([fastetcd#29]).
+
+`deploy/verify-etcd.sh` (run with `sc-build deploy/verify-etcd.sh`) runs
+the console against a real etcd for the gateway path and a real fastetcd
+for today's.
+
+[fastetcd#28]: https://github.com/glennswest/fastetcd/issues/28
+[fastetcd#29]: https://github.com/glennswest/fastetcd/issues/29
+
 ### sbregistry
 
 The image side on :5100: readiness and warm-up (`/readyz` — ready with a
@@ -789,6 +848,7 @@ stormconsole/
       vm/                    # KubeVirt objects + the serial and VNC doors
       stormblock/            # block engine views
       sbregistry/            # goldens/clones/pallets views
+      fastetcd/              # the datastore: /metrics + etcd's v3 gateway
   web/                       # Svelte 5 SPA (stormview npm), embedded at build
   config/                    # example config.toml
   Containerfile
@@ -807,6 +867,8 @@ stormconsole/
 | rustkube-node | Kubelet has no `/containerLogs/{ns}/{pod}/{container}` endpoint though CRI log files exist under `/var/log/pods/…` | same |
 | stormblock-registry (sbregistry) | Serve a stormview components feed (`/api/v1/components` + `/ws/components`) for goldens/clones/pallets/warm-up | generic rendering in stormconsole and stormsh |
 | ~~stormdrive~~ | ~~Serve the stormview components feed~~ — **done**, stormdrive v0.4.0 and stormstorage v0.2.0 (stormconsole#1); both are consumed as `FeedPlugin`s | fleet-wide drive aggregation without bespoke mapping |
+| fastetcd | [#28](https://github.com/glennswest/fastetcd/issues/28) Serve etcd's v3 JSON gateway (`/v3/maintenance/status`, `/v3/cluster/member/list`, `/v3/maintenance/alarm`, `/v3/kv/range`, compaction, defragment, snapshot) | members, leader, raft term/index, alarms by member, the keyspace browser, and compact/defrag/disarm/snapshot on fastetcd — all built and verified against etcd's own gateway |
+| fastetcd | [#29](https://github.com/glennswest/fastetcd/issues/29) `/metrics` has no traffic: request counters, watchers, slow watchers, `is_leader`, `server_id` | puts/ranges/txns per second and lagging watchers on the store's card |
 | stormcos | Define the node capability beacon (periodic, alongside stormcast logs: cores, memory, drives, pallets, join state) | fleet inventory without an inventory protocol |
 | stormpump | [#7](https://github.com/glennswest/stormpump/issues/7) put stormconsole back in the image — the crash loop (stormconsole#3) is fixed in v0.3.0 | the console booting on a StormCOS node at all |
 | stormpump | [#11](https://github.com/glennswest/stormpump/issues/11) Cilium observability — agent `prometheus-serve-addr`, enable Hubble + relay (+ ui) in the image | agent metrics on the Cilium card; the flow view (stormconsole#4) |
