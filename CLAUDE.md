@@ -423,6 +423,32 @@ and groups manageable without editing a file on an immutable root,
 certificate identity from stormcert, and an audit of consoles, deletes
 and goldens — are their own pass
 
+### The datastore: a fastetcd plugin (#20) — in progress 2026-09-24
+fastetcd serves gRPC + `/health` on :2379 and Prometheus `/metrics` on
+127.0.0.1:2381, and nothing else over HTTP. The owner's steer on #20 is
+no gRPC client in the console: file what is missing on fastetcd. Filed
+**fastetcd#28** (etcd's v3 JSON gateway — status, members, alarms,
+range, compact/defrag/disarm/snapshot) and **fastetcd#29** (traffic,
+watch and slow-watcher metrics).
+
+- [ ] `crates/plugins/fastetcd` (name `etcd`): `/metrics` parsed for
+      revision, compact revision, DB size/in-use/quota, disk, NOSPACE,
+      has-leader, leader changes; `/health` on the client port
+- [ ] The v3 gateway when it answers (etcd's own shape): status (leader,
+      term, index, version, errors), member list, alarms — one component
+      per member, the leader marked. When it does not, say so and name
+      fastetcd#28, not an empty table
+- [ ] Keyspace browser: `/api/plugins/etcd/keys?prefix=` (children with
+      counts, keys-only), `/value?key=` decoded (JSON, the k8s protobuf
+      envelope's type header, text, hex); `#/etcd/keys` view, read-only
+- [ ] Actions (admin, confirmed): compact, defrag, disarm an alarm,
+      snapshot download — through the gateway, through the host's write
+      gate
+- [ ] Relation: the store is what `plugin:k8s` (rustkube) stands on
+- [ ] Config `[fastetcd] enabled/url/metrics_url`, docs, changelog
+- [ ] Verify on dev: gateway path against a real etcd (seeded keys),
+      fallback path against a real fastetcd; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
