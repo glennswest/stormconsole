@@ -659,6 +659,27 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**Machines, from stormipmi (#31).** `crates/plugins/stormipmi` (name
+`ipmi`) fronts stormipmi's Machines API (stormipmi#12) at `[stormipmi] url`
+(default this node's :9097; usually a bastion). Its `machine:<tag>` feed
+comes in as `ipmi:machine:<tag>`, power actions routed through the plugin's
+proxy. `/api/plugins/ipmi/proxy/*` forwards **only** the Machines surface
+(`api/v1/machines…`, `api/v1/releases`, `api/v1/hosts…`,
+`api/v1/components`; `..` refused), reads open, **every write `admin`
+only** — stormipmi leaves that to the console — with stormipmi's
+`api.tokenFile` bearer (`[stormipmi] token_file`) added server-side, and an
+audit line per act naming the user. `/api/plugins/ipmi/console/{ns}/{host}`
+relays the SOL console (replay, then live), read-only unless the viewer is an
+admin: a serial console is a root shell. `/api/plugins/ipmi/me` tells the
+page whether to offer the buttons. `#/machines` (Hardware): by service tag —
+BMC address/vendor/model/firmware and the credentials Secret's name, power
+as the BMC last said it (and what was asked, when they differ), state, the
+release each boots (`pinnedFromDefault`, `dangling`, since), Set release
+(confirmed; stormipmi answers once read back; takes effect at next boot),
+boot intent (stormipmi's 501 shown as it says it), test marks, the default
+image, and new hosts to adopt with their BMC. `deploy/verify-machines.sh` is
+the live check on stormipmi's own rig.
+
 **Projects first (#28).** A project is a namespace with an owner, served by
 rustkube as `project.openshift.io/v1` (rustkube#97). `kubernetes/src/
 projects.rs` asks everything **as the viewer**: `GET /projects` (the

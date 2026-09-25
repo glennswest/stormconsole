@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-25
+- **feat(ipmi):** the Machines page, served by stormipmi (#31). A new
+  plugin over stormipmi's Machines API: the fleet by service tag — BMC,
+  power, state, the release each machine boots (set it, confirmed, read
+  back), boot intent, test marks, the default image, new hosts to adopt —
+  and each machine's SOL console relayed through the console. Reads are
+  open; every write and console typing are admin-only, enforced in the
+  plugin, which carries stormipmi's write token server-side and logs who
+  acted. Config `[stormipmi] enabled/url/token_file`.
+- **feat(core):** `proxy::forward_as`, a forward carrying the console's
+  own bearer for an upstream.
+- **chore:** `deploy/verify-machines.sh`, the live check on stormipmi's
+  own rig (ipmi_sim, stand-in forge) with an admin and an operator.
+
 ## [v0.17.0] — 2026-09-25
 
 ### 2026-09-25

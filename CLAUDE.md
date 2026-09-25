@@ -605,7 +605,7 @@ and ClusterRoles `admin`/`edit`/`view`. Reserved: `default`, `openshift`,
 - Filed **rustkube#102** (a claim's phase is not defaulted)
 - Not viewed in a browser (there is none here)
 
-### Machines page, served by stormipmi (#31) — in progress 2026-09-25
+### Machines page, served by stormipmi (#31) ✅ v0.18.0 2026-09-25
 stormipmi v0.4.0 (stormipmi#12) serves the Machines API on :9097:
 `GET /api/v1/machines[?test=true]` (`{machines, default, forge}`), power
 by tag (`on|off|soft|reboot|cycle`), `PUT …/release` (read back), `GET|PUT
@@ -615,16 +615,29 @@ and the SOL console at `WS /api/v1/hosts/{ns}/{name}/console/serial`
 (replay, then live; `?token=`). Reads are open; writes take the bearer
 from `api.tokenFile`; admin-only is the console's to enforce.
 
-- [ ] `crates/plugins/stormipmi` (name `ipmi`): the feed; `/proxy` with
+- [x] `crates/plugins/stormipmi` (name `ipmi`): the feed; `/proxy` with
       reads open and every write `admin` only, the bearer added
       server-side; `/console/{ns}/{name}` relaying SOL (typing admin only)
-- [ ] Config `[stormipmi] enabled/url/token_file`; nav Hardware → Machines
-- [ ] `#/machines`: by service tag — BMC, power (confirmed), the release
+- [x] Config `[stormipmi] enabled/url/token_file`; nav Hardware → Machines
+- [x] `#/machines`: by service tag — BMC, power (confirmed), the release
       each boots (set, confirmed, read back), boot intent (501 said), the
       default image, test marks, new hosts to adopt, SOL console
-- [ ] Live check: stormipmi's own smoke (fastetcd, apiserver, ipmi_sim,
+- [x] Live check: stormipmi's own smoke (fastetcd, apiserver, ipmi_sim,
       stand-in forge) + a console with an admin and an operator
-- [ ] Docs, changelog, release, golden
+- [x] Docs, changelog, release, golden
+- Verified with `sc-build deploy/verify-machines.sh`: stormipmi v0.4.0
+  built from its tag on its own rig (fastetcd, rustkube v0.15.0, ipmi_sim,
+  stand-in forge), restarted with an `api.tokenFile` (a direct write →
+  401). Through the console: ops/admin `me`; the fleet (SIMBOARD0001 on,
+  NEWBOX1 to adopt, default 10.1), releases 10.2/10.1; readyz and a
+  `..%2F` traversal 404; the feed with proxied power actions. ops refused
+  (403) on power, release, test, adopt; admin: soft-off → off, on → on,
+  NEWBOX1 power 409, release 10.2 read back, 9.9 404, default → 10.2,
+  intent 501 as stormipmi words it, test mark → ?test=true lists it,
+  adopt 201 with no password in the API. SOL through the console: both
+  viewers got the replay and live output; admin's typing echoed, ops'
+  dropped. An audit line per act
+- Not viewed in a browser (there is none here)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

@@ -162,6 +162,17 @@ that will never print. The framebuffer is
 [noVNC](https://github.com/novnc/noVNC) (MPL-2.0), lazily loaded in its
 own chunk so it is not in the console's first paint.
 
+## Machines
+
+**Hardware → Machines** is the bare-metal fleet by service tag, from
+stormipmi on the bastion (`[stormipmi] url`, and `token_file` when it
+guards its writes): each machine's BMC, its power as the BMC last said it,
+the release it boots from the forge, whether it is a test machine, and its
+serial-over-LAN console; the default image a new machine boots; and new
+hosts the forge has seen, to adopt. Anyone who can see the console can read
+it and watch a console. Power, setting a release, the default image, test
+marks, adopting and typing into a console are for administrators.
+
 ## Hardware, and storage
 
 They are different sections because they are different things. A **drive**
