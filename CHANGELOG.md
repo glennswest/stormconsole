@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+<!-- New unreleased changes go here -->
+
+## [v0.13.0] — 2026-09-25
 
 ### 2026-09-25
 - **fix(build):** `Cargo.lock` gains `plugin-fastetcd`, which the #20
@@ -33,6 +36,8 @@
 - **chore:** `deploy/verify-etcd.sh`, the live check — a real etcd for the
   gateway path and a real fastetcd for today's, run with
   `sc-build deploy/verify-etcd.sh`.
+
+## [v0.9.0 – v0.12.0] — 2026-09-10 to 2026-09-22
 
 ### 2026-09-22
 - **feat(events):** what happened to **this**, on the thing itself. The
