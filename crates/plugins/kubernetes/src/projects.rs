@@ -230,7 +230,7 @@ fn with_isolation(mut r: Value, iso: &BTreeMap<String, bool>) -> Value {
 
 /// The viewer's projects, and — for somebody who may see them — the system
 /// namespaces, separately.
-pub async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+pub(crate) async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     let iso = isolation_state(&inner).await;
     let token = viewer.token.as_deref();
@@ -281,7 +281,7 @@ pub struct New {
 /// New project: a `ProjectRequest` as the viewer, so the requester is who
 /// asked and they are its admin. On a plain apiserver, a Namespace carrying
 /// the same annotations, naming the console user.
-pub async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(n): Json<New>) -> Response {
+pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(n): Json<New>) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     let name = n.name.trim().to_string();
     if let Err(e) = check_name(&name) {
@@ -334,7 +334,7 @@ pub async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(n): Js
 
 /// Delete a project, and with it everything in it — the namespace
 /// controller's cascade. System namespaces are refused here outright.
-pub async fn remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
+pub(crate) async fn remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     if inner.access.is_system(&name) {
         return err(StatusCode::FORBIDDEN, format!("{name} is a system namespace and is not deleted from here"));
@@ -355,7 +355,7 @@ pub async fn remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name):
 }
 
 /// One project: its row, its members and whether the viewer may manage them.
-pub async fn detail(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
+pub(crate) async fn detail(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     if let Some(r) = crate::refuse_hidden(&inner, &viewer, &name).await {
         return r;
@@ -389,7 +389,7 @@ pub struct Member {
     pub role: String,
 }
 
-pub async fn add_member(
+pub(crate) async fn add_member(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
     Path(name): Path<String>,
@@ -412,7 +412,7 @@ pub async fn add_member(
     }
 }
 
-pub async fn remove_member(
+pub(crate) async fn remove_member(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
     Path((name, binding)): Path<(String, String)>,
@@ -436,7 +436,7 @@ pub struct Isolate {
 
 /// Isolate a project: its pods and machines talk to each other and nothing
 /// else. Re-isolating replaces the policies, so DNS can be turned on or off.
-pub async fn isolate(
+pub(crate) async fn isolate(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
     Path(name): Path<String>,
@@ -470,7 +470,7 @@ pub async fn isolate(
     .into_response()
 }
 
-pub async fn unisolate(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
+pub(crate) async fn unisolate(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     if let Some(r) = crate::refuse_hidden(&inner, &viewer, &name).await {
         return r;
