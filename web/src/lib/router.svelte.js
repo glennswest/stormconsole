@@ -17,6 +17,8 @@ const routes = [
   { pattern: '#/account/keys', name: 'accountkeys' },
   // Projects are the top of the console (#28).
   { pattern: '#/projects', name: 'projects' },
+  // Bare metal by service tag, from stormipmi (#31).
+  { pattern: '#/machines', name: 'machines' },
   { pattern: '#/attach/:ns/:name', name: 'attachclaim' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },

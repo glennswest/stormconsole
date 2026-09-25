@@ -19,6 +19,7 @@
   import EtcdKeys from './lib/views/EtcdKeys.svelte'
   import AccountKeys from './lib/views/AccountKeys.svelte'
   import ProjectsView from './lib/views/ProjectsView.svelte'
+  import MachinesView from './lib/views/MachinesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
 
@@ -41,6 +42,7 @@
     etcdkeys: EtcdKeys,
     accountkeys: AccountKeys,
     projects: ProjectsView,
+    machines: MachinesView,
     attachclaim: AttachClaim,
   }
 
