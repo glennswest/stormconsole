@@ -179,7 +179,13 @@ printf 'running: '; c 19098 POST /api/plugins/vm/vms/default/web-1/snapshots/pre
 printf 'from the failed one: '; c 19098 POST "/api/plugins/vm/vms/default/web-1/snapshots/$AUTO/restore"
 k DELETE /apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances/web-1
 k PATCH /apis/kubevirt.io/v1/namespaces/default/virtualmachines/web-1 '{"spec":{"running":false}}' application/merge-patch+json
-sleep 2
+printf 'apiserver GET of the deleted instance: '
+curl -s "$API/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances/web-1" | python3 -c 'import json,sys; o=json.load(sys.stdin); print(o.get("code") or ("present, deletionTimestamp=%s finalizers=%s" % (o["metadata"].get("deletionTimestamp"), o["metadata"].get("finalizers"))))'
+for i in $(seq 1 20); do
+  r=$(curl -sf "http://127.0.0.1:19098/api/plugins/vm/vms/default/web-1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["running"])')
+  [ "$r" = False ] && { echo "console sees it stopped after ${i}s"; break; }
+  sleep 1
+done
 printf 'stopped: '; c 19098 POST /api/plugins/vm/vms/default/web-1/snapshots/pre-upgrade/restore
 printf 'another machine'"'"'s snapshot: '; c 19098 POST /api/plugins/vm/vms/default/idle-1/snapshots/pre-upgrade/restore
 RESTORE=$(curl -sf "$API$SNAPS/virtualmachinerestores" | python3 -c 'import json,sys; i=json.load(sys.stdin)["items"][0]; print(i["metadata"]["name"]); print("  as the apiserver has it:", i["kind"], json.dumps(i["spec"]), file=sys.stderr)')

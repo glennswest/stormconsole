@@ -250,11 +250,14 @@ pub fn restore_body(
              deletes it. Restore needs a VirtualMachine"
         ));
     }
-    if running {
-        return Err(format!("stop {vm} first: a restore replaces its disks, and it needs the machine stopped"));
-    }
+    // Readiness before running: stopping the machine would not make a
+    // failed snapshot restorable, so saying "stop it first" sends somebody
+    // off to do something that cannot help.
     if !snap.pointer("/status/readyToUse").and_then(Value::as_bool).unwrap_or(false) {
         return Err(format!("{snap_name} is not ready to restore from ({})", row(snap, now)["say"].as_str().unwrap_or("")));
+    }
+    if running {
+        return Err(format!("stop {vm} first: a restore replaces its disks, and it needs the machine stopped"));
     }
     Ok(json!({
         "apiVersion": "snapshot.kubevirt.io/v1beta1",
@@ -362,6 +365,7 @@ mod tests {
         assert!(r(true, true, Some(&ready)).unwrap_err().starts_with("stop web-1 first"));
         assert!(r(false, false, Some(&ready)).unwrap_err().contains("bare instance"));
         assert!(r(true, false, Some(&pending)).unwrap_err().contains("not ready"));
+        assert!(r(true, true, Some(&pending)).unwrap_err().contains("not ready"), "stopping would not help");
         assert!(r(true, false, None).unwrap_err().contains("no snapshot"));
         // Another machine's snapshot is not this one's to restore from.
         let mut other = ready.clone();
