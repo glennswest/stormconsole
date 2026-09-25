@@ -39,8 +39,12 @@ import json, sys, base64
 o = json.load(sys.stdin)
 if o.get("code") == 404: print("   (no Secret)"); sys.exit()
 print("   labels:", json.dumps(o["metadata"].get("labels")))
-for k, v in sorted((o.get("data") or {}).items()):
-    print("   %-14s %s" % (k, base64.b64decode(v).decode()[:60] + "…"))
+# `data` upstream; rustkube stores `stringData` as written (rustkube#101).
+items = {k: base64.b64decode(v).decode() for k, v in (o.get("data") or {}).items()}
+items.update(o.get("stringData") or {})
+print("   stored as:", ", ".join(f for f in ("data", "stringData") if o.get(f)) or "nothing")
+for k, v in sorted(items.items()):
+    print("   %-14s %s" % (k, v[:60] + "…"))
 '
 }
 creds() { # ns, vm — its accessCredentials
@@ -54,7 +58,9 @@ for c in o["spec"]["template"]["spec"].get("accessCredentials", []) or [{"none":
 seed_lines() { # ns, vm — the keys in its cloud-init seed, and ssh-keygen's verdict on each
   curl -sf "$API/api/v1/namespaces/$1/secrets/$2-cloudinit" | python3 -c '
 import json, sys, base64
-print(base64.b64decode(json.load(sys.stdin)["data"]["userdata"]).decode())' > "$W/seed"
+o = json.load(sys.stdin)
+d = o.get("data") or {}
+print(base64.b64decode(d["userdata"]).decode() if "userdata" in d else (o.get("stringData") or {}).get("userdata", ""))' > "$W/seed"
   grep -oE '(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]+( [^ ]+)?' "$W/seed" | sort | uniq -c | while read -r n line; do
     printf '   ×%s  ' "$n"; echo "$line" > "$W/one.pub"; ssh-keygen -lf "$W/one.pub"
   done
