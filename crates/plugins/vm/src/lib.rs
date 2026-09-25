@@ -27,6 +27,8 @@ pub mod console;
 mod create;
 pub mod disks;
 pub mod images;
+pub mod keys;
+mod keystore;
 pub mod network;
 pub mod settings;
 pub mod snapshots;
@@ -127,6 +129,10 @@ struct Inner {
     /// a create form must not wait on an upstream that may be slow or gone.
     image_operator: Option<String>,
     images: images::Cache,
+    /// Where each user's SSH-key Secret lives (#26); copies go to the
+    /// namespaces their machines are in, because `accessCredentials` can
+    /// only name a Secret in the machine's own.
+    keys_ns: String,
 }
 
 pub struct VmPlugin {
@@ -169,8 +175,19 @@ impl VmPlugin {
                 access,
                 image_operator,
                 images: images::Cache::new(),
+                keys_ns: "default".into(),
             }),
         }
+    }
+
+    /// Where users' SSH-key Secrets live. Before the plugin is shared.
+    pub fn with_keys_namespace(mut self, ns: &str) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            if !ns.trim().is_empty() {
+                inner.keys_ns = ns.trim().to_string();
+            }
+        }
+        self
     }
 }
 
@@ -216,6 +233,10 @@ impl ConsolePlugin for VmPlugin {
             .route("/vms/{ns}/{name}/disks", post(disk_add))
             .route("/vms/{ns}/{name}/disks/{disk}", delete(disk_remove))
             .route("/vms/{ns}/{name}/snapshots", get(snapshots_list).post(snapshot_take))
+            .route("/keys", get(keys_list).post(keys_add))
+            .route("/keys/choices", get(keys_choices))
+            .route("/keys/{item}", delete(keys_remove))
+            .route("/vms/{ns}/{name}/keys", get(vm_keys).post(vm_keys_add))
             .route("/vms/{ns}/{name}/snapshots/{snap}", delete(snapshot_delete))
             .route("/vms/{ns}/{name}/snapshots/{snap}/restore", post(snapshot_restore))
             .route("/console/{ns}/{name}", get(console_caps))
@@ -994,6 +1015,240 @@ async fn detail(
         "yaml": yaml,
     }))
     .into_response()
+}
+
+fn bad_gateway(e: String) -> Response {
+    (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response()
+}
+
+fn key_rows(list: &std::collections::BTreeMap<String, String>, source: &str) -> Vec<Value> {
+    list.iter()
+        .map(|(name, line)| match keys::parse(line) {
+            Ok(k) => json!({"name": name, "kind": k.kind, "comment": k.comment, "short": k.short(),
+                            "line": k.line(), "source": source}),
+            Err(e) => json!({"name": name, "line": line, "source": source, "error": e}),
+        })
+        .collect()
+}
+
+/// The config file's keys for this viewer, by a stable item name, so a
+/// form can offer them beside the saved ones.
+fn config_keys(viewer: &Viewer) -> std::collections::BTreeMap<String, String> {
+    viewer
+        .ssh_keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (format!("config-{}", i + 1), k.trim().to_string()))
+        .collect()
+}
+
+/// Account → SSH keys: the viewer's saved keys, the ones the console's
+/// config gives them (read-only here), and where copies live (#26).
+async fn keys_list(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    let user = keystore::user_of(&viewer);
+    let (saved, error) = match keystore::saved(&inner, &viewer).await {
+        Ok(s) => (s, None),
+        Err(e) => (Default::default(), Some(e)),
+    };
+    Json(json!({
+        "user": user,
+        "home": inner.keys_ns,
+        "secret": keys::secret_name(&user),
+        "keys": key_rows(&saved, "saved"),
+        "config": key_rows(&config_keys(&viewer), "config"),
+        "copies": keystore::copies(&inner, &viewer).await,
+        "write": viewer.may_write(),
+        "error": error,
+    }))
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct AddKeys {
+    #[serde(default)]
+    name: String,
+    key: String,
+}
+
+async fn keys_add(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(add): Json<AddKeys>) -> Response {
+    let parsed = match keys::parse_all(&add.key) {
+        Ok(k) => k,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    let mut list = match keystore::saved(&inner, &viewer).await {
+        Ok(l) => l,
+        Err(e) => return bad_gateway(e),
+    };
+    let mut added = Vec::new();
+    for (i, k) in parsed.iter().enumerate() {
+        if list.values().any(|l| keys::parse(l).is_ok_and(|x| x.blob == k.blob)) {
+            continue;
+        }
+        // The name given names the first key; the rest take their comments.
+        let base = keys::item_name(if i == 0 { &add.name } else { "" }, k);
+        let mut name = base.clone();
+        let mut n = 2;
+        while list.contains_key(&name) {
+            name = format!("{base}-{n}");
+            n += 1;
+        }
+        list.insert(name.clone(), k.line());
+        added.push(name);
+    }
+    if added.is_empty() {
+        return Json(json!({"message": "already saved — nothing to add"})).into_response();
+    }
+    match keystore::store(&inner, &viewer, &list).await {
+        Ok(copies) => Json(json!({"message": saved_message(&added, "saved", &copies), "added": added})).into_response(),
+        Err(e) => bad_gateway(e),
+    }
+}
+
+fn saved_message(names: &[String], verb: &str, copies: &[String]) -> String {
+    let what = if names.len() == 1 { format!("key {}", names[0]) } else { format!("{} keys", names.len()) };
+    if copies.is_empty() {
+        format!("{what} {verb}")
+    } else {
+        format!("{what} {verb}; copies in {} updated", copies.join(", "))
+    }
+}
+
+async fn keys_remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(item): Path<String>) -> Response {
+    let mut list = match keystore::saved(&inner, &viewer).await {
+        Ok(l) => l,
+        Err(e) => return bad_gateway(e),
+    };
+    if list.remove(&item).is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no saved key {item}")}))).into_response();
+    }
+    match keystore::store(&inner, &viewer, &list).await {
+        Ok(copies) => Json(json!({"message": saved_message(&[item], "deleted", &copies)})).into_response(),
+        Err(e) => bad_gateway(e),
+    }
+}
+
+/// The create form's per-key checkboxes: every key this viewer has, all
+/// ticked, because the person creating a machine is the person who will
+/// log into it.
+async fn keys_choices(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    let saved = keystore::saved(&inner, &viewer).await.unwrap_or_default();
+    let mut options: Vec<Value> = Vec::new();
+    for (list, from) in [(&saved, ""), (&config_keys(&viewer), " (console config)")] {
+        for (name, line) in list.iter() {
+            let short = keys::parse(line).map(|k| k.short()).unwrap_or_default();
+            options.push(json!({"value": name, "label": format!("{name} — {short}{from}"), "checked": true}));
+        }
+    }
+    let note = if options.is_empty() {
+        "You have no saved keys. Add one under Account → SSH keys, or paste one below".to_string()
+    } else {
+        String::new()
+    };
+    Json(json!({"options": options, "note": note})).into_response()
+}
+
+/// Which keys a machine has, and from where: each `accessCredentials`
+/// Secret and how it propagates, and the keys its cloud-init seed carries.
+async fn vm_keys(State(inner): State<Arc<Inner>>, viewer: Viewer, Path((ns, name)): Path<(String, String)>) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let key = format!("{ns}/{name}");
+    let machine = inner.store.object("vm", &key).await;
+    let instance = inner.store.object("vmi", &key).await;
+    let spec = machine
+        .as_ref()
+        .and_then(|m| m.pointer("/spec/template/spec"))
+        .or_else(|| instance.as_ref().and_then(|v| v.get("spec")))
+        .cloned()
+        .unwrap_or(Value::Null);
+    if machine.is_none() && instance.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no virtual machine {key}")}))).into_response();
+    }
+    let mut credentials = Vec::new();
+    for (secret, how) in keys::credentials(&spec) {
+        let (rows, error) = match keystore::read(&inner, &viewer, &ns, &secret).await {
+            Ok(Some(s)) => (key_rows(&keys::from_secret(&s), "secret"), None),
+            Ok(None) => (vec![], Some(format!("Secret {secret} does not exist in {ns}"))),
+            Err(e) => (vec![], Some(e)),
+        };
+        credentials.push(json!({"secret": secret, "how": how, "keys": rows, "error": error}));
+    }
+    // The seed: where the keys actually come from today.
+    let seed_name = spec
+        .pointer("/volumes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find_map(|v| v.pointer("/cloudInitNoCloud/userDataSecretRef/name").and_then(Value::as_str))
+        .map(str::to_string);
+    let mut seed = Vec::new();
+    if let Some(sn) = &seed_name {
+        if let Ok(Some(s)) = keystore::read(&inner, &viewer, &ns, sn).await {
+            for line in keys::from_seed(keys::from_secret(&s).get("userdata").map(String::as_str).unwrap_or("")) {
+                let short = keys::parse(&line).map(|k| k.short()).unwrap_or_default();
+                let comment = keys::parse(&line).map(|k| k.comment).unwrap_or_default();
+                seed.push(json!({"short": short, "comment": comment, "line": line}));
+            }
+        }
+    }
+    // Whether the viewer's saved keys already reach this machine through a
+    // credential, so the page offers "Add my keys" only when it would add.
+    let mine = keys::secret_name(&keystore::user_of(&viewer));
+    let has_mine = credentials.iter().any(|c| c["secret"] == mine.as_str());
+    Json(json!({
+        "credentials": credentials,
+        "seed": seed,
+        "seedSecret": seed_name,
+        "hasMine": has_mine,
+        "canAdd": machine.is_some() && viewer.may_write(),
+        "running": instance.is_some(),
+    }))
+    .into_response()
+}
+
+/// "Add my keys" on a machine that exists: the viewer's Secret, copied into
+/// the machine's namespace, named in its `accessCredentials` for the guest
+/// agent to write.
+///
+/// Said as it is: cloud-init reads keys at first boot only, so for an
+/// existing machine the agent is the one path, and no node honours it yet
+/// (stormvm#41).
+async fn vm_keys_add(State(inner): State<Arc<Inner>>, viewer: Viewer, Path((ns, name)): Path<(String, String)>) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let spec = match definition_spec(&inner, &ns, &name).await {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let list = match keystore::saved(&inner, &viewer).await {
+        Ok(l) if !l.is_empty() => l,
+        Ok(_) => {
+            return (StatusCode::CONFLICT, Json(json!({"error": "you have no saved keys. Add one under Account → SSH keys first"})))
+                .into_response()
+        }
+        Err(e) => return bad_gateway(e),
+    };
+    let secret = match keystore::ensure_copy(&inner, &viewer, &ns, &list).await {
+        Ok(s) => s,
+        Err(e) => return bad_gateway(e),
+    };
+    let mut creds: Vec<Value> = spec.pointer("/accessCredentials").and_then(Value::as_array).cloned().unwrap_or_default();
+    if keys::credentials(&spec).iter().any(|(s, how)| s == &secret && how == "qemuGuestAgent") {
+        return Json(json!({"message": format!("{name} already has your keys through the guest agent; the copy in {ns} is current")}))
+            .into_response();
+    }
+    creds.push(keys::access_credential(&secret, true));
+    let body = json!({"spec": {"template": {"spec": {"accessCredentials": creds}}}});
+    let done = format!(
+        "your {} key{} named on {name} for the guest agent to write to root's authorized_keys. \
+         Nothing on a node does that yet (stormvm#41), and cloud-init reads keys only at first boot, \
+         so until then this machine keeps the keys it was created with",
+        list.len(),
+        if list.len() == 1 { " is" } else { "s are" }
+    );
+    patch_machine(&inner, &viewer, &ns, &name, body, done).await
 }
 
 /// The Backup tab: this machine's snapshots, newest first, and the

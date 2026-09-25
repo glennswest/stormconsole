@@ -20,6 +20,7 @@
   import EventBox from '../components/EventBox.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import VmBackup from './VmBackup.svelte'
+  import VmKeys from './VmKeys.svelte'
   import { noteActivity } from '../stores.svelte.js'
 
   const ns = $derived(route.current.params.ns)
@@ -545,6 +546,8 @@
             {/if}
           {/if}
         </div>
+
+        <VmKeys {ns} {name} />
 
         <div class="card wide">
           <h2>Network</h2>

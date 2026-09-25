@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct Field {
     pub name: String,
     pub label: String,
-    /// text | number | select | textarea
+    /// text | number | select | textarea | checklist
     pub kind: String,
     #[serde(default)]
     pub required: bool,
@@ -20,6 +20,12 @@ pub struct Field {
     pub default: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub hint: String,
+    /// Where a `checklist` fetches its options when the form opens:
+    /// `{options: [{value, label, checked}], note}`. Options that depend on
+    /// who is looking — *your* SSH keys — cannot be declared once per
+    /// plugin, so the form asks for them as the viewer.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
 }
 
 impl Field {
@@ -32,7 +38,14 @@ impl Field {
             options: vec![],
             default: String::new(),
             hint: String::new(),
+            source: String::new(),
         }
+    }
+
+    /// Checkboxes whose options are fetched from `source` as the viewer.
+    /// Submits the ticked values as an array.
+    pub fn checklist(name: &str, label: &str, source: &str) -> Self {
+        Self { kind: "checklist".into(), source: source.into(), ..Self::text(name, label) }
     }
 
     /// A select whose options are their own labels.

@@ -29,6 +29,8 @@ export const ICONS = {
   plus: 'M12 5v14M5 12h14',
   inbox: 'M3 12h5l2 3h4l2-3h5M5 5h14l2 7v7H3v-7Z',
   filter: 'M3 5h18l-7 8v6l-4 2v-8Z',
+  // A key: SSH keys (#26).
+  key: 'M14.5 4a5.5 5.5 0 1 1-4.2 9.1L4 19.4V21h3v-2h2v-2h2l1.2-1.2A5.5 5.5 0 0 1 14.5 4z M16.5 8.5h.01',
   vm: 'M3 4h18v12H3zM8 20h8M12 16v4M8 8h8M8 12h5',
 }
 

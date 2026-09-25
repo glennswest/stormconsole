@@ -89,6 +89,10 @@ enabled = true
 # page says which upstream is missing rather than showing a terminal that
 # will never print.
 # url = "http://127.0.0.1:9095"
+# Where each user's SSH keys are kept, as a Secret `<user>-ssh-keys`
+# (Account → SSH keys). A machine gets a copy in its own namespace, because
+# accessCredentials can only name a Secret there.
+# ssh_keys_namespace = "default"
 
 [fastetcd]
 enabled = true

@@ -308,11 +308,16 @@ pub struct Vm {
     /// Unset means no console doors, said plainly rather than shown as a
     /// terminal that never prints.
     pub url: Option<String>,
+    /// Where each user's SSH-key Secret (`<user>-ssh-keys`) lives. Copies
+    /// are kept in the namespaces their machines are in, because KubeVirt's
+    /// `accessCredentials` can only name a Secret in the machine's own.
+    #[serde(default)]
+    pub ssh_keys_namespace: Option<String>,
 }
 
 impl Default for Vm {
     fn default() -> Self {
-        Self { enabled: true, url: None }
+        Self { enabled: true, url: None, ssh_keys_namespace: None }
     }
 }
 

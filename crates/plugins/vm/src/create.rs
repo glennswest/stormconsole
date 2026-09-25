@@ -28,6 +28,7 @@
 //! golden that already exists, and the form says so rather than offering
 //! a file picker that would fail.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -96,10 +97,14 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                     .hint("what the guest calls itself and asks DHCP for — defaults to \
                            the machine's name. Without it every Fedora guest calls \
                            itself `fedora` and DNS cannot tell them apart"),
-                Field::text("ssh_key", "SSH public key")
-                    .hint("leave blank to use your own key. Goes into the cloud-init \
-                           seed; a guest with no key and no password is a machine \
-                           nothing can log into"),
+                Field::checklist("keys", "Your SSH keys", "/api/plugins/vm/keys/choices")
+                    .hint("every key you have is given to the machine unless you untick \
+                           it. All of them: the machine follows your saved list. A \
+                           subset: the machine gets a Secret of its own with just those"),
+                Field::text("ssh_key", "Another SSH public key")
+                    .hint("optional — somebody else's key, for this machine only. Keys \
+                           go into the cloud-init seed; a guest with no key and no \
+                           password is a machine nothing can log into"),
             ],
         )
         .describe("A VM on this cluster, from a golden")
@@ -131,6 +136,15 @@ pub struct Form {
     bus: String,
     #[serde(default)]
     ssh_key: String,
+    /// Which of the viewer's keys to give the machine, by item name —
+    /// saved ones and the console config's (`config-N`). Absent means all
+    /// of them: the person creating a machine is the person who logs in.
+    #[serde(default)]
+    keys: Option<Vec<String>>,
+    /// The chosen keys' lines, resolved by `create` before the seed is
+    /// written. Never read from the request.
+    #[serde(skip)]
+    lines: Vec<String>,
     /// Which network the guest is on: `pod`, or a host bridge by name.
     #[serde(default)]
     network: String,
@@ -315,8 +329,12 @@ pub fn cloud_init(f: &Form) -> String {
     if !host.is_empty() {
         out.push_str(&format!("hostname: {host}\nprefer_fqdn_over_hostname: false\n"));
     }
-    if !f.ssh_key.trim().is_empty() {
-        let key = f.ssh_key.trim();
+    // Every chosen key, and a pasted one, once each.
+    let mut all: Vec<&str> = f.lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    if !f.ssh_key.trim().is_empty() && !all.contains(&f.ssh_key.trim()) {
+        all.push(f.ssh_key.trim());
+    }
+    if !all.is_empty() {
         // The default user *and* root.
         //
         // Top-level `ssh_authorized_keys` authorizes the image's default
@@ -332,10 +350,12 @@ pub fn cloud_init(f: &Form) -> String {
         // user's. `users: [default, ...]` keeps the image's own user as
         // well -- listing users *replaces* the default set, so writing only
         // root would take `fedora` away from anyone expecting it.
+        let top: String = all.iter().map(|k| format!("  - {k}\n")).collect();
+        let root: String = all.iter().map(|k| format!("      - {k}\n")).collect();
         out.push_str(&format!(
-            "ssh_authorized_keys:\n  - {key}\n\
+            "ssh_authorized_keys:\n{top}\
              disable_root: false\n\
-             users:\n  - default\n  - name: root\n    ssh_authorized_keys:\n      - {key}\n"
+             users:\n  - default\n  - name: root\n    ssh_authorized_keys:\n{root}"
         ));
     }
     out
@@ -425,11 +445,23 @@ pub async fn create(
     //
     // Only when the field is empty: somebody who pasted a key meant that
     // key, possibly for somebody else.
-    if form.ssh_key.trim().is_empty() {
-        if let Some(k) = viewer.ssh_keys.first() {
-            form.ssh_key = k.clone();
-        }
-    }
+    //
+    // All of the viewer's keys unless they untick some: their saved list
+    // (Account → SSH keys, #26) and whatever the console's config gives
+    // them. Resolved here so the seed carries every one.
+    let saved = crate::keystore::saved(&inner, &viewer).await.unwrap_or_default();
+    let config: BTreeMap<String, String> = viewer
+        .ssh_keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (format!("config-{}", i + 1), k.trim().to_string()))
+        .collect();
+    let chosen = |name: &str| form.keys.as_ref().is_none_or(|ks| ks.iter().any(|k| k == name));
+    let chosen_saved: BTreeMap<String, String> =
+        saved.iter().filter(|(n, _)| chosen(n)).map(|(n, l)| (n.clone(), l.clone())).collect();
+    let chosen_config: BTreeMap<String, String> =
+        config.iter().filter(|(n, _)| chosen(n)).map(|(n, l)| (n.clone(), l.clone())).collect();
+    form.lines = chosen_saved.values().chain(chosen_config.values()).cloned().collect();
     // Every exit from here says what happened, and says it on the log group
     // rather than only into the dialog that asked.
     //
@@ -490,7 +522,9 @@ pub async fn create(
             return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response();
         }
     };
-    let ns = doc.pointer("/metadata/namespace").and_then(Value::as_str).unwrap_or("default");
+    // Owned: `doc` is extended with the machine's accessCredentials below.
+    let ns_owned = doc.pointer("/metadata/namespace").and_then(Value::as_str).unwrap_or("default").to_string();
+    let ns = ns_owned.as_str();
     if let Some(refusal) = crate::refuse_hidden(&inner, &viewer, ns).await {
         return refusal;
     }
@@ -530,6 +564,42 @@ pub async fn create(
         }
     }
 
+    // The same keys through KubeVirt's own field (#26), so `virtctl` and
+    // `oc` see them and the node can act on them once it does (stormvm#41).
+    //
+    // The whole saved list is named as the user's Secret — copied into this
+    // namespace, since accessCredentials can only reach one here — so the
+    // machine follows that list. Anything else (a subset, the config's
+    // keys, a pasted one) is a Secret of the machine's own. A Secret that
+    // cannot be written is said, not fatal: the seed already carries every
+    // key, and that is what puts them in the guest today.
+    let mut doc = doc;
+    let mut creds = Vec::new();
+    let mut key_note = None;
+    let vm_name = form.name.trim().to_string();
+    let mut extras: BTreeMap<String, String> = chosen_config.clone();
+    if !saved.is_empty() && chosen_saved.len() == saved.len() {
+        match crate::keystore::ensure_copy(&inner, &viewer, ns, &saved).await {
+            Ok(secret) => creds.push(crate::keys::access_credential(&secret, false)),
+            Err(e) => key_note = Some(e),
+        }
+    } else {
+        extras.extend(chosen_saved.clone());
+    }
+    if let Ok(k) = crate::keys::parse(form.ssh_key.trim()) {
+        extras.insert(crate::keys::item_name("", &k), k.line());
+    }
+    if !extras.is_empty() {
+        match crate::keystore::machine_secret(&inner, &viewer, ns, &vm_name, &extras).await {
+            Ok(secret) => creds.push(crate::keys::access_credential(&secret, false)),
+            Err(e) => key_note = Some(e),
+        }
+    }
+    if !creds.is_empty() {
+        doc["spec"]["template"]["spec"]["accessCredentials"] = json!(creds);
+    }
+    let key_count = form.lines.len() + usize::from(!form.ssh_key.trim().is_empty());
+
     let path = format!("{}/namespaces/{ns}/virtualmachines", crate::VM_API);
     match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
         Ok((status, body)) if status.is_success() => {
@@ -559,12 +629,17 @@ pub async fn create(
             // Said rather than refused: a machine nobody logs into is a
             // legitimate thing to make, and the console does not get to
             // decide that it is not.
-            let message = if form.ssh_key.trim().is_empty() {
+            let message = match &key_note {
+                Some(e) => format!("{message}. Its keys are in the cloud-init seed; the accessCredentials Secret could not be written ({e})"),
+                None if key_count > 0 => format!("{message} with {key_count} SSH key{}", if key_count == 1 { "" } else { "s" }),
+                None => message,
+            };
+            let message = if key_count == 0 {
                 format!(
                     "{message}. No SSH key was included, and cloud images have no \
                      password — nothing will be able to log into it, including the \
-                     serial console. Add a key to your console user, or put one in \
-                     the SSH key field, and recreate it"
+                     serial console. Add a key under Account → SSH keys, or put one \
+                     in the SSH key field, and recreate it"
                 )
             } else {
                 message

@@ -148,8 +148,12 @@
       {/each}
     </select>
 
+    <!-- Your account: today, the SSH keys every machine you create gets. -->
+    <a class="keys" href="#/account/keys" title="Your SSH keys" aria-label="Your SSH keys">
+      <Icon name="key" size={15} />
+    </a>
     {#if auth.required}
-      {#if auth.user}<span class="user">{auth.user}</span>{/if}
+      {#if auth.user}<a class="user" href="#/account/keys" title="Your account">{auth.user}</a>{/if}
       <button class="signout" title="Sign out" aria-label="Sign out" onclick={logout}>
         <Icon name="power" size={15} />
       </button>
@@ -281,7 +285,10 @@
   }
   header :global(select:hover) { background: rgb(255 255 255 / 0.14); }
 
-  .user { font-size: var(--sc-t-meta); color: var(--sc-masthead-dim); font-weight: 500; }
+  .user { font-size: var(--sc-t-meta); color: var(--sc-masthead-dim); font-weight: 500; text-decoration: none; }
+  .user:hover { color: var(--sc-masthead-fg); }
+  .keys { display: inline-flex; color: var(--sc-masthead-dim); padding: 4px; border-radius: var(--radius); }
+  .keys:hover { color: var(--sc-masthead-fg); }
   .signout {
     padding: 4px 8px;
     background: none;

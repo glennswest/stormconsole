@@ -13,6 +13,8 @@ const routes = [
   // The datastore's keyspace; the prefix and an opened key travel in the
   // query because both are full of '/'.
   { pattern: '#/etcd/keys', name: 'etcdkeys' },
+  // Your own SSH keys, given to every machine you create (#26).
+  { pattern: '#/account/keys', name: 'accountkeys' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },

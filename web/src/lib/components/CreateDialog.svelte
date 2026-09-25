@@ -11,6 +11,10 @@
   let busy = $state(false)
   let error = $state('')
   let done = $state('')
+  // A checklist's options, fetched as the viewer when the form opens: they
+  // depend on who is looking (your SSH keys), which a creator declared once
+  // per plugin cannot know.
+  let lists = $state({})
 
   $effect(() => {
     if (!c) return
@@ -20,7 +24,31 @@
     values = v
     error = ''
     done = ''
+    lists = {}
+    for (const f of c.fields || []) {
+      if (f.kind !== 'checklist' || !f.source) continue
+      lists[f.name] = { loading: true, options: [], note: '' }
+      // Left unset until it answers, so a list that never loads is not
+      // submitted as "none ticked" — the server's default is all.
+      delete values[f.name]
+      fetch(f.source)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+        .then((d) => {
+          lists[f.name] = { loading: false, options: d.options || [], note: d.note || '' }
+          values[f.name] = (d.options || []).filter((o) => o.checked).map((o) => o.value)
+        })
+        .catch((e) => {
+          lists[f.name] = { loading: false, options: [], note: `could not load: ${e.message}` }
+        })
+    }
   })
+
+  function toggle(name, value, on) {
+    const cur = new Set(values[name] || [])
+    if (on) cur.add(value)
+    else cur.delete(value)
+    values[name] = [...cur]
+  }
 
   function body() {
     if (c.mode === 'yaml') return { type: 'application/yaml', data: text }
@@ -93,6 +121,26 @@
       {:else}
         <div class="form">
           {#each c.fields as f (f.name)}
+            {#if f.kind === 'checklist'}
+              <fieldset class="checklist">
+                <legend class="lbl">{f.label}</legend>
+                {#if lists[f.name]?.loading}
+                  <span class="fhint">loading…</span>
+                {/if}
+                {#each lists[f.name]?.options || [] as o (o.value)}
+                  <label class="check">
+                    <input
+                      type="checkbox"
+                      checked={(values[f.name] || []).includes(o.value)}
+                      onchange={(e) => toggle(f.name, o.value, e.currentTarget.checked)}
+                    />
+                    <span class="mono">{o.label || o.value}</span>
+                  </label>
+                {/each}
+                {#if lists[f.name]?.note}<span class="fhint">{lists[f.name].note}</span>{/if}
+                {#if f.hint}<span class="fhint">{f.hint}</span>{/if}
+              </fieldset>
+            {:else}
             <label>
               <span class="lbl">{f.label}{#if f.required}<b>*</b>{/if}</span>
               {#if f.kind === 'select'}
@@ -113,6 +161,7 @@
               {/if}
               {#if f.hint}<span class="fhint">{f.hint}</span>{/if}
             </label>
+            {/if}
           {/each}
         </div>
         <p class="hint"><span class="mono">{c.method || 'POST'} {c.path}</span></p>
@@ -235,4 +284,7 @@
   }
   .cancel { color: var(--text-dim); }
   .go:disabled { opacity: 0.55; }
+  fieldset.checklist { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: var(--sc-t-meta); }
+  .check input { width: auto; margin: 0; }
 </style>

@@ -193,7 +193,8 @@ async fn main() {
             Some(config.stormvm_url()),
             namespace_access.clone(),
             image_operator,
-        )));
+        )
+        .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))));
     }
 
     let registry = Arc::new(Registry::new(plugins));
