@@ -485,7 +485,7 @@ or the `storm.io/bridge[.<iface>]` annotation, which wins (stormvm
   The page's rendering was not viewed in a browser (no browser here); the
   bundle built and the API answers what it renders
 
-### VM Backup tab: snapshots (#25) — in progress 2026-09-25
+### VM Backup tab: snapshots (#25) ✅ v0.15.0 2026-09-25
 The objects are KubeVirt's `snapshot.kubevirt.io/v1beta1`
 `VirtualMachineSnapshot` / `VirtualMachineRestore`; their status shape is
 stormvm-spec `snapshot.rs` (`phase` InProgress/Succeeded/Failed,
@@ -495,17 +495,29 @@ Nothing acts on them yet: the controller is rustkube-node#53, the CRDs
 stormpump#28, a real snapshot needs stormblock#130. The status carries no
 step, disk list or size — file on stormvm, read them when present.
 
-- [ ] Watch both kinds (optional CRDs; "not installed" named, stormpump#28)
-- [ ] `vm/src/snapshots.rs`: rows (time, phase + step, disks, size, error,
+- [x] Watch both kinds (optional CRDs; "not installed" named, stormpump#28)
+- [x] `vm/src/snapshots.rs`: rows (time, phase + step, disks, size, error,
       note, "not picked up" after a minute naming rustkube-node#53), the
       create body (source VM or VMI, name default `<vm>-<utc stamp>`,
       `storm.io/note`), the restore body and its refusals (running, not
       ready, no definition)
-- [ ] Routes as the viewer: list, create, delete, restore
-- [ ] UI: Backup tab — Snapshot (name/note), the list, Restore, Delete;
+- [x] Routes as the viewer: list, create, delete, restore
+- [x] UI: Backup tab — Snapshot (name/note), the list, Restore, Delete;
       polls while one is in progress; restores listed
-- [ ] File stormvm: step / disks / size on the status
-- [ ] Tests, docs, changelog; live check on dev; release; golden
+- [x] File stormvm: step / disks / size on the status
+- [x] Tests, docs, changelog; live check on dev; release; golden
+- Verified with `sc-build deploy/verify-vm-snapshots.sh` (real fastetcd +
+  rustkube, the node's status written as stormvm-spec shapes it): no CRDs
+  → named; button → the KubeVirt object with source and note; bad name
+  400, duplicate refused, unknown VM 404; InProgress "cloning disks…" →
+  Succeeded with disks/size; Failed "failed while freezing: …"; restore
+  409 running / 409 not ready / 200 stopped, VirtualMachineRestore as
+  KubeVirt spells it, complete → "restored"; delete 200 and 404 through
+  another machine; viewer 403, operator 200
+- Found and filed **rustkube#100** (P1): a CR's DELETED watch event names
+  the plural as its namespace, so a watching console never drops a deleted
+  VMI or snapshot. The check runs the post-delete steps on a fresh console
+- Filed **stormvm#45**: step / disks / size on the snapshot status
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

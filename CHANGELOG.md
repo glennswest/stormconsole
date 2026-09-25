@@ -3,6 +3,21 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-25
+- **feat(vm):** a Backup tab (#25). Snapshot schedules a
+  `snapshot.kubevirt.io/v1beta1` `VirtualMachineSnapshot` (optional name
+  and note) and returns; the tab lists the machine's snapshots — time,
+  state and the step it is on, disks, size, indications, the reason on
+  failure — with Restore (a `VirtualMachineRestore`, refused with a
+  sentence while running, not ready, or with no definition) and Delete,
+  and the restores made from them. Re-reads every 2 s while anything is
+  moving. Without the CRDs it says so (stormpump#28); a snapshot nothing
+  has picked up in a minute says so (rustkube-node#53); step, disks and
+  size are read when the node reports them (stormvm#45).
+- **chore:** `deploy/verify-vm-snapshots.sh`, the live check. It found
+  rustkube#100: a custom resource's DELETED watch event names the plural as
+  its namespace, so watchers never drop it.
+
 ## [v0.14.0] — 2026-09-25
 
 ### 2026-09-25

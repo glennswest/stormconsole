@@ -659,6 +659,29 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**Snapshots: the Backup tab (#25).** `vm/src/snapshots.rs` over KubeVirt's
+own `snapshot.kubevirt.io/v1beta1` `VirtualMachineSnapshot` and
+`VirtualMachineRestore`, watched as optional kinds (`vmsnap`, `vmrestore`),
+so `virtctl`/`oc` see exactly what the console made. The Snapshot button
+creates the object as the viewer and returns: the node idles the
+filesystems, pauses, group-clones every disk and resumes (stormvm#28), and
+writes the status in the shape `stormvm-spec` `snapshot_status` produces
+(`phase`, `readyToUse`, `indications`, `error.message`, `creationTime`,
+`virtualMachineSnapshotContentName` = the stormblock group). Rows read the
+step (`storm.io/step`), disks (`snapshotVolumes.includedVolumes`) and size
+(`storm.io/sizeBytes`) when present, and say "not reported" otherwise
+(stormvm#45). An object with no status for a minute says nothing has
+picked it up and names rustkube-node#53. Restore is refused, with the
+sentence, when the snapshot is not ready, the machine is running, or there
+is no `VirtualMachine` to restore into; a snapshot is only deleted or
+restored through the machine it belongs to. Routes:
+`GET|POST …/vms/{ns}/{name}/snapshots`, `DELETE …/snapshots/{snap}`,
+`POST …/snapshots/{snap}/restore`. Without the CRDs the tab says so and
+names stormpump#28. `deploy/verify-vm-snapshots.sh` is the live check.
+Known upstream gap: rustkube#100 — a CR's DELETED watch event carries the
+plural as its namespace, so a deleted snapshot (or a stopped VM's
+instance) stays in the console's cache until it relists.
+
 **Addresses, asked against done (#24).** `vm/src/network.rs` gives one row
 per interface from two sources that disagree today. What was *asked* is
 read the way stormvm reads it: `storm.io/bridge.<iface>`, then

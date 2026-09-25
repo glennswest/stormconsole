@@ -115,6 +115,14 @@ a NAT inside the hypervisor (stormvm#16), and the page and the list both
 say so rather than showing an address nothing can reach as if it worked.
 A running machine with no address reads "no address yet".
 
+The **Backup** tab schedules a snapshot — a KubeVirt
+`VirtualMachineSnapshot`, so `virtctl` sees the same thing — and lists the
+machine's snapshots with their state, the step they are on, disks and size,
+with Restore (a `VirtualMachineRestore`, once the machine is stopped) and
+Delete. The node side is stormvm#28 and rustkube-node#53; until a node acts
+on them, a snapshot says it has not been picked up rather than sitting at
+"scheduled" forever.
+
 Lifecycle is `spec.running` and nothing else. A definition that wants to
 run and has no instance says exactly that: nothing places one yet, which
 is stormvm's own outstanding work, not a fault here.
