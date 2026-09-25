@@ -4,6 +4,8 @@
 //! stormview feed (stormconsole#1 asks for one); until it does, its own
 //! JSON is mapped here.
 
+pub mod catalog;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -53,12 +55,13 @@ impl ConsolePlugin for SbregistryPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
+        // Goldens, blanks and media are images, and the registry's to show
+        // (#19): the catalog first. Clones are volumes, under Storage.
         vec![NavSection::new("Images", 50)
             .admin()
-            .item("Goldens", "#/grid?id=reg:registry&rel=goldens")
-            .item("Clones", "#/grid?id=reg:registry&rel=clones")
-            .item("Pallets", "#/grid?id=reg:registry&rel=pallets")
-            .item("Images", "#/grid?id=reg:registry&rel=images")]
+            .item("Catalog", "#/images")
+            .item("Pushed images", "#/grid?id=reg:registry&rel=images")
+            .item("Pallets", "#/grid?id=reg:registry&rel=pallets")]
     }
 
     fn creators(&self) -> Vec<Creator> {
@@ -155,24 +158,61 @@ async fn poll(inner: &Inner) {
     };
     let (health, detail) = readiness(&ready);
 
+    // The catalog (sbregistry v0.23.0). An older registry answers 404, and
+    // the card says so rather than showing an empty catalog.
+    let (catalog, catalog_note) = match inner
+        .client
+        .get(format!("{}/v1/catalog/images", inner.base))
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().as_u16() == 404 => {
+            (vec![], Some("this registry predates /v1/catalog (sbregistry v0.23.0)".to_string()))
+        }
+        Ok(r) if r.status().is_success() => match r.json::<Value>().await {
+            Ok(v) => (v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(), None),
+            Err(e) => (vec![], Some(format!("catalog unreadable: {e}"))),
+        },
+        Ok(r) => {
+            let code = r.status().as_u16();
+            let body: Value = r.json().await.unwrap_or(Value::Null);
+            let why = body.get("error").and_then(Value::as_str).unwrap_or("").to_string();
+            (vec![], Some(format!("catalog: {code} {why}").trim().to_string()))
+        }
+        Err(e) => (vec![], Some(format!("catalog: {e}"))),
+    };
+    let jobs = items(inner, "/v1/media/jobs").await;
+    let names: Vec<String> = catalog.iter().filter_map(|v| field(v, &["name"])).collect();
+    let mut cat: Vec<ComponentSummary> = catalog.iter().map(|v| catalog::image(v, &jobs)).collect();
+    cat.extend(jobs.iter().filter_map(|j| catalog::orphan_job(j, &names)));
+
     let goldens: Vec<_> = items(inner, "/v1/goldens").await.iter().map(golden).collect();
     let clones: Vec<_> = items(inner, "/v1/clones").await.iter().map(clone_).collect();
     let pallets: Vec<_> = items(inner, "/v1/pallets").await.iter().map(|v| generic(v, "pallet")).collect();
     let images: Vec<_> = items(inner, "/v1/images").await.iter().map(image).collect();
 
     let groups = [
+        ("catalog", cat.iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
         ("goldens", goldens.iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
         ("clones", clones.iter().map(|c| c.id.clone()).collect()),
         ("pallets", pallets.iter().map(|c| c.id.clone()).collect()),
         ("images", images.iter().map(|c| c.id.clone()).collect()),
     ];
+    let detail = match &catalog_note {
+        Some(n) => format!("{detail} · {n}"),
+        None => detail,
+    };
+    let health = if catalog_note.is_some() && health == Health::Ok { Health::Warn } else { health };
     let metrics = vec![
-        Metric::new("goldens", goldens.len().to_string()).tone("accent"),
+        Metric::new("catalog", cat.len().to_string()).tone("accent"),
+        Metric::new("goldens", goldens.len().to_string()),
         Metric::new("clones", clones.len().to_string()),
         Metric::new("pallets", pallets.len().to_string()),
         Metric::new("images", images.len().to_string()),
     ];
     let mut out = vec![registry(health, &detail, metrics, &groups)];
+    out.extend(cat);
     out.extend(goldens);
     out.extend(clones);
     out.extend(pallets);
@@ -229,7 +269,7 @@ fn registry(health: Health, detail: &str, metrics: Vec<Metric>, groups: &[(&str,
             .filter(|(_, ids)| !ids.is_empty())
             .map(|(name, ids)| Relation::has_many(name, ids.clone()))
             .collect(),
-        link: Some("#/grid?id=reg:registry&rel=goldens".into()),
+        link: Some("#/images".into()),
     }
 }
 

@@ -57,7 +57,12 @@ impl ConsolePlugin for StormblockPlugin {
     fn nav(&self) -> Vec<NavSection> {
         vec![NavSection::new("Storage", 40)
             .admin()
+            // What is attached to something running, each with what uses it
+            // (#19). Goldens, blanks and media are the registry's, under
+            // Images; a volume nothing is using is kept apart, because it is
+            // the question "can this go" rather than "what is running".
             .item("Volumes", "#/grid?id=sb:engine&rel=volumes")
+            .item("Unattached volumes", "#/grid?id=sb:engine&rel=unattached")
             .item("Slabs", "#/grid?id=sb:engine&rel=slabs")
             .item("Arrays", "#/grid?id=sb:engine&rel=arrays")
             .item("Exports", "#/grid?id=sb:engine&rel=exports")]
@@ -165,7 +170,24 @@ async fn poll(inner: &Inner) {
     let mut groups: Vec<(&str, Vec<String>)> = Vec::new();
 
     let vols: Vec<ComponentSummary> = volumes.iter().map(volume).collect();
-    groups.push(("volumes", vols.iter().map(|c| c.id.clone()).collect()));
+    // The Volumes view is what something running uses (#19); images are
+    // the registry's and only reachable from here through the engine card.
+    let ids_in = |want: &[Place]| -> Vec<String> {
+        volumes
+            .iter()
+            .zip(&vols)
+            .filter(|(v, _)| want.contains(&place(v)))
+            .map(|(_, c)| c.id.clone())
+            .collect()
+    };
+    let attached = ids_in(&[Place::Attached, Place::Volume]);
+    let unattached = ids_in(&[Place::Unattached]);
+    let images = ids_in(&[Place::Image]);
+    let knows_use = volumes.iter().any(|v| v.get("in_use").is_some());
+    let (n_att, n_un, n_img) = (attached.len(), unattached.len(), images.len());
+    groups.push(("volumes", attached));
+    groups.push(("unattached", unattached));
+    groups.push(("images", images));
     let sl: Vec<ComponentSummary> = slabs.iter().map(slab).collect();
     groups.push(("slabs", sl.iter().map(|c| c.id.clone()).collect()));
     let ar: Vec<ComponentSummary> = arrays.iter().map(array).collect();
@@ -179,16 +201,24 @@ async fn poll(inner: &Inner) {
     let total: u64 = slabs.iter().filter_map(|s| u64_field(s, "total_bytes")).sum();
     let unhealthy = vols.iter().filter(|c| c.health != Health::Ok).count();
     let health = if unhealthy > 0 { Health::Warn } else { Health::Ok };
+    let use_line = if knows_use {
+        format!("{n_att} attached · {n_un} unattached · {n_img} images")
+    } else {
+        // Said, not guessed: an engine before v18.1.0 cannot say what is
+        // attached, so every unsealed volume is in Volumes.
+        format!("{n_att} volumes · {n_img} images — this engine does not say what is attached (stormblock v18.1.0)")
+    };
     let detail = format!(
-        "{} volumes{} · {} slabs · {} free of {}",
-        vols.len(),
+        "{use_line}{} · {} slabs · {} free of {}",
         if unhealthy > 0 { format!(" ({unhealthy} not healthy)") } else { String::new() },
         sl.len(),
         human_bytes(free),
         human_bytes(total)
     );
     let metrics = vec![
-        Metric::new("volumes", vols.len().to_string()).tone("accent"),
+        Metric::new("attached", n_att.to_string()).tone("accent"),
+        Metric::new("unattached", n_un.to_string()).tone(if n_un > 0 { "warn" } else { "muted" }),
+        Metric::new("images", n_img.to_string()).tone("muted"),
         Metric::new("slabs", sl.len().to_string()),
         Metric::new("free", human_bytes(free)),
         Metric::new("exports", ex.len().to_string()),
@@ -231,6 +261,22 @@ fn engine(health: Health, detail: &str, metrics: Vec<Metric>, groups: &[(&str, V
 /// template waiting to be cloned. They were all rendered identically, so the
 /// list said nothing about the structure it was showing.
 fn volume_kind(v: &Value) -> &'static str {
+    // The engine's word first (stormblock#138): one rule in the engine
+    // rather than every tool's reading of names. A writable volume with a
+    // parent is still called a clone here, because what it costs is the
+    // thing a list of them is read for.
+    if let Some(k) = v.get("kind").and_then(Value::as_str) {
+        return match k {
+            "volume" if field(v, &["parent"]).is_some() => "clone",
+            "volume" => "volume",
+            "golden" => "golden",
+            "blank" => "blank",
+            "media" => "media",
+            "snapshot" => "snapshot",
+            "template" => "template",
+            _ => "volume",
+        };
+    }
     let sealed = v.get("sealed").and_then(Value::as_bool).unwrap_or(false);
     let has_parent = field(v, &["parent"]).is_some();
     match (sealed, has_parent) {
@@ -240,6 +286,80 @@ fn volume_kind(v: &Value) -> &'static str {
         (false, true) => "clone",
         (false, false) => "volume",
     }
+}
+
+/// Where a volume belongs in the console (#19): the Volumes view (attached
+/// to something running), Unattached, or the registry's Images. An engine
+/// older than v18.1.0 says neither kind nor use; its unsealed volumes all go
+/// to Volumes, and the engine card says why the split is missing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    Attached,
+    Unattached,
+    /// A volume, and the engine does not say whether anything uses it.
+    Volume,
+    Image,
+}
+
+pub fn place(v: &Value) -> Place {
+    let image = match v.get("kind").and_then(Value::as_str) {
+        Some(k) => k != "volume",
+        None => v.get("sealed").and_then(Value::as_bool).unwrap_or(false),
+    };
+    if image {
+        return Place::Image;
+    }
+    match v.get("in_use").and_then(Value::as_bool) {
+        Some(true) => Place::Attached,
+        Some(false) => Place::Unattached,
+        None => Place::Volume,
+    }
+}
+
+/// Who uses it, in words: `PersistentVolumeClaim shop/db`, `Mount /data/x`.
+fn consumer(v: &Value) -> Option<(String, Option<String>)> {
+    let c = v.get("consumer")?;
+    let kind = c.get("kind").and_then(Value::as_str).filter(|s| !s.is_empty())?;
+    let name = c.get("name").and_then(Value::as_str).filter(|s| !s.is_empty())?;
+    let ns = c.get("namespace").and_then(Value::as_str).filter(|s| !s.is_empty());
+    let words = match ns {
+        Some(ns) => format!("{kind} {ns}/{name}"),
+        None => format!("{kind} {name}"),
+    };
+    // Somewhere to go, where the console has the object.
+    let target = ns.and_then(|ns| match kind {
+        "PersistentVolumeClaim" => Some(format!("k8s:pvc:{ns}/{name}")),
+        "Pod" => Some(format!("k8s:pod:{ns}/{name}")),
+        "VirtualMachine" | "VirtualMachineInstance" => Some(format!("vm:machine:{ns}/{name}")),
+        _ => None,
+    });
+    Some((words, target))
+}
+
+/// How it is being served, in words: `nvme-tcp nsid 3`, `ublk /dev/ublkb0 → /data`.
+fn attachments(v: &Value) -> Vec<String> {
+    v.get("attachments")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|a| {
+            let t = a.get("transport").and_then(Value::as_str).unwrap_or("?");
+            let mut out = t.to_string();
+            if let Some(d) = a.get("device").and_then(Value::as_str) {
+                out.push_str(&format!(" {d}"));
+            }
+            if let Some(m) = a.get("mounted_at").and_then(Value::as_str) {
+                out.push_str(&format!(" → {m}"));
+            }
+            if let Some(n) = a.get("nsid").and_then(Value::as_u64) {
+                out.push_str(&format!(" nsid {n}"));
+            }
+            if let Some(l) = a.get("lun").and_then(Value::as_u64) {
+                out.push_str(&format!(" lun {l}"));
+            }
+            out
+        })
+        .collect()
 }
 
 fn volume(v: &Value) -> ComponentSummary {
@@ -324,7 +444,23 @@ fn volume(v: &Value) -> ComponentSummary {
     if let Some(r) = field(v, &["role"]) {
         metrics.push(Metric::new("role", r).tone("muted"));
     }
+    let used_by = consumer(v);
+    let served = attachments(v);
+    let in_use = v.get("in_use").and_then(Value::as_bool);
+    if let Some((words, target)) = &used_by {
+        metrics.push(Metric::new("consumer", words.clone()).tone("accent"));
+        if let Some(t) = target {
+            relations.push(Relation::belongs_to("consumer", t.clone()));
+        }
+    }
+    if !served.is_empty() {
+        metrics.push(Metric::new("attached", served.join(", ")).tone("ok"));
+    } else if in_use == Some(false) && place(v) != Place::Image {
+        metrics.push(Metric::new("attached", "nothing").tone("warn"));
+    }
     match &owner {
+        // The consumer already says it, from the owner when there is one.
+        Some(_) if used_by.is_some() => {}
         Some(o) => metrics.push(Metric::new("owner", o.clone()).tone("accent")),
         // Said out loud rather than left blank. A golden or a blank having no
         // owner is correct and uninteresting; a *clone* with none is the
@@ -347,16 +483,22 @@ fn volume(v: &Value) -> ComponentSummary {
         // their own columns now, and a sentence repeating a column is a
         // sentence nobody reads.
         detail: match kind {
+            "clone" | "volume" if used_by.is_some() => format!(
+                "{kind} · {} · {alloc} of {size} written",
+                used_by.as_ref().map(|(w, _)| w.as_str()).unwrap_or("")
+            ),
             "clone" => format!("{kind} · {alloc} of {size} written"),
             _ => format!("{kind} · {size}"),
         },
         metrics,
+        // Not while something is using it: the engine refuses anyway, and a
+        // button that can only fail is worse than none.
         actions: vec![Action {
             id: "delete".into(),
-            label: "Delete".into(),
+            label: if in_use == Some(true) { "Delete (in use)".into() } else { "Delete".into() },
             method: "DELETE".into(),
             path: format!("{PROXY}/api/v1/volumes/{id}"),
-            enabled: true,
+            enabled: in_use != Some(true),
             danger: true,
             tone: None,
         }],
@@ -564,6 +706,51 @@ mod tests {
         assert_eq!(metric("sealed"), Some("·".into()));
         // The one sentence that matters about a clone: what it actually cost.
         assert_eq!(c.detail, "clone · 1.0 MB of 33.0 MB written");
+    }
+
+    #[test]
+    fn the_engine_says_what_a_volume_is_and_who_uses_it() {
+        let claim = json!({
+            "id": "c9", "name": "pvc-db", "kind": "volume", "parent": "t1", "sealed": false, "writable": true,
+            "virtual_size_human": "10.0 GB", "allocated_human": "4.0 MB", "health": "healthy",
+            "in_use": true,
+            "attachments": [{"transport": "nvme-tcp", "target": "nqn.x", "nsid": 3}],
+            "consumer": {"kind": "PersistentVolumeClaim", "namespace": "shop", "name": "db"},
+            "owner": {"kind": "PersistentVolumeClaim", "namespace": "shop", "name": "db"}
+        });
+        assert_eq!(place(&claim), Place::Attached);
+        let c = volume(&claim);
+        let metric = |l: &str| c.metrics.iter().find(|m| m.label == l).map(|m| m.value.clone());
+        assert_eq!(metric("consumer"), Some("PersistentVolumeClaim shop/db".into()));
+        assert_eq!(metric("attached"), Some("nvme-tcp nsid 3".into()));
+        assert_eq!(metric("owner"), None, "the consumer says it once");
+        assert!(c.relations.iter().any(|r| r.name == "consumer" && r.targets == vec!["k8s:pvc:shop/db"]));
+        assert!(!c.actions[0].enabled, "not deletable while in use");
+        assert!(c.detail.contains("PersistentVolumeClaim shop/db"), "{}", c.detail);
+
+        let idle = json!({"id": "c1", "kind": "volume", "in_use": false, "attachments": []});
+        assert_eq!(place(&idle), Place::Unattached);
+        let c = volume(&idle);
+        assert!(c.metrics.iter().any(|m| m.label == "attached" && m.value == "nothing"));
+        assert!(c.actions[0].enabled);
+
+        for k in ["golden", "blank", "media", "snapshot", "template"] {
+            let v = json!({"id": "g", "kind": k, "sealed": true, "in_use": false});
+            assert_eq!(place(&v), Place::Image, "{k}");
+            assert_eq!(volume_kind(&v), k);
+        }
+        // A mount is a consumer with nowhere in the console to go.
+        let m = volume(&json!({"id": "m", "kind": "volume", "in_use": true,
+            "attachments": [{"transport": "ublk", "device": "/dev/ublkb0", "mounted_at": "/data/x"}],
+            "consumer": {"kind": "Mount", "name": "/data/x"}}));
+        assert!(m.metrics.iter().any(|x| x.label == "attached" && x.value == "ublk /dev/ublkb0 → /data/x"));
+        assert!(m.relations.iter().all(|r| r.name != "consumer"));
+    }
+
+    #[test]
+    fn an_older_engine_keeps_every_unsealed_volume_in_volumes() {
+        assert_eq!(place(&json!({"id": "a", "sealed": false})), Place::Volume);
+        assert_eq!(place(&json!({"id": "a", "sealed": true})), Place::Image);
     }
 
     #[test]
