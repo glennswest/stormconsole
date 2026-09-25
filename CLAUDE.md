@@ -556,6 +556,37 @@ carrying the keys too — that is what gets a key into a guest today.
 - Filed **rustkube#101** (stringData not folded into data); commented the
   shapes on **stormvm#41**
 
+### Projects first (#28) — in progress 2026-09-25
+rustkube v0.15.0 serves `project.openshift.io/v1` (rustkube#97): `projects`
+(namespaces the caller has a RoleBinding in), `projectrequests` (creates the
+namespace annotated `openshift.io/requester`, binds the requester `admin`),
+and ClusterRoles `admin`/`edit`/`view`. Reserved: `default`, `openshift`,
+`kube-*`, `openshift-*`.
+
+- [ ] System namespaces: rustkube's reserved set + `[kubernetes]
+      system_namespaces` (default `["cilium"]`, the node's services)
+- [ ] k8s routes as the viewer: `GET/POST /projects`, `DELETE
+      /projects/{p}`, members (RoleBindings to admin/edit/view: list, add,
+      remove), isolation (`storm-isolate` NetworkPolicies: within the
+      namespace only, DNS to kube-system opt-in; badge; remove). Fallback
+      when `project.openshift.io` is not served: namespaces
+- [ ] Masthead: a **Project** selector (the viewer's projects; system ones
+      only in an admin group) with New project
+- [ ] Every create targets a project: `Creator.namespaced`, a project
+      picker in the dialog with New project inline (suggested
+      `<user>-work`), templates take the chosen project; `/apply` and VM
+      create refuse system namespaces (admin YAML excepted for `/apply`)
+- [ ] Lists: namespaced kinds always show Namespace; grouped by project
+      when all are shown. Node daemons leave the nav (their pods are the
+      mirror in kube-system); they stay on the node page
+- [ ] Cluster section (admin): Nodes, PVs, StorageClasses, CRDs,
+      ClusterRoles, all Namespaces — new watched kinds
+- [ ] Namespace page = project page: requester, display name, members,
+      isolation, delete
+- [ ] PVC Pending under `WaitForFirstConsumer`: idle, "provisioned when a
+      pod or VM uses it", Attach to a VM
+- [ ] Tests, docs, changelog; live check (projects as two users); release
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
