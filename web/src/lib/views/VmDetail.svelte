@@ -18,6 +18,7 @@
   import YamlPanel from '../components/YamlPanel.svelte'
   import Icon from '../components/Icon.svelte'
   import EventBox from '../components/EventBox.svelte'
+  import CopyButton from '../components/CopyButton.svelte'
   import { noteActivity } from '../stores.svelte.js'
 
   const ns = $derived(route.current.params.ns)
@@ -409,16 +410,6 @@
     closeVnc()
   })
 
-  // How an interface is attached, whatever the node called the key.
-  const binding = (n) =>
-    n['storm.io/binding'] || (n.bridge ? 'bridge' : n.masquerade ? 'masquerade' : n.pod ? 'pod' : '')
-
-  // Masquerade and qemu's `user` are the same thing under two names: a NAT
-  // inside the hypervisor process. The guest gets an address and nothing
-  // outside this node can route to it, which is worth saying on the page
-  // rather than discovering by trying.
-  const nat = (n) => ['masquerade', 'user'].includes(binding(n))
-
   const doors = $derived(
     vm?.console || { serial: false, vnc: false, replay: false, write: false, reason: '' }
   )
@@ -554,32 +545,45 @@
           {/if}
         </div>
 
-        <div class="card">
+        <div class="card wide">
           <h2>Network</h2>
           {#if !vm.interfaces?.length}
             <p class="none">No interfaces. A machine with no network is reachable only from its console.</p>
           {:else}
-            <!-- The three facts somebody asks about a machine they cannot
-                 reach: how it is attached, what its MAC is, and what
-                 address the guest actually holds. The last comes from the
-                 guest's own agent, so its absence is a fact about the
-                 machine rather than a blank. -->
-            <dl>
-              {#each vm.interfaces as n, i (n.name || i)}
-                <dt>{n.name || `interface ${i}`}</dt>
-                <dd>
-                  <span class="mono">{n.ipAddress || '—'}</span>
-                  {#if n.mac}<span class="dim mono">{n.mac}</span>{/if}
-                  {#if binding(n)}<span class="dim">{binding(n)}</span>{/if}
-                  {#if !n.ipAddress}
-                    <span class="note">no address reported — the guest agent supplies it, and this machine has none running</span>
-                  {/if}
-                  {#if nat(n)}
-                    <span class="note warn">behind a NAT inside the hypervisor: the guest has an address and nothing outside this node can route to it</span>
-                  {/if}
-                </dd>
-              {/each}
-            </dl>
+            <!-- Per interface, what was asked for beside what the node did
+                 (#24). They disagree today — a spec asking for the pod
+                 network runs as a NAT inside the hypervisor (stormvm#16) —
+                 and showing either alone reads as an answer it is not. -->
+            <table class="nets">
+              <thead>
+                <tr><th>Interface</th><th>Asked for</th><th>Node did</th><th>MAC</th><th>Addresses</th></tr>
+              </thead>
+              <tbody>
+                {#each vm.interfaces as n, i (n.name || i)}
+                  <tr>
+                    <td class="mono">{n.name}</td>
+                    <td>{n.asked || '—'}</td>
+                    <td class:warn={n.reach === 'nat'} class:ok={n.reach === 'reachable'}>
+                      {n.did === 'user' ? 'NAT inside the hypervisor' : n.did || '—'}
+                    </td>
+                    <td class="mono">
+                      {#if n.mac}{n.mac}<CopyButton value={n.mac} label="Copy MAC" />{:else}—{/if}
+                    </td>
+                    <td class="mono">
+                      {#each n.addresses as ip (ip)}
+                        <div class:warn={n.reach === 'nat'}>{ip}<CopyButton value={ip} label="Copy address" /></div>
+                      {:else}
+                        <span class="dim">{n.reach === 'stopped' ? '—' : 'no address yet'}</span>
+                      {/each}
+                    </td>
+                  </tr>
+                  <tr class="why">
+                    <td></td>
+                    <td colspan="4" class="whynote" class:warn={n.reach === 'nat'}>{n.note}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           {/if}
         </div>
       </section>
@@ -819,6 +823,24 @@
     color: var(--text-faint);
   }
   .note.warn { color: var(--warn-strong); }
+
+  .card.wide { grid-column: 1 / -1; }
+  table.nets { width: 100%; border-collapse: collapse; }
+  table.nets th {
+    text-align: left;
+    font-size: var(--sc-t-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    font-weight: 600;
+    padding: 0 12px 6px 0;
+  }
+  table.nets td { padding: 6px 12px 0 0; font-size: var(--sc-t-body); vertical-align: baseline; }
+  table.nets tr.why td { padding-top: 0; padding-bottom: 6px; }
+  table.nets .whynote { font-size: var(--sc-t-meta); color: var(--text-faint); }
+  table.nets tr.why + tr > td { border-top: 1px solid var(--sc-hairline); }
+  table.nets .warn { color: var(--warn-strong); }
+  table.nets .ok { color: var(--ok); }
 
   .tabs {
     display: flex;

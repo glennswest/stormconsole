@@ -29,6 +29,16 @@
   import { noteActivity } from '../stores.svelte.js'
   import Icon from './Icon.svelte'
   import ResourceTable from './ResourceTable.svelte'
+  import CopyButton from './CopyButton.svelte'
+
+  // A metric whose value is addresses — IP or MAC, one or a list — gets a copy
+  // button (#24). Decided on the value rather than the label, so any
+  // plugin's addresses get it, the feed upstreams' included, without a
+  // flag the component contract does not carry.
+  const V4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(\/\d{1,2})?$/
+  const V6 = /^[0-9a-f]*:[0-9a-f:.]*(\/\d{1,3})?$/i
+  const isAddresses = (v) =>
+    typeof v === 'string' && v.split(',').map((x) => x.trim()).every((x) => V4.test(x) || (x.includes('::') || x.split(':').length > 3) && V6.test(x))
 
   let {
     components = [],
@@ -470,6 +480,7 @@
               <span class="m">
                 <span class="ml">{m.label}</span>
                 <span class="mv {m.tone || ''}">{m.value}{m.unit || ''}</span>
+                {#if isAddresses(m.value)}<CopyButton value={m.value} label="Copy" />{/if}
               </span>
             {/each}
           </td>
@@ -518,7 +529,7 @@
                 {#if row.metrics?.length}
                   <dl class="facts">
                     {#each row.metrics as m}
-                      <div><dt>{m.label}</dt><dd class="{m.tone || ''}">{m.value}{m.unit || ''}</dd></div>
+                      <div><dt>{m.label}</dt><dd class="{m.tone || ''}">{m.value}{m.unit || ''}{#if isAddresses(m.value)}<CopyButton value={m.value} label="Copy" />{/if}</dd></div>
                     {/each}
                   </dl>
                 {/if}

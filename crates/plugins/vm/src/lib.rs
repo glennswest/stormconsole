@@ -27,6 +27,7 @@ pub mod console;
 mod create;
 pub mod disks;
 pub mod images;
+pub mod network;
 pub mod settings;
 
 use std::sync::Arc;
@@ -918,30 +919,22 @@ async fn detail(
         machine.as_ref().and_then(|v| v.pointer("/spec/template/spec")),
         instance.as_ref().and_then(|v| v.get("spec")),
     );
-    // What the machine's network actually *is*, not what was asked for.
+    // Per interface, what was asked for beside what the node did (#24).
     //
-    // This read `spec.domain.devices.interfaces`, which carries the name
-    // and the binding and nothing else — no MAC, no address — so the page
-    // rendered the spec's key names as prose and answered none of the
-    // questions somebody asks about a machine they cannot reach.
-    //
-    // `status.interfaces[]` is the running answer: the name, the MAC the
-    // node built, the binding it built it with, and the address the guest
-    // holds. The last of those comes from the guest's own agent, so it is
-    // absent on a machine without one — which the page says, rather than
-    // showing a blank where an address should be.
-    let interfaces = instance
-        .as_ref()
-        .and_then(|v| v.pointer("/status/interfaces"))
-        .and_then(Value::as_array)
-        .cloned()
-        .filter(|a| !a.is_empty())
-        .unwrap_or_else(|| {
-            spec.pointer("/domain/devices/interfaces")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-        });
+    // `status.interfaces[]` alone is the running answer — MAC, binding,
+    // address — and loses what somebody meant; the spec alone reads a
+    // `pod` network as working when the node has put the guest behind a
+    // NAT inside the hypervisor (stormvm#16). `network::interfaces` keeps
+    // both and says whether the address is one anybody can use.
+    let interfaces = network::interfaces(
+        &spec,
+        &[
+            instance.as_ref().and_then(|v| v.get("metadata")),
+            machine.as_ref().and_then(|v| v.pointer("/spec/template/metadata")),
+            machine.as_ref().and_then(|v| v.get("metadata")),
+        ],
+        instance.as_ref(),
+    );
     let networks = spec.pointer("/networks").and_then(Value::as_array).cloned().unwrap_or_default();
     let caps = console::for_vm(
         &inner.http,

@@ -199,33 +199,38 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         }
         c.metrics.push(Metric::new("disks", ds.len().to_string()).tone("muted"));
         // The address, and how it is reached — the two facts somebody scanning
-        // a list of machines is actually looking for.
+        // a list of machines is actually looking for (#24).
         //
-        // `status.interfaces[]` carries both: the address from the guest
-        // agent, the binding from what the node built. A machine on
-        // `masquerade` is behind a NAT inside the hypervisor process and
-        // nothing outside the node can route to it, which is worth seeing on
-        // the row rather than discovering by trying.
-        if let Some(ifs) = obj.pointer("/status/interfaces").and_then(Value::as_array) {
-            if let Some(ip) = ifs
-                .iter()
-                .filter_map(|i| i.get("ipAddress").and_then(Value::as_str))
-                .find(|s| !s.is_empty())
-            {
-                c.metrics.push(Metric::new("ip", ip.to_string()));
-            }
-            if let Some(b) = ifs.first().and_then(|i| i.get("storm.io/binding")).and_then(Value::as_str) {
-                c.metrics.push(
-                    Metric::new("network", b.to_string()).tone(match b {
-                        // Reachable.
-                        "bridge" => "ok",
-                        // A NAT inside the hypervisor: the guest has an
-                        // address and nothing outside can use it.
-                        "user" => "warn",
-                        _ => "muted",
-                    }),
-                );
-            }
+        // Every address on every interface, not the first: a guest with v4
+        // and v6, or two legs, has several and none is "the" address. A
+        // running machine with none says so, because a blank reads as a
+        // machine with no network rather than one that has not reported.
+        // And the binding the node actually used, because a spec asking for
+        // the pod network is today a NAT inside the hypervisor that nothing
+        // outside the node can route to (stormvm#16) — worth seeing on the
+        // row rather than discovering by trying.
+        let ifs = crate::network::interfaces(&spec, &[obj.get("metadata")], Some(obj));
+        let addrs: Vec<&str> = ifs
+            .iter()
+            .flat_map(|i| i["addresses"].as_array().into_iter().flatten().filter_map(Value::as_str))
+            .collect();
+        let nat = ifs.iter().any(|i| i["reach"] == "nat");
+        if !addrs.is_empty() {
+            let m = Metric::new("ip", addrs.join(", "));
+            c.metrics.push(if nat { m.tone("warn") } else { m });
+        } else if phase == "Running" && !ifs.is_empty() {
+            c.metrics.push(Metric::new("ip", "no address yet").tone("muted"));
+        }
+        if let Some(i) = ifs.iter().find(|i| i["did"].is_string()) {
+            let did = i["did"].as_str().unwrap_or_default();
+            let (value, tone) = match did {
+                // Asked for the pod network, got a NAT: say both halves.
+                "user" if i["askedNetwork"] == "pod" => ("NAT, not pod".to_string(), "warn"),
+                "user" => ("NAT".to_string(), "warn"),
+                "bridge" => ("bridge".to_string(), "ok"),
+                other => (other.to_string(), "muted"),
+            };
+            c.metrics.push(Metric::new("network", value).tone(tone));
         }
         if let Some(n) = node {
             // Where the machine *is*, which is a placement and not
@@ -520,6 +525,49 @@ mod tests {
         assert_eq!(vm.link.as_deref(), Some("#/vm/default/web-1"));
         assert!(vm.relations.iter().any(|r| r.targets == vec!["k8s:node:storm-2c91b3"]));
         assert_eq!(vm.metrics.iter().find(|m| m.label == "disks").unwrap().value, "2");
+    }
+
+    fn networked(status_ifs: Value) -> ComponentSummary {
+        let sn = snap(
+            "vmi",
+            "default/web-1",
+            json!({
+                "spec": {
+                    "domain": {"devices": {"interfaces": [{"name": "default"}]}},
+                    "networks": [{"name": "default", "pod": {}}]
+                },
+                "status": {"phase": "Running", "interfaces": status_ifs}
+            }),
+        );
+        map(&sn).remove(0)
+    }
+
+    fn metric<'a>(c: &'a ComponentSummary, label: &str) -> Option<&'a Metric> {
+        c.metrics.iter().find(|m| m.label == label)
+    }
+
+    #[test]
+    fn the_row_carries_every_address_and_says_a_nat_is_one() {
+        let vm = networked(json!([{"name": "default", "mac": "52:54:00:a1:8d:d0",
+            "ipAddress": "10.155.0.15", "ipAddresses": ["10.155.0.15"], "storm.io/binding": "user"}]));
+        assert_eq!(metric(&vm, "ip").unwrap().value, "10.155.0.15");
+        assert_eq!(metric(&vm, "ip").unwrap().tone.as_deref(), Some("warn"));
+        assert_eq!(metric(&vm, "network").unwrap().value, "NAT, not pod");
+
+        let vm = networked(json!([{"name": "default", "ipAddresses": ["192.168.8.61", "fd00::61"],
+            "storm.io/binding": "bridge"}]));
+        assert_eq!(metric(&vm, "ip").unwrap().value, "192.168.8.61, fd00::61");
+        assert_eq!(metric(&vm, "network").unwrap().value, "bridge");
+    }
+
+    #[test]
+    fn a_running_machine_without_an_address_says_so() {
+        let vm = networked(json!([{"name": "default", "ipAddress": "", "storm.io/binding": "bridge"}]));
+        assert_eq!(metric(&vm, "ip").unwrap().value, "no address yet");
+        // Nothing reported at all is the same answer on the row.
+        let vm = networked(Value::Null);
+        assert_eq!(metric(&vm, "ip").unwrap().value, "no address yet");
+        assert!(metric(&vm, "network").is_none(), "no binding is invented");
     }
 
     /// The node is where the machine *is*, and the direction of that edge
