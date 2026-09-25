@@ -41,6 +41,10 @@ enabled = true
 # server = "https://192.168.8.150:6443"   # default https://127.0.0.1:6443 (unverified TLS)
 # token = ""                              # ServiceAccount bearer token
 # insecure_skip_tls_verify = true         # a configured server is verified unless set
+# Namespaces that hold the system's own things and are never a project:
+# not offered as a create target, not in "My projects". default, openshift,
+# kube-* and openshift-* always are.
+# system_namespaces = ["cilium"]
 
 [fleet]
 enabled = true

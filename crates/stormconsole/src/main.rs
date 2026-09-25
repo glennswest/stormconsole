@@ -120,6 +120,7 @@ async fn main() {
             config.kubernetes.token.clone(),
             config.kubernetes_insecure(),
         ));
+        k8s.namespace_access().set_system_namespaces(config.kubernetes.system_namespaces.clone());
         namespace_access = Some(k8s.namespace_access());
         plugins.push(k8s);
     }

@@ -228,6 +228,21 @@ pub struct NamespaceAccess {
     http: reqwest::Client,
     store: Arc<Store>,
     authz: Authorizer,
+    /// Namespaces beyond rustkube's reserved set that hold the system's own
+    /// things — the node's services (`cilium`) — and so are never a target
+    /// for somebody's workload (#28).
+    system: std::sync::RwLock<Vec<String>>,
+}
+
+/// Namespaces the system owns (#28): rustkube's reserved set for projects
+/// (`default`, `openshift`, `kube-*`, `openshift-*`), plus `extra`. User
+/// workloads are never created in one, and "My projects" never lists one.
+pub fn is_system_namespace(ns: &str, extra: &[String]) -> bool {
+    ns == "default"
+        || ns == "openshift"
+        || ns.starts_with("kube-")
+        || ns.starts_with("openshift-")
+        || extra.iter().any(|e| e == ns)
 }
 
 /// What a viewer may not see: the namespaces, and the line to say about
@@ -236,7 +251,28 @@ pub type Hidden = Option<(HashSet<String>, String)>;
 
 impl NamespaceAccess {
     pub fn new(server: Option<String>, http: reqwest::Client, store: Arc<Store>) -> Arc<Self> {
-        Arc::new(Self { server, http, store, authz: Authorizer::default() })
+        Arc::new(Self {
+            server,
+            http,
+            store,
+            authz: Authorizer::default(),
+            system: std::sync::RwLock::new(vec!["cilium".into()]),
+        })
+    }
+
+    /// Replace the extra system namespaces (`[kubernetes] system_namespaces`).
+    pub fn set_system_namespaces(&self, extra: Vec<String>) {
+        if let Ok(mut s) = self.system.write() {
+            *s = extra;
+        }
+    }
+
+    pub fn system_namespaces(&self) -> Vec<String> {
+        self.system.read().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    pub fn is_system(&self, ns: &str) -> bool {
+        is_system_namespace(ns, &self.system_namespaces())
     }
 
     /// `None` when nothing is hidden — no identity to authorize against,

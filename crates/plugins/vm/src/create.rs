@@ -54,7 +54,6 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
             CREATE,
             vec![
                 Field::text("name", "Name").required(),
-                Field::text("namespace", "Namespace").default("default"),
                 Field::text("node", "Node")
                     .hint("leave blank and the scheduler picks one; name a node to pin it there"),
                 Field::text("cores", "vCPU").default("2"),
@@ -108,9 +107,14 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
             ],
         )
         .describe("A VM on this cluster, from a golden")
+        // The project is the dialog's picker, sent as `namespace` (#28):
+        // a free-text field defaulting to `default` is how machines ended
+        // up beside the system's own objects.
+        .in_project()
         .at(&["#/vms"]),
         Creator::yaml("vm:yaml", "Virtual machine (YAML)", APPLY, VMI)
-            .describe("A KubeVirt VirtualMachineInstance, as kubectl would apply it")
+            .describe("A KubeVirt VirtualMachine, as kubectl would apply it")
+            .in_project()
             .at(&["#/vms"]),
     ]
 }
@@ -205,7 +209,12 @@ pub fn instance(f: &Form) -> Result<Value, String> {
     }
     let memory = if f.memory.trim().is_empty() { "4Gi" } else { f.memory.trim() };
     let bus = if f.bus.trim().is_empty() { "virtio" } else { f.bus.trim() };
-    let ns = if f.namespace.trim().is_empty() { "default" } else { f.namespace.trim() };
+    // A project, always (#28). Never `default` by omission; the handler
+    // refuses system namespaces before this is reached.
+    let ns = f.namespace.trim();
+    if ns.is_empty() {
+        return Err("choose a project for the machine — or create one".into());
+    }
     let _ = cloud_init(f);
     // A `VirtualMachine`, not a bare `VirtualMachineInstance`.
     //
@@ -525,6 +534,16 @@ pub async fn create(
     // Owned: `doc` is extended with the machine's accessCredentials below.
     let ns_owned = doc.pointer("/metadata/namespace").and_then(Value::as_str).unwrap_or("default").to_string();
     let ns = ns_owned.as_str();
+    if inner.access.as_ref().is_some_and(|a| a.is_system(ns))
+        || plugin_kubernetes::authz::is_system_namespace(ns, &[])
+    {
+        warn!(namespace = ns, "vm create refused: a system namespace");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("{ns} is a system namespace: machines go in a project. Choose one, or create one")})),
+        )
+            .into_response();
+    }
     if let Some(refusal) = crate::refuse_hidden(&inner, &viewer, ns).await {
         return refusal;
     }
@@ -838,7 +857,7 @@ fn golden_of(v: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachine\nmetadata:\n  name: web-1\n  namespace: default\nspec:\n  running: true\n  template:\n    metadata:\n      annotations: {}\n    spec:\n      domain:\n        cpu:\n          cores: 2\n        memory:\n          guest: 4Gi\n        firmware:\n          bootloader:\n            efi:\n              secureBoot: false\n        devices:\n          autoattachGraphicsDevice: false\n          disks:\n            - name: root\n              disk:\n                bus: virtio\n            - name: seed\n              disk:\n                bus: virtio\n          interfaces:\n            - name: default\n      networks:\n        - name: default\n          pod: {}\n      volumes:\n        - name: root\n          dataVolume:\n            name: rocky-10-cloud\n        - name: seed\n          cloudInitNoCloud:\n            userData: |\n              #cloud-config\n";
+const VMI: &str = "apiVersion: kubevirt.io/v1\nkind: VirtualMachine\nmetadata:\n  name: web-1\nspec:\n  running: true\n  template:\n    metadata:\n      annotations: {}\n    spec:\n      domain:\n        cpu:\n          cores: 2\n        memory:\n          guest: 4Gi\n        firmware:\n          bootloader:\n            efi:\n              secureBoot: false\n        devices:\n          autoattachGraphicsDevice: false\n          disks:\n            - name: root\n              disk:\n                bus: virtio\n            - name: seed\n              disk:\n                bus: virtio\n          interfaces:\n            - name: default\n      networks:\n        - name: default\n          pod: {}\n      volumes:\n        - name: root\n          dataVolume:\n            name: rocky-10-cloud\n        - name: seed\n          cloudInitNoCloud:\n            userData: |\n              #cloud-config\n";
 
 #[cfg(test)]
 mod tests {
@@ -914,6 +933,7 @@ mod tests {
             cores: "4".into(),
             memory: "8Gi".into(),
             golden: "rocky-10-cloud".into(),
+            namespace: "gw-work".into(),
             ..Default::default()
         }
     }
@@ -924,7 +944,10 @@ mod tests {
         assert_eq!(v["kind"], "VirtualMachine", "a durable definition, not a bare instance");
         assert_eq!(v["spec"]["running"], true, "a create form means: run it");
         assert_eq!(v["apiVersion"], "kubevirt.io/v1");
-        assert_eq!(v["metadata"]["namespace"], "default", "namespace defaults");
+        assert_eq!(v["metadata"]["namespace"], "gw-work");
+        let mut none = form();
+        none.namespace = String::new();
+        assert!(instance(&none).unwrap_err().contains("choose a project"), "never default by omission");
         assert_eq!(v["spec"]["template"]["spec"]["nodeName"], "storm-1");
         assert_eq!(v["spec"]["template"]["spec"]["domain"]["cpu"]["cores"], 4);
         assert_eq!(v["spec"]["template"]["spec"]["domain"]["memory"]["guest"], "8Gi");
@@ -1025,7 +1048,7 @@ mod tests {
     fn the_yaml_template_is_one_valid_instance() {
         let docs = plugin_kubernetes::apply::parse_documents(VMI).unwrap();
         assert_eq!(docs.len(), 1);
-        let (kind, name, path) = plugin_kubernetes::apply::target(&docs[0]).unwrap();
+        let (kind, name, path) = plugin_kubernetes::apply::target(&docs[0], Some("default")).unwrap();
         // A VirtualMachine, matching what the form builds. A template that
         // pastes a bare instance teaches the shape that cannot be edited,
         // deleted or stopped afterwards.

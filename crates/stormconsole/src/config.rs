@@ -130,6 +130,10 @@ pub struct User {
     pub kube_token: Option<String>,
 }
 
+fn system_namespaces() -> Vec<String> {
+    vec!["cilium".into()]
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Kubernetes {
@@ -142,11 +146,15 @@ pub struct Kubernetes {
     /// Accept the apiserver's self-signed cert.
     #[serde(default)]
     pub insecure_skip_tls_verify: bool,
+    /// Namespaces beyond `default`, `openshift`, `kube-*` and `openshift-*`
+    /// that hold the system's own things and are never a project (#28).
+    #[serde(default = "system_namespaces")]
+    pub system_namespaces: Vec<String>,
 }
 
 impl Default for Kubernetes {
     fn default() -> Self {
-        Self { enabled: true, server: None, token: None, insecure_skip_tls_verify: false }
+        Self { enabled: true, server: None, token: None, insecure_skip_tls_verify: false, system_namespaces: system_namespaces() }
     }
 }
 

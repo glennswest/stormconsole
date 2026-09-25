@@ -139,6 +139,12 @@ pub struct Creator {
     pub template: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
+    /// Creates something that lives in a project (#28). The dialog then
+    /// asks which of the viewer's projects — with New project inline — and
+    /// sends it: `?project=` on a YAML post, the `namespace` field on a
+    /// form. Nothing namespaced is created without one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub project: bool,
 }
 
 impl Creator {
@@ -154,6 +160,7 @@ impl Creator {
             path: path.into(),
             template: template.into(),
             fields: vec![],
+            project: false,
         }
     }
 
@@ -169,11 +176,18 @@ impl Creator {
             path: path.into(),
             template: String::new(),
             fields,
+            project: false,
         }
     }
 
     pub fn at(mut self, routes: &[&str]) -> Self {
         self.at = routes.iter().map(|s| s.to_string()).collect();
+        self
+    }
+
+    /// This creator's objects live in a project; see [`Creator::project`].
+    pub fn in_project(mut self) -> Self {
+        self.project = true;
         self
     }
 

@@ -13,6 +13,7 @@ pub mod client;
 mod components;
 pub mod network;
 pub mod objevents;
+pub mod projects;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -154,6 +155,11 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/namespaces/{ns}", get(namespace_detail))
             .route("/object/{kind}/{*key}", get(object).put(edit_object))
             .route("/apply", post(apply_yaml))
+            .route("/projects", get(projects::list).post(projects::create))
+            .route("/projects/{name}", get(projects::detail).delete(projects::remove))
+            .route("/projects/{name}/members", post(projects::add_member))
+            .route("/projects/{name}/members/{binding}", delete(projects::remove_member))
+            .route("/projects/{name}/isolate", post(projects::isolate).delete(projects::unisolate))
             .route("/raw/{*path}", delete(raw_delete))
             .with_state(self.inner.clone())
     }
@@ -665,7 +671,21 @@ async fn raw_delete(
 /// Import YAML, OpenShift-style: one or more documents, each created in
 /// its collection. Every document gets a line in the result; a failure on
 /// one does not stop the rest.
-async fn apply_yaml(State(inner): State<Arc<Inner>>, viewer: Viewer, body: String) -> Response {
+#[derive(serde::Deserialize, Default)]
+struct ApplyQuery {
+    /// The project the create dialog chose: where a namespaced document
+    /// that names no namespace goes (#28). Never `default` by omission.
+    #[serde(default)]
+    project: Option<String>,
+}
+
+async fn apply_yaml(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Query(q): Query<ApplyQuery>,
+    body: String,
+) -> Response {
+    let project = q.project.as_deref().map(str::trim).filter(|p| !p.is_empty());
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
@@ -680,7 +700,7 @@ async fn apply_yaml(State(inner): State<Arc<Inner>>, viewer: Viewer, body: Strin
     let mut results = Vec::new();
     let mut failed = false;
     for doc in docs {
-        let (kind, name, path) = match apply::target(&doc) {
+        let (kind, name, path) = match apply::target(&doc, project) {
             Ok(t) => t,
             Err(e) => {
                 failed = true;
@@ -692,6 +712,17 @@ async fn apply_yaml(State(inner): State<Arc<Inner>>, viewer: Viewer, body: Strin
             if refuse_hidden(&inner, &viewer, ns).await.is_some() {
                 failed = true;
                 results.push(json!({"kind": kind, "name": name, "error": format!("no namespace {ns}")}));
+                continue;
+            }
+            // Somebody's workload beside the system's own objects is how
+            // test1 and test2 ended up in `default` (#28). An administrator
+            // importing into kube-system on purpose names it in the YAML,
+            // and may.
+            if inner.access.is_system(ns) && !viewer.has_role("admin") {
+                failed = true;
+                results.push(json!({"kind": kind, "name": name, "error": format!(
+                    "{ns} is a system namespace: workloads go in a project. Choose one, or create one"
+                )}));
                 continue;
             }
         }
