@@ -194,21 +194,23 @@ for i in $(seq 1 20); do
   [ "$r" = False ] && { echo "console sees it stopped after ${i}s"; break; }
   sleep 1
 done
-printf 'stopped: '; c 19098 POST /api/plugins/vm/vms/default/web-1/snapshots/pre-upgrade/restore
-printf 'another machine'"'"'s snapshot: '; c 19098 POST /api/plugins/vm/vms/default/idle-1/snapshots/pre-upgrade/restore
+[ "$r" = False ] || echo "console still sees it running after 20s: the DELETED event names the plural as its namespace (rustkube#100). A fresh console lists correctly, so the rest runs on one"
+console 19100 ""
+printf 'stopped: '; c 19100 POST /api/plugins/vm/vms/default/web-1/snapshots/pre-upgrade/restore
+printf 'another machine'"'"'s snapshot: '; c 19100 POST /api/plugins/vm/vms/default/idle-1/snapshots/pre-upgrade/restore
 RESTORE=$(curl -sf "$API$SNAPS/virtualmachinerestores" | python3 -c 'import json,sys; i=json.load(sys.stdin)["items"][0]; print(i["metadata"]["name"]); print("  as the apiserver has it:", i["kind"], json.dumps(i["spec"]), file=sys.stderr)')
 sleep 2
-tab 19098 web-1
+tab 19100 web-1
 node_status virtualmachinerestores "$RESTORE" '{"complete":true,"restoreTime":"2026-09-25T12:10:00Z","restores":[{"volumeName":"root","persistentVolumeClaim":"vol-81","volumeSnapshotName":"snap-0"}],"conditions":[{"type":"Progressing","status":"False","reason":"restoring"},{"type":"Ready","status":"True","reason":"restored"}]}'
 sleep 2
-tab 19098 web-1
+tab 19100 web-1
 
 say "6. delete"
-printf 'delete %s: ' "$AUTO"; c 19098 DELETE "/api/plugins/vm/vms/default/web-1/snapshots/$AUTO"
-printf 'delete it through another machine: '; c 19098 DELETE /api/plugins/vm/vms/default/idle-1/snapshots/pre-upgrade
+printf 'delete %s: ' "$AUTO"; c 19100 DELETE "/api/plugins/vm/vms/default/web-1/snapshots/$AUTO"
+printf 'delete it through another machine: '; c 19100 DELETE /api/plugins/vm/vms/default/idle-1/snapshots/pre-upgrade
 printf 'apiserver GET of the deleted one: '; curl -s -o /dev/null -w '%{http_code}\n' "$API$SNAPS/virtualmachinesnapshots/$AUTO"
 sleep 2
-tab 19098 web-1
+tab 19100 web-1
 
 ########################################################################
 say "7. the write gate: a viewer and an operator"
