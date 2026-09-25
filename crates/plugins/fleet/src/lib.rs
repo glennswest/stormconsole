@@ -98,10 +98,12 @@ impl ConsolePlugin for FleetPlugin {
         // "Nodes" pointed at the plugin card, which is a page showing one
         // row that has to be expanded before it shows anything. The badge
         // beside it said 1 however many nodes were on the segment.
-        vec![NavSection::new("Compute", 20)
-            .admin()
-            .item("Nodes", "#/nodes")
-            .item("Node services", "#/grid?id=fleet:node:local&rel=services")]
+        //
+        // No "Node services" any more (#28): a node's own daemons are the
+        // node's, shown on its page, and to the cluster they are the mirror
+        // pods rustkube-node publishes in kube-system. A workload list with
+        // rows that have no namespace is the thing #28 says is wrong.
+        vec![NavSection::new("Compute", 20).admin().item("Nodes", "#/nodes")]
     }
 
     fn routes(&self) -> axum::Router {

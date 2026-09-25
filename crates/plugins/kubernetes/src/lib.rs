@@ -113,7 +113,9 @@ impl ConsolePlugin for KubernetesPlugin {
 
     fn nav(&self) -> Vec<NavSection> {
         vec![
-            NavSection::new("Home", 0).item("Overview", "#/"),
+            // Projects are the top of the console (#28): where somebody's
+            // own work lives, and the first thing they choose.
+            NavSection::new("Home", 0).item("Overview", "#/").item("Projects", "#/projects"),
             // Numbered with gaps, because the vm plugin puts virtual
             // machines in this section too and there is no integer
             // between 0 and 1.
@@ -136,10 +138,19 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("Cilium endpoints", "#/k8s/cep")
                 .item("Cilium nodes", "#/k8s/cn")
                 .item("Identities", "#/k8s/cid"),
-            NavSection::new("Compute", 20).admin().item("Cluster nodes", "#/k8s/node"),
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
             NavSection::new("Observe", 30).admin().item("Events", "#/k8s/events"),
-            NavSection::new("Administration", 60).admin().item("Namespaces", "#/k8s/ns"),
+            // What no project owns (#28): the cluster's own objects, and
+            // every namespace including the system's, kept apart from
+            // anybody's work.
+            NavSection::new("Cluster", 60)
+                .admin()
+                .item("Nodes", "#/k8s/node")
+                .item("Namespaces", "#/k8s/ns")
+                .item("Persistent volumes", "#/k8s/pv")
+                .item("Storage classes", "#/k8s/sc")
+                .item("Custom resources", "#/k8s/crd")
+                .item("Cluster roles", "#/k8s/crole"),
         ]
     }
 

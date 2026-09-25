@@ -440,11 +440,31 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         out.push(c);
     }
 
+    // The class a claim names, or the cluster's default when it names none.
+    let default_class = of("sc")
+        .iter()
+        .find(|(_, o)| {
+            o.pointer("/metadata/annotations/storageclass.kubernetes.io~1is-default-class")
+                .and_then(Value::as_str)
+                == Some("true")
+        })
+        .map(|(k, _)| k.clone());
     for (key, obj) in of("pvc") {
-        let (_, name) = split_key(key);
+        let (ns, name) = split_key(key);
         let phase = s(obj, "/status/phase").unwrap_or("Unknown");
+        let class = s(obj, "/spec/storageClassName").map(str::to_string).or_else(|| default_class.clone());
+        // A claim whose class binds on first use is not stuck: nothing is
+        // provisioned until a pod or VM mounts it, by design. Shown as
+        // Pending-and-worried it sends somebody looking for a fault (#28).
+        let waits = phase == "Pending"
+            && class
+                .as_deref()
+                .and_then(|c| of("sc").get(c))
+                .and_then(|sc| s(sc, "/volumeBindingMode"))
+                == Some("WaitForFirstConsumer");
         let health = match phase {
             "Bound" => Health::Ok,
+            "Pending" if waits => Health::Idle,
             "Pending" => Health::Warn,
             "Lost" => Health::Error,
             _ => Health::Unknown,
@@ -452,8 +472,99 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         let size = s(obj, "/status/capacity/storage")
             .or_else(|| s(obj, "/spec/resources/requests/storage"))
             .unwrap_or("?");
-        let mut c = base("pvc", key, name, health, format!("{phase} · {size}"));
+        let detail = if waits {
+            format!("Pending — provisioned when a pod or VM uses it · {size}")
+        } else {
+            format!("{phase} · {size}")
+        };
+        let mut c = base("pvc", key, name, health, detail);
         c.relations.extend(ns_relation(key));
+        if let Some(cl) = &class {
+            c.metrics.push(Metric::new("class", cl.clone()).tone("muted"));
+            if of("sc").contains_key(cl) {
+                c.relations.push(Relation::belongs_to("class", format!("k8s:sc:{cl}")));
+            }
+        }
+        if let Some(v) = s(obj, "/spec/volumeName") {
+            c.relations.push(Relation::belongs_to("volume", format!("k8s:pv:{v}")));
+        }
+        if waits {
+            // Somewhere to use it: the machines in its project, one click
+            // each. A pod's volumes are fixed at creation, so for a pod the
+            // answer is to name the claim in its spec, which the page says.
+            c.actions.push(console_core::Action {
+                id: "attach".into(),
+                label: "Attach to a VM…".into(),
+                method: "GET".into(),
+                path: format!("#/attach/{}/{name}", ns.unwrap_or("default")),
+                enabled: true,
+                danger: false,
+                tone: None,
+            });
+        }
+        out.push(c);
+    }
+
+    // The cluster's own (#28): no project owns these.
+    for (key, obj) in of("pv") {
+        let phase = s(obj, "/status/phase").unwrap_or("Unknown");
+        let health = match phase {
+            "Bound" => Health::Ok,
+            "Available" => Health::Idle,
+            "Released" => Health::Warn,
+            "Failed" => Health::Error,
+            _ => Health::Unknown,
+        };
+        let size = s(obj, "/spec/capacity/storage").unwrap_or("?");
+        let class = s(obj, "/spec/storageClassName").unwrap_or("");
+        let mut c = base("pv", key, key, health, format!("{phase} · {size}"));
+        if !class.is_empty() {
+            c.metrics.push(Metric::new("class", class).tone("muted"));
+        }
+        if let Some(r) = s(obj, "/spec/persistentVolumeReclaimPolicy") {
+            c.metrics.push(Metric::new("reclaim", r).tone("muted"));
+        }
+        if let (Some(cns), Some(cname)) = (s(obj, "/spec/claimRef/namespace"), s(obj, "/spec/claimRef/name")) {
+            c.relations.push(Relation::belongs_to("claim", format!("k8s:pvc:{cns}/{cname}")));
+        }
+        out.push(c);
+    }
+    for (key, obj) in of("sc") {
+        let default = s(obj, "/metadata/annotations/storageclass.kubernetes.io~1is-default-class") == Some("true");
+        let mode = s(obj, "/volumeBindingMode").unwrap_or("Immediate");
+        let prov = s(obj, "/provisioner").unwrap_or("?");
+        let mut c = base("sc", key, key, Health::Ok, format!("{prov} · binds {}", if mode == "WaitForFirstConsumer" { "on first use" } else { "immediately" }));
+        if default {
+            c.metrics.push(Metric::new("default", "yes").tone("accent"));
+        }
+        if let Some(r) = s(obj, "/reclaimPolicy") {
+            c.metrics.push(Metric::new("reclaim", r).tone("muted"));
+        }
+        out.push(c);
+    }
+    for (key, obj) in of("crd") {
+        let group = s(obj, "/spec/group").unwrap_or("?");
+        let scope = s(obj, "/spec/scope").unwrap_or("?");
+        let versions: Vec<&str> = obj
+            .pointer("/spec/versions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|v| v["served"] == true)
+            .filter_map(|v| v["name"].as_str())
+            .collect();
+        let kind = s(obj, "/spec/names/kind").unwrap_or(key);
+        let c = base("crd", key, kind, Health::Ok, format!("{group} · {scope} · {}", versions.join(", ")));
+        out.push(c);
+    }
+    for (key, obj) in of("crole") {
+        let rules = obj.pointer("/rules").and_then(Value::as_array).map(|r| r.len()).unwrap_or(0);
+        let aggregated = obj.pointer("/aggregationRule").is_some();
+        let detail = if aggregated { format!("{rules} rules · aggregated") } else { format!("{rules} rules") };
+        let mut c = base("crole", key, key, Health::Ok, detail);
+        if ["admin", "edit", "view"].contains(&key.as_str()) {
+            c.metrics.push(Metric::new("project role", "yes").tone("accent"));
+        }
         out.push(c);
     }
 
@@ -874,6 +985,66 @@ mod tests {
         let mut m = HashMap::new();
         m.insert(kind, HashMap::from([(key.to_string(), obj)]));
         m
+    }
+
+    #[test]
+    fn a_claim_waiting_for_its_first_consumer_is_not_stuck() {
+        let mut snap = snap_with(
+            "pvc",
+            "gw-work/testbig1",
+            json!({"metadata": {"name": "testbig1", "namespace": "gw-work"},
+                   "spec": {"resources": {"requests": {"storage": "600Gi"}}},
+                   "status": {"phase": "Pending"}}),
+        );
+        snap.insert("sc", HashMap::from([(
+            "stormblock".to_string(),
+            json!({"metadata": {"name": "stormblock", "annotations": {
+                      "storageclass.kubernetes.io/is-default-class": "true"}},
+                   "provisioner": "stormblock.storm.io", "volumeBindingMode": "WaitForFirstConsumer"}),
+        )]));
+        let out = map(&snap, None);
+        let c = out.iter().find(|c| c.id == "k8s:pvc:gw-work/testbig1").unwrap();
+        assert_eq!(c.health, Health::Idle, "waiting by design, not warn");
+        assert_eq!(c.detail, "Pending — provisioned when a pod or VM uses it · 600Gi");
+        let a = c.actions.iter().find(|a| a.id == "attach").unwrap();
+        assert_eq!(a.path, "#/attach/gw-work/testbig1");
+        assert!(c.relations.iter().any(|r| r.targets == vec!["k8s:sc:stormblock"]), "the default class, named");
+        let sc = out.iter().find(|c| c.id == "k8s:sc:stormblock").unwrap();
+        assert!(sc.detail.contains("binds on first use"));
+
+        // Immediate binding and still Pending: that one is worth a look.
+        snap.get_mut("sc").unwrap().get_mut("stormblock").unwrap()["volumeBindingMode"] = json!("Immediate");
+        let out = map(&snap, None);
+        let c = out.iter().find(|c| c.id == "k8s:pvc:gw-work/testbig1").unwrap();
+        assert_eq!(c.health, Health::Warn);
+        assert!(c.actions.iter().all(|a| a.id != "attach"));
+    }
+
+    #[test]
+    fn the_clusters_own_objects_map() {
+        let mut snap = snap_with(
+            "pv",
+            "pv-1",
+            json!({"metadata": {"name": "pv-1"}, "spec": {"capacity": {"storage": "10Gi"},
+                   "claimRef": {"namespace": "gw-work", "name": "data"}, "storageClassName": "fast"},
+                   "status": {"phase": "Bound"}}),
+        );
+        snap.insert("crole", HashMap::from([("edit".to_string(), json!({"metadata": {"name": "edit"}, "rules": [{}, {}]}))]));
+        snap.insert("crd", HashMap::from([(
+            "virtualmachines.kubevirt.io".to_string(),
+            json!({"spec": {"group": "kubevirt.io", "scope": "Namespaced", "names": {"kind": "VirtualMachine"},
+                   "versions": [{"name": "v1", "served": true}]}}),
+        )]));
+        let out = map(&snap, None);
+        let pv = out.iter().find(|c| c.id == "k8s:pv:pv-1").unwrap();
+        assert_eq!(pv.detail, "Bound · 10Gi");
+        assert!(pv.relations.iter().any(|r| r.targets == vec!["k8s:pvc:gw-work/data"]));
+        let r = out.iter().find(|c| c.id == "k8s:crole:edit").unwrap();
+        assert_eq!(r.detail, "2 rules");
+        assert!(r.metrics.iter().any(|m| m.label == "project role"));
+        let d = out.iter().find(|c| c.id == "k8s:crd:virtualmachines.kubevirt.io").unwrap();
+        assert_eq!(d.label, "VirtualMachine");
+        assert_eq!(d.detail, "kubevirt.io · Namespaced · v1");
     }
 
     /// A pod with one container, the shape every test below starts from.

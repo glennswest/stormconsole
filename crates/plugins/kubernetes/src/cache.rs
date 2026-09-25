@@ -105,6 +105,19 @@ pub const RESOURCES: &[ResourceSpec] = &[
     ns_scoped("limits", "LimitRange", "Limit ranges", "/api/v1/limitranges"),
     // Cilium, through its CRDs — the agent's own API is a unix socket and
     // Hubble is gRPC, neither reachable from a golden.
+    // The cluster itself (#28): what no project owns, shown in its own
+    // admin section rather than mixed into anybody's. Optional so an
+    // apiserver that serves one of them and not another still syncs.
+    crd("pv", "PersistentVolume", "Persistent volumes", "/api/v1/persistentvolumes", false),
+    crd("sc", "StorageClass", "Storage classes", "/apis/storage.k8s.io/v1/storageclasses", false),
+    crd(
+        "crd",
+        "CustomResourceDefinition",
+        "Custom resource definitions",
+        "/apis/apiextensions.k8s.io/v1/customresourcedefinitions",
+        false,
+    ),
+    crd("crole", "ClusterRole", "Cluster roles", "/apis/rbac.authorization.k8s.io/v1/clusterroles", false),
     crd("cep", "CiliumEndpoint", "Cilium endpoints", "/apis/cilium.io/v2/ciliumendpoints", true),
     crd("cn", "CiliumNode", "Cilium nodes", "/apis/cilium.io/v2/ciliumnodes", false),
     crd("cid", "CiliumIdentity", "Cilium identities", "/apis/cilium.io/v2/ciliumidentities", false),
