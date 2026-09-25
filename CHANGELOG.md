@@ -3,6 +3,22 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-25
+- **feat(vm):** SSH keys uploaded once and given to every machine (#26).
+  Account → SSH keys (the key icon in the masthead): paste or upload a
+  `.pub` or an `authorized_keys` file, name, delete; a private key is
+  refused by name. Kept as Secret `<user>-ssh-keys` in
+  `[vm] ssh_keys_namespace`, with a copy in each namespace a machine of
+  theirs is in, all refreshed on every change. The create form lists your
+  keys as checkboxes, all ticked; every chosen key goes into the
+  cloud-init seed and into `accessCredentials` (`noCloud`). The VM page
+  shows which keys a machine has and from where, with "Add my keys"
+  (`qemuGuestAgent`). The console config's keys are offered too.
+- **feat(ui):** a `checklist` create-form field whose options are fetched
+  as the viewer.
+- **chore:** `deploy/verify-vm-keys.sh`, the live check. It found
+  rustkube#101: `stringData` is stored as written, not folded into `data`.
+
 ## [v0.15.0] — 2026-09-25
 
 ### 2026-09-25

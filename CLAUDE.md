@@ -519,7 +519,7 @@ step, disk list or size — file on stormvm, read them when present.
   VMI or snapshot. The check runs the post-delete steps on a fresh console
 - Filed **stormvm#45**: step / disks / size on the snapshot status
 
-### SSH keys once, on every VM (#26) — in progress 2026-09-25
+### SSH keys once, on every VM (#26) ✅ v0.16.0 2026-09-25
 KubeVirt's `accessCredentials` names a Secret **in the VM's namespace**,
 so: the user's list lives in Secret `<user>-ssh-keys` in a home namespace
 (`[vm] ssh_keys_namespace`, default `default`), one key per data item,
@@ -528,21 +528,33 @@ namespace where the user creates or keys a VM. Nothing on a node honours
 `accessCredentials` yet (stormvm#41), so the cloud-init seed keeps
 carrying the keys too — that is what gets a key into a guest today.
 
-- [ ] `vm/src/keys.rs`: parse/validate a public key (type, blob, comment),
+- [x] `vm/src/keys.rs`: parse/validate a public key (type, blob, comment),
       Secret name for a user, data-item names, Secret body and reading,
       the create-time `accessCredentials` entry
-- [ ] Routes: `GET/POST /keys`, `DELETE /keys/{name}`, `GET
+- [x] Routes: `GET/POST /keys`, `DELETE /keys/{name}`, `GET
       /keys/choices` (for the form); home Secret written as the viewer,
       copies refreshed; config keys shown read-only
-- [ ] Field kind `checklist` with a `source` (console-core + CreateDialog)
+- [x] Field kind `checklist` with a `source` (console-core + CreateDialog)
       — the create form's per-key checkboxes
-- [ ] Create: selected keys → seed (every key, default user + root) and
+- [x] Create: selected keys → seed (every key, default user + root) and
       `accessCredentials` (`noCloud`) → the user's Secret copy when all
       are chosen, a `<vm>-ssh-keys` Secret for a subset
-- [ ] VM page: which keys it has (accessCredentials Secrets + the seed),
+- [x] VM page: which keys it has (accessCredentials Secrets + the seed),
       "Add my keys" → `qemuGuestAgent` entry, honest about stormvm#41
-- [ ] Account → SSH keys page (paste or upload `.pub`, name, delete)
-- [ ] Tests, docs, changelog; live check on dev; release; golden
+- [x] Account → SSH keys page (paste or upload `.pub`, name, delete)
+- [x] Tests, docs, changelog; live check on dev; release; golden
+- Verified with `sc-build deploy/verify-vm-keys.sh` (real fastetcd +
+  rustkube, real console with users, real ssh-keygen keys): private key
+  and junk refused; named key and an authorized_keys file (duplicate
+  skipped) saved to the home Secret with its labels; choices list 4 keys
+  ticked; create in `web` → copy of the user's Secret + `web-1-ssh-keys`
+  (config key), both `noCloud`, seed holding all 4 for default user and
+  root, each accepted by `ssh-keygen -l`; a one-key subset → the
+  machine's own Secret; a pasted key alone; no key → the warning; delete
+  → home and the `web` copy both lose it; Add my keys → `qemuGuestAgent`
+  entry, idempotent; a viewer 403 on save and delete
+- Filed **rustkube#101** (stringData not folded into data); commented the
+  shapes on **stormvm#41**
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

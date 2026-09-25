@@ -659,6 +659,36 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**SSH keys, uploaded once (#26).** `vm/src/keys.rs` (parse and validate a
+public key — type, base64 body whose embedded type must match, comment; a
+private key refused by name; Secret and item names; KubeVirt's
+`accessCredentials` shape) and `keystore.rs` (the Secrets, as the viewer).
+KubeVirt's `accessCredentials` can only name a Secret in the machine's own
+namespace, so the user's list is Secret `<user>-ssh-keys` in
+`[vm] ssh_keys_namespace` (default `default`), labelled
+`storm.io/ssh-keys-for=<user>` and `storm.io/ssh-keys-home=true`, and a copy
+with the first label is kept in every namespace where they create or key a
+machine; saving or deleting on the Account page rewrites the original and
+every copy (a replace carries `resourceVersion`, and clears `data` so a
+deleted key does not survive in it). Routes: `GET|POST /keys`,
+`DELETE /keys/{item}`, `GET /keys/choices`, `GET|POST
+/vms/{ns}/{name}/keys`. The create form's per-key checkboxes are a generic
+field kind, `checklist`, whose options the dialog fetches from `source` as
+the viewer — options that depend on who is looking cannot be declared once
+per plugin. At create: every chosen key goes into the cloud-init seed (the
+image's default user and root) — which is what puts a key in a guest today,
+since no node honours `accessCredentials` yet (stormvm#41) — and into
+`accessCredentials` (`noCloud`): the user's Secret copy when the whole saved
+list was chosen, so the machine follows that list, and a `<vm>-ssh-keys`
+Secret for anything else (a subset, the config file's keys, a pasted one).
+"Add my keys" on an existing machine names the user's Secret with
+`qemuGuestAgent` (users `[root]`), the only path to a running guest, and
+says that nothing acts on it yet. Keys from the console's config file
+(`[[api.users]] ssh_keys`) are shown read-only and offered too. rustkube
+stores `stringData` as written rather than folding it into `data`
+(rustkube#101); every reader here takes both. `deploy/verify-vm-keys.sh` is
+the live check.
+
 **Snapshots: the Backup tab (#25).** `vm/src/snapshots.rs` over KubeVirt's
 own `snapshot.kubevirt.io/v1beta1` `VirtualMachineSnapshot` and
 `VirtualMachineRestore`, watched as optional kinds (`vmsnap`, `vmrestore`),

@@ -115,6 +115,14 @@ a NAT inside the hypervisor (stormvm#16), and the page and the list both
 say so rather than showing an address nothing can reach as if it worked.
 A running machine with no address reads "no address yet".
 
+**SSH keys, once.** The key icon in the masthead opens Account → SSH keys:
+paste a key, or a whole `authorized_keys` file, or upload a `.pub`. They
+are kept as a Secret, `<you>-ssh-keys`, and every machine you create gets
+them — the create form lists them as checkboxes, all ticked — through
+KubeVirt's `accessCredentials` and, until a node honours that
+(stormvm#41), the cloud-init seed. The VM page shows which keys a machine
+has and from where, with "Add my keys" for one made without them.
+
 The **Backup** tab schedules a snapshot — a KubeVirt
 `VirtualMachineSnapshot`, so `virtctl` sees the same thing — and lists the
 machine's snapshots with their state, the step they are on, disks and size,
