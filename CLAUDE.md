@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.12.0**
+Current: **0.13.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -423,7 +423,7 @@ and groups manageable without editing a file on an immutable root,
 certificate identity from stormcert, and an audit of consoles, deletes
 and goldens — are their own pass
 
-### The datastore: a fastetcd plugin (#20) — in progress 2026-09-24
+### The datastore: a fastetcd plugin (#20) ✅ v0.13.0 2026-09-25
 fastetcd serves gRPC + `/health` on :2379 and Prometheus `/metrics` on
 127.0.0.1:2381, and nothing else over HTTP. The owner's steer on #20 is
 no gRPC client in the console: file what is missing on fastetcd. Filed
@@ -431,23 +431,30 @@ no gRPC client in the console: file what is missing on fastetcd. Filed
 range, compact/defrag/disarm/snapshot) and **fastetcd#29** (traffic,
 watch and slow-watcher metrics).
 
-- [ ] `crates/plugins/fastetcd` (name `etcd`): `/metrics` parsed for
+- [x] `crates/plugins/fastetcd` (name `etcd`): `/metrics` parsed for
       revision, compact revision, DB size/in-use/quota, disk, NOSPACE,
       has-leader, leader changes; `/health` on the client port
-- [ ] The v3 gateway when it answers (etcd's own shape): status (leader,
-      term, index, version, errors), member list, alarms — one component
-      per member, the leader marked. When it does not, say so and name
-      fastetcd#28, not an empty table
-- [ ] Keyspace browser: `/api/plugins/etcd/keys?prefix=` (children with
-      counts, keys-only), `/value?key=` decoded (JSON, the k8s protobuf
-      envelope's type header, text, hex); `#/etcd/keys` view, read-only
-- [ ] Actions (admin, confirmed): compact, defrag, disarm an alarm,
-      snapshot download — through the gateway, through the host's write
-      gate
-- [ ] Relation: the store is what `plugin:k8s` (rustkube) stands on
-- [ ] Config `[fastetcd] enabled/url/metrics_url`, docs, changelog
-- [ ] Verify on dev: gateway path against a real etcd (seeded keys),
-      fallback path against a real fastetcd; release; golden
+- [x] The v3 gateway when it answers (etcd's own shape): status, member
+      list, alarms — one component per member, the leader marked. When it
+      does not, the store row says so and names fastetcd#28
+- [x] Keyspace browser: `/api/plugins/etcd/keys?prefix=`, `/value?key=`
+      decoded (JSON, k8s protobuf envelope type, text, hex); `#/etcd/keys`,
+      read-only, admin only
+- [x] Actions (admin, confirmed): compact, defrag, disarm, snapshot
+- [x] Relation: the store `serves` `plugin:k8s`
+- [x] Config `[fastetcd] enabled/url/metrics_url`, docs, changelog
+- [x] Verified with `sc-build deploy/verify-etcd.sh` (2026-09-25): real
+      etcd 3.5.17 — members/leader/raft, keyspace counts, three decodings,
+      snapshot read back by `etcdutl`, NOSPACE raised by filling a 16 MB
+      quota then cleared through the console (compact, defrag, disarm);
+      real fastetcd v1.2.0 — metrics path, fastetcd#28 named, unreachable
+      after kill. The script had never run before (py3.12 f-strings); the
+      lock was missing the crate (#23)
+
+Left for upstream: members, keyspace and verbs on *fastetcd* wait on
+fastetcd#28; traffic (puts/txns per second, lagging watchers) on
+fastetcd#29. The plugin already reads both shapes, so they light up
+without a console change.
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
