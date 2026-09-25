@@ -3,7 +3,7 @@
   // or a form built from its fields. What it posts and where is entirely
   // the creator's declaration — this component knows nothing about pods
   // or volumes.
-  import { create, closeCreator } from '../stores.svelte.js'
+  import { create, closeCreator, projects, loadProjects, newProject, k8sns } from '../stores.svelte.js'
 
   const c = $derived(create.open)
   let text = $state('')
@@ -43,6 +43,38 @@
     }
   })
 
+  // Which project it goes in (#28). Every namespaced create asks, and
+  // nothing lands in `default` by omission. With no projects yet, the
+  // dialog starts on "New project" with a name already suggested.
+  let proj = $state('')
+  let newName = $state('')
+  $effect(() => {
+    if (!c?.project) return
+    if (!projects.loaded) {
+      loadProjects()
+      return
+    }
+    const names = projects.list.map((p) => p.name)
+    proj = names.includes(k8sns.selected) ? k8sns.selected : names[0] || '__new'
+    const purpose = c.id.startsWith('vm:') ? 'vms' : 'work'
+    const base = (projects.suggested || 'my-work').replace(/-work$/, `-${purpose}`)
+    newName = names.includes(base) ? '' : base
+  })
+
+  /// The project to send, creating it first when that was the choice.
+  async function target() {
+    if (!c.project) return ''
+    if (proj !== '__new') {
+      if (!proj) throw new Error('choose a project')
+      return proj
+    }
+    const n = newName.trim()
+    if (!n) throw new Error('name the new project')
+    const made = await newProject(n)
+    proj = made
+    return made
+  }
+
   function toggle(name, value, on) {
     const cur = new Set(values[name] || [])
     if (on) cur.add(value)
@@ -79,7 +111,11 @@
     }
     busy = true
     try {
-      const resp = await fetch(c.path, {
+      const ns = await target()
+      let path = c.path
+      if (ns && c.mode === 'yaml') path += `${path.includes('?') ? '&' : '?'}project=${encodeURIComponent(ns)}`
+      if (ns && c.mode !== 'yaml') b.data = JSON.stringify({ ...JSON.parse(b.data), namespace: ns })
+      const resp = await fetch(path, {
         method: c.method || 'POST',
         headers: { 'Content-Type': b.type },
         body: b.data,
@@ -115,6 +151,29 @@
       </div>
       {#if c.description}<p class="desc">{c.description}</p>{/if}
 
+      {#if c.project}
+        <div class="project">
+          <label>
+            <span class="lbl">Project<b>*</b></span>
+            <select bind:value={proj} aria-label="Project">
+              {#each projects.list as p (p.name)}
+                <option value={p.name}>{p.name}{p.displayName ? ` — ${p.displayName}` : ''}</option>
+              {/each}
+              <option value="__new">+ New project…</option>
+            </select>
+          </label>
+          {#if proj === '__new'}
+            <label>
+              <span class="lbl">New project name</span>
+              <input bind:value={newName} placeholder="lowercase, digits, '-'" />
+              <span class="fhint">created first, with you as its admin</span>
+            </label>
+          {/if}
+          <span class="fhint">
+            {c.mode === 'yaml' ? 'A document that names no namespace goes here. ' : ''}System namespaces are not a target.
+          </span>
+        </div>
+      {/if}
       {#if c.mode === 'yaml'}
         <textarea bind:value={text} spellcheck="false" rows="18"></textarea>
         <p class="hint"><span class="mono">{c.method || 'POST'} {c.path}</span> · press ⌘/Ctrl-Enter to create</p>
@@ -284,6 +343,8 @@
   }
   .cancel { color: var(--text-dim); }
   .go:disabled { opacity: 0.55; }
+  .project { display: grid; gap: 6px; margin-bottom: 12px; }
+  .project label { display: grid; gap: 4px; }
   fieldset.checklist { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
   .check { display: flex; gap: 8px; align-items: center; font-size: var(--sc-t-meta); }
   .check input { width: auto; margin: 0; }

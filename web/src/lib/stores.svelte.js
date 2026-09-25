@@ -30,6 +30,42 @@ export const nav = $state({
 // is the default for a fresh tab; the URL wins wherever it says anything.
 export const k8sns = $state({ selected: readStored() })
 
+// The viewer's projects (#28), as the apiserver answers them for this
+// viewer: `list` is theirs, `system` the system namespaces (administrators
+// only), `suggested` a name for a first one. Loaded once and reloaded after
+// anything that creates or deletes one.
+export const projects = $state({ loaded: false, served: true, list: [], system: [], suggested: '', write: false, error: '' })
+
+export async function loadProjects() {
+  try {
+    const r = await fetch('/api/plugins/k8s/projects')
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.error || `${r.status}`)
+    projects.list = d.projects || []
+    projects.system = d.system || []
+    projects.served = d.served !== false
+    projects.suggested = d.suggested || ''
+    projects.write = !!d.write
+    projects.error = ''
+  } catch (e) {
+    projects.error = e.message
+  }
+  projects.loaded = true
+}
+
+/// Create a project as the viewer; resolves to its name.
+export async function newProject(name, displayName = '', description = '') {
+  const r = await fetch('/api/plugins/k8s/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, displayName, description }),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(d.error || `${r.status}`)
+  await loadProjects()
+  return d.name || name
+}
+
 function readStored() {
   try {
     return localStorage.getItem('stormconsole-ns') || ''

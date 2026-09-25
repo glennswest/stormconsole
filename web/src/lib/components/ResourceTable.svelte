@@ -121,6 +121,10 @@
         seen.delete('')
         // Differing values, or present on some rows and not others — both
         // are facts about this list. One value on every row is not.
+        // Except the namespace, which is always shown where there is one
+        // (#28): a pod or a machine read without its project is the thing
+        // that issue says is wrong, even in a list that is all one project.
+        if (n === 'namespace') return seen.size >= 1
         return seen.size > 1 || (seen.size === 1 && rows.some((r) => !placement(r, n)))
       })
       .sort((a, b) => {
@@ -163,10 +167,23 @@
       .filter(Boolean)
   }
 
+  // Grouped by project when the list spans several (#28): the rows of one
+  // project together under its name, whatever the sort within it.
+  const grouped = $derived.by(() => {
+    if (!placements.includes('namespace')) return false
+    const seen = new Set(rows.map((r) => placement(r, 'namespace')))
+    return seen.size > 1
+  })
+  const ncols = $derived(2 + 1 + placements.length + 1 + (withKind ? 1 : 0) + 3)
+
   const sorted = $derived.by(() => {
     const k = sortKey
     const dir = sortDir
     return [...rows].sort((a, b) => {
+      if (grouped) {
+        const g = placement(a, 'namespace').localeCompare(placement(b, 'namespace'))
+        if (g) return g
+      }
       if (k === 'health') return ((RANK[a.health] ?? 9) - (RANK[b.health] ?? 9)) * dir
       if (k.startsWith('@')) {
         return placement(a, k.slice(1)).localeCompare(placement(b, k.slice(1))) * dir
@@ -442,9 +459,20 @@
       </tr>
     </thead>
     <tbody>
-      {#each sorted as row (row.id)}
+      {#each sorted as row, i (row.id)}
         {@const kids = children(row)}
         {@const acts = split(row)}
+        {#if grouped && (i === 0 || placement(sorted[i - 1], 'namespace') !== placement(row, 'namespace'))}
+          <tr class="group">
+            <td colspan={ncols}>
+              {#if placement(row, 'namespace')}
+                <a href={`#/k8s/ns/${encodeURIComponent(placement(row, 'namespace'))}`}>{placement(row, 'namespace')}</a>
+              {:else}
+                <span class="dim">no project</span>
+              {/if}
+            </td>
+          </tr>
+        {/if}
         <tr
           class:selected={selected.includes(row.id)}
           class:clickable={!!row.link}
@@ -742,6 +770,17 @@
   .detail { color: var(--text-dim); }
 
   .metrics { white-space: nowrap; }
+  tr.group td {
+    background: var(--bg);
+    font-size: var(--sc-t-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  tr.group a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+  tr.group a:hover { color: var(--accent); }
   .m { display: inline-flex; gap: 5px; align-items: baseline; margin-right: 14px; }
   .ml {
     font-size: var(--sc-t-eyebrow);

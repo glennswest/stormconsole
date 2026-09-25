@@ -18,6 +18,8 @@
   import VmDetail from './lib/views/VmDetail.svelte'
   import EtcdKeys from './lib/views/EtcdKeys.svelte'
   import AccountKeys from './lib/views/AccountKeys.svelte'
+  import ProjectsView from './lib/views/ProjectsView.svelte'
+  import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
 
   checkAuth().then(() => {
@@ -38,6 +40,8 @@
     vmdetail: VmDetail,
     etcdkeys: EtcdKeys,
     accountkeys: AccountKeys,
+    projects: ProjectsView,
+    attachclaim: AttachClaim,
   }
 
   let View = $derived(views[route.current.name] || Overview)

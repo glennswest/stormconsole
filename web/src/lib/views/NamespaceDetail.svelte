@@ -17,9 +17,10 @@
   import CreateMenu from '../components/CreateMenu.svelte'
   import Icon from '../components/Icon.svelte'
   import { call } from '../api.js'
+  import ProjectPanel from './ProjectPanel.svelte'
 
   const name = $derived(route.current.params.name)
-  const TABS = ['Overview', 'Resources', 'Events', 'YAML']
+  const TABS = ['Overview', 'Project', 'Resources', 'Events', 'YAML']
   let tab = $state('Overview')
 
   let data = $state(null)
@@ -218,6 +219,8 @@
           {/if}
         </div>
       </section>
+    {:else if tab === 'Project'}
+      <ProjectPanel {name} />
     {:else if tab === 'Resources'}
       {#if contents.length === 0}
         <EmptyState

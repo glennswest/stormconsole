@@ -15,6 +15,9 @@ const routes = [
   { pattern: '#/etcd/keys', name: 'etcdkeys' },
   // Your own SSH keys, given to every machine you create (#26).
   { pattern: '#/account/keys', name: 'accountkeys' },
+  // Projects are the top of the console (#28).
+  { pattern: '#/projects', name: 'projects' },
+  { pattern: '#/attach/:ns/:name', name: 'attachclaim' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },

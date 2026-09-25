@@ -4,7 +4,7 @@
   // create, cluster health, appearance, session.
   import {
     auth, feed, nav, logout, k8sns, selectNamespace, prefs, rollup,
-    STYLES, applyStyle, access, routeTakesNamespace,
+    STYLES, applyStyle, access, routeTakesNamespace, projects, loadProjects,
   } from '../stores.svelte.js'
   import { route } from '../router.svelte.js'
   import { THEMES, theme, applyTheme } from 'stormview/theme'
@@ -39,6 +39,26 @@
       .map((c) => c.label)
       .sort()
   )
+
+  // Projects are the top of the console (#28): the selector lists the
+  // viewer's own, with the system namespaces apart and only for
+  // administrators. Until the list arrives, the feed's namespaces stand in.
+  $effect(() => {
+    if (!projects.loaded) loadProjects()
+  })
+  const mine = $derived(projects.loaded && !projects.error ? projects.list.map((p) => p.name) : namespaces)
+  const systemNs = $derived(projects.loaded && !projects.error ? projects.system.map((p) => p.name) : [])
+  // A selection that is neither — a link to somebody else's namespace —
+  // stays visible rather than silently reading as "all".
+  const stray = $derived(k8sns.selected && !mine.includes(k8sns.selected) && !systemNs.includes(k8sns.selected) ? k8sns.selected : '')
+
+  function pick(v) {
+    if (v === '__new') {
+      location.hash = '#/projects?new=1'
+      return
+    }
+    selectNamespace(v)
+  }
 
   // Whether the selector applies to what is on screen. On a cluster-scoped
   // page it still sets the scope you carry to the next page, so it stays —
@@ -90,21 +110,34 @@
     {/if}
   </a>
 
-  {#if namespaces.length}
+  {#if mine.length || systemNs.length || projects.loaded}
     <span class="scope" class:dim={!applies}>
-      <label for="ns-pick">Namespace</label>
+      <label for="ns-pick">Project</label>
       <select
         id="ns-pick"
         value={k8sns.selected}
         title={applies
           ? 'Scopes every namespaced view'
           : 'This page is cluster-scoped — the selection applies to the next namespaced page you open'}
-        onchange={(e) => selectNamespace(e.target.value)}
+        onchange={(e) => {
+          pick(e.target.value)
+          // "New project…" is an action, not a selection.
+          e.target.value = k8sns.selected
+        }}
       >
-        <option value="">All namespaces</option>
-        {#each namespaces as ns}
+        <option value="">All projects</option>
+        {#each mine as ns}
           <option value={ns}>{ns}</option>
         {/each}
+        {#if stray}<option value={stray}>{stray}</option>{/if}
+        {#if systemNs.length}
+          <optgroup label="System">
+            {#each systemNs as ns}
+              <option value={ns}>{ns}</option>
+            {/each}
+          </optgroup>
+        {/if}
+        {#if projects.write}<option value="__new">+ New project…</option>{/if}
       </select>
       {#if hiddenNote}
         <!-- Saying what is withheld, because a short list with no
