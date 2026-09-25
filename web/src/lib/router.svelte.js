@@ -19,6 +19,8 @@ const routes = [
   { pattern: '#/projects', name: 'projects' },
   // Bare metal by service tag, from stormipmi (#31).
   { pattern: '#/machines', name: 'machines' },
+  // The registry's catalog: goldens, blanks and media are images (#19).
+  { pattern: '#/images', name: 'images' },
   { pattern: '#/attach/:ns/:name', name: 'attachclaim' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },

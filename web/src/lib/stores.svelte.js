@@ -405,6 +405,11 @@ export function idsForRoute(href) {
   // and the page it leads to always agree.
   const ns = q.has('ns') ? q.get('ns') : k8sns.selected
 
+  // The registry's catalog, and what is still arriving into it (#19).
+  if (path === '#/images') {
+    return feed.components.filter((c) => c.kind === 'catalog-image' || c.kind === 'media-job').map((c) => c.id)
+  }
+
   // The two hardware routes count different things: the shelves page is
   // a list of enclosures, not of the disks in them.
   if (path === '#/drives') {

@@ -20,6 +20,7 @@
   import AccountKeys from './lib/views/AccountKeys.svelte'
   import ProjectsView from './lib/views/ProjectsView.svelte'
   import MachinesView from './lib/views/MachinesView.svelte'
+  import ImagesView from './lib/views/ImagesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
 
@@ -43,6 +44,7 @@
     accountkeys: AccountKeys,
     projects: ProjectsView,
     machines: MachinesView,
+    images: ImagesView,
     attachclaim: AttachClaim,
   }
 
