@@ -485,6 +485,28 @@ or the `storm.io/bridge[.<iface>]` annotation, which wins (stormvm
   The page's rendering was not viewed in a browser (no browser here); the
   bundle built and the API answers what it renders
 
+### VM Backup tab: snapshots (#25) — in progress 2026-09-25
+The objects are KubeVirt's `snapshot.kubevirt.io/v1beta1`
+`VirtualMachineSnapshot` / `VirtualMachineRestore`; their status shape is
+stormvm-spec `snapshot.rs` (`phase` InProgress/Succeeded/Failed,
+`readyToUse`, `indications`, `conditions`, `error.message`,
+`creationTime`, `virtualMachineSnapshotContentName` = stormblock group id).
+Nothing acts on them yet: the controller is rustkube-node#53, the CRDs
+stormpump#28, a real snapshot needs stormblock#130. The status carries no
+step, disk list or size — file on stormvm, read them when present.
+
+- [ ] Watch both kinds (optional CRDs; "not installed" named, stormpump#28)
+- [ ] `vm/src/snapshots.rs`: rows (time, phase + step, disks, size, error,
+      note, "not picked up" after a minute naming rustkube-node#53), the
+      create body (source VM or VMI, name default `<vm>-<utc stamp>`,
+      `storm.io/note`), the restore body and its refusals (running, not
+      ready, no definition)
+- [ ] Routes as the viewer: list, create, delete, restore
+- [ ] UI: Backup tab — Snapshot (name/note), the list, Restore, Delete;
+      polls while one is in progress; restores listed
+- [ ] File stormvm: step / disks / size on the status
+- [ ] Tests, docs, changelog; live check on dev; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
