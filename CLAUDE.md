@@ -519,6 +519,31 @@ step, disk list or size — file on stormvm, read them when present.
   VMI or snapshot. The check runs the post-delete steps on a fresh console
 - Filed **stormvm#45**: step / disks / size on the snapshot status
 
+### SSH keys once, on every VM (#26) — in progress 2026-09-25
+KubeVirt's `accessCredentials` names a Secret **in the VM's namespace**,
+so: the user's list lives in Secret `<user>-ssh-keys` in a home namespace
+(`[vm] ssh_keys_namespace`, default `default`), one key per data item,
+labelled `storm.io/ssh-keys-for`; the console keeps a copy of it in each
+namespace where the user creates or keys a VM. Nothing on a node honours
+`accessCredentials` yet (stormvm#41), so the cloud-init seed keeps
+carrying the keys too — that is what gets a key into a guest today.
+
+- [ ] `vm/src/keys.rs`: parse/validate a public key (type, blob, comment),
+      Secret name for a user, data-item names, Secret body and reading,
+      the create-time `accessCredentials` entry
+- [ ] Routes: `GET/POST /keys`, `DELETE /keys/{name}`, `GET
+      /keys/choices` (for the form); home Secret written as the viewer,
+      copies refreshed; config keys shown read-only
+- [ ] Field kind `checklist` with a `source` (console-core + CreateDialog)
+      — the create form's per-key checkboxes
+- [ ] Create: selected keys → seed (every key, default user + root) and
+      `accessCredentials` (`noCloud`) → the user's Secret copy when all
+      are chosen, a `<vm>-ssh-keys` Secret for a subset
+- [ ] VM page: which keys it has (accessCredentials Secrets + the seed),
+      "Add my keys" → `qemuGuestAgent` entry, honest about stormvm#41
+- [ ] Account → SSH keys page (paste or upload `.pub`, name, delete)
+- [ ] Tests, docs, changelog; live check on dev; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
