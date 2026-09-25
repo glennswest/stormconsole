@@ -659,6 +659,45 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**Projects first (#28).** A project is a namespace with an owner, served by
+rustkube as `project.openshift.io/v1` (rustkube#97). `kubernetes/src/
+projects.rs` asks everything **as the viewer**: `GET /projects` (the
+viewer's projects; system namespaces only for `admin`, separately),
+`POST /projects` (a `ProjectRequest` — the apiserver annotates the requester
+and binds them `admin`; on an apiserver without the API, a Namespace with
+the same annotations), `GET|DELETE /projects/{p}` (ownership, members,
+isolation), `POST /projects/{p}/members` and `DELETE …/members/{binding}`
+(RoleBindings to the ClusterRoles `admin`/`edit`/`view`; a member change
+clears the namespace-access cache so the person let in sees it at once), and
+`POST|DELETE /projects/{p}/isolate` (NetworkPolicies `storm-isolate` — every
+pod in the namespace to every other, nothing else in or out — and, opt-in,
+`storm-isolate-dns` to port 53 in kube-system; enforced by Cilium, and a VM
+is covered only once it is a pod-network endpoint, stormvm#16). A refusal
+from the apiserver stays a 403 with its reason.
+
+**System namespaces** — `default`, `openshift`, `kube-*`, `openshift-*`,
+and `[kubernetes] system_namespaces` (default `["cilium"]`, the node's
+services) — are never a project: not in the viewer's list, not a create
+target (`/apply` refuses them except for `admin`, VM create always), not
+deleted or isolated from the console. **Every create targets a project**:
+`Creator.project` makes the dialog show a project picker with New project
+inline (suggested `<user>-work`, `<user>-vms` for machines); YAML goes to
+`/apply?project=`, and a namespaced document that names no namespace goes
+there — never to `default`, which is refused with a sentence when nothing
+was chosen. The masthead selector is a **Project** selector. Lists always
+show the Namespace column on namespaced rows and group by project when they
+span several. The **Cluster** admin section holds what no project owns —
+Nodes, all Namespaces, PersistentVolumes, StorageClasses, CRDs,
+ClusterRoles, all now watched (optional kinds). The fleet's "Node services"
+left the navigator: a node's daemons are on its page, and to the cluster
+they are the mirror pods in kube-system. A claim Pending under a class with
+`volumeBindingMode: WaitForFirstConsumer` (its own class, or the default)
+is Idle, reads "Pending — provisioned when a pod or VM uses it", and offers
+Attach to a VM (`#/attach/{ns}/{claim}`: the project's machines, each one
+click, as a disk). rustkube does not default a claim's phase (rustkube#102);
+a missing phase is read as the API's default, Pending.
+`deploy/verify-projects.sh` is the live check, as three real identities.
+
 **SSH keys, uploaded once (#26).** `vm/src/keys.rs` (parse and validate a
 public key — type, base64 body whose embedded type must match, comment; a
 private key refused by name; Secret and item names; KubeVirt's

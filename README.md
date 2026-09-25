@@ -96,6 +96,21 @@ console's:
   beside the selector — because a short list with no explanation reads as
   a broken console
 
+## Projects
+
+A project is a namespace of your own, and the top of the console. The
+masthead's **Project** selector lists yours — the ones the apiserver says
+you are in — and **New project** makes one with you as its admin
+(OpenShift's `ProjectRequest`, served by rustkube). Every create in the
+console asks which project it goes in, with New project inline, and nothing
+lands in `default` or any other system namespace. A project's page shows who
+asked for it, its members (`admin`, `edit`, `view`, added and removed there)
+and **Isolate**: NetworkPolicies that let its pods and machines reach each
+other and nothing else, with DNS to the cluster resolver opt-in. What no
+project owns — nodes, persistent volumes, storage classes, CRDs, cluster
+roles and every namespace — is in the **Cluster** section for
+administrators.
+
 ## Virtual machines
 
 A VM here is a KubeVirt object in the apiserver that rustkube-node's

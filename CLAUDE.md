@@ -556,36 +556,54 @@ carrying the keys too — that is what gets a key into a guest today.
 - Filed **rustkube#101** (stringData not folded into data); commented the
   shapes on **stormvm#41**
 
-### Projects first (#28) — in progress 2026-09-25
+### Projects first (#28) ✅ v0.17.0 2026-09-25
 rustkube v0.15.0 serves `project.openshift.io/v1` (rustkube#97): `projects`
 (namespaces the caller has a RoleBinding in), `projectrequests` (creates the
 namespace annotated `openshift.io/requester`, binds the requester `admin`),
 and ClusterRoles `admin`/`edit`/`view`. Reserved: `default`, `openshift`,
 `kube-*`, `openshift-*`.
 
-- [ ] System namespaces: rustkube's reserved set + `[kubernetes]
+- [x] System namespaces: rustkube's reserved set + `[kubernetes]
       system_namespaces` (default `["cilium"]`, the node's services)
-- [ ] k8s routes as the viewer: `GET/POST /projects`, `DELETE
+- [x] k8s routes as the viewer: `GET/POST /projects`, `DELETE
       /projects/{p}`, members (RoleBindings to admin/edit/view: list, add,
       remove), isolation (`storm-isolate` NetworkPolicies: within the
       namespace only, DNS to kube-system opt-in; badge; remove). Fallback
       when `project.openshift.io` is not served: namespaces
-- [ ] Masthead: a **Project** selector (the viewer's projects; system ones
+- [x] Masthead: a **Project** selector (the viewer's projects; system ones
       only in an admin group) with New project
-- [ ] Every create targets a project: `Creator.namespaced`, a project
+- [x] Every create targets a project: `Creator.namespaced`, a project
       picker in the dialog with New project inline (suggested
       `<user>-work`), templates take the chosen project; `/apply` and VM
       create refuse system namespaces (admin YAML excepted for `/apply`)
-- [ ] Lists: namespaced kinds always show Namespace; grouped by project
+- [x] Lists: namespaced kinds always show Namespace; grouped by project
       when all are shown. Node daemons leave the nav (their pods are the
       mirror in kube-system); they stay on the node page
-- [ ] Cluster section (admin): Nodes, PVs, StorageClasses, CRDs,
+- [x] Cluster section (admin): Nodes, PVs, StorageClasses, CRDs,
       ClusterRoles, all Namespaces — new watched kinds
-- [ ] Namespace page = project page: requester, display name, members,
+- [x] Namespace page = project page: requester, display name, members,
       isolation, delete
-- [ ] PVC Pending under `WaitForFirstConsumer`: idle, "provisioned when a
+- [x] PVC Pending under `WaitForFirstConsumer`: idle, "provisioned when a
       pod or VM uses it", Attach to a VM
-- [ ] Tests, docs, changelog; live check (projects as two users); release
+- [x] Tests, docs, changelog; live check (projects as two users); release
+- Verified with `sc-build deploy/verify-projects.sh`: real fastetcd +
+  rustkube v0.15.0 apiserver and controller-manager (TLS, anonymous off,
+  signed tokens), console users alice/bob (operator) and root (admin),
+  each with their own kube identity. alice: no projects, `alice-work`
+  suggested; system and bad names refused; created with requester alice
+  and her admin binding; bob cannot see it (404). Creates: no project →
+  refused, `?project=` → 201, `default` → the system sentence, bob's
+  namespace → hidden, VM with none/default/cilium refused, in alice-work
+  201; root into kube-system 201. bob made view → sees it at once; his
+  pod create, isolate and delete are the apiserver's 403s. Isolation with
+  and without DNS, the two policies exactly, kube-system refused, removed.
+  A 600Gi claim: no project refused; in alice-work Idle, "provisioned
+  when a pod or VM uses it", Attach → vm1 has the claim as a volume.
+  Rows carry their project; sc/crd/crole in the feed; nav Home+Projects,
+  Cluster section, no Node services. Delete default 403, alice-work 200 →
+  Terminating
+- Filed **rustkube#102** (a claim's phase is not defaulted)
+- Not viewed in a browser (there is none here)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

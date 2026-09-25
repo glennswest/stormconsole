@@ -3,6 +3,35 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-25
+- **feat(k8s):** projects are the top of the console (#28). The masthead's
+  selector is a Project selector over the viewer's projects (rustkube's
+  `project.openshift.io/v1`); a Projects page and New project
+  (`ProjectRequest`, the requester made admin); a Project tab on each —
+  requester, members (admin/edit/view RoleBindings, added and removed),
+  isolation, delete. All as the viewer, so RBAC decides.
+- **feat(k8s):** Isolate a project: NetworkPolicies `storm-isolate` (within
+  the namespace only) and, opt-in, `storm-isolate-dns`; shown as a badge,
+  removable.
+- **BREAKING (pre-1.0):** every create targets a project, chosen in the
+  dialog with New project inline. Nothing is created in `default` by
+  omission: templates no longer name a namespace, `/apply` takes
+  `?project=` and refuses a namespaced document with neither, VM create
+  refuses a missing namespace. System namespaces (`default`, `openshift`,
+  `kube-*`, `openshift-*`, `[kubernetes] system_namespaces`, default
+  `["cilium"]`) are refused as targets (`/apply` allows `admin`).
+- **feat(k8s):** a Cluster section (admin) — Nodes, Namespaces,
+  PersistentVolumes, StorageClasses, CRDs, ClusterRoles, newly watched.
+- **feat(k8s):** a claim waiting for its first consumer is Idle, says
+  "Pending — provisioned when a pod or VM uses it", and offers Attach to a
+  VM. A claim with no phase (rustkube#102) is Pending.
+- **feat(ui):** lists always show a namespaced row's project, grouped by
+  project when they span several.
+- **refactor(fleet):** "Node services" left the navigator; a node's daemons
+  are on its page.
+- **chore:** `deploy/verify-projects.sh`, the live check as three real
+  identities. Filed rustkube#102.
+
 ## [v0.16.0] — 2026-09-25
 
 ### 2026-09-25
