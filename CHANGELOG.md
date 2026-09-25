@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.19.0] — 2026-09-25
+
 ### 2026-09-25
 - **feat(storage):** Volumes are what is attached, and images are the
   registry's (#19). Storage → Volumes lists only volumes in use (stormblock
