@@ -456,6 +456,28 @@ fastetcd#28; traffic (puts/txns per second, lagging watchers) on
 fastetcd#29. The plugin already reads both shapes, so they light up
 without a console change.
 
+### A VM's addresses, asked against done (#24) — in progress 2026-09-25
+rustkube-node now writes `status.interfaces[]` per NIC: `name`, `mac`,
+`ipAddress`, `ipAddresses` (guest agent first, the node's ARP table as a
+fallback) and `storm.io/binding` (`bridge` = tap on a real bridge, `user` =
+SLIRP NAT inside qemu, `passt`). The spec says what was *asked*:
+`networks[].pod` (+ interface `masquerade`/`bridge`/`passt`), `multus`,
+or the `storm.io/bridge[.<iface>]` annotation, which wins (stormvm
+`kube.rs`). Today `pod` renders as `user` (stormvm#16), so a spec saying
+"pod" must never read as a working pod network.
+
+- [ ] `vm/src/network.rs`: one row per interface merging spec and status —
+      asked (network + binding), did (binding), MAC, every address, and a
+      reach verdict with a sentence (reachable / NAT, not reachable /
+      no address yet / not reported yet / stopped)
+- [ ] List: every address on the row (`ip`), "no address yet" when running
+      without one, NAT flagged
+- [ ] Detail: Network card as a table — interface, asked, node did, MAC,
+      addresses, reach — with copy buttons
+- [ ] ResourceTable: a copy button on any metric whose value is IP
+      addresses (generic, so FeedPlugin upstreams get it too)
+- [ ] Tests, docs, changelog; verify on dev; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
