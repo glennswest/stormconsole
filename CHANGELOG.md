@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.16.0] — 2026-09-25
+
 ### 2026-09-25
 - **feat(vm):** SSH keys uploaded once and given to every machine (#26).
   Account → SSH keys (the key icon in the masthead): paste or upload a
