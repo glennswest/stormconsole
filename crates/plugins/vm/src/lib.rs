@@ -29,6 +29,7 @@ pub mod disks;
 pub mod images;
 pub mod network;
 pub mod settings;
+pub mod snapshots;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,6 +68,27 @@ const RESOURCES: &[ResourceSpec] = &[
         api_kind: "VirtualMachineInstance",
         title: "Virtual machine instances",
         list_path: "/apis/kubevirt.io/v1/virtualmachineinstances",
+        namespaced: true,
+        optional: true,
+        inventory: false,
+    },
+    // A machine's snapshots and restores (#25). Optional like the rest:
+    // the CRDs arrive with stormpump#28, and a cluster without them has a
+    // Backup tab that says so rather than a failed watch.
+    ResourceSpec {
+        kind: "vmsnap",
+        api_kind: "VirtualMachineSnapshot",
+        title: "Virtual machine snapshots",
+        list_path: "/apis/snapshot.kubevirt.io/v1beta1/virtualmachinesnapshots",
+        namespaced: true,
+        optional: true,
+        inventory: false,
+    },
+    ResourceSpec {
+        kind: "vmrestore",
+        api_kind: "VirtualMachineRestore",
+        title: "Virtual machine restores",
+        list_path: "/apis/snapshot.kubevirt.io/v1beta1/virtualmachinerestores",
         namespaced: true,
         optional: true,
         inventory: false,
@@ -193,6 +215,9 @@ impl ConsolePlugin for VmPlugin {
             .route("/vms/{ns}/{name}/settings", get(settings_of).put(settings_set))
             .route("/vms/{ns}/{name}/disks", post(disk_add))
             .route("/vms/{ns}/{name}/disks/{disk}", delete(disk_remove))
+            .route("/vms/{ns}/{name}/snapshots", get(snapshots_list).post(snapshot_take))
+            .route("/vms/{ns}/{name}/snapshots/{snap}", delete(snapshot_delete))
+            .route("/vms/{ns}/{name}/snapshots/{snap}/restore", post(snapshot_restore))
             .route("/console/{ns}/{name}", get(console_caps))
             .route("/console/{ns}/{name}/serial", get(serial))
             .route("/console/{ns}/{name}/vnc", get(vnc))
@@ -969,6 +994,150 @@ async fn detail(
         "yaml": yaml,
     }))
     .into_response()
+}
+
+/// The Backup tab: this machine's snapshots, newest first, and the
+/// restores made from them (#25).
+async fn snapshots_list(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let key = format!("{ns}/{name}");
+    let defined = inner.store.object("vm", &key).await.is_some();
+    let running = inner.store.object("vmi", &key).await.is_some();
+    if !defined && !running {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no virtual machine {key}")}))).into_response();
+    }
+    if inner.store.is_absent("vmsnap").await {
+        return Json(json!({
+            "available": false,
+            "reason": "snapshot.kubevirt.io is not installed on this cluster, so there is nowhere to \
+                       record a snapshot. The CRDs arrive with stormpump#28",
+            "snapshots": [], "restores": [],
+        }))
+        .into_response();
+    }
+    let now = chrono::Utc::now();
+    let prefix = format!("{ns}/");
+    let mut snaps: Vec<Value> = inner
+        .store
+        .kind("vmsnap")
+        .await
+        .into_iter()
+        .filter(|(k, o)| k.starts_with(&prefix) && snapshots::is_for(o, &name))
+        .map(|(_, o)| snapshots::row(&o, now))
+        .collect();
+    snaps.sort_by(|a, b| b["created"].as_str().cmp(&a["created"].as_str()));
+    let mut restores: Vec<Value> = inner
+        .store
+        .kind("vmrestore")
+        .await
+        .into_iter()
+        .filter(|(k, o)| k.starts_with(&prefix) && snapshots::restore_is_for(o, &name))
+        .map(|(_, o)| snapshots::restore_row(&o))
+        .collect();
+    restores.sort_by(|a, b| b["created"].as_str().cmp(&a["created"].as_str()));
+    // Why Restore is greyed, said once for the whole list rather than on
+    // every row.
+    let restore_blocked = if !defined {
+        Some("a bare instance has no definition to restore into")
+    } else if running {
+        Some("stop the machine to restore: a restore replaces its disks")
+    } else {
+        None
+    };
+    Json(json!({
+        "available": true,
+        "write": viewer.may_write(),
+        "snapshots": snaps,
+        "restores": restores,
+        "restoreBlocked": restore_blocked,
+    }))
+    .into_response()
+}
+
+/// The Snapshot button. It schedules: the object is created and the node
+/// does the rest, so this returns as soon as the apiserver has it.
+async fn snapshot_take(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+    Json(take): Json<snapshots::Take>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let key = format!("{ns}/{name}");
+    let defined = inner.store.object("vm", &key).await.is_some();
+    if !defined && inner.store.object("vmi", &key).await.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no virtual machine {key}")}))).into_response();
+    }
+    let body = match snapshots::take_body(&ns, &name, defined, &take, chrono::Utc::now()) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
+    };
+    let snap = body["metadata"]["name"].as_str().unwrap_or_default().to_string();
+    create_as_viewer(&inner, &viewer, &ns, "virtualmachinesnapshots", &body, format!("snapshot {snap} scheduled")).await
+}
+
+async fn snapshot_restore(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name, snap)): Path<(String, String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let key = format!("{ns}/{name}");
+    let defined = inner.store.object("vm", &key).await.is_some();
+    let running = inner.store.object("vmi", &key).await.is_some();
+    let object = inner.store.object("vmsnap", &format!("{ns}/{snap}")).await;
+    let body = match snapshots::restore_body(&ns, &name, defined, running, object.as_ref(), &snap, chrono::Utc::now()) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::CONFLICT, Json(json!({"error": e}))).into_response(),
+    };
+    create_as_viewer(&inner, &viewer, &ns, "virtualmachinerestores", &body, format!("restore of {name} from {snap} scheduled")).await
+}
+
+async fn snapshot_delete(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name, snap)): Path<(String, String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    // Only this machine's: the route names the machine, and a snapshot of
+    // another one deleted through it would be a surprise.
+    match inner.store.object("vmsnap", &format!("{ns}/{snap}")).await {
+        Some(o) if snapshots::is_for(&o, &name) => {}
+        _ => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("{name} has no snapshot {snap}")}))).into_response(),
+    }
+    let Some(client) = &inner.client else { return no_apiserver() };
+    match client
+        .delete(&format!("{}/namespaces/{ns}/virtualmachinesnapshots/{snap}", snapshots::API), viewer.token.as_deref())
+        .await
+    {
+        Ok(s) if s.is_success() => Json(json!({"message": format!("snapshot {snap} deleted")})).into_response(),
+        Ok(s) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", s.as_u16())})))
+            .into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// Create a `snapshot.kubevirt.io` object, as the viewer, so the
+/// apiserver's RBAC decides.
+async fn create_as_viewer(inner: &Inner, viewer: &Viewer, ns: &str, plural: &str, body: &Value, done: String) -> Response {
+    let Some(client) = &inner.client else { return no_apiserver() };
+    let path = format!("{}/namespaces/{ns}/{plural}", snapshots::API);
+    match client.post_json_as(&path, body, viewer.token.as_deref()).await {
+        Ok((status, b)) => from_apiserver(status, b, &done),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    }
 }
 
 async fn console_caps(

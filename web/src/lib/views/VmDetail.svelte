@@ -19,12 +19,13 @@
   import Icon from '../components/Icon.svelte'
   import EventBox from '../components/EventBox.svelte'
   import CopyButton from '../components/CopyButton.svelte'
+  import VmBackup from './VmBackup.svelte'
   import { noteActivity } from '../stores.svelte.js'
 
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
 
-  const TABS = ['Overview', 'Settings', 'Serial console', 'Graphical console', 'YAML']
+  const TABS = ['Overview', 'Settings', 'Backup', 'Serial console', 'Graphical console', 'YAML']
 
   // `?door=serial` / `?door=screen` opens straight onto a console.
   //
@@ -650,6 +651,8 @@
           </table>
         </div>
       </section>
+    {:else if tab === 'Backup'}
+      <VmBackup {ns} {name} />
     {:else if tab === 'Serial console'}
       {#if !doors.serial}
         <EmptyState icon="logs" title="No serial console yet" hint={doors.reason} />
