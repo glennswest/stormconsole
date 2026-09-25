@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.13.0**
+Current: **0.14.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -456,7 +456,7 @@ fastetcd#28; traffic (puts/txns per second, lagging watchers) on
 fastetcd#29. The plugin already reads both shapes, so they light up
 without a console change.
 
-### A VM's addresses, asked against done (#24) — in progress 2026-09-25
+### A VM's addresses, asked against done (#24) ✅ v0.14.0 2026-09-25
 rustkube-node now writes `status.interfaces[]` per NIC: `name`, `mac`,
 `ipAddress`, `ipAddresses` (guest agent first, the node's ARP table as a
 fallback) and `storm.io/binding` (`bridge` = tap on a real bridge, `user` =
@@ -466,17 +466,24 @@ or the `storm.io/bridge[.<iface>]` annotation, which wins (stormvm
 `kube.rs`). Today `pod` renders as `user` (stormvm#16), so a spec saying
 "pod" must never read as a working pod network.
 
-- [ ] `vm/src/network.rs`: one row per interface merging spec and status —
+- [x] `vm/src/network.rs`: one row per interface merging spec and status —
       asked (network + binding), did (binding), MAC, every address, and a
       reach verdict with a sentence (reachable / NAT, not reachable /
       no address yet / not reported yet / stopped)
-- [ ] List: every address on the row (`ip`), "no address yet" when running
+- [x] List: every address on the row (`ip`), "no address yet" when running
       without one, NAT flagged
-- [ ] Detail: Network card as a table — interface, asked, node did, MAC,
+- [x] Detail: Network card as a table — interface, asked, node did, MAC,
       addresses, reach — with copy buttons
-- [ ] ResourceTable: a copy button on any metric whose value is IP
+- [x] ResourceTable: a copy button on any metric whose value is IP
       addresses (generic, so FeedPlugin upstreams get it too)
-- [ ] Tests, docs, changelog; verify on dev; release; golden
+- [x] Tests, docs, changelog; verify on dev; release; golden
+- Verified with `sc-build deploy/verify-vm-net.sh`: real fastetcd v1.2.0
+  + rustkube v0.14.1, KubeVirt CRDs, status written through `/status` as
+  the kubelet writes it. NAT (asked pod) → `ip=10.155.0.15` warn,
+  `network=NAT, not pod`, sentence naming stormvm#16; bridged → v4+v6,
+  reachable on stormbr0; quiet → "no address yet"; stopped → stopped.
+  The page's rendering was not viewed in a browser (no browser here); the
+  bundle built and the API answers what it renders
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
