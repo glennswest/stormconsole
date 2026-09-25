@@ -80,6 +80,9 @@ enabled = true
 enabled = true
 # url = "http://127.0.0.1:9090"
 
+# The engine's API token, when it guards its API (v18 does, reads too):
+# its <data_dir>/api_token. Without it every read is a 401.
+# token_file = "/data/stormblock/api_token"
 [sbregistry]
 enabled = true
 # url = "http://127.0.0.1:5100"

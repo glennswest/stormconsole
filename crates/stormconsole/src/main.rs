@@ -151,7 +151,16 @@ async fn main() {
         plugins.push(Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url())));
     }
     if config.stormblock.enabled {
-        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::new(&config.stormblock_url())));
+        // A guarded engine answers every read with 401 without its token;
+        // an unreadable file is said and the plugin shows the 401 in words.
+        let token = config.stormblock.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!(file = f, "stormblock token_file unreadable: {e}");
+                None
+            }
+        });
+        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_token(&config.stormblock_url(), token)));
     }
     // The datastore rustkube stands on, so the relation is drawn only
     // when there is an apiserver component to draw it to.

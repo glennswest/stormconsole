@@ -24,6 +24,9 @@ struct State {
 
 struct Inner {
     base: String,
+    /// The engine's API token (`<data_dir>/api_token`), when it guards its
+    /// API — v18 does, reads included. Held here; the browser never sees it.
+    token: Option<String>,
     client: reqwest::Client,
     state: RwLock<State>,
 }
@@ -34,8 +37,13 @@ pub struct StormblockPlugin {
 
 impl StormblockPlugin {
     pub fn new(url: &str) -> Self {
+        Self::with_token(url, None)
+    }
+
+    pub fn with_token(url: &str, token: Option<String>) -> Self {
         Self {
             inner: Arc::new(Inner {
+                token: token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
                 base: url.trim_end_matches('/').to_string(),
                 client: reqwest::Client::new(),
                 state: RwLock::new(State {
@@ -102,7 +110,10 @@ impl ConsolePlugin for StormblockPlugin {
 
     fn routes(&self) -> axum::Router {
         axum::Router::new()
-            .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.base.clone()))
+            .nest(
+                "/proxy",
+                console_core::proxy::router_as(self.inner.client.clone(), self.inner.base.clone(), self.inner.token.clone()),
+            )
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
@@ -133,10 +144,11 @@ impl ConsolePlugin for StormblockPlugin {
 /// there or does not serve that resource (luns are optional).
 async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
     let url = format!("{}{path}", inner.base);
-    let resp = inner
-        .client
-        .get(&url)
-        .timeout(Duration::from_secs(5))
+    let mut req = inner.client.get(&url).timeout(Duration::from_secs(5));
+    if let Some(t) = &inner.token {
+        req = req.bearer_auth(t);
+    }
+    let resp = req
         .send()
         .await
         .map_err(|e| {

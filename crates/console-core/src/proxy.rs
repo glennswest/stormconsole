@@ -85,14 +85,20 @@ pub async fn forward_as(
 struct Target {
     client: reqwest::Client,
     upstream: String,
+    bearer: Option<String>,
 }
 
 /// Everything under this router goes to one upstream. Nest it at
 /// `/proxy` in a plugin's routes.
 pub fn router(client: reqwest::Client, upstream: String) -> Router {
+    router_as(client, upstream, None)
+}
+
+/// [`router`], carrying the console's own bearer for that upstream.
+pub fn router_as(client: reqwest::Client, upstream: String, bearer: Option<String>) -> Router {
     Router::new()
         .route("/{*path}", any(handler))
-        .with_state(Arc::new(Target { client, upstream }))
+        .with_state(Arc::new(Target { client, upstream, bearer }))
 }
 
 async fn handler(
@@ -103,5 +109,5 @@ async fn handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    forward(&t.client, &t.upstream, &method, &path, uri.query(), &headers, body).await
+    forward_as(&t.client, &t.upstream, &method, &path, uri.query(), &headers, body, t.bearer.as_deref()).await
 }

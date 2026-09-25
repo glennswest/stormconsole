@@ -284,11 +284,14 @@ pub struct Stormblock {
     pub enabled: bool,
     /// Block engine management API, e.g. "http://192.168.8.150:9090".
     pub url: Option<String>,
+    /// The engine's API token file (its `<data_dir>/api_token`). An engine
+    /// that guards its API answers 401 to every read without it.
+    pub token_file: Option<String>,
 }
 
 impl Default for Stormblock {
     fn default() -> Self {
-        Self { enabled: true, url: None }
+        Self { enabled: true, url: None, token_file: None }
     }
 }
 

@@ -93,13 +93,16 @@ curl -s -X POST -H 'Content-Type: application/json' "$REG/v1/media" \
 sleep 4
 printf '  jobs: '; curl -s "$REG/v1/media/jobs" | j '[(x["repository"], x["phase"], x.get("fault"), x.get("error")) for x in d["items"]]'
 
-console() { # port, stormblock url, registry url
+console() { # port, stormblock url, registry url, [engine token file]
   mkdir -p "$W/c$1"
+  local tokline=""
+  [ -n "${4:-}" ] && tokline="token_file = \"$4\""
   cat > "$W/c$1.toml" <<EOF
 listen_addr = "127.0.0.1:$1"
 data_dir = "$W/c$1"
 [stormblock]
 url = "$2"
+$tokline
 [sbregistry]
 url = "$3"
 [kubernetes]
@@ -136,7 +139,7 @@ PY
 
 ########################################################################
 say "1. a console over both: the engine card, Volumes, Unattached"
-console 19104 "http://$MGMT" "$REG"
+console 19104 "http://$MGMT" "$REG" "$W/sb/data/api_token"
 feed 19104 '
 e = by["sb:engine"]
 print("  engine:", e["detail"])
