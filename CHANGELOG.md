@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.18.0] — 2026-09-25
+
 ### 2026-09-25
 - **feat(ipmi):** the Machines page, served by stormipmi (#31). A new
   plugin over stormipmi's Machines API: the fleet by service tag — BMC,
