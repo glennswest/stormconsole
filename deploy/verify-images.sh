@@ -19,9 +19,11 @@ set -euo pipefail
 SB_REF=${SB_REF:-v18.1.0}
 REG_REF=${REG_REF:-v0.23.0}
 FORGE=${FORGE:-http://forge.g16.lo:9090}
-# Not /tmp: it is tmpfs on dev, and the engine's disks are files.
-mkdir -p "$PWD/tmp"
-W=$(mktemp -d "$PWD/tmp/verify-images.XXXXXX")
+# Not /tmp — it is tmpfs on dev, and the engine's disks are files — and
+# not inside this checkout, where cargo would take the clones for members
+# of this workspace. The build user's home is on disk.
+mkdir -p "$HOME/scratch"
+W=$(mktemp -d "$HOME/scratch/verify-images.XXXXXX")
 cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$W"; }
 trap cleanup EXIT
 say() { printf '\n=== %s\n' "$*"; }
