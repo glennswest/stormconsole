@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-25
+- **feat(vm):** a VM's addresses, asked against done (#24). Per interface:
+  what the spec asked for (pod network and binding, host bridge, multus),
+  what the node did (`storm.io/binding`), the MAC, every address, and
+  whether the address is reachable, in one sentence. A pod network run as
+  a NAT inside the hypervisor says so and names stormvm#16. The list row
+  carries every address (`ip`), "no address yet" for a running machine
+  without one, and `network = NAT, not pod`; the page's Network card is a
+  table with copy buttons.
+- **feat(ui):** `ResourceTable` puts a copy button on any metric whose
+  value is IP or MAC addresses.
+- **chore:** `deploy/verify-vm-net.sh`, the live check over a real
+  fastetcd + rustkube.
+
 ## [v0.13.0] — 2026-09-25
 
 ### 2026-09-25

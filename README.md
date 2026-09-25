@@ -107,6 +107,14 @@ whether it should run, a `VirtualMachineInstance` is the machine that is
 running — its node, its phase, its disks, and the reason it did not start
 when it did not.
 
+Each interface shows what was **asked** (the pod network, a host bridge by
+`storm.io/bridge`, a multus network) beside what the node **did** (the
+binding, the MAC, every address the guest holds), with copy buttons and a
+verdict on whether the address is reachable. Today a pod network runs as
+a NAT inside the hypervisor (stormvm#16), and the page and the list both
+say so rather than showing an address nothing can reach as if it worked.
+A running machine with no address reads "no address yet".
+
 Lifecycle is `spec.running` and nothing else. A definition that wants to
 run and has no instance says exactly that: nothing places one yet, which
 is stormvm's own outstanding work, not a fault here.

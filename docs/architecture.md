@@ -659,6 +659,25 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**Addresses, asked against done (#24).** `vm/src/network.rs` gives one row
+per interface from two sources that disagree today. What was *asked* is
+read the way stormvm reads it: `storm.io/bridge.<iface>`, then
+`storm.io/bridge`, win over the network; otherwise the network of the same
+name — `pod` with the binding on the interface (`masquerade` by default,
+`bridge`, `passt`) or `multus`. What the node *did* is `status.interfaces[]`
+as rustkube-node writes it: `mac`, `ipAddress`/`ipAddresses` (guest agent,
+else the node's neighbour table) and `storm.io/binding` — `bridge` for a
+tap on a real bridge, `user` for qemu's NAT inside the hypervisor. Each row
+carries a `reach` verdict (`reachable`, `nat`, `none` = no address yet,
+`pending` = not reported, `stopped`) and a sentence. A spec asking for the
+pod network that runs as `user` says so and names stormvm#16, so "pod" never
+reads as a working pod network. The list row carries every address as `ip`
+(warn when behind the NAT, "no address yet" when running without one) and
+the binding as `network` ("NAT, not pod"). The page shows the table with a
+copy button per MAC and address; `ResourceTable` puts one on any metric
+whose value is IP or MAC addresses, decided on the value so feed upstreams
+get it too. `deploy/verify-vm-net.sh` is the live check.
+
 **Memory and the balloon.** `memory.guest` with a *lower* resource
 request is ballooning — stormvm reads it that way and builds a
 `virtio-balloon-pci` or passes `--balloon`. That floor is the only
