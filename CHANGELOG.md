@@ -6,6 +6,11 @@
 - **fix(build):** `Cargo.lock` gains `plugin-fastetcd`, which the #20
   commit added to the workspace without locking — the golden build runs
   `--locked` and refused (#23).
+- **fix(etcd):** an unreachable store no longer reports `alarms = none` —
+  nothing answered, so no alarm is known to be absent.
+- **fix(verify):** `deploy/verify-etcd.sh` used f-strings that need
+  python 3.12; dev has an older one, so the live check had never run.
+  It now runs clean end to end (#20).
 
 ### 2026-09-24
 - **feat(etcd):** a fastetcd plugin (#20). The datastore rustkube stands

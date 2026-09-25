@@ -104,6 +104,7 @@ fn nothing_answering_is_unreachable() {
     assert_eq!(h, Health::Error);
     assert!(line.starts_with("unreachable"), "{line}");
     assert!(!cs[0].detail.contains("fastetcd#28"), "an unreachable store has no gaps to explain");
+    assert_eq!(metric(&cs[0], "alarms"), None, "nothing answered, so no alarm is known to be absent");
 }
 
 fn gateway(alarms: Vec<Alarm>) -> Seen {

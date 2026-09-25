@@ -392,10 +392,14 @@ fn build(seen: &Seen, serves: Option<&str>) -> (Health, String, Vec<ComponentSum
     if let Some(s) = snapshots {
         metrics.push(Metric::new("snapshots", human_bytes(s)));
     }
-    metrics.push(Metric::new(
-        "alarms",
-        if alarms.is_empty() { "none".to_string() } else { alarms.join(", ") },
-    ));
+    // "none" is an answer only from something that could have said
+    // otherwise: /health alone knows nothing about alarms.
+    if m.is_some() || st.is_some() {
+        metrics.push(Metric::new(
+            "alarms",
+            if alarms.is_empty() { "none".to_string() } else { alarms.join(", ") },
+        ));
+    }
     if let Some(l) = has_leader {
         let m = Metric::new("leader", if l { "yes" } else { "none" });
         metrics.push(if l { m } else { m.tone("warn") });
