@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.17.0] — 2026-09-25
+
 ### 2026-09-25
 - **feat(k8s):** projects are the top of the console (#28). The masthead's
   selector is a Project selector over the viewer's projects (rustkube's
