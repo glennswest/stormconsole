@@ -605,6 +605,27 @@ and ClusterRoles `admin`/`edit`/`view`. Reserved: `default`, `openshift`,
 - Filed **rustkube#102** (a claim's phase is not defaulted)
 - Not viewed in a browser (there is none here)
 
+### Machines page, served by stormipmi (#31) — in progress 2026-09-25
+stormipmi v0.4.0 (stormipmi#12) serves the Machines API on :9097:
+`GET /api/v1/machines[?test=true]` (`{machines, default, forge}`), power
+by tag (`on|off|soft|reboot|cycle`), `PUT …/release` (read back), `GET|PUT
+…/intent` (501 until stormblock#148), `PUT …/test`, `POST …/adopt`, `GET|PUT
+/api/v1/machines/default`, `GET /api/v1/releases`, a `machine:<tag>` feed,
+and the SOL console at `WS /api/v1/hosts/{ns}/{name}/console/serial`
+(replay, then live; `?token=`). Reads are open; writes take the bearer
+from `api.tokenFile`; admin-only is the console's to enforce.
+
+- [ ] `crates/plugins/stormipmi` (name `ipmi`): the feed; `/proxy` with
+      reads open and every write `admin` only, the bearer added
+      server-side; `/console/{ns}/{name}` relaying SOL (typing admin only)
+- [ ] Config `[stormipmi] enabled/url/token_file`; nav Hardware → Machines
+- [ ] `#/machines`: by service tag — BMC, power (confirmed), the release
+      each boots (set, confirmed, read back), boot intent (501 said), the
+      default image, test marks, new hosts to adopt, SOL console
+- [ ] Live check: stormipmi's own smoke (fastetcd, apiserver, ipmi_sim,
+      stand-in forge) + a console with an admin and an operator
+- [ ] Docs, changelog, release, golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
