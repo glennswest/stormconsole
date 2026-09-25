@@ -720,20 +720,21 @@ async fn apply_yaml(
             }
         };
         if let Some(ns) = namespace_in_path(&path) {
-            if refuse_hidden(&inner, &viewer, ns).await.is_some() {
-                failed = true;
-                results.push(json!({"kind": kind, "name": name, "error": format!("no namespace {ns}")}));
-                continue;
-            }
             // Somebody's workload beside the system's own objects is how
             // test1 and test2 ended up in `default` (#28). An administrator
             // importing into kube-system on purpose names it in the YAML,
-            // and may.
+            // and may. First, because it is the more useful answer — and a
+            // system namespace's existence is no secret.
             if inner.access.is_system(ns) && !viewer.has_role("admin") {
                 failed = true;
                 results.push(json!({"kind": kind, "name": name, "error": format!(
                     "{ns} is a system namespace: workloads go in a project. Choose one, or create one"
                 )}));
+                continue;
+            }
+            if refuse_hidden(&inner, &viewer, ns).await.is_some() {
+                failed = true;
+                results.push(json!({"kind": kind, "name": name, "error": format!("no namespace {ns}")}));
                 continue;
             }
         }

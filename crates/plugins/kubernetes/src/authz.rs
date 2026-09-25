@@ -73,6 +73,13 @@ pub struct Authorizer {
 }
 
 impl Authorizer {
+    /// Drop every cached answer. Called when the console itself changed who
+    /// may see what — a member added, a project made — so the person just
+    /// let in is not shut out for the rest of the cache window.
+    pub async fn forget(&self) {
+        self.cache.write().await.clear();
+    }
+
     /// The namespaces this token may see, out of `known` (the console's
     /// own cluster-wide cache).
     pub async fn allowed(
@@ -269,6 +276,11 @@ impl NamespaceAccess {
 
     pub fn system_namespaces(&self) -> Vec<String> {
         self.system.read().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// See [`Authorizer::forget`].
+    pub async fn forget(&self) {
+        self.authz.forget().await;
     }
 
     pub fn is_system(&self, ns: &str) -> bool {

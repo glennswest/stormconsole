@@ -451,7 +451,9 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         .map(|(k, _)| k.clone());
     for (key, obj) in of("pvc") {
         let (ns, name) = split_key(key);
-        let phase = s(obj, "/status/phase").unwrap_or("Unknown");
+        // `Pending` is the API's own default for a claim's phase; an
+        // apiserver that does not default it (rustkube#102) still means it.
+        let phase = s(obj, "/status/phase").unwrap_or("Pending");
         let class = s(obj, "/spec/storageClassName").map(str::to_string).or_else(|| default_class.clone());
         // A claim whose class binds on first use is not stuck: nothing is
         // provisioned until a pod or VM mounts it, by design. Shown as
@@ -1011,6 +1013,12 @@ mod tests {
         assert!(c.relations.iter().any(|r| r.targets == vec!["k8s:sc:stormblock"]), "the default class, named");
         let sc = out.iter().find(|c| c.id == "k8s:sc:stormblock").unwrap();
         assert!(sc.detail.contains("binds on first use"));
+
+        // No phase at all (rustkube#102) is the API's default: Pending.
+        snap.get_mut("pvc").unwrap().get_mut("gw-work/testbig1").unwrap()["status"] = json!({});
+        let out = map(&snap, None);
+        let c = out.iter().find(|c| c.id == "k8s:pvc:gw-work/testbig1").unwrap();
+        assert_eq!(c.health, Health::Idle, "a missing phase is Pending, not Unknown");
 
         // Immediate binding and still Pending: that one is worth a look.
         snap.get_mut("sc").unwrap().get_mut("stormblock").unwrap()["volumeBindingMode"] = json!("Immediate");

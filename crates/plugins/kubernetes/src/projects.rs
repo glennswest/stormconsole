@@ -192,6 +192,19 @@ fn err(code: StatusCode, e: impl Into<String>) -> Response {
     (code, Json(json!({"error": e.into()}))).into_response()
 }
 
+/// The apiserver refused: a 403 stays a 403, with its reason, because "you
+/// may not" is the answer and a 502 says the console broke.
+fn refused(status: reqwest::StatusCode, body: &Value) -> Response {
+    let code = match status.as_u16() {
+        403 => StatusCode::FORBIDDEN,
+        404 => StatusCode::NOT_FOUND,
+        409 => StatusCode::CONFLICT,
+        422 | 400 => StatusCode::BAD_REQUEST,
+        _ => StatusCode::BAD_GATEWAY,
+    };
+    err(code, apiserver_says(status, body))
+}
+
 fn apiserver_says(status: reqwest::StatusCode, body: &Value) -> String {
     body.get("message")
         .and_then(Value::as_str)
@@ -307,10 +320,11 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
         Err(e) => return err(StatusCode::BAD_GATEWAY, e.to_string()),
     };
     if status.is_success() {
+        inner.access.forget().await;
         return Json(json!({"message": format!("project {name} created"), "name": name})).into_response();
     }
     if status.as_u16() != 404 {
-        return err(StatusCode::BAD_GATEWAY, apiserver_says(status, &body));
+        return refused(status, &body);
     }
     // Not served: the namespace it would have made.
     let mut annotations = json!({ REQUESTER: viewer.user.clone().unwrap_or_else(|| "admin".into()) });
@@ -327,7 +341,7 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
             "name": name,
         }))
         .into_response(),
-        Ok((s, b)) => err(StatusCode::BAD_GATEWAY, apiserver_says(s, &b)),
+        Ok((s, b)) => refused(s, &b),
         Err(e) => err(StatusCode::BAD_GATEWAY, e.to_string()),
     }
 }
@@ -349,6 +363,7 @@ pub(crate) async fn remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path
             Json(json!({"message": format!("project {name} is being deleted, with everything in it")})).into_response()
         }
         Ok(s) if s.as_u16() == 404 => err(StatusCode::NOT_FOUND, format!("no project {name}")),
+        Ok(s) if s.as_u16() == 403 => err(StatusCode::FORBIDDEN, format!("the apiserver says you may not delete {name}")),
         Ok(s) => err(StatusCode::BAD_GATEWAY, format!("apiserver returned {}", s.as_u16())),
         Err(e) => err(StatusCode::BAD_GATEWAY, e.to_string()),
     }
@@ -405,9 +420,11 @@ pub(crate) async fn add_member(
     };
     match client.post_json_as(&format!("{RBAC}/namespaces/{name}/rolebindings"), &body, viewer.token.as_deref()).await {
         Ok((s, _)) if s.is_success() => {
+            // Whoever was just let in should see it now, not in 30 seconds.
+            inner.access.forget().await;
             Json(json!({"message": format!("{} is {} in {name}", m.who.trim(), m.role)})).into_response()
         }
-        Ok((s, b)) => err(StatusCode::BAD_GATEWAY, apiserver_says(s, &b)),
+        Ok((s, b)) => refused(s, &b),
         Err(e) => err(StatusCode::BAD_GATEWAY, e.to_string()),
     }
 }
@@ -422,7 +439,11 @@ pub(crate) async fn remove_member(
         return r;
     }
     match client.delete(&format!("{RBAC}/namespaces/{name}/rolebindings/{binding}"), viewer.token.as_deref()).await {
-        Ok(s) if s.is_success() => Json(json!({"message": format!("binding {binding} removed from {name}")})).into_response(),
+        Ok(s) if s.is_success() => {
+            inner.access.forget().await;
+            Json(json!({"message": format!("binding {binding} removed from {name}")})).into_response()
+        }
+        Ok(s) if s.as_u16() == 403 => err(StatusCode::FORBIDDEN, format!("the apiserver says you may not change who is in {name}")),
         Ok(s) => err(StatusCode::BAD_GATEWAY, format!("apiserver returned {}", s.as_u16())),
         Err(e) => err(StatusCode::BAD_GATEWAY, e.to_string()),
     }
@@ -458,7 +479,7 @@ pub(crate) async fn isolate(
     for p in isolation(&name, i.dns) {
         match client.post_json_as(&base, &p, token).await {
             Ok((s, _)) if s.is_success() => {}
-            Ok((s, b)) => return err(StatusCode::BAD_GATEWAY, apiserver_says(s, &b)),
+            Ok((s, b)) => return refused(s, &b),
             Err(e) => return err(StatusCode::BAD_GATEWAY, e.to_string()),
         }
     }
