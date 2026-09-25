@@ -639,6 +639,30 @@ from `api.tokenFile`; admin-only is the console's to enforce.
   dropped. An audit line per act
 - Not viewed in a browser (there is none here)
 
+### Images are the registry's, Volumes are what is attached (#19) — in progress 2026-09-25
+Owner's scope: a UI point of view only — goldens stay engine volumes. The
+data: stormblock v18.1.0 (#138) puts `kind` (volume|golden|blank|media|
+snapshot|template), `in_use`, `attachments` and `consumer` on every volume
+(and `?kind=`/`?in_use=` filters); sbregistry v0.23.0 (#34/#43) serves
+`/v1/catalog/images` (kinds component|blank|media|golden|base|slab_golden|
+release_part|sealed; `source`, `digest`, `parent`, `releases`, `clones`,
+`clone_names`, `location`, `state`) and `/v1/media/jobs` (phase, source,
+percent, fault, golden).
+
+- [ ] stormblock plugin: the engine's `kind` first (the old sealed/parent
+      rule for an older engine); Volumes = kind volume and in use, with
+      consumer and attachment; Unattached volumes apart; image kinds out
+      of the Volumes view; Delete disabled while in use
+- [ ] sbregistry plugin: the catalog as `reg:cat:<name>` (kind, base
+      lineage, clones, releases, source, digest, location, sizes); media
+      jobs merged in ("downloading from X, n%", failed with its fault);
+      an older registry said to predate the catalog
+- [ ] `#/images`: grouped by kind, lineage and clone counts; nav Images →
+      Catalog, and Volumes / Unattached under Storage
+- [ ] Live check: stormblock v18.1.0 on file-backed disks (templates,
+      clones, a claim attached with an owner) + sbregistry v0.23.0 on it,
+      and read-only against forge's real engine; docs; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
