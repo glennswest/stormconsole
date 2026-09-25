@@ -933,6 +933,18 @@ mod tests {
     }
 
     #[test]
+    fn every_chosen_key_reaches_the_seed_once_for_the_default_user_and_root() {
+        let mut f = form();
+        f.lines = vec!["ssh-ed25519 AAAA laptop".into(), "ssh-ed25519 BBBB desk".into()];
+        // A pasted key that is already chosen is not written twice.
+        f.ssh_key = "ssh-ed25519 AAAA laptop".into();
+        let seed = cloud_init(&f);
+        assert_eq!(seed.matches("ssh-ed25519 AAAA laptop").count(), 2, "{seed}");
+        assert_eq!(seed.matches("ssh-ed25519 BBBB desk").count(), 2, "{seed}");
+        assert_eq!(crate::keys::from_seed(&seed).len(), 2, "read back, once each");
+    }
+
+    #[test]
     fn an_ssh_key_reaches_the_seed_because_a_guest_without_one_is_unreachable() {
         let mut f = form();
         f.ssh_key = "ssh-ed25519 AAAA gw".into();
