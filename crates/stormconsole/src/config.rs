@@ -42,6 +42,8 @@ pub struct Config {
     pub vmimages: VmImages,
     #[serde(default)]
     pub fastetcd: Fastetcd,
+    #[serde(default)]
+    pub stormipmi: Stormipmi,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -365,6 +367,26 @@ impl Default for Fastetcd {
     }
 }
 
+/// The Machines page (#31): stormipmi's Machines API, wherever the one
+/// stormipmi runs — a bastion, usually, not every node.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Stormipmi {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// e.g. "http://bastion:9097". Unset means this node's :9097.
+    pub url: Option<String>,
+    /// stormipmi's `api.tokenFile`, when it has one: every write it takes
+    /// needs this bearer. The console holds it; the browser never sees it.
+    pub token_file: Option<String>,
+}
+
+impl Default for Stormipmi {
+    fn default() -> Self {
+        Self { enabled: true, url: None, token_file: None }
+    }
+}
+
 fn on() -> bool {
     true
 }
@@ -435,6 +457,10 @@ impl Config {
 
     pub fn sbregistry_url(&self) -> String {
         self.sbregistry.url.clone().unwrap_or_else(|| "http://127.0.0.1:5100".to_string())
+    }
+
+    pub fn stormipmi_url(&self) -> String {
+        self.stormipmi.url.clone().unwrap_or_else(|| "http://127.0.0.1:9097".to_string())
     }
 
     pub fn fastetcd_url(&self) -> String {

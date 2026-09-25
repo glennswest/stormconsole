@@ -107,3 +107,13 @@ enabled = true
 # its own listener, loopback by default.
 # url = "http://127.0.0.1:2379"
 # metrics_url = "http://127.0.0.1:2381"
+
+[stormipmi]
+enabled = true
+# The Machines page: bare metal by service tag — BMC, power, the SOL
+# console, the release each machine boots and the default image — from
+# stormipmi's Machines API. stormipmi runs on one node (a bastion), so point
+# this at it. Reads are open; power, releases, test marks and adopting are
+# admin-only here, and carry stormipmi's api.tokenFile bearer when it has one.
+# url = "http://127.0.0.1:9097"
+# token_file = "/etc/stormconsole/stormipmi.token"

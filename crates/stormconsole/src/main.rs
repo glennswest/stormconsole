@@ -162,6 +162,19 @@ async fn main() {
             config.kubernetes.enabled.then(|| "plugin:k8s".to_string()),
         )));
     }
+    // Bare metal by service tag (#31). stormipmi's write token is read once
+    // here; a missing file is said and the page stays readable — writes then
+    // come back from stormipmi as 401, in words.
+    if config.stormipmi.enabled {
+        let token = config.stormipmi.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!(file = f, "stormipmi token_file unreadable, writes will be refused: {e}");
+                None
+            }
+        });
+        plugins.push(Arc::new(plugin_stormipmi::StormipmiPlugin::new(&config.stormipmi_url(), token)));
+    }
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
     }

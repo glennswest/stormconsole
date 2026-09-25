@@ -1144,6 +1144,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-stormipmi"
+version = "0.17.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "console-core",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "plugin-stormstorage"
 version = "0.17.0"
 dependencies = [
@@ -1751,6 +1768,7 @@ dependencies = [
  "plugin-sbregistry",
  "plugin-stormblock",
  "plugin-stormdrive",
+ "plugin-stormipmi",
  "plugin-stormstorage",
  "plugin-vm",
  "plugin-vmimages",

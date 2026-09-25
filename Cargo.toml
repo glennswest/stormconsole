@@ -13,6 +13,7 @@ members = [
     "crates/plugins/vm",
     "crates/plugins/vmimages",
     "crates/plugins/fastetcd",
+    "crates/plugins/stormipmi",
 ]
 
 [workspace.package]
@@ -33,6 +34,7 @@ plugin-sbregistry = { path = "crates/plugins/sbregistry" }
 plugin-vmimages = { path = "crates/plugins/vmimages" }
 plugin-vm = { path = "crates/plugins/vm" }
 plugin-fastetcd = { path = "crates/plugins/fastetcd" }
+plugin-stormipmi = { path = "crates/plugins/stormipmi" }
 
 stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
 tokio = { version = "1", features = ["full"] }

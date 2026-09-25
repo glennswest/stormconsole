@@ -24,6 +24,23 @@ pub async fn forward(
     headers: &HeaderMap,
     body: Bytes,
 ) -> Response {
+    forward_as(client, upstream, method, path, query, headers, body, None).await
+}
+
+/// [`forward`], carrying the console's own credential for the upstream —
+/// a bearer the browser never sees, because the upstream address and its
+/// token both stay server-side.
+#[allow(clippy::too_many_arguments)]
+pub async fn forward_as(
+    client: &reqwest::Client,
+    upstream: &str,
+    method: &Method,
+    path: &str,
+    query: Option<&str>,
+    headers: &HeaderMap,
+    body: Bytes,
+    bearer: Option<&str>,
+) -> Response {
     let mut url = format!("{}/{}", upstream.trim_end_matches('/'), path.trim_start_matches('/'));
     if let Some(q) = query {
         url.push('?');
@@ -37,6 +54,9 @@ pub async fn forward(
     }
     if let Some(a) = headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()) {
         req = req.header(reqwest::header::ACCEPT, a);
+    }
+    if let Some(t) = bearer {
+        req = req.bearer_auth(t);
     }
     if !body.is_empty() {
         req = req.body(body);
