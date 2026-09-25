@@ -27,10 +27,11 @@ feed() { # the etcd slice of a console's component feed, one line each
 import json, sys
 for c in json.load(sys.stdin):
     if c["id"].startswith("etcd:") or c["id"] == "plugin:etcd":
-        m = ", ".join(f"{x[\"label\"]}={x[\"value\"]}" for x in c.get("metrics", []))
-        a = ", ".join(f"{x[\"label\"]}->{x[\"path\"]}" for x in c.get("actions", []))
-        r = ", ".join(f"{x[\"name\"]}:{x[\"kind\"]}:{x[\"targets\"]}" for x in c.get("relations", []))
-        print(f"{c[\"id\"]} [{c[\"health\"]}] {c[\"detail\"]}\n    metrics: {m}\n    actions: {a}\n    relations: {r}")
+        # %-formatting: a backslash inside f-string braces needs python 3.12, dev has older.
+        m = ", ".join("%s=%s" % (x["label"], x["value"]) for x in c.get("metrics", []))
+        a = ", ".join("%s->%s" % (x["label"], x["path"]) for x in c.get("actions", []))
+        r = ", ".join("%s:%s:%s" % (x["name"], x["kind"], x["targets"]) for x in c.get("relations", []))
+        print("%s [%s] %s\n    metrics: %s\n    actions: %s\n    relations: %s" % (c["id"], c["health"], c["detail"], m, a, r))
 '
 }
 wait_for() { for _ in $(seq 1 60); do curl -sf -o /dev/null "$1" && return 0; sleep 0.5; done; echo "timed out: $1" >&2; return 1; }
