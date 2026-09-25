@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.14.0] — 2026-09-25
+
 ### 2026-09-25
 - **feat(vm):** a VM's addresses, asked against done (#24). Per interface:
   what the spec asked for (pod network and binding, host bridge, multus),
