@@ -177,7 +177,15 @@ tab 19098 web-1
 say "5. restore: refused while running, made once stopped"
 printf 'running: '; c 19098 POST /api/plugins/vm/vms/default/web-1/snapshots/pre-upgrade/restore
 printf 'from the failed one: '; c 19098 POST "/api/plugins/vm/vms/default/web-1/snapshots/$AUTO/restore"
+RV=$(curl -sf "$API/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances" | python3 -c 'import json,sys; print(json.load(sys.stdin)["metadata"]["resourceVersion"])')
+curl -sN "$API/apis/kubevirt.io/v1/virtualmachineinstances?watch=true&resourceVersion=$RV" > "$W/watch.out" 2>&1 &
+WPID=$!
+sleep 1
 k DELETE /apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances/web-1
+sleep 3
+kill $WPID 2>/dev/null || true
+echo "the apiserver's watch stream around the delete (from rv $RV):"
+cut -c1-200 "$W/watch.out" | sed 's/^/  /'
 k PATCH /apis/kubevirt.io/v1/namespaces/default/virtualmachines/web-1 '{"spec":{"running":false}}' application/merge-patch+json
 printf 'apiserver GET of the deleted instance: '
 curl -s "$API/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances/web-1" | python3 -c 'import json,sys; o=json.load(sys.stdin); print(o.get("code") or ("present, deletionTimestamp=%s finalizers=%s" % (o["metadata"].get("deletionTimestamp"), o["metadata"].get("finalizers"))))'
