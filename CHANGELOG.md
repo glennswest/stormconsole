@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### 2026-09-25
+- **fix(build):** `Cargo.lock` gains `plugin-fastetcd`, which the #20
+  commit added to the workspace without locking — the golden build runs
+  `--locked` and refused (#23).
+
 ### 2026-09-24
 - **feat(etcd):** a fastetcd plugin (#20). The datastore rustkube stands
   on was the one part of the control plane the console showed nothing
