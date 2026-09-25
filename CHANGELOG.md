@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.15.0] — 2026-09-25
+
 ### 2026-09-25
 - **feat(vm):** a Backup tab (#25). Snapshot schedules a
   `snapshot.kubevirt.io/v1beta1` `VirtualMachineSnapshot` (optional name
