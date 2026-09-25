@@ -659,6 +659,29 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**Images are the registry's; Volumes are what is attached (#19).** A UI
+point of view only — goldens stay the engine's volumes. The stormblock plugin
+reads the engine's own `kind` (volume|golden|blank|media|snapshot|template),
+`in_use`, `attachments` and `consumer` (stormblock v18.1.0, #138): Storage →
+**Volumes** is `kind volume` and in use, each with its consumer (a PVC links
+to `k8s:pvc:…`, a VM to `vm:machine:…`, a mount says where) and how it is
+served (`nvme-tcp nsid 2`, `ublk /dev/ublkb0 → /data`), Delete disabled while
+in use; **Unattached volumes** apart; image kinds are not in either. An older
+engine carries neither field: its unsealed volumes all go to Volumes and the
+engine card says why the split is missing. A guarded engine (v18 guards
+reads too) needs `[stormblock] token_file`, used for the poll and the proxy
+(stormcos#94 wires it on nodes). The sbregistry plugin reads the catalog
+(`/v1/catalog/images`, sbregistry v0.23.0) as `reg:cat:<name>` — kind,
+component/source, sizes, clones and clone names, releases, digest, location,
+the engine volume underneath, and its base as an upward edge, which is the
+lineage — and merges `/v1/media/jobs` in: an image arriving reads
+"downloading from <host>, n%", a failed fetch "failed (<fault>): <error>",
+and a job with no image yet is a row of its own. An older registry's 404 is
+said on the card. `#/images` groups the catalog by kind. The live check is
+`deploy/verify-images.sh`: a v18.1.0 engine on file-backed disks and a
+v0.23.0 registry on it, then forge's real engine read-only through a console
+only.
+
 **Machines, from stormipmi (#31).** `crates/plugins/stormipmi` (name
 `ipmi`) fronts stormipmi's Machines API (stormipmi#12) at `[stormipmi] url`
 (default this node's :9097; usually a bastion). Its `machine:<tag>` feed

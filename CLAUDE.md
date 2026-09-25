@@ -639,7 +639,7 @@ from `api.tokenFile`; admin-only is the console's to enforce.
   dropped. An audit line per act
 - Not viewed in a browser (there is none here)
 
-### Images are the registry's, Volumes are what is attached (#19) — in progress 2026-09-25
+### Images are the registry's, Volumes are what is attached (#19) ✅ v0.19.0 2026-09-25
 Owner's scope: a UI point of view only — goldens stay engine volumes. The
 data: stormblock v18.1.0 (#138) puts `kind` (volume|golden|blank|media|
 snapshot|template), `in_use`, `attachments` and `consumer` on every volume
@@ -649,19 +649,34 @@ release_part|sealed; `source`, `digest`, `parent`, `releases`, `clones`,
 `clone_names`, `location`, `state`) and `/v1/media/jobs` (phase, source,
 percent, fault, golden).
 
-- [ ] stormblock plugin: the engine's `kind` first (the old sealed/parent
+- [x] stormblock plugin: the engine's `kind` first (the old sealed/parent
       rule for an older engine); Volumes = kind volume and in use, with
       consumer and attachment; Unattached volumes apart; image kinds out
       of the Volumes view; Delete disabled while in use
-- [ ] sbregistry plugin: the catalog as `reg:cat:<name>` (kind, base
+- [x] sbregistry plugin: the catalog as `reg:cat:<name>` (kind, base
       lineage, clones, releases, source, digest, location, sizes); media
       jobs merged in ("downloading from X, n%", failed with its fault);
       an older registry said to predate the catalog
-- [ ] `#/images`: grouped by kind, lineage and clone counts; nav Images →
+- [x] `#/images`: grouped by kind, lineage and clone counts; nav Images →
       Catalog, and Volumes / Unattached under Storage
-- [ ] Live check: stormblock v18.1.0 on file-backed disks (templates,
+- [x] Live check: stormblock v18.1.0 on file-backed disks (templates,
       clones, a claim attached with an owner) + sbregistry v0.23.0 on it,
       and read-only against forge's real engine; docs; release; golden
+- Verified with `sc-build deploy/verify-images.sh`: stormblock v18.1.0
+  (release build, file-backed raid1) and sbregistry v0.23.0 from their
+  tags. The engine's filters agree with the console: Volumes = the claim,
+  consumer `PersistentVolumeClaim shop/db` linked to `k8s:pvc:shop/db`,
+  `nvme-tcp nsid 2`, Delete disabled (and the engine's 409 through the
+  proxy); Unattached = seed and idle-clone ("attached: nothing"); the
+  template's blank only under the engine card. Catalog: `pvc-256M` blank,
+  2 clones, its engine volume; a held fetch of a missing URL → a row
+  "failed (upstream): … 404". Nav: Storage Volumes/Unattached, Images
+  Catalog/Pushed/Pallets. forge's real engine (pre-v18), read-only through
+  a console alone: 92 volumes (89 clones), 777 images, and the card says
+  the split is missing
+- Found: a v18 engine answers 401 to reads without its token →
+  `[stormblock] token_file`; filed **stormcos#94** to wire it on nodes
+- Not viewed in a browser (there is none here)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

@@ -173,6 +173,18 @@ hosts the forge has seen, to adopt. Anyone who can see the console can read
 it and watch a console. Power, setting a release, the default image, test
 marks, adopting and typing into a console are for administrators.
 
+## Images and volumes
+
+**Images → Catalog** is everything a machine, a claim or a service is cloned
+from — component goldens, blanks, VM media, image goldens and their bases —
+as the registry catalogues it: grouped by kind, each with the base it is
+built on, how many volumes were cloned from it, which releases carry it,
+and, for media still arriving, where from and how far. **Storage → Volumes**
+is only what is attached to something running, each with what uses it;
+**Unattached volumes** is the rest. They are all the engine's volumes
+underneath; this is how the console shows them. An engine that guards its
+API needs `[stormblock] token_file`.
+
 ## Hardware, and storage
 
 They are different sections because they are different things. A **drive**

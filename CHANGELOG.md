@@ -3,6 +3,24 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-25
+- **feat(storage):** Volumes are what is attached, and images are the
+  registry's (#19). Storage → Volumes lists only volumes in use (stormblock
+  v18.1.0's `kind`/`in_use`), each with its consumer — linked to the PVC or
+  VM — and how it is served; Delete is disabled while in use. Unattached
+  volumes have their own item; goldens, blanks, media, snapshots and
+  templates are not volumes here. An older engine keeps every unsealed
+  volume in Volumes and says why.
+- **feat(images):** Images → Catalog (`#/images`) from sbregistry's
+  `/v1/catalog/images`: grouped by kind, base lineage, clones, releases,
+  digest, location, the engine volume underneath; media jobs merged in
+  ("downloading from X, n%", failures with their fault).
+- **feat(storage):** `[stormblock] token_file` — a guarded engine is read
+  and proxied with its token (v18 answers 401 to reads without it).
+- **feat(core):** `proxy::router_as`, a proxy carrying a bearer.
+- **chore:** `deploy/verify-images.sh`. Filed stormcos#94 (the token on
+  nodes).
+
 ## [v0.18.0] — 2026-09-25
 
 ### 2026-09-25
