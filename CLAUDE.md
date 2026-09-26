@@ -737,6 +737,16 @@ code for every port and API referenced.
   #36 (scale/cordon/drain the docs promised)
 - Verified: `sc-build` (tests), `sc-build deploy/verify-auth.sh`
 
+### A presentation (#22) — in progress 2026-09-26
+`docs/presentation.md`, Marp, 8–15 slides, every claim from the code and
+the #21 docs. stormcentral's graph: depends_on stormview, rustkube,
+stormrfb, stormd; the code also reads stormblock, stormdrive,
+stormstorage, sbregistry, fastetcd, stormvm, vmcloud-image-operator,
+stormipmi and stormcast — shown, and filed on stormcentral.
+
+- [ ] The deck; rendered with marp-cli through sc-build
+- [ ] README links it; changelog; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
