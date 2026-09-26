@@ -338,7 +338,7 @@
 
 <style>
   .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-  .bar input[type='text'], .bar input:not([type]) { width: 320px; }
+  .bar > input { width: 320px; }
   .check { display: inline-flex; gap: 6px; align-items: center; font-size: var(--sc-t-meta); }
   .check input { width: auto; }
   .error, .bad { color: var(--error); }
