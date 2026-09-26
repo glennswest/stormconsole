@@ -420,7 +420,8 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         let (health, detail) = match running {
             Some(true) => (
                 Health::Warn,
-                "wanted running, no instance — nothing places one yet (stormvm docs/kube.md)"
+                "wanted running, no instance yet — rustkube's controller-manager makes one, \
+                 and its scheduler places it; if this lasts, check that both are running"
                     .to_string(),
             ),
             _ => (Health::Idle, "stopped".to_string()),
@@ -753,7 +754,7 @@ mod tests {
         let out = map(&sn);
         assert_eq!(out[0].id, "vm:machine:default/web-1");
         assert_eq!(out[0].health, Health::Warn);
-        assert!(out[0].detail.contains("nothing places one yet"), "{}", out[0].detail);
+        assert!(out[0].detail.contains("no instance yet"), "{}", out[0].detail);
         let start = out[0].actions.iter().find(|a| a.id == "start").unwrap();
         assert!(start.enabled);
     }

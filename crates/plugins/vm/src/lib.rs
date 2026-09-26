@@ -17,10 +17,11 @@
 //!
 //! **What is honest about today.** The CRDs are optional — a cluster
 //! without them shows an idle plugin that says so rather than an error.
-//! Nothing turns a `VirtualMachine` into an instance yet (stormvm's own
-//! "Left" list), so a definition that wants to run and has no instance
-//! says exactly that instead of being rendered as broken. The console
-//! doors are built and probed; stormvm serves neither yet.
+//! rustkube's controller-manager turns a `VirtualMachine` that wants to
+//! run into an instance, and its scheduler places it (rustkube#72); one
+//! that wants to run and has none yet says so instead of being rendered as
+//! broken. The console doors — serial and framebuffer — are relayed from
+//! the node's stormvm, which reports per machine which it serves.
 
 pub mod components;
 pub mod console;

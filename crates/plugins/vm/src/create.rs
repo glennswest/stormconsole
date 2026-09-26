@@ -1,11 +1,11 @@
 //! Creating a VM.
 //!
 //! Two doors, the way OpenShift has two: a form for the ordinary case,
-//! and YAML for everything else. The form builds a
-//! `VirtualMachineInstance` — not a `VirtualMachine` — because nothing
-//! turns a definition into an instance yet. A form that produced a
-//! definition would produce a VM that never starts, and the console would
-//! have made a promise the cluster cannot keep.
+//! and YAML for everything else. Both make a `VirtualMachine` with
+//! `running: true` — a durable definition, which rustkube's
+//! controller-manager turns into a `VirtualMachineInstance` and its
+//! scheduler places — in the project the dialog chose (#28), never
+//! `default`.
 //!
 //! **The node is optional now.** It was required, with the hint "nothing
 //! schedules VMs yet, so this is explicit", and the YAML template shipped
