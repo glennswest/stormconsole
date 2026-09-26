@@ -678,6 +678,29 @@ percent, fault, golden).
   `[stormblock] token_file`; filed **stormcos#94** to wire it on nodes
 - Not viewed in a browser (there is none here)
 
+### Drives at rack scale (#32) — in progress 2026-09-26
+Target: 160 drives a node, ~1,600 a rack. Data today: stormdrive's feed
+per node (bay, hba, temp, wear, spare, smart, capacity, serial, dev,
+shelf edge; shelves with PSU/fans/temp); per-drive usage is stormdrive#12
+(open) — until then usage comes from this node's engine: slabs name their
+drive (stormblock#136), array members their device path and state
+(`rebuilding`, `degraded`, `failed`). Rack: a node label.
+
+- [ ] Drives plugin, fleet-wide: this node's stormdrive as before
+      (`drive:` ids) plus every fleet node's (`drive@<host>:`, discovered
+      from the log hosts' addresses at :9092) and `[stormdrive] nodes`;
+      per-node proxies; each drive and shelf says its node
+- [ ] stormblock: per-drive usage (`sb:use:<serial>`) and array member
+      state (`sb:member:<path>`)
+- [ ] k8s node `rack` from label `topology.storm.io/rack`
+- [ ] `web/src/lib/drivemap.js` (pure): join, filters (failing, degraded,
+      rebuilding, full, out of fleet, spare), group by chassis/node/rack,
+      heat colour by health/temperature/wear/usage, totals in PB/EB; a
+      node test at 10×160
+- [ ] DrivesView: chassis map by bay + list, totals, legend, selection
+- [ ] Live check: 10 synthetic stormdrive feeds (1,600 drives) + a
+      synthetic engine; docs; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
