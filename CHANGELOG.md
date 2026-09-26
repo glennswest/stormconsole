@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-26
+- **docs:** `docs/presentation.md` — the console's purpose and
+  functionality in twelve Marp slides, from the code and the #21 docs:
+  the problem, where it sits (stormcentral's graph and what the code
+  reads), how it works, what it does today, interfaces, how it ships,
+  planned work marked as planned, status and the open issues that matter
+  (#22).
+
 ## [v0.20.1] — 2026-09-26
 
 ### 2026-09-26

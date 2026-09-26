@@ -10,6 +10,8 @@ them. The orchestrator is rustkube (+ rustkube-node) only.
 
 It is a view of real running nodes, never an installer (stormcos
 `docs/CLUSTER.md`). Version **0.20.1**. Design: [docs/architecture.md](docs/architecture.md).
+In twelve slides: [docs/presentation.md](docs/presentation.md) (Marp —
+`npx @marp-team/marp-cli docs/presentation.md`).
 
 ## What it does today
 
