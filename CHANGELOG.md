@@ -24,6 +24,17 @@
   "silent" — and adds stormipmi 9097, the stormd APIs 9195–9199 and
   stormlb's 180; this node's stormd scan adds 180 and 8269 (stormimds).
   Checked against stormcos `build-goldens.sh`.
+- **docs:** the README rewritten from the code (#21): every plugin and
+  its upstream, every config key with its default, flags and exit codes,
+  ports and health (no metrics), auth and roles, the host API, how it
+  ships, and what is not done with its issue. `docs/architecture.md`
+  corrected against the code — the plugin contract, watched kinds, actions
+  that exist (scale/cordon/drain do not), pod logs, logs API, fleet
+  drill-down, stormdrive fleet-wide, the VM lifecycle, deployment,
+  repository layout; Drives, Images, Machines and Projects have their own
+  sections; remote plugins and phasing marked as design and history; the
+  upstream gaps table current. Crate doc comments brought up to the code.
+  Filed stormcos#102 (the golden's health path) and #35.
 - **docs:** config comments corrected (`--hash-password`, the redb log
   ring); the example config shows `password_hash`, roles and ssh_keys.
 
