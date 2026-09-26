@@ -3,6 +3,18 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-26
+- **fix(auth):** signing in with the `auth_token` made a session named
+  "admin" with no roles, which could not write; it is now the token's
+  session, an administrator's, as the bearer always was (#21).
+- **fix(auth):** the bearer token is compared in constant time, as the
+  password already was.
+- **fix(auth):** `/api/version` answers without a session, as its comment
+  said and the masthead needs; `/metrics` is no longer on the open list —
+  the console serves none.
+- **docs:** config comments corrected (`--hash-password`, the redb log
+  ring); the example config shows `password_hash`, roles and ssh_keys.
+
 ## [v0.20.0] — 2026-09-26
 
 ### 2026-09-26

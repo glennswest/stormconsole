@@ -94,7 +94,7 @@ pub struct User {
     pub name: String,
     /// An argon2 PHC string — `$argon2id$v=19$m=...$...`.
     ///
-    /// Generate one with `stormconsole hash-password`. argon2 rather than a
+    /// Generate one with `stormconsole --hash-password`. argon2 rather than a
     /// digest because a password store is the one place where being slow is
     /// the feature: SHA-256 is fast enough that a leaked config is a list of
     /// passwords by the afternoon.
@@ -493,7 +493,7 @@ impl Config {
         self.vm.url.clone().unwrap_or_else(|| "http://127.0.0.1:9095".to_string())
     }
 
-    /// The log ring's SQLite file.
+    /// The log ring's redb file (`<data_dir>/logs.redb` unless set).
     pub fn logs_db_path(&self) -> String {
         match &self.logs.db_path {
             Some(p) => p.clone(),

@@ -20,10 +20,13 @@ name = "stormconsole"
 
 [api]
 bind = "0.0.0.0:9094"
-# auth_token = "s3cret"              # machine credential (Bearer); also admin login
+# auth_token = "s3cret"              # machine credential (Bearer); signing in
+#                                    # with it (any name) is an admin session
 # [[api.users]]                      # any user or token being set turns auth on
 # name = "admin"
-# password = "changeme"
+# password_hash = "$argon2id$v=19$…" # printf %s 'pw' | stormconsole --hash-password
+# roles = ["admin"]                  # viewer (the default) | operator | admin
+# ssh_keys = ["ssh-ed25519 AAAA… you@host"]   # offered on every VM you create
 #
 # A user may carry their own kubernetes identity. With one, what they see
 # of the cluster is what the apiserver says they may see — asked as them,

@@ -76,20 +76,29 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
     }
     if let Some(user) = cookie_session(req).and_then(|id| state.sessions.user_of(&id)) {
         let token = state.config.kube_token_for(&user);
-        let roles = state.config.roles_for(&user);
+        // A session opened with the console's own token is the token's, and
+        // the token is an administrator's credential — as it is on a bearer.
+        // It was a session named "admin" with whatever roles a user of that
+        // name had, which for a console with no such user was none: signed
+        // in with the master credential, and refused every write.
+        let roles = if user == TOKEN_USER && !state.config.api.users.iter().any(|u| u.name == TOKEN_USER) {
+            vec!["admin".into()]
+        } else {
+            state.config.roles_for(&user)
+        };
         let ssh_keys = state.config.ssh_keys_for(&user);
         return Viewer { user: Some(user), token, roles, ssh_keys };
     }
     // A machine on the bearer token acts as the console itself: it is the
     // console's own credential, not a person's, so it carries no
     // kubernetes identity of its own.
-    if bearer(req).as_deref() == state.config.api.auth_token.as_deref() {
-        if let Some(_) = state.config.api.auth_token.as_deref() {
+    if let (Some(given), Some(token)) = (bearer(req), state.config.api.auth_token.as_deref()) {
+        if constant_time_eq(&given, token) {
             // The console's own credential, not a person's. It is how the
             // console talks to itself, so it gets the role that lets it
             // finish the job and no identity of its own upstream.
             return Viewer {
-                user: Some("token".into()),
+                user: Some(TOKEN_USER.into()),
                 token: None,
                 roles: vec!["admin".into()],
                 ssh_keys: vec![],
@@ -112,8 +121,8 @@ fn bearer(req: &Request) -> Option<String> {
     v.strip_prefix("Bearer ").map(|t| t.to_string())
 }
 
-/// Everything except health, metrics, the auth endpoints and static assets
-/// requires a session or bearer once auth is configured.
+/// Everything except health, the version, the auth endpoints and static
+/// assets requires a session or bearer once auth is configured.
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     // Every request carries who made it, whether or not anything checks:
     // a plugin route reads it to refuse what this identity may not see,
@@ -124,14 +133,17 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         return next.run(req).await;
     }
     let path = req.uri().path();
-    let open = matches!(path, "/healthz" | "/readyz" | "/metrics" | "/api/summary")
+    // `/api/version` is the release the nodes booted, which the masthead
+    // shows before anyone signs in; it names nothing a session protects.
+    // There is no `/metrics`: the console exports none.
+    let open = matches!(path, "/healthz" | "/readyz" | "/api/summary" | "/api/version")
         || path.starts_with("/api/v1/auth/")
         || !path.starts_with("/api") && !path.starts_with("/ws");
     if open {
         return next.run(req).await;
     }
-    if let Some(token) = bearer(&req) {
-        if state.config.api.auth_token.as_deref() == Some(token.as_str()) {
+    if let (Some(given), Some(token)) = (bearer(&req), state.config.api.auth_token.as_deref()) {
+        if constant_time_eq(&given, token) {
             return next.run(req).await;
         }
     }
@@ -236,24 +248,20 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     a.len() == b.len() && bool::from(a.ct_eq(b))
 }
 
+/// Who a session or bearer on the console's own `auth_token` is.
+pub const TOKEN_USER: &str = "token";
+
 pub async fn login(State(state): State<AppState>, Json(body): Json<LoginBody>) -> Response {
-    let ok = state
-        .config
-        .api
-        .users
-        .iter()
-        .any(|u| u.name == body.username && verify(u, &body.password))
-        || state
-            .config
-            .api
-            .auth_token
-            .as_deref()
-            .is_some_and(|t| constant_time_eq(t, &body.password));
-    if !ok {
+    let as_user = state.config.api.users.iter().any(|u| u.name == body.username && verify(u, &body.password));
+    let as_token = !as_user
+        && state.config.api.auth_token.as_deref().is_some_and(|t| constant_time_eq(t, &body.password));
+    if !as_user && !as_token {
         return (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid credentials"})))
             .into_response();
     }
-    let user = if body.username.is_empty() { "admin" } else { &body.username };
+    // Signed in with the token, whatever name was typed: the session is the
+    // token's, an administrator's, not a user of that name's.
+    let user: &str = if as_user { &body.username } else { TOKEN_USER };
     let id = state.sessions.create(user);
     let cookie = format!(
         "{SESSION_COOKIE}={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
