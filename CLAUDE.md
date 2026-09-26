@@ -713,6 +713,21 @@ drive (stormblock#136), array members their device path and state
   Feed 1.2 MB in 38 ms (3.2 s before the id fix)
 - Not viewed in a browser (there is none here)
 
+### Docs from the code (#21) — in progress 2026-09-26
+Pattern: stormbootx b1347d9. Facts gathered from the code (config.rs,
+main/server/auth, every plugin, the SPA router) and the other components'
+code for every port and API referenced.
+
+- [ ] README.md rewritten from the code: what it is and does today, build
+      (sc-build, never root), every config key with its default, flags,
+      ports, health/metrics endpoints, auth and roles, plugins and their
+      upstreams, how it ships (stormcos service golden)
+- [ ] docs/architecture.md: stale removed or corrected, design marked
+      where the code does not do it yet
+- [ ] Crate doc comments that no longer match
+- [ ] Cross-references checked against the other components' code
+- [ ] Doc promises the code does not keep → issues; close with the list
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
