@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.20.0] — 2026-09-26
+
 ### 2026-09-26
 - **feat(drives):** the Drives page at rack scale (#32). Every node's
   drives, not one's: this node's stormdrive plus each fleet host's at
