@@ -1,98 +1,66 @@
 <script>
-  // Drives, arranged the way the hardware is (#8).
+  // Drives, arranged the way the hardware is (#8), at rack scale (#32).
   //
-  // A drive is a physical object: it lives in a shelf, in a bay, and
-  // somebody eventually walks up and pulls it. Listed flat and mixed in
-  // with stormblock volumes, that is unreadable at one disk and hopeless
-  // at a hundred — so this groups by shelf, orders by bay, and puts the
-  // shelf's own operations on the group it belongs to.
+  // A drive is a physical object: it lives in a chassis, in a bay, and
+  // somebody eventually walks up and pulls it. At 160 drives a node and
+  // ~1,600 a rack a list of them is not a view of anything, so the default
+  // is a map: each chassis drawn bay by bay, every bay coloured by the
+  // question being asked — health, temperature, wear, usage — grouped by
+  // chassis, node or rack, filtered to the drives that need someone, and
+  // totalled in the units a rack is measured in. Click a bay for the drive,
+  // its actions and what the engine holds on it.
   //
-  // Everything here comes from stormdrive's feed. The actions are its
-  // actions — locate, join fleet, designate, format — routed through the
-  // console's proxy by the feed plugin, so enrolling a drive is a button
-  // rather than a shell on the node.
+  // The model is drivemap.js, tested at 1,600 drives without a browser.
   import { route } from '../router.svelte.js'
-  import { feed, prefs, setView } from '../stores.svelte.js'
+  import { feed } from '../stores.svelte.js'
   import { call } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
-  import Toolbar from '../components/Toolbar.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import StatusPill from '../components/StatusPill.svelte'
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
+  import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES } from '../drivemap.js'
 
-  // Two views of the same hardware. Drives asks "where is that disk";
-  // shelves asks "which enclosure is in trouble" — a shelf fails as a
-  // unit, and its PSUs and fans are the thing to look at when it does.
   const asShelves = $derived(route.current.query.get('group') === 'shelf')
 
+  function stored(key, fallback) {
+    try {
+      return localStorage.getItem(`stormconsole-drives-${key}`) || fallback
+    } catch {
+      return fallback
+    }
+  }
+  function keep(key, v) {
+    try {
+      localStorage.setItem(`stormconsole-drives-${key}`, v)
+    } catch {}
+  }
+
   let search = $state('')
-  let membership = $state('')
+  let filter = $state('')
+  let by = $state(stored('by', 'chassis'))
+  let mode = $state(stored('mode', 'health'))
+  let view = $state(stored('view', 'map'))
+  let selected = $state(null)
   let busy = $state('')
+  let showAll = $state({})
+  $effect(() => keep('by', by))
+  $effect(() => keep('mode', mode))
+  $effect(() => keep('view', view))
 
   const invoke = (a) => call(a.method, a.path)
 
-  const drives = $derived(feed.components.filter((c) => c.kind === 'drive'))
-  const shelves = $derived(feed.components.filter((c) => c.kind === 'shelf'))
-
-  const matches = (c) => {
-    if (membership === 'fleet' && !/(^|·\s)fleet(\s|·|$)/.test(c.detail || '')) return false
-    if (membership === 'out' && !(c.detail || '').includes('out of fleet')) return false
-    if (!search) return true
-    return `${c.label} ${c.detail || ''}`.toLowerCase().includes(search.toLowerCase())
-  }
-
-  const rows = $derived(drives.filter(matches))
-
-  /// Which shelf a drive belongs to — the `belongs_to shelf` edge
-  /// stormdrive already publishes, not a guess from its name.
-  function shelfOf(drive) {
-    return (drive.relations || []).find((r) => r.name === 'shelf')?.targets?.[0] || null
-  }
-
-  /// The bay, so a group can be ordered the way the chassis is. stormdrive
-  /// prints it in the detail line ("… DS4246 bay 4") and does not publish
-  /// it as a metric yet (filed there); until it does, this reads the metric
-  /// when present and the line otherwise, and drives with no bay sort last
-  /// by name.
-  function bayOf(drive) {
-    const metric = (drive.metrics || []).find((m) => m.label === 'bay')
-    if (metric) return Number(metric.value)
-    const m = /bay (\d+)/.exec(drive.detail || '')
-    return m ? Number(m[1]) : Number.POSITIVE_INFINITY
-  }
-
-  const groups = $derived.by(() => {
-    const byShelf = new Map()
-    for (const d of rows) {
-      const key = shelfOf(d) || ''
-      if (!byShelf.has(key)) byShelf.set(key, [])
-      byShelf.get(key).push(d)
-    }
-    // A shelf the SES scan knows but no matching drive points at still
-    // shows: an empty shelf is a fact about the rack.
-    if (!search && !membership) {
-      for (const s of shelves) if (!byShelf.has(s.id)) byShelf.set(s.id, [])
-    }
-    return [...byShelf.entries()]
-      .map(([id, members]) => ({
-        shelf: shelves.find((s) => s.id === id) || null,
-        id,
-        drives: members.sort(
-          (a, b) => bayOf(a) - bayOf(b) || a.label.localeCompare(b.label)
-        ),
-      }))
-      .sort((a, b) => {
-        // Located drives first; the "no shelf" bucket is last because it
-        // is the one you cannot walk up to.
-        if (!a.id) return 1
-        if (!b.id) return -1
-        return (a.shelf?.label || a.id).localeCompare(b.shelf?.label || b.id)
-      })
-  })
-
-  const inFleet = $derived(drives.filter((d) => !(d.detail || '').includes('out of fleet')).length)
-  const filtered = $derived(rows.length !== drives.length)
+  const model = $derived(build(feed.components))
+  const records = $derived(model.records)
+  const shelves = $derived(model.shelves)
+  const all = $derived(totals(records))
+  const shown = $derived(groupBy(records, { by, filter, search }))
+  const shownCount = $derived(shown.reduce((n, g) => n + g.drives.length, 0))
+  const chassisCount = $derived(new Set(records.map((d) => d.shelfId || `${d.node}/`)).size)
+  const pick = $derived(selected ? records.find((d) => d.id === selected) : null)
+  // Within a node or a rack, still one grid per chassis: the bays only mean
+  // something inside their enclosure.
+  const sub = (g) => (by === 'chassis' ? [g] : groupBy(g.drives, { by: 'chassis' }))
 
   async function shelfAction(shelf, a) {
     if (a.danger && !confirm(`${a.label} ${shelf.label}?`)) return
@@ -104,17 +72,19 @@
     }
     busy = ''
   }
+
+  const LIST_CAP = 200
 </script>
 
 <div class="sc-page">
   <PageHeader
     crumbs={[{ label: 'Hardware' }, { label: asShelves ? 'Shelves' : 'Drives' }]}
     title={asShelves ? 'Shelves' : 'Drives'}
-    count={feed.loaded ? (asShelves ? shelves.length : drives.length) : null}
+    count={feed.loaded ? (asShelves ? shelves.length : records.length) : null}
   >
     {#snippet status()}
       <span class="fleet" title="Drives enrolled in the storage fleet">
-        {inFleet}/{drives.length} in fleet
+        {records.filter((d) => !d.outOfFleet).length.toLocaleString()}/{records.length.toLocaleString()} in fleet
       </span>
     {/snippet}
   </PageHeader>
@@ -142,72 +112,168 @@
         showKind={false}
       />
     {/if}
-  {:else if drives.length === 0}
+  {:else if records.length === 0}
     <EmptyState
       icon="storage"
       title="No drives discovered"
-      hint="stormdrive on this node has not reported a disk. Either it is not running, or this machine has nothing it can see — check the Storage plugin card on the overview."
+      hint="No node's stormdrive has reported a disk. Either none is running, or these machines have nothing it can see — check the Hardware card on the overview."
     >
       {#snippet action()}
         <a class="sc-back" href="#/">Back to overview</a>
       {/snippet}
     </EmptyState>
   {:else}
-    <Toolbar
-      bind:search
-      placeholder="Search drives by model, serial or bay"
-      bind:view={prefs.view}
-      onview={setView}
-      hint={filtered ? `${rows.length} of ${drives.length}` : `${groups.length} shelves`}
-    >
-      {#snippet filters()}
-        <select bind:value={membership} aria-label="Filter by fleet membership">
-          <option value="">All drives</option>
-          <option value="fleet">In the fleet</option>
-          <option value="out">Out of the fleet</option>
-        </select>
-      {/snippet}
-    </Toolbar>
+    <!-- The rack in one line, each number a filter. -->
+    <div class="band">
+      <span class="big">{all.drives.toLocaleString()} <small>drives</small></span>
+      <span class="big">{all.nodes} <small>node{all.nodes === 1 ? '' : 's'}</small></span>
+      <span class="big">{chassisCount} <small>chassis</small></span>
+      <span class="big">{formatBytes(all.capacity)} <small>raw</small></span>
+      {#if all.withUsage}
+        <span class="big" title="Of the drives whose usage is known: this node's, from its engine">{formatBytes(all.used)} <small>used of {formatBytes(all.slab)} in slabs</small></span>
+      {/if}
+      <span class="chips">
+        {#each [['failing', all.failing, 'error'], ['degraded', all.degraded, 'warn'], ['rebuilding', all.rebuilding, 'warn'], ['full', all.full, 'warn'], ['hot', all.hot, 'warn']] as [f, n, tone]}
+          <button class="chip {n ? tone : ''}" class:on={filter === f} disabled={!n && filter !== f} onclick={() => (filter = filter === f ? '' : f)}>
+            {n} {f}
+          </button>
+        {/each}
+      </span>
+    </div>
 
-    {#if rows.length === 0}
+    <div class="bar">
+      <input bind:value={search} placeholder="Search: serial, model, bay, node, device" aria-label="Search drives" />
+      <select bind:value={filter} aria-label="Filter">
+        {#each FILTERS as [v, l]}<option value={v}>{l}</option>{/each}
+      </select>
+      <label>group by
+        <select bind:value={by} aria-label="Group by">
+          <option value="chassis">chassis</option>
+          <option value="node">node</option>
+          <option value="rack">rack</option>
+        </select>
+      </label>
+      <label>colour by
+        <select bind:value={mode} aria-label="Colour by" disabled={view !== 'map'}>
+          {#each MODES as [v, l]}<option value={v}>{l}</option>{/each}
+        </select>
+      </label>
+      <span class="seg" role="group" aria-label="View">
+        <button class:sel={view === 'map'} onclick={() => (view = 'map')}>Map</button>
+        <button class:sel={view === 'list'} onclick={() => (view = 'list')}>List</button>
+      </span>
+      <span class="hint">{shownCount === records.length ? `${shown.length} ${by === 'chassis' ? 'chassis' : `${by}s`}` : `${shownCount.toLocaleString()} of ${records.length.toLocaleString()}`}</span>
+    </div>
+
+    {#if view === 'map'}
+      <div class="legend">
+        {#if mode === 'health'}
+          <span><i style="background: var(--ok)"></i>healthy</span>
+          <span><i style="background: var(--warn-strong)"></i>warning</span>
+          <span><i style="background: var(--error)"></i>failing</span>
+          <span><i style="background: var(--text-faint)"></i>unknown</span>
+        {:else}
+          <span>{mode === 'temp' ? '25 °C' : '0%'}</span>
+          <span class="ramp"></span>
+          <span>{mode === 'temp' ? '60 °C' : '100%'}</span>
+          <span><i class="nodata"></i>not reported</span>
+          {#if mode === 'usage'}<span class="dim">usage is this node's, from its engine, until stormdrive reports it (stormdrive#12)</span>{/if}
+        {/if}
+        <span><i class="ring"></i>rebuilding</span>
+      </div>
+    {/if}
+
+    {#if pick}
+      <section class="picked">
+        <header>
+          <strong>{pick.c.label}</strong>
+          <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ''}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}</span>
+          <button onclick={() => (selected = null)}>Close</button>
+        </header>
+        {#if pick.usage}
+          {@const u = pick.usage}
+          <div class="usebar" title="used / free in slabs / not in a slab">
+            <span class="used" style="width: {(u.used / pick.capacity) * 100}%"></span>
+            <span class="free" style="width: {(u.free / pick.capacity) * 100}%"></span>
+          </div>
+          <p class="dim">{formatBytes(u.used)} used · {formatBytes(u.free)} free in slabs · {formatBytes(u.unslabbed)} not in a slab · of {formatBytes(pick.capacity)}</p>
+        {:else}
+          <p class="dim">{pick.local ? 'The engine holds no slab on this drive.' : 'Usage is read from this node’s engine only, until stormdrive reports it (stormdrive#12).'}</p>
+        {/if}
+        {#if pick.member}<p class="warn">Array member: {pick.member}</p>{/if}
+        <ResourceTable components={feed.components} rootIds={[pick.id]} {invoke} showKind={false} />
+      </section>
+    {/if}
+
+    {#if shownCount === 0}
       <EmptyState icon="filter" title="No matches" hint="No drive matches the current search and filter." />
     {:else}
-      {#each groups as g (g.id)}
-        <section class="shelf">
+      {#each shown as g (g.key)}
+        <section class="group">
           <header>
             <span class="mark"><Icon name="storage" size={16} /></span>
-            <h2>{g.shelf?.label || (g.id ? g.id : 'Not in a shelf')}</h2>
-            {#if g.shelf}<StatusPill health={g.shelf.health} />{/if}
+            <h2>{g.label}</h2>
             <span class="detail">
-              {#if g.shelf}
-                {g.shelf.detail}
-              {:else if !g.id}
-                direct-attached — no shelf reports these
+              {g.totals.drives} drives · {formatBytes(g.totals.capacity)}
+              {#if g.totals.failing}<span class="error"> · {g.totals.failing} failing</span>{/if}
+              {#if g.totals.degraded}<span class="warn"> · {g.totals.degraded} degraded</span>{/if}
+              {#if g.totals.rebuilding}<span class="warn"> · {g.totals.rebuilding} rebuilding</span>{/if}
+            </span>
+            {#if by === 'chassis'}
+              {@const shelf = model.byId.get(g.key)}
+              {#if shelf}
+                <StatusPill health={shelf.health} />
+                <span class="acts">
+                  {#each (shelf.metrics || []).filter((m) => ['psu', 'fans', 'temp'].includes(m.label)) as m}
+                    <span class="m"><span class="ml">{m.label}</span><span class="mv {m.tone || ''}">{m.value}{m.unit || ''}</span></span>
+                  {/each}
+                  {#each shelf.actions || [] as a}
+                    <button class:danger={a.danger} disabled={!a.enabled || busy === a.id} onclick={() => shelfAction(shelf, a)}>{a.label}</button>
+                  {/each}
+                </span>
               {/if}
-            </span>
-            <span class="acts">
-              {#each g.shelf?.metrics || [] as m}
-                <span class="m"><span class="ml">{m.label}</span><span class="mv {m.tone || ''}">{m.value}{m.unit || ''}</span></span>
-              {/each}
-              {#each g.shelf?.actions || [] as a}
-                <button
-                  class:danger={a.danger}
-                  disabled={!a.enabled || busy === a.id}
-                  onclick={() => shelfAction(g.shelf, a)}>{a.label}</button
-                >
-              {/each}
-            </span>
+            {/if}
           </header>
 
-          {#if g.drives.length === 0}
-            <p class="bare">This shelf reports no drives.</p>
+          {#if view === 'map'}
+            <div class="chassis-row">
+              {#each sub(g) as ch (ch.key)}
+                <div class="chassis">
+                  {#if by !== 'chassis'}<div class="clabel">{ch.label}</div>{/if}
+                  <div class="bays" style="grid-template-columns: repeat({columns(ch.drives)}, 1fr)">
+                    {#each cells(ch.drives) as d, i}
+                      {@const h = heat(d, mode)}
+                      {#if d}
+                        <button
+                          class="bay"
+                          class:nodata={h.css === null}
+                          class:rebuild={d.member === 'rebuilding' || d.member === 'degraded'}
+                          class:failing={d.health === 'error'}
+                          class:sel={selected === d.id}
+                          style={h.css ? `background: ${h.css}` : ''}
+                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}"
+                          aria-label="{d.c.label}, {h.text}"
+                          onclick={() => (selected = selected === d.id ? null : d.id)}
+                        ></button>
+                      {:else}
+                        <span class="bay empty" title="bay {i}: empty"></span>
+                      {/if}
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            </div>
           {:else}
+            {@const ids = g.drives.map((d) => d.id)}
             <ResourceTable
               components={feed.components}
-              rootIds={g.drives.map((d) => d.id)}
+              rootIds={showAll[g.key] ? ids : ids.slice(0, LIST_CAP)}
               {invoke}
               showKind={false}
             />
+            {#if ids.length > LIST_CAP && !showAll[g.key]}
+              <button class="more" onclick={() => (showAll[g.key] = true)}>Show all {ids.length}</button>
+            {/if}
           {/if}
         </section>
       {/each}
@@ -223,8 +289,8 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .shelf + .shelf { margin-top: 18px; }
-  .shelf header {
+  .group + .group { margin-top: 18px; }
+  .group header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -259,4 +325,46 @@
     border-radius: var(--radius);
   }
   .sc-back { font-size: var(--sc-t-body); }
+
+  .band { display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline; margin-bottom: 12px; }
+  .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .big small { font-size: var(--sc-t-meta); font-weight: 400; color: var(--text-dim); }
+  .chips { display: flex; gap: 6px; margin-left: auto; }
+  .chip { font-size: var(--sc-t-meta); padding: 2px 9px; border-radius: 999px; }
+  .chip.error { color: var(--error); border-color: var(--error); }
+  .chip.warn { color: var(--warn-strong); border-color: var(--warn-strong); }
+  .chip.on { background: var(--nav-hover); font-weight: 600; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .bar input { width: 300px; }
+  .bar label { display: inline-flex; gap: 6px; align-items: center; font-size: var(--sc-t-meta); color: var(--text-dim); }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; }
+  .seg button.sel { background: var(--nav-hover); font-weight: 600; }
+  .hint { font-size: var(--sc-t-meta); color: var(--text-dim); margin-left: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: var(--sc-t-meta); color: var(--text-dim); margin-bottom: 10px; }
+  .legend span { display: inline-flex; gap: 5px; align-items: center; }
+  .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .legend .ramp { width: 120px; height: 10px; border-radius: 2px; background: linear-gradient(90deg, hsl(130 65% 45%), hsl(65 65% 45%), hsl(0 65% 45%)); }
+  .legend i.nodata, .bay.nodata { background: repeating-linear-gradient(45deg, var(--panel), var(--panel) 3px, var(--border) 3px, var(--border) 5px); }
+  .legend i.ring { border: 2px solid var(--accent); }
+  .dim { color: var(--text-dim); font-size: var(--sc-t-meta); }
+  .warn { color: var(--warn-strong); }
+  .error { color: var(--error); }
+  .chassis-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .chassis { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; min-width: 200px; }
+  .clabel { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 6px; }
+  .bays { display: grid; gap: 3px; }
+  .bay { width: 18px; height: 18px; padding: 0; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
+  .bay.empty { background: none; border: 1px dashed var(--border); cursor: default; }
+  .bay.failing { border-color: var(--error); }
+  .bay.rebuild { outline: 2px solid var(--accent); outline-offset: 0; }
+  .bay.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+  .bay:focus-visible { outline: 2px solid var(--text); }
+  .picked { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px var(--sc-row-px); margin-bottom: 14px; }
+  .picked header { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+  .picked header button { margin-left: auto; font-size: var(--sc-t-meta); }
+  .usebar { display: flex; height: 10px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .usebar .used { background: var(--accent); }
+  .usebar .free { background: var(--ok); opacity: 0.5; }
+  .more { margin-top: 6px; font-size: var(--sc-t-meta); }
 </style>
