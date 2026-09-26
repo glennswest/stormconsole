@@ -261,6 +261,11 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         );
         let mut c = base("node", key, key, health, detail);
         c.metrics.push(Metric::new("pods", pods_on.len().to_string()));
+        // Where it is in the room (#32): the Drives page groups a rack's
+        // 1,600 drives by this. A label, because nothing measures it.
+        if let Some(r) = s(obj, "/metadata/labels/topology.storm.io~1rack") {
+            c.metrics.push(Metric::new("rack", r).tone("muted"));
+        }
         if !pods_on.is_empty() {
             c.relations.push(Relation::has_many("pods", pods_on));
         }

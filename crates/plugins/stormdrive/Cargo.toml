@@ -8,6 +8,9 @@ repository.workspace = true
 
 [dependencies]
 console-core.workspace = true
+plugin-logs.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 axum.workspace = true

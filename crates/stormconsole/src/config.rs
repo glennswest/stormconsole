@@ -254,11 +254,16 @@ pub struct Stormdrive {
     pub enabled: bool,
     /// This node's stormdrive, e.g. "http://127.0.0.1:9092".
     pub url: Option<String>,
+    /// Other nodes' stormdrives by host name, beside the ones found through
+    /// the fleet (each host heard from, at its address on :9092) — for a
+    /// node that does not log to this segment, or a stormdrive elsewhere.
+    #[serde(default)]
+    pub nodes: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for Stormdrive {
     fn default() -> Self {
-        Self { enabled: true, url: None }
+        Self { enabled: true, url: None, nodes: Default::default() }
     }
 }
 

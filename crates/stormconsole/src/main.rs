@@ -133,6 +133,9 @@ async fn main() {
             config.logs.dedup,
         ))
     });
+    // The fleet's hosts and their addresses: the fleet plugin drills into
+    // them, and the drives plugin reads each one's stormdrive (#32).
+    let log_hosts = logs.as_ref().map(|l| l.hosts());
     if config.fleet.enabled {
         plugins.push(Arc::new(plugin_fleet::FleetPlugin::new(
             config.fleet.mcast_group.clone(),
@@ -145,7 +148,11 @@ async fn main() {
         plugins.push(logs);
     }
     if config.stormdrive.enabled {
-        plugins.push(Arc::new(plugin_stormdrive::plugin(&config.stormdrive_url())));
+        plugins.push(Arc::new(plugin_stormdrive::DrivesPlugin::new(
+            &config.stormdrive_url(),
+            config.stormdrive.nodes.clone(),
+            log_hosts.clone(),
+        )));
     }
     if config.stormstorage.enabled {
         plugins.push(Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url())));

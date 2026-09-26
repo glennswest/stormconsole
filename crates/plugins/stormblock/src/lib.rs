@@ -242,10 +242,95 @@ async fn poll(inner: &Inner) {
     out.extend(ex);
     out.extend(dr);
 
+    // Per drive, for the Drives page (#32): what the engine has on each
+    // disk. Not in any view of their own — the page joins them to
+    // stormdrive's drives, by serial and by device path.
+    out.extend(drive_use(&slabs));
+    out.extend(array_members(&arrays));
+
     let mut s = inner.state.write().await;
     s.health = health;
     s.detail = detail;
     s.components = out;
+}
+
+/// How much of each drive the engine holds in slabs, and how much of that is
+/// free — the only per-drive usage there is until stormdrive reports its own
+/// (stormdrive#12). Keyed by serial, the identity stormdrive uses; a slab
+/// names its drive from stormblock v17.1.0 (#136). Raw byte counts, because
+/// the reader adds and divides them.
+pub fn drive_use(slabs: &[Value]) -> Vec<ComponentSummary> {
+    let mut by: std::collections::BTreeMap<String, (u64, u64, u64, String)> = Default::default();
+    for s in slabs {
+        let Some(serial) = s.pointer("/drive/serial").and_then(Value::as_str).filter(|x| !x.is_empty()) else {
+            continue;
+        };
+        let e = by.entry(serial.to_string()).or_insert((0, 0, 0, String::new()));
+        e.0 += 1;
+        e.1 += u64_field(s, "total_bytes").unwrap_or(0);
+        e.2 += u64_field(s, "free_bytes").unwrap_or(0);
+        if e.3.is_empty() {
+            e.3 = s.pointer("/drive/path").and_then(Value::as_str).unwrap_or("").to_string();
+        }
+    }
+    by.into_iter()
+        .map(|(serial, (n, total, free, path))| ComponentSummary {
+            id: format!("sb:use:{serial}"),
+            kind: "drive-use".into(),
+            label: serial.clone(),
+            health: Health::Ok,
+            detail: format!("{n} slabs · {} of {} free", human_bytes(free), human_bytes(total)),
+            metrics: vec![
+                Metric::new("serial", serial),
+                Metric::new("slabs", n.to_string()),
+                Metric::new("slab bytes", total.to_string()),
+                Metric::new("free bytes", free.to_string()),
+                Metric::new("path", path),
+            ],
+            actions: vec![],
+            relations: vec![],
+            link: None,
+        })
+        .collect()
+}
+
+/// Each drive-level array member's state — `rebuilding`, `degraded`,
+/// `failed`, `spare`, `active` — keyed by its device path, which stormdrive
+/// reports as the drive's `dev`.
+pub fn array_members(arrays: &[Value]) -> Vec<ComponentSummary> {
+    let mut out = Vec::new();
+    for a in arrays {
+        let aid = field(a, &["id"]).unwrap_or_default();
+        let level = field(a, &["level"]).unwrap_or_default();
+        for m in a.get("members").and_then(Value::as_array).into_iter().flatten() {
+            let Some(path) = m.get("device_path").and_then(Value::as_str).filter(|p| !p.is_empty()) else {
+                continue;
+            };
+            let state = field(m, &["state"]).unwrap_or_else(|| "unknown".into());
+            out.push(ComponentSummary {
+                id: format!("sb:member:{path}"),
+                kind: "array-member".into(),
+                label: path.to_string(),
+                health: match state.as_str() {
+                    "active" | "spare" => Health::Ok,
+                    "rebuilding" | "degraded" => Health::Warn,
+                    "failed" => Health::Error,
+                    _ => Health::Unknown,
+                },
+                detail: format!("{level} array {aid} · {state}"),
+                metrics: vec![
+                    Metric::new("state", state),
+                    Metric::new("array", aid.clone()),
+                    Metric::new("level", level.clone()),
+                    Metric::new("path", path),
+                ],
+                actions: vec![],
+                relations: vec![Relation::belongs_to("array", format!("sb:array:{aid}"))],
+                link: None,
+            });
+        }
+    }
+    out
 }
 
 fn engine(health: Health, detail: &str, metrics: Vec<Metric>, groups: &[(&str, Vec<String>)]) -> ComponentSummary {
@@ -763,6 +848,34 @@ mod tests {
     fn an_older_engine_keeps_every_unsealed_volume_in_volumes() {
         assert_eq!(place(&json!({"id": "a", "sealed": false})), Place::Volume);
         assert_eq!(place(&json!({"id": "a", "sealed": true})), Place::Image);
+    }
+
+    #[test]
+    fn each_drive_says_what_the_engine_holds_on_it_and_its_array_state() {
+        let slabs = vec![
+            json!({"id": "a", "total_bytes": 1000u64, "free_bytes": 400u64, "drive": {"serial": "SN1", "path": "/dev/sdb"}}),
+            json!({"id": "b", "total_bytes": 3000u64, "free_bytes": 100u64, "drive": {"serial": "SN1", "path": "/dev/sdb"}}),
+            json!({"id": "c", "total_bytes": 500u64, "free_bytes": 500u64, "drive": {"serial": "SN2", "path": "/dev/sdc"}}),
+            json!({"id": "d", "total_bytes": 9u64, "free_bytes": 9u64}),
+        ];
+        let u = drive_use(&slabs);
+        assert_eq!(u.len(), 2, "a slab with no drive named is not guessed at");
+        let m = |c: &ComponentSummary, l: &str| c.metrics.iter().find(|x| x.label == l).map(|x| x.value.clone());
+        assert_eq!(u[0].id, "sb:use:SN1");
+        assert_eq!(m(&u[0], "slab bytes"), Some("4000".into()));
+        assert_eq!(m(&u[0], "free bytes"), Some("500".into()));
+        assert_eq!(m(&u[0], "path"), Some("/dev/sdb".into()));
+
+        let arrays = vec![json!({"id": "arr1", "level": "raid6", "members": [
+            {"index": 0, "state": "active", "device_path": "/dev/sdd"},
+            {"index": 1, "state": "rebuilding", "device_path": "/dev/sde"},
+            {"index": 2, "state": "failed", "device_path": "/dev/sdf"}]})];
+        let a = array_members(&arrays);
+        assert_eq!(a.len(), 3);
+        assert_eq!(a[1].id, "sb:member:/dev/sde");
+        assert_eq!(a[1].health, Health::Warn);
+        assert_eq!(m(&a[1], "state"), Some("rebuilding".into()));
+        assert_eq!(a[2].health, Health::Error);
     }
 
     #[test]

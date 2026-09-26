@@ -72,6 +72,10 @@ mcast_group = "239.255.42.1:5514"
 enabled = true
 # url = "http://127.0.0.1:9092"      # its stormview feed
 
+# Drives are read fleet-wide: this node's stormdrive, and every host the
+# fleet has heard from at its address on :9092. Name others here.
+# [stormdrive.nodes]
+# storm-7 = "http://192.168.8.117:9092"
 [stormstorage]
 enabled = true
 # url = "http://127.0.0.1:9093"      # its stormview feed
