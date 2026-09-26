@@ -1,6 +1,6 @@
 //! The sbregistry plugin: the image registry. Its readiness and warm-up
 //! (goldens cut, PVC ladder, engine survey) are the card; its **catalog**
-//! (`/v1/catalog/images`, sbregistry v0.23.0 — component goldens, blanks,
+//! (`/v1/catalog/images`, sbregistry v0.22.0 — component goldens, blanks,
 //! media, image goldens, bases) is the Images page, with each image's base
 //! lineage, clones and the releases that carry it, and `/v1/media/jobs`
 //! merged in as download progress (#19, `catalog.rs`). Pushed OCI images,
@@ -161,7 +161,7 @@ async fn poll(inner: &Inner) {
     };
     let (health, detail) = readiness(&ready);
 
-    // The catalog (sbregistry v0.23.0). An older registry answers 404, and
+    // The catalog (sbregistry v0.22.0). An older registry answers 404, and
     // the card says so rather than showing an empty catalog.
     let (catalog, catalog_note) = match inner
         .client
@@ -171,7 +171,7 @@ async fn poll(inner: &Inner) {
         .await
     {
         Ok(r) if r.status().as_u16() == 404 => {
-            (vec![], Some("this registry predates /v1/catalog (sbregistry v0.23.0)".to_string()))
+            (vec![], Some("this registry predates /v1/catalog (sbregistry v0.22.0)".to_string()))
         }
         Ok(r) if r.status().is_success() => match r.json::<Value>().await {
             Ok(v) => (v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(), None),

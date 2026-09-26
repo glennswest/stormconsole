@@ -194,8 +194,12 @@ fn default_stormd_host() -> String {
     "127.0.0.1".to_string()
 }
 
+/// Where this node's stormd APIs can be: the control plane's 9081–9085, a
+/// service golden's port + 100 (9180–9199), and the two services whose
+/// ports are outside that range — stormlb (80 → 180) and stormimds
+/// (8169 → 8269), per stormcos `deploy/build-goldens.sh`.
 fn default_stormd_ports() -> Vec<u16> {
-    (9080..=9089).chain(9180..=9199).collect()
+    (9080..=9089).chain(9180..=9199).chain([180, 8269]).collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -12,6 +12,18 @@
 - **fix(auth):** `/api/version` answers without a session, as its comment
   said and the masthead needs; `/metrics` is no longer on the open list —
   the console serves none.
+- **fix(vm):** a definition wanting to run with no instance no longer says
+  "nothing places one yet" — rustkube's controller-manager and scheduler
+  do (rustkube#72); it says what makes one and what to check.
+- **fix(images):** "Delete golden" deletes the `CloudImage`
+  (storm.io/v1alpha1, cluster-scoped) through the apiserver as the viewer;
+  it called the operator's `DELETE /api/v1/images/{name}`, which does not
+  exist (405).
+- **fix(fleet):** a node's page probes only ports that serve a feed — not
+  stormblock 9090, stormvm 9095 or sbregistry 5100, which were always
+  "silent" — and adds stormipmi 9097, the stormd APIs 9195–9199 and
+  stormlb's 180; this node's stormd scan adds 180 and 8269 (stormimds).
+  Checked against stormcos `build-goldens.sh`.
 - **docs:** config comments corrected (`--hash-password`, the redb log
   ring); the example config shows `password_hash`, roles and ssh_keys.
 

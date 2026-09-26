@@ -108,6 +108,13 @@ enabled = true
 # accessCredentials can only name a Secret there.
 # ssh_keys_namespace = "default"
 
+[vmimages]
+enabled = true
+# vmcloud-image-operator: the cloud-image catalogue, the VM goldens made
+# from it, and each node's local copies. Also the VM create form's
+# root-disk list.
+# url = "http://127.0.0.1:9099"
+
 [fastetcd]
 enabled = true
 # The cluster's datastore. /health and etcd's v3 JSON gateway on the

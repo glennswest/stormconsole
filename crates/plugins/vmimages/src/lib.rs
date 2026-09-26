@@ -485,7 +485,11 @@ fn catalog_actions(reference: &str, existing: &Option<(String, String)>) -> Vec<
             id: "delete".into(),
             label: "Delete golden".into(),
             method: "DELETE".into(),
-            path: format!("{PROXY}/api/v1/images/{name}"),
+            // The CloudImage itself, through the apiserver as the viewer:
+            // the operator serves no DELETE on /api/v1/images/{name} (it
+            // answered 405), and the object is what its controller acts on.
+            // Cluster-scoped, storm.io/v1alpha1.
+            path: format!("/api/plugins/k8s/raw/apis/storm.io/v1alpha1/cloudimages/{name}"),
             enabled: true,
             danger: true,
             tone: None,

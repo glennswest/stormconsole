@@ -24,25 +24,37 @@ use std::time::Duration;
 use serde::Serialize;
 use stormview::{ComponentSummary, Health};
 
-/// The StormCOS port layout, as a node presents itself. Probing every port
-/// of every node on every cycle is what makes this expensive, so the list
-/// is short and the well-known daemons are named rather than swept.
+/// The StormCOS port layout, as a node presents itself: every port here
+/// serves a stormview feed at `/api/v1/components`, which is what the probe
+/// asks. Probing every port of every node on every cycle is what makes this
+/// expensive, so the list is short and the well-known daemons are named
+/// rather than swept.
+///
+/// Checked against stormcos `deploy/build-goldens.sh` (#21): the control
+/// plane's stormd instances are 9081–9085, and a service golden's stormd API
+/// is its port + 100 (stormlb's port 80 → 180). stormblock (9090), stormvm
+/// (9095) and sbregistry (5100) serve no feed and were always "silent" here;
+/// their stormd APIs (9190, 9195, …) are what answers. 9080 is stormd's own
+/// default, for a stormd run outside StormCOS.
 pub const NODE_PORTS: &[(u16, &str)] = &[
     (9080, "stormd"),
-    (9081, "stormd"),
-    (9082, "stormd"),
-    (9083, "stormd"),
-    (9084, "stormd"),
-    (9085, "stormd"),
-    (9090, "stormblock"),
+    (9081, "fastetcd (stormd)"),
+    (9082, "kube-apiserver (stormd)"),
+    (9083, "kube-controller-manager (stormd)"),
+    (9084, "kube-scheduler (stormd)"),
+    (9085, "rustkube-node (stormd)"),
     (9092, "stormdrive"),
     (9093, "stormstorage"),
     (9094, "stormconsole"),
-    (9095, "stormvm"),
-    (5100, "sbregistry"),
-    (9192, "stormdrive"),
-    (9193, "stormstorage"),
-    (9194, "stormconsole"),
+    (9097, "stormipmi"),
+    (9192, "stormdrive (stormd)"),
+    (9193, "stormstorage (stormd)"),
+    (9194, "stormconsole (stormd)"),
+    (9195, "stormvm (stormd)"),
+    (9196, "cadvisor (stormd)"),
+    (9197, "stormipmi (stormd)"),
+    (9199, "vmcloud-image-operator (stormd)"),
+    (180, "stormlb (stormd)"),
 ];
 
 /// One service found on a node: what answered, on which port, and what it
@@ -189,8 +201,13 @@ mod tests {
     #[test]
     fn the_layout_covers_the_daemons_a_node_actually_runs() {
         let named: Vec<&str> = NODE_PORTS.iter().map(|(_, n)| *n).collect();
-        for d in ["stormd", "stormblock", "stormdrive", "stormstorage", "sbregistry", "stormvm"] {
-            assert!(named.contains(&d), "{d} missing from the port layout");
+        for d in ["stormd", "stormdrive", "stormstorage", "stormconsole", "stormipmi", "stormvm", "stormlb"] {
+            assert!(named.iter().any(|n| n.starts_with(d)), "{d} missing from the port layout");
+        }
+        // Only ports that serve a feed: these three never did, so the page
+        // reported them silent whether or not they were running (#21).
+        for p in [9090u16, 9095, 5100] {
+            assert!(NODE_PORTS.iter().all(|(q, _)| *q != p), "{p} serves no /api/v1/components");
         }
         // Every port distinct: a duplicate would probe twice and report twice.
         let mut ports: Vec<u16> = NODE_PORTS.iter().map(|(p, _)| *p).collect();

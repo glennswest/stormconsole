@@ -1,7 +1,7 @@
 //! The registry's catalog (#19): goldens, blanks and media are images, and
 //! they are the registry's to show.
 //!
-//! sbregistry v0.23.0 derives `/v1/catalog/images` from the engine's
+//! sbregistry (v0.22.0, the `component` kind from v0.23.0) derives `/v1/catalog/images` from the engine's
 //! listings, its own records and what the OS releases say — nothing is
 //! copied, a golden stays the engine's volume. Each entry becomes a
 //! `reg:cat:<name>` component (`reg:cat:<location>/<name>` for a peer's), with
