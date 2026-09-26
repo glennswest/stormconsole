@@ -1,327 +1,199 @@
 # stormconsole
 
-**The StormCOS console** — patterned on the OpenShift console, built the
-storm way: a single static Rust binary under [stormd](https://github.com/glennswest/stormd),
-rendering everything through the [stormview](https://github.com/glennswest/stormview)
-contract, with a pluggable architecture where every domain contributes its
-own part.
+The StormCOS web console. One Rust binary (`stormconsole`, axum) with the
+browser app (Svelte 5 + [stormview](https://github.com/glennswest/stormview))
+embedded, listening on **:9094**. It shows a StormCOS cluster as it is —
+projects and what runs in them, virtual machines, storage, drives, bare
+metal, the datastore, the fleet and its logs — and acts on it through each
+component's own API. Every domain is a **plugin**; the host knows none of
+them. The orchestrator is rustkube (+ rustkube-node) only.
 
-- **kubernetes** — namespaces, workloads, nodes, events, network policies
-  via [rustkube](https://github.com/glennswest/rustkube) (kube-wire-compatible
-  apiserver, watch-backed cache); **Cilium** endpoints, nodes, identities
-  and policies through its CRDs, under one Cilium card that also carries
-  the agent's own verdict on this node
-- **vm** — virtual machines as KubeVirt `VirtualMachine` /
-  `VirtualMachineInstance` objects, which is where
-  [stormvm](https://github.com/glennswest/stormvm) puts them: the kubelet
-  is the loop, so the console watches the CRDs. Lifecycle, disks, network,
-  and both console doors — serial and framebuffer
-- **logs** — the fleet log collector: stormcast multicast
-  (`239.255.42.1:5514`) → a deduplicating redb ring → query API + live
-  follow. Repeats collapse into one entry with a count, and entries expire
-  on both an age and a size bound
-- **fleet** — nodes discovered by their own announcements; drill into each
-  node's stormd/stormdrive/stormblock; join, promote, demote, drain
-- **stormdrive** — physical drives fleet-wide: SMART, wear, thermal,
-  locate, lifecycle
-- **stormblock** — volumes, exports, slabs, arrays from the block engine
-- **sbregistry** — goldens, clones, pallets, warm-up
-- **fastetcd** — the cluster's datastore: revision, compaction, DB size
-  against quota, what a defrag would free, alarms, leader; with etcd's v3
-  JSON gateway (served by etcd, asked of fastetcd in
-  [fastetcd#28](https://github.com/glennswest/fastetcd/issues/28)) also
-  members, raft term and index, a read-only keyspace browser with decoded
-  values, and compact/defrag/disarm/snapshot for `admin`
-- **vmimages** — cloud images in three tiers, through
-  [vmcloud-image-operator](https://github.com/glennswest/vmcloud-image-operator):
-  the public catalogue a cluster could golden from (one button a row), the
-  goldens the fleet has, and which nodes carry a local copy — each copy
-  pointing at the stormblock volume it became
+It is a view of real running nodes, never an installer (stormcos
+`docs/CLUSTER.md`). Version **0.20.0**. Design: [docs/architecture.md](docs/architecture.md).
 
-Not part of this project: mkube. The orchestrator side is rustkube and
-rustkube-node only.
+## What it does today
 
-The console both consumes and produces the stormview component feed: it
-aggregates every plugin's components at `/api/v1/components` (+
-`/ws/components`), so any stormview renderer can show the whole cluster.
+Each plugin reads one component and contributes navigation, API routes,
+create forms and a slice of the component feed every page is drawn from.
 
-## Status
+| Plugin (id) | Reads | Shows | Acts |
+|---|---|---|---|
+| kubernetes (`k8s`) | rustkube apiserver, list+watch of 23 kinds; the Cilium agent's `/healthz` | Projects; workloads, services, claims, policies, Cilium; the Cluster section (nodes, namespaces, PVs, storage classes, CRDs, cluster roles); events | projects (request, members, isolation, delete), YAML import/edit, delete — **as the viewer**, so RBAC decides |
+| vm (`vm`) | KubeVirt `VirtualMachine`/`VirtualMachineInstance` and `snapshot.kubevirt.io` through the apiserver; stormvm (:9095) for consoles and verbs | Virtual machines: addresses asked vs done, disks, settings, SSH keys, snapshots, serial and framebuffer consoles | create, start/stop/restart, pause/reset/freeze…, settings, disks, snapshot/restore, keys |
+| vmimages (`img`) | vmcloud-image-operator (:9099) | VM catalogue, VM goldens, local copies | make a golden, retry, delete (the `CloudImage`, via the apiserver), unmanage |
+| fleet (`fleet`) | the stormcast log group's hosts; this node's stormd APIs | Nodes, and on demand one node's services | this node's stormd services start/stop/restart |
+| logs (`logs`) | stormcast multicast `239.255.42.1:5514` (RFC 5424) into a redb ring | Fleet logs: filter, search, live follow | — |
+| stormdrive (`drive`) | stormdrive (:9092) on this node **and every fleet node** | Drives as a rack map (chassis by bay, heat by health/temp/wear/usage), shelves | locate, fleet join/leave, tests, format, designate |
+| stormstorage (`storage`) | stormstorage (:9093) feed | Storage pools | the feed's own actions |
+| stormblock (`sb`) | stormblock engine (:9090) | Volumes (attached, with consumer), Unattached, slabs, arrays, exports | delete a volume (not while in use), create volume/export |
+| sbregistry (`reg`) | stormblock-registry (:5100) | Images → Catalog (goldens, blanks, media, lineage, clones, download progress), pushed images, pallets | create golden/clone |
+| fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served | compact, defragment, disarm, snapshot (admin) |
+| stormipmi (`ipmi`) | stormipmi (:9097) Machines API | Hardware → Machines: by service tag, BMC, power, the release each boots, default image, adopt, SOL console | power, set release/default, test mark, adopt (admin) |
 
-v0.8.0 — a working console on a StormCOS node with no config: rustkube
-(with Cilium), virtual machines, fleet nodes and services, fleet logs,
-stormdrive, stormstorage, stormblock, sbregistry, OpenShift-style create
-and edit, the namespace dimension, and per-viewer authorization. Design in
-[docs/architecture.md](docs/architecture.md); work plan in
-[CLAUDE.md](CLAUDE.md).
-
-## The namespace is a dimension
-
-A namespace is the unit of ownership, quota and policy, so it is a
-persistent control in the masthead rather than a menu item — the
-OpenShift project selector. It scopes every namespaced view, says nothing
-about the cluster-scoped ones (which say so on their own pages), and
-**travels in the URL** as `?ns=`, so a link somebody pastes shows what
-they were looking at. Which kinds it applies to comes from the plugin
-that owns them (`GET /api/plugins/k8s/kinds`), not from a list kept in
-the SPA.
-
-A namespace also has a page of its own — `#/k8s/ns/<name>` — with an
-inventory whose **every count is a link** into that kind filtered to this
-namespace, its quota as used-against-hard, its limit ranges, its events
-and its YAML. "No quota" is shown as the answer it is: nothing here is
-bounded.
-
-## Who sees what
-
-The console aggregates kubernetes, fleet, logs, drives, volumes and the
-registry into one feed, which makes it the broadest read surface on the
-platform. So a viewer sees what they may see, and the decision is not the
-console's:
-
-- a user configured with `kube_token` has a kubernetes identity; the
-  console asks **rustkube, as them** which namespaces they may see (list,
-  falling back to a per-namespace probe, since rustkube serves no
-  `SelfSubjectAccessReview` — [rustkube#59](https://github.com/glennswest/rustkube/issues/59))
-- the feed is filtered **before it leaves the process**, so a hidden
-  object is unreachable by REST, by websocket and by following a
-  relation; a plugin route answers for it exactly as it would for one
-  that does not exist
-- every **write** carries the viewer's own bearer, so the apiserver's
-  RBAC decides — a viewer whose Role has no `delete` verb is refused by
-  the apiserver, not by the console's guess about them
-- with no identity configured nothing is enforced, and
-  `GET /api/v1/console/access` says so (`identified: false`) rather than
-  implying a check that is not happening
-- what is withheld is counted and named — "4 namespaces you cannot view"
-  beside the selector — because a short list with no explanation reads as
-  a broken console
-
-## Projects
-
-A project is a namespace of your own, and the top of the console. The
-masthead's **Project** selector lists yours — the ones the apiserver says
-you are in — and **New project** makes one with you as its admin
-(OpenShift's `ProjectRequest`, served by rustkube). Every create in the
-console asks which project it goes in, with New project inline, and nothing
-lands in `default` or any other system namespace. A project's page shows who
-asked for it, its members (`admin`, `edit`, `view`, added and removed there)
-and **Isolate**: NetworkPolicies that let its pods and machines reach each
-other and nothing else, with DNS to the cluster resolver opt-in. What no
-project owns — nodes, persistent volumes, storage classes, CRDs, cluster
-roles and every namespace — is in the **Cluster** section for
-administrators.
-
-## Virtual machines
-
-A VM here is a KubeVirt object in the apiserver that rustkube-node's
-kubelet reconciles (stormvm `docs/kube.md`: *"stormvm is libraries, the
-kubelet is the loop"*), so the plugin watches `kubevirt.io/v1` the way the
-Cilium view watches `cilium.io/v2`. Both objects are shown, because they
-answer different questions: a `VirtualMachine` is what should exist and
-whether it should run, a `VirtualMachineInstance` is the machine that is
-running — its node, its phase, its disks, and the reason it did not start
-when it did not.
-
-Each interface shows what was **asked** (the pod network, a host bridge by
-`storm.io/bridge`, a multus network) beside what the node **did** (the
-binding, the MAC, every address the guest holds), with copy buttons and a
-verdict on whether the address is reachable. Today a pod network runs as
-a NAT inside the hypervisor (stormvm#16), and the page and the list both
-say so rather than showing an address nothing can reach as if it worked.
-A running machine with no address reads "no address yet".
-
-**SSH keys, once.** The key icon in the masthead opens Account → SSH keys:
-paste a key, or a whole `authorized_keys` file, or upload a `.pub`. They
-are kept as a Secret, `<you>-ssh-keys`, and every machine you create gets
-them — the create form lists them as checkboxes, all ticked — through
-KubeVirt's `accessCredentials` and, until a node honours that
-(stormvm#41), the cloud-init seed. The VM page shows which keys a machine
-has and from where, with "Add my keys" for one made without them.
-
-The **Backup** tab schedules a snapshot — a KubeVirt
-`VirtualMachineSnapshot`, so `virtctl` sees the same thing — and lists the
-machine's snapshots with their state, the step they are on, disks and size,
-with Restore (a `VirtualMachineRestore`, once the machine is stopped) and
-Delete. The node side is stormvm#28 and rustkube-node#53; until a node acts
-on them, a snapshot says it has not been picked up rather than sitting at
-"scheduled" forever.
-
-Lifecycle is `spec.running` and nothing else. A definition that wants to
-run and has no instance says exactly that: nothing places one yet, which
-is stormvm's own outstanding work, not a fault here.
-
-The two console doors are websockets relayed through the console's own
-origin and addressed **by VM rather than by node**, so the browser never
-learns a node address and the URL survives a live migration. Neither
-upstream serves them yet — stormvm's console service is unbuilt, and the
-other route to a guest's serial (the pod log the kubelet already writes)
-needs [rustkube#55](https://github.com/glennswest/rustkube/issues/55) and
-[rustkube-node#34](https://github.com/glennswest/rustkube-node/issues/34)
-— so the page names the missing upstream instead of showing a terminal
-that will never print. The framebuffer is
-[noVNC](https://github.com/novnc/noVNC) (MPL-2.0), lazily loaded in its
-own chunk so it is not in the console's first paint.
-
-## Machines
-
-**Hardware → Machines** is the bare-metal fleet by service tag, from
-stormipmi on the bastion (`[stormipmi] url`, and `token_file` when it
-guards its writes): each machine's BMC, its power as the BMC last said it,
-the release it boots from the forge, whether it is a test machine, and its
-serial-over-LAN console; the default image a new machine boots; and new
-hosts the forge has seen, to adopt. Anyone who can see the console can read
-it and watch a console. Power, setting a release, the default image, test
-marks, adopting and typing into a console are for administrators.
-
-## Drives, at rack scale
-
-**Hardware → Drives** reads every node's stormdrive — this node's, each
-host the fleet has heard from, and any in `[stormdrive] nodes` — and draws
-each chassis bay by bay, coloured by health, temperature, wear or usage,
-grouped by chassis, node or rack (a node's `topology.storm.io/rack` label),
-with the drives that need someone a click away: failing, degraded,
-rebuilding, full, hot. Totals are in rack units, up to exabytes. Click a bay
-for the drive, its actions and what the engine holds on it.
-
-## Images and volumes
-
-**Images → Catalog** is everything a machine, a claim or a service is cloned
-from — component goldens, blanks, VM media, image goldens and their bases —
-as the registry catalogues it: grouped by kind, each with the base it is
-built on, how many volumes were cloned from it, which releases carry it,
-and, for media still arriving, where from and how far. **Storage → Volumes**
-is only what is attached to something running, each with what uses it;
-**Unattached volumes** is the rest. They are all the engine's volumes
-underneath; this is how the console shows them. An engine that guards its
-API needs `[stormblock] token_file`.
-
-## Hardware, and storage
-
-They are different sections because they are different things. A **drive**
-is a physical object with a serial, a shelf and a bay that somebody
-eventually walks up to and pulls; a **volume** is an allocation on top of
-one. `#/drives` groups by shelf and orders by bay, with stormdrive's own
-operations — locate, join fleet, designate, format — on the rows and the
-shelf's on the group. `#/drives?group=shelf` is the other question: which
-enclosure is in trouble, since a shelf fails as a unit.
+Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
+`#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
+`#/vm/<ns>/<name>` · `#/images` · `#/machines` · `#/drives` (`?group=shelf`) ·
+`#/nodes` · `#/node/<host>` · `#/logs` · `#/etcd/keys` · `#/account/keys` ·
+`#/attach/<ns>/<claim>` · `#/grid?id=&rel=`. The masthead carries the
+Project selector, Create, cluster health, the key (your SSH keys),
+appearance (12 palettes × two styles) and the session.
 
 ## Build
 
-Build on `root@dev.g8.lo`, never on a Mac:
+Never on a Mac, never on the stormcentral VM, never as root: push, then
 
 ```bash
-cargo build --release --target x86_64-unknown-linux-musl
-cd web && npm install && npm run build   # SPA, embedded at cargo build
+sc-build                                       # cargo build && cargo test on dev.g8.lo
+sc-build 'cargo build --release --locked --target x86_64-unknown-linux-musl'
+sc-build 'node web/src/lib/drivemap.test.mjs'  # the Drives page model at 1,600 drives
 ```
+
+The SPA is built with Vite (`web/`, `npm ci && npx vite build`) into
+`web/dist/`, which is **committed** and embedded by `rust-embed`
+(`crates/stormconsole/src/server.rs`). A release build embeds it; a debug
+build reads `web/dist/` from disk. Rebuild and commit `web/dist/` with any
+change under `web/src/`. The live checks run the same way, each standing up
+the real upstreams it needs on dev and deleting them after:
+
+| `sc-build deploy/…` | Checks |
+|---|---|
+| `verify-projects.sh` | projects, members, isolation, project-first create — as three real rustkube identities |
+| `verify-vm-net.sh`, `verify-vm-keys.sh`, `verify-vm-snapshots.sh` | VM addresses, SSH keys, snapshots — real fastetcd + rustkube |
+| `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only |
+| `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes |
+| `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
+| `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 
 ## Run
 
-```bash
-stormconsole --config /etc/stormconsole/config.toml
-# UI + API on :9094
 ```
+stormconsole [--config <path>]      default /etc/stormconsole/config.toml
+printf %s 'pw' | stormconsole --hash-password   an argon2 password_hash, then exit
+```
+
+With no config file it runs on defaults and says so. `RUST_LOG` sets the
+log level (default `info`). Exit codes: **78** (EX_CONFIG) for a config
+that does not parse or validate, or a `--hash-password` with nothing on
+stdin; **1** when the listen address cannot be bound or the server fails;
+every fatal exit prints one `stormconsole: fatal: <what>` line on stderr.
+stormd is told not to restart on 78.
 
 ## Configuration
 
-One TOML file, every section optional; no file at all runs on defaults
-(`config/config.toml` documents them). Two shapes are accepted:
+TOML. **Unknown keys are errors** (named with their line), and every
+section is optional. Two shapes are accepted: the flat node-service one
+stormcos writes (`listen_addr`, `data_dir`) and the sectioned one below.
+Full example: [config/config.toml](config/config.toml).
 
-```toml
-# The console's own, sectioned shape
-[api]
-bind = "0.0.0.0:9094"
-[logs]
-db_path = "/var/lib/stormconsole/logs.redb"
-
-# The flat StormCOS node-service shape — what a golden writes, the same
-# two keys stormdrive and stormstorage take
-listen_addr = "0.0.0.0:9094"
-data_dir    = "/var/lib/stormconsole"
-```
-
-`listen_addr` is `[api] bind` and wins over it; the log ring lives at
-`<data_dir>/logs.redb` (default `/var/lib/stormconsole`) unless `[logs]
-db_path` says otherwise. Unknown keys are errors.
-
-### The log ring
-
-`[logs]` takes three more keys, all optional:
-
-| key | default | what it does |
+| Key | Default | |
 |---|---|---|
-| `dedup` | `true` | Collapse repeats of the same host/app/severity/message into one entry carrying a count |
-| `ring_cap` | `200000` | Most distinct entries kept; the oldest are dropped first |
-| `retain_hours` | `168` | Drop an entry this long after it was **last** seen; `0` leaves `ring_cap` as the only bound |
+| `listen_addr` | — | wins over `[api] bind` |
+| `data_dir` | `/var/lib/stormconsole` | the log ring lives here |
+| `[general] name` | `stormconsole` | |
+| `[general] theme` | — | default palette; a viewer's pick wins |
+| `[api] bind` | `0.0.0.0:9094` | |
+| `[api] auth_token` | — | a machine credential (`Authorization: Bearer`); signing in with it is an admin session |
+| `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
+| `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | the local default is unverified (self-signed stormcert); a configured server is verified unless set |
+| `[kubernetes] system_namespaces` | `["cilium"]` | never a project, besides `default`, `openshift`, `kube-*`, `openshift-*` |
+| `[fleet] enabled / mcast_group / stormd_host / stormd_ports` | on / `239.255.42.1:5514` / `127.0.0.1` / 9080–9089, 9180–9199, 180, 8269 | |
+| `[logs] enabled / mcast_group / db_path / ring_cap / retain_hours / dedup` | on / `239.255.42.1:5514` / `<data_dir>/logs.redb` / 200000 / 168 / true | |
+| `[stormdrive] enabled / url / nodes` | on / `http://127.0.0.1:9092` / {} | `nodes` = `host = "url"`, beside the fleet-discovered ones |
+| `[stormstorage] enabled / url` | on / `http://127.0.0.1:9093` | |
+| `[stormblock] enabled / url / token_file` | on / `http://127.0.0.1:9090` / — | the engine's `<data_dir>/api_token`; a v18 engine answers 401 to reads without it |
+| `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | |
+| `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |
+| `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
+| `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
+| `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |
 
-Both bounds are swept on a timer as well as on insert, so a fleet that
-goes quiet still expires what it left behind. A repeat refreshes an
-entry's last-seen time, so a line that keeps arriving keeps its place.
+An upstream that is not there is not an error: its card says which address
+did not answer.
 
-Upgrading from ≤0.6: the ring changed format, so it changed filename. The
-old `logs.db` is a SQLite file that nothing reads any more and can be
-deleted.
+## Ports, health, metrics
 
-**Every upstream defaults to this node's own daemon**, so a StormCOS node
-lights up with the two-line config above and nothing else:
+| | |
+|---|---|
+| **9094/tcp** | everything: the SPA, the API, the websocket |
+| `GET /healthz` | `ok` — liveness, no session needed |
+| `GET /readyz` | `{health, plugins}`; **503** when overall health is Error |
+| `GET /api/version` | `{console, release}` — the release from the nodes' `osImage` |
+| `GET /api/summary` | the stormd plugin card |
+| metrics | **none**; there is no `/metrics` |
 
-| plugin | default | override |
-|---|---|---|
-| kubernetes | `https://127.0.0.1:6443`, TLS unverified (stormcert self-signed, no CA in the golden; sno is anonymous-admin) | `[kubernetes] server`, `token`, `insecure_skip_tls_verify` — a configured server is verified unless told otherwise |
-| stormblock | `http://127.0.0.1:9090` | `[stormblock] url` |
-| sbregistry | `http://127.0.0.1:5100` | `[sbregistry] url` |
-| fastetcd | client port `http://127.0.0.1:2379` (`/health`, the v3 gateway); metrics `http://127.0.0.1:2381` | `[fastetcd] url`, `metrics_url` |
-| stormdrive | `http://127.0.0.1:9092` (its stormview feed) | `[stormdrive] url` |
-| stormstorage | `http://127.0.0.1:9093` (its stormview feed) | `[stormstorage] url` |
-| vm | the apiserver above for the objects; `http://127.0.0.1:9095` for the console doors only | `[vm] url` |
-| fleet | stormd instances probed on `127.0.0.1` ports 9080–9089 and 9180–9199 (the StormCOS layout) | `[fleet] stormd_host`, `stormd_ports` |
+## Authentication and roles
 
-Any plugin can be turned off with `enabled = false`. To run the console
-somewhere else and look at one node, point every `url`/`server` and
-`stormd_host` at that node — that is how it is verified from dev.
+Off until `[api] auth_token` or a user is configured — then every request
+not on the open list (`/healthz`, `/readyz`, `/api/version`, `/api/summary`,
+`/api/v1/auth/*`, static assets) needs a session or the bearer. With it
+off, everybody who reaches the port is an administrator, and the console
+warns about that on every start.
 
-## Creating things
+- **Sessions**: `POST /api/v1/auth/login {username, password}`, cookie
+  `stormconsole_session` (HttpOnly, SameSite=Strict, 24 h, in memory — a
+  restart signs everyone out). Tokens and passwords are compared in
+  constant time.
+- **Roles**: `viewer` reads; `operator` writes; `admin` also gets what is
+  admin-only — Machines writes and typing into a SOL console, the datastore,
+  YAML into a system namespace. The write gate is **one check in the host,
+  by method**: any non-GET under `/api/plugins/` needs `operator`.
+- **Identity upstream**: a user with a `kube_token` is asked about as
+  themselves — the namespaces they see and every write they make are the
+  apiserver's RBAC answer. Without one the console says so
+  (`/api/v1/console/access`).
 
-Every list view has a **+ Create**, and the top bar has one that lists
-everything — OpenShift's pattern. What each does is declared by the plugin
-that owns the resource (`GET /api/v1/console/creators`): a YAML editor
-seeded with a template, or a small form, posting to a plugin path. The SPA
-knows nothing about pods or volumes.
+## Host API
 
-- **kubernetes** — *Import YAML* (any documents, `---`-separated, like
-  `oc apply -f`) and a template per kind (Pod, Deployment, StatefulSet,
-  DaemonSet, Job, CronJob, Service, PVC, Namespace, NetworkPolicy,
-  CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy). `POST
-  /api/plugins/k8s/apply` turns each document into JSON and creates it in
-  the collection its `apiVersion`/`kind`/`namespace` name; every document
-  gets a line in the result, a failure on one does not stop the rest, and a
-  conflict is reported as the apiserver phrased it.
-- **stormblock** — Volume (name, size, and one of array id / redundancy
-  policy / template) and Export (volume, NVMe/TCP or iSCSI), through the
-  proxy to the engine's own API.
-- **sbregistry** — Golden (repository + tag/digest) and Clone (of a
-  golden), likewise.
-- **vm** — a Virtual machine form (name, namespace, node, vCPU, memory, a
-  golden for the root disk, bus, SSH key) and a `VirtualMachineInstance`
-  YAML template. The form builds an *instance*, not a definition, because
-  nothing turns a definition into one yet — a form producing a definition
-  would produce a VM that never starts. Importing an existing qcow2 or raw
-  disk needs a raw-media path in the registry
-  ([stormblock-registry#5](https://github.com/glennswest/stormblock-registry/issues/5))
-  and is not pretended at.
+| Route | |
+|---|---|
+| `GET /api/v1/components` · `WS /ws/components` | the feed, filtered per viewer; the socket pushes each change |
+| `GET /api/v1/console/nav` · `/creators` · `/access` | navigation, create forms, what this viewer is not shown |
+| `GET /api/v1/console/events?id=` · `/events/recent` | what happened to one object; the dock |
+| `/api/v1/auth/login` · `/logout` · `/session` | |
+| `/api/plugins/<id>/…` | each plugin's own routes (see [docs/architecture.md](docs/architecture.md)) |
 
-Editing exists too: any cached object's YAML tab saves back with `PUT
-/api/plugins/k8s/object/{kind}/{key}`. The write is a replace, so the
-`resourceVersion` it was loaded with is the concurrency guard — an edit of
-something changed since comes back 409 rather than quietly overwriting
-somebody. A rename is refused rather than performed, because saving under
-a new name would create a second object and leave the first.
+## How it ships
 
-Actions on cards — delete a volume, restart a stormd process, locate a
-drive — are carried by the feed and invoked with the method the feed
-declares, through the owning plugin's proxy.
+A stormcos **service golden**, `stormconsole` (32 MB), built by stormcos
+`deploy/build-goldens.sh`: the static musl binary with the SPA inside,
+under stormd, with the flat config (`listen_addr = "0.0.0.0:9094"`,
+`data_dir = "/var/lib/stormconsole"`), `stormconsole-data` and
+`stormconsole-logs` volumes, stormd's API on 9194, exit 78 not restarted,
+started on single-node clusters. Goldens are requested with
+`stormcentral component build stormconsole`. Not yet right on the stormcos
+side: the golden's liveness path (stormcos#102 — it must be `/healthz`) and
+the engine token for Storage (stormcos#94).
 
-When the console cannot start it prints exactly one line on stderr —
-`stormconsole: fatal: config /etc/stormconsole/stormconsole.toml: line 2:
-unknown field `port` …` — and exits **78** (`EX_CONFIG`) for a config it
-cannot run on, **1** for a port it cannot bind. A supervisor reading the
-code can tell the one a restart will not fix from the one it might.
+`Containerfile` + `config/stormd.toml` build the same thing as a container
+on `stormdbase` (stormd on 9080, the console under it, liveness
+`/healthz`), for running outside a StormCOS node.
+
+## Not done, and why
+
+- **Pod logs** — nothing serves `kubectl logs` for ordinary pods
+  (rustkube#55, rustkube-node#34, closed as duplicates of stormvm#5).
+- **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
+  with no API (stormcos#38); the console offers none.
+- **Cilium flows, Hubble, agent metrics** — stormpump#11 (#4).
+- **VM metrics over time** — cadvisor is not wired (#14); **VM hotplug and
+  memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —
+  stormvm#41; **VMs on the pod network** (and so isolation covering them) —
+  stormvm#16; **snapshot step, disks, size** — stormvm#45.
+- **Datastore members, keyspace and verbs on fastetcd** — its v3 JSON
+  gateway (fastetcd#28); traffic counters (fastetcd#29).
+- **Per-drive usage on other nodes** — stormdrive#12 (this node's comes from
+  its engine).
+- **Watch deletes of custom resources** — rustkube#100: a deleted VM
+  instance or snapshot stays on a watching console until it relists.
+- **Registry reads carry no credential** — a registry with an auth file and
+  no anonymous pull answers the console 401 (#35).
+- **Users and groups without editing a file, certificate identity, audit**
+  — #15 steps 3 and 4.
+- **Remote plugins** (a component contributing its own UI) — designed, not
+  built.
+
+## Status
+
+0.20.0. Every page above is live-verified against the real upstream (or,
+for the drives rack, 1,600 stand-in drives over real transport); see
+[CHANGELOG.md](CHANGELOG.md) and the work plan in [CLAUDE.md](CLAUDE.md).
