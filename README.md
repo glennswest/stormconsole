@@ -63,6 +63,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
+| `verify-auth.sh` | what is open, the bearer, token and reader sessions |
 
 ## Run
 
