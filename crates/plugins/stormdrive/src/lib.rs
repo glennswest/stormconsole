@@ -149,9 +149,9 @@ impl ConsolePlugin for DrivesPlugin {
 
     fn routes(&self) -> Router {
         Router::new()
-            .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.local.base.clone()))
             .route("/node/{host}/proxy/{*path}", any(node_proxy))
             .with_state(self.inner.clone())
+            .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.local.base.clone()))
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
