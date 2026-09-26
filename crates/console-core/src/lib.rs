@@ -2,9 +2,13 @@
 //!
 //! The console core knows nothing about kubernetes, drives, or images —
 //! every domain is a [`ConsolePlugin`] that contributes navigation, API
-//! routes, and a slice of the aggregated stormview component feed. The
-//! [`Registry`] is the host: it merges navigation, aggregates and pushes
-//! the feed, and drives each plugin's background work.
+//! routes, create forms ([`Creator`]), a slice of the aggregated stormview
+//! component feed, what a viewer may see of it ([`Access`]) and the events
+//! for its objects. The [`Registry`] is the host: it merges navigation,
+//! aggregates, filters per viewer and pushes the feed, and drives each
+//! plugin's background work. [`Feed`]/[`FeedPlugin`] consume an upstream's
+//! own stormview feed; `proxy` forwards to an upstream, with the console's
+//! bearer where it has one.
 
 pub use stormview::{Action, ComponentSummary, Health, Metric, Relation, RelationKind};
 

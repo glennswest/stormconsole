@@ -8,7 +8,9 @@
 //! This node's services are its stormd instances, discovered by probing
 //! the StormCOS port layout on loopback; each one's own stormview feed
 //! (system card + processes, with start/stop/restart) is folded in under
-//! `fleet:svc:<name>` and its actions go through this plugin's proxy.
+//! `fleet:svc:<name>` and its actions go through this plugin's proxy. They
+//! are on the overview and the node's page, not in the navigator (#28): to
+//! the cluster a node's daemons are the mirror pods in kube-system.
 //!
 //! **Other nodes are drilled into on demand** (see [`node`]). The
 //! aggregate feed carries nodes, not the contents of nodes: a node's own

@@ -3,8 +3,11 @@
 //!
 //! One list+watch loop per resource kind feeds a shared store; the
 //! components mapping renders a consistent snapshot with health derived
-//! from the same conditions kubectl reads. Actions surface as POST routes
-//! under /api/plugins/k8s so any stormview renderer can wire them.
+//! from the same conditions kubectl reads. Everything the plugin changes is
+//! a route under /api/plugins/k8s, asked **as the viewer** so the
+//! apiserver's RBAC decides: pod delete, raw DELETE, YAML apply (always
+//! into a project, #28) and edit, and projects — list, request, members,
+//! isolation, delete (`projects.rs`).
 
 pub mod apply;
 pub mod authz;

@@ -1,8 +1,13 @@
 //! The stormblock plugin: the node's block engine (:9090) — volumes,
 //! slabs, arrays, exports and drives, mapped from stormblock's own REST
-//! API into components. stormblock has no stormview feed of its own yet
-//! (its UI is server-rendered), so this is the one storage plugin that
-//! maps rather than consumes.
+//! API into components. Volumes are split the way #19 asks: Storage →
+//! Volumes is what is attached to something running, with its consumer,
+//! Unattached apart, and goldens/blanks/media are the registry's. Per-drive
+//! usage (`sb:use:<serial>`) and array member state (`sb:member:<dev>`)
+//! are published for the Drives page (#32). A guarded engine is read with
+//! its token (`[stormblock] token_file`). stormblock has no stormview feed
+//! of its own (its UI is server-rendered), so this plugin maps rather than
+//! consumes.
 
 use std::sync::Arc;
 use std::time::Duration;

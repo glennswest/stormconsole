@@ -1,8 +1,11 @@
-//! The sbregistry plugin: the image registry's own readiness and warm-up
-//! (goldens cut, PVC ladder, engine survey) as one card, and its goldens,
-//! clones, pallets and images as components. sbregistry does not serve a
-//! stormview feed (stormconsole#1 asks for one); until it does, its own
-//! JSON is mapped here.
+//! The sbregistry plugin: the image registry. Its readiness and warm-up
+//! (goldens cut, PVC ladder, engine survey) are the card; its **catalog**
+//! (`/v1/catalog/images`, sbregistry v0.23.0 — component goldens, blanks,
+//! media, image goldens, bases) is the Images page, with each image's base
+//! lineage, clones and the releases that carry it, and `/v1/media/jobs`
+//! merged in as download progress (#19, `catalog.rs`). Pushed OCI images,
+//! pallets, golden records and clones are mapped too. sbregistry serves no
+//! stormview feed, so its own JSON is mapped here.
 
 pub mod catalog;
 
