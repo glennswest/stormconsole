@@ -12,7 +12,7 @@ rustkube-node (kubelet/kube-proxy/CNI). This console talks to no other.
 
 This document is the design. Where the code does not do something yet it
 says so, and names the issue; everything else here is what the code does
-(v0.20.0). The README is the operational reference — config, ports, auth.
+(v0.20.1). The README is the operational reference — config, ports, auth.
 
 ## What the console is (and is not)
 
@@ -461,7 +461,7 @@ is a thin typed layer over the standard REST paths.
   `DELETE /api/plugins/k8s/raw/{/api|/apis…}`, import YAML (`/apply`,
   always into a project), edit an object (`PUT /object/{kind}/{key}`,
   `resourceVersion` as the guard), and the project verbs. **Not built:**
-  scale, cordon/uncordon, drain.
+  scale, cordon/uncordon, drain (#36).
 - **Cilium**: the agent's API is a unix socket and Hubble is gRPC, neither
   reachable from a golden, so Cilium is read through its CRDs on the
   apiserver — `cilium.io/v2` endpoints (state, address, identity, edge to
@@ -1112,7 +1112,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock-registry | [#5](https://github.com/glennswest/stormblock-registry/issues/5) raw media | importing an existing VM disk |
 | stormdrive | #12 per-drive usage | usage on other nodes' drives |
 | fastetcd | [#28](https://github.com/glennswest/fastetcd/issues/28) v3 JSON gateway, [#29](https://github.com/glennswest/fastetcd/issues/29) traffic counters | members, keyspace and verbs on fastetcd; traffic on its card |
-| stormconsole | #35 registry credential; #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor) | — |
+| stormconsole | #36 scale, cordon, drain; #35 registry credential; #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor) | — |
 
 ## Phasing (history)
 

@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.20.0**
+Current: **0.20.1**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -713,20 +713,29 @@ drive (stormblock#136), array members their device path and state
   Feed 1.2 MB in 38 ms (3.2 s before the id fix)
 - Not viewed in a browser (there is none here)
 
-### Docs from the code (#21) — in progress 2026-09-26
+### Docs from the code (#21) ✅ v0.20.1 2026-09-26
 Pattern: stormbootx b1347d9. Facts gathered from the code (config.rs,
 main/server/auth, every plugin, the SPA router) and the other components'
 code for every port and API referenced.
 
-- [ ] README.md rewritten from the code: what it is and does today, build
+- [x] README.md rewritten from the code: what it is and does today, build
       (sc-build, never root), every config key with its default, flags,
       ports, health/metrics endpoints, auth and roles, plugins and their
       upstreams, how it ships (stormcos service golden)
-- [ ] docs/architecture.md: stale removed or corrected, design marked
+- [x] docs/architecture.md: stale removed or corrected, design marked
       where the code does not do it yet
-- [ ] Crate doc comments that no longer match
-- [ ] Cross-references checked against the other components' code
-- [ ] Doc promises the code does not keep → issues; close with the list
+- [x] Crate doc comments that no longer match
+- [x] Cross-references checked against the other components' code
+- [x] Doc promises the code does not keep → issues; close with the list
+- Found in the code on the way, and fixed: a token sign-in was a no-role
+  session; bearer compared with `==`; `/api/version` behind auth and a
+  phantom `/metrics` on the open list; a VM waiting for its instance said
+  nothing places one (rustkube does, #72); "Delete golden" called a route
+  the operator does not serve (now the CloudImage via the apiserver); the
+  node page probed three ports that serve no feed and missed six that do
+- Filed: stormcos#102 (golden health path), #35 (registry credential),
+  #36 (scale/cordon/drain the docs promised)
+- Verified: `sc-build` (tests), `sc-build deploy/verify-auth.sh`
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

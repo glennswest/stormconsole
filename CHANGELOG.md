@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.20.1] — 2026-09-26
+
 ### 2026-09-26
 - **fix(auth):** signing in with the `auth_token` made a session named
   "admin" with no roles, which could not write; it is now the token's
