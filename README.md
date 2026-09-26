@@ -173,6 +173,16 @@ hosts the forge has seen, to adopt. Anyone who can see the console can read
 it and watch a console. Power, setting a release, the default image, test
 marks, adopting and typing into a console are for administrators.
 
+## Drives, at rack scale
+
+**Hardware → Drives** reads every node's stormdrive — this node's, each
+host the fleet has heard from, and any in `[stormdrive] nodes` — and draws
+each chassis bay by bay, coloured by health, temperature, wear or usage,
+grouped by chassis, node or rack (a node's `topology.storm.io/rack` label),
+with the drives that need someone a click away: failing, degraded,
+rebuilding, full, hot. Totals are in rack units, up to exabytes. Click a bay
+for the drive, its actions and what the engine holds on it.
+
 ## Images and volumes
 
 **Images → Catalog** is everything a machine, a claim or a service is cloned

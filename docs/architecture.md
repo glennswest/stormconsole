@@ -659,6 +659,32 @@ the truth: the instance alone loses a disk the moment it is added, and
 the definition alone loses one that is still in the guest after being
 removed.
 
+**Drives at rack scale (#32).** 160 drives a node, ~1,600 a rack. The
+drives plugin (`crates/plugins/stormdrive`) reads this node's stormdrive
+(ids `drive:…`, unchanged) and every other node's: each host the log
+collector has an address for, at :9092, plus `[stormdrive] nodes`. A remote
+node's ids are `drive:@<host>:…` — under the plugin's prefix, as the
+registry requires; the first cut used `drive@<host>` and the registry warned
+once per remote component per refresh, which took a 1,600-drive feed from
+38 ms to 3.2 s — and its actions go through `/api/plugins/drive/node/<host>/
+proxy`. Every drive and shelf carries a `node` metric; a host with no
+stormdrive adds no rows and is counted on the card. Per-drive usage is
+stormdrive#12; until then the stormblock plugin publishes, for this node,
+`sb:use:<serial>` (slab bytes and free, summed over the slabs that name the
+drive, stormblock#136) and `sb:member:<dev>` (a drive-level array member's
+state), and the kubernetes plugin a node's `rack` from its label
+`topology.storm.io/rack`. The page's model is `web/src/lib/drivemap.js`
+(pure; `drivemap.test.mjs` runs it at 10×160 with plain node): it joins
+those by serial and device path (this node's drives only — another node's
+`/dev/sd5` is not this engine's), filters (failing, degraded, rebuilding,
+full ≥ 90%, hot ≥ 50 °C, out of fleet, spares), groups by chassis (a shelf
+is a node's), node or rack, totals up to EB, and colours a bay by health,
+temperature, wear or usage — no data drawn hatched, never green. The Drives
+page is a map by default: each chassis a grid of its bays (12 across up to
+60 bays, 15 above), empty bays kept, rebuilding outlined; a totals band
+whose counts are filters; a list view capped at 200 a group. The live check
+is `deploy/verify-drives.sh`.
+
 **Images are the registry's; Volumes are what is attached (#19).** A UI
 point of view only — goldens stay the engine's volumes. The stormblock plugin
 reads the engine's own `kind` (volume|golden|blank|media|snapshot|template),

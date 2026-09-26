@@ -678,7 +678,7 @@ percent, fault, golden).
   `[stormblock] token_file`; filed **stormcos#94** to wire it on nodes
 - Not viewed in a browser (there is none here)
 
-### Drives at rack scale (#32) — in progress 2026-09-26
+### Drives at rack scale (#32) ✅ v0.20.0 2026-09-26
 Target: 160 drives a node, ~1,600 a rack. Data today: stormdrive's feed
 per node (bay, hba, temp, wear, spare, smart, capacity, serial, dev,
 shelf edge; shelves with PSU/fans/temp); per-drive usage is stormdrive#12
@@ -686,20 +686,32 @@ shelf edge; shelves with PSU/fans/temp); per-drive usage is stormdrive#12
 drive (stormblock#136), array members their device path and state
 (`rebuilding`, `degraded`, `failed`). Rack: a node label.
 
-- [ ] Drives plugin, fleet-wide: this node's stormdrive as before
+- [x] Drives plugin, fleet-wide: this node's stormdrive as before
       (`drive:` ids) plus every fleet node's (`drive:@<host>:`, discovered
       from the log hosts' addresses at :9092) and `[stormdrive] nodes`;
       per-node proxies; each drive and shelf says its node
-- [ ] stormblock: per-drive usage (`sb:use:<serial>`) and array member
+- [x] stormblock: per-drive usage (`sb:use:<serial>`) and array member
       state (`sb:member:<path>`)
-- [ ] k8s node `rack` from label `topology.storm.io/rack`
-- [ ] `web/src/lib/drivemap.js` (pure): join, filters (failing, degraded,
+- [x] k8s node `rack` from label `topology.storm.io/rack`
+- [x] `web/src/lib/drivemap.js` (pure): join, filters (failing, degraded,
       rebuilding, full, out of fleet, spare), group by chassis/node/rack,
       heat colour by health/temperature/wear/usage, totals in PB/EB; a
       node test at 10×160
-- [ ] DrivesView: chassis map by bay + list, totals, legend, selection
-- [ ] Live check: 10 synthetic stormdrive feeds (1,600 drives) + a
+- [x] DrivesView: chassis map by bay + list, totals, legend, selection
+- [x] Live check: 10 synthetic stormdrive feeds (1,600 drives) + a
       synthetic engine; docs; release; golden
+- Verified with `sc-build deploy/verify-drives.sh`: ten stand-in
+  stormdrives (160 drives each, four 40-bay shelves), a stand-in engine
+  for this node, a real rustkube with rack-labelled Nodes, a real console.
+  1,600 drives from 10 nodes, 160 each, remote ids `drive:@storm-N:`; the
+  card "1600 drives on 10 nodes (1 without stormdrive)"; 8 drive-use and 3
+  array-member joins; racks A/B. drivemap over the live feed: 40 chassis,
+  11.4 PB raw, 27.4 TB used of 58.4 TB in slabs, failing → storm-3 bay 17,
+  rebuilding → /dev/sd21 here, full → here-SN000; 17 ms. Locate through
+  storm-3's proxy reached storm-3 only; this node's through the local
+  proxy; an unknown node 404. A node killed → 1,440 drives, 9 nodes.
+  Feed 1.2 MB in 38 ms (3.2 s before the id fix)
+- Not viewed in a browser (there is none here)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

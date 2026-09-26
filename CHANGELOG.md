@@ -3,6 +3,22 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-26
+- **feat(drives):** the Drives page at rack scale (#32). Every node's
+  drives, not one's: this node's stormdrive plus each fleet host's at
+  :9092 and `[stormdrive] nodes`, each drive stamped with its node, remote
+  actions through per-node proxies. The page is a map: each chassis bay by
+  bay, coloured by health, temperature, wear or usage; grouped by chassis,
+  node or rack; filters for failing, degraded, rebuilding, full, hot, out
+  of fleet and spares; totals up to EB; click a bay for the drive, its
+  actions and its usage. A list view remains.
+- **feat(storage):** per-drive usage from this node's engine
+  (`sb:use:<serial>`) and array member state (`sb:member:<dev>`), until
+  stormdrive reports usage (stormdrive#12).
+- **feat(k8s):** a node's `rack`, from its `topology.storm.io/rack` label.
+- **chore:** `web/src/lib/drivemap.js` + `drivemap.test.mjs` (1,600
+  drives, plain node) and `deploy/verify-drives.sh`.
+
 ## [v0.19.0] — 2026-09-25
 
 ### 2026-09-25
