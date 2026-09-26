@@ -687,7 +687,7 @@ drive (stormblock#136), array members their device path and state
 (`rebuilding`, `degraded`, `failed`). Rack: a node label.
 
 - [ ] Drives plugin, fleet-wide: this node's stormdrive as before
-      (`drive:` ids) plus every fleet node's (`drive@<host>:`, discovered
+      (`drive:` ids) plus every fleet node's (`drive:@<host>:`, discovered
       from the log hosts' addresses at :9092) and `[stormdrive] nodes`;
       per-node proxies; each drive and shelf says its node
 - [ ] stormblock: per-drive usage (`sb:use:<serial>`) and array member

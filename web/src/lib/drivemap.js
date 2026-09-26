@@ -4,7 +4,7 @@
 //
 // Everything here is read from the component feed:
 //   - stormdrive's drives and shelves, from every node (`drive:` for this
-//     node, `drive@<host>:` for the others), each with a `node` metric;
+//     node, `drive:@<host>:` for the others), each with a `node` metric;
 //   - this node's engine, per drive: `sb:use:<serial>` (slab bytes, free)
 //     and `sb:member:<dev>` (a drive-level array member's state) — the only
 //     usage and rebuild state there is until stormdrive reports usage itself
@@ -64,7 +64,7 @@ export function build(components) {
   }
   const records = drives.map((c) => {
     const node = metric(c, 'node') || 'this node'
-    const local = c.id.startsWith('drive:')
+    const local = !c.id.startsWith('drive:@')
     const shelfId = (c.relations || []).find((r) => r.name === 'shelf')?.targets?.[0] || null
     const shelf = shelfId ? byId.get(shelfId) : null
     const capacity = parseBytes(metric(c, 'capacity'))

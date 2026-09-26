@@ -6,7 +6,7 @@ import { build, groups, totals, heat, cells, columns, parseBytes, formatBytes, p
 
 function drive(host, i, extra = {}) {
   const local = host === null
-  const prefix = local ? 'drive' : `drive@${host}`
+  const prefix = local ? 'drive' : `drive:@${host}`
   const shelf = Math.floor(i / 40)
   const bay = i % 40
   const metrics = [
@@ -30,7 +30,7 @@ function drive(host, i, extra = {}) {
   }
 }
 function shelf(host, n) {
-  const prefix = host === null ? 'drive' : `drive@${host}`
+  const prefix = host === null ? 'drive' : `drive:@${host}`
   return { id: `${prefix}:shelf:${n}`, kind: 'shelf', label: `DS4246 #${n}`, health: 'ok', detail: '', metrics: [{ label: 'node', value: host || 'here' }], relations: [] }
 }
 
@@ -83,8 +83,8 @@ const here1 = records.find((d) => d.id === 'drive:drive:1')
 assert.ok(here0.usage && here0.usage.frac > 0.99, 'a full drive')
 assert.ok(Math.abs(here1.usage.frac - 1 / 7.3) < 0.01, 'one TB used of 7.3')
 assert.equal(records.find((d) => d.id === 'drive:drive:5').member, 'rebuilding')
-assert.equal(records.find((d) => d.id === 'drive@storm-1:drive:5').member, null, "another node's /dev/sd5 is not this engine's")
-assert.equal(heat(records.find((d) => d.id === 'drive@storm-1:drive:0'), 'usage').css, null, 'no data is drawn as no data')
+assert.equal(records.find((d) => d.id === 'drive:@storm-1:drive:5').member, null, "another node's /dev/sd5 is not this engine's")
+assert.equal(heat(records.find((d) => d.id === 'drive:@storm-1:drive:0'), 'usage').css, null, 'no data is drawn as no data')
 
 // Filters.
 const count = (f) => records.filter((d) => passes(d, f)).length

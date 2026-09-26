@@ -413,7 +413,7 @@ export function idsForRoute(href) {
   // The two hardware routes count different things: the shelves page is
   // a list of enclosures, not of the disks in them.
   if (path === '#/drives') {
-    // By kind, not id prefix: other nodes' drives are `drive@<host>:` (#32).
+    // By kind, not id prefix: other nodes' drives are `drive:@<host>:` (#32).
     const kind = q.get('group') === 'shelf' ? 'shelf' : 'drive'
     return feed.components.filter((c) => c.kind === kind).map((c) => c.id)
   }

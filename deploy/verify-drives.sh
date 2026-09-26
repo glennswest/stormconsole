@@ -141,7 +141,7 @@ cs = json.load(open(sys.argv[1]))
 drives = [c for c in cs if c["kind"] == "drive"]
 per = collections.Counter(next(m["value"] for m in c["metrics"] if m["label"] == "node") for c in drives)
 print("  %d components, %d drives, %d shelves; per node: %s" % (len(cs), len(drives), sum(c["kind"] == "shelf" for c in cs), dict(sorted(per.items()))))
-d3 = next(c for c in drives if c["id"] == "drive@storm-3:drive:17")
+d3 = next(c for c in drives if c["id"] == "drive:@storm-3:drive:17")
 print("  a remote drive:", d3["id"], d3["health"], [a["path"] for a in d3["actions"]])
 print("  a local drive:", next(c for c in drives if c["id"] == "drive:drive:0")["actions"][0]["path"])
 card = next(c for c in cs if c["id"] == "plugin:drive")

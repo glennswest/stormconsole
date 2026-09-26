@@ -11,7 +11,8 @@
 //! of a rack. So this reads this node's stormdrive (`drive:` ids, exactly as
 //! before) and every other node's: each host the fleet has heard from, at
 //! its address on :9092, plus any named in `[stormdrive] nodes`. A remote
-//! node's components are `drive@<host>:…`, its actions go through
+//! node's components are `drive:@<host>:…` (under the plugin's own prefix,
+//! as every component id must be), its actions go through
 //! `/api/plugins/drive/node/<host>/proxy`, and every drive and shelf carries
 //! a `node` metric so a page can group and total by node. A host with no
 //! stormdrive — most of a fleet's hosts, on a rack of storage nodes and
@@ -65,7 +66,7 @@ pub fn local_hostname() -> String {
 pub fn prefix(host: Option<&str>) -> String {
     match host {
         None => NAME.to_string(),
-        Some(h) => format!("{NAME}@{h}"),
+        Some(h) => format!("{NAME}:@{h}"),
     }
 }
 
@@ -265,7 +266,7 @@ mod tests {
     #[test]
     fn this_nodes_ids_are_unchanged_and_others_are_named() {
         assert_eq!(prefix(None), "drive");
-        assert_eq!(prefix(Some("storm-b")), "drive@storm-b");
+        assert_eq!(prefix(Some("storm-b")), "drive:@storm-b", "under the plugin's prefix, as the registry requires");
         assert_eq!(proxy_base(Some("storm-b")), "/api/plugins/drive/node/storm-b/proxy");
     }
 
