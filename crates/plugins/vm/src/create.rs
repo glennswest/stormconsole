@@ -22,11 +22,11 @@
 //!
 //! **Import.** Bringing an existing qcow2 or raw disk in is the thing
 //! that makes replacing a hypervisor a migration rather than a rebuild,
-//! and it is genuinely not here yet: it needs a raw-media path in the
-//! registry (stormblock-registry#5) so a disk image lands as an opaque
-//! golden that is never unpacked. Until it does, a VM's root disk is a
-//! golden that already exists, and the form says so rather than offering
-//! a file picker that would fail.
+//! and it is not here yet. The registry's media path it needed shipped
+//! (stormblock-registry#5, sbregistry v0.19.0: `POST /v1/media` fetches a
+//! raw/qcow2/vmdk/ova by URL into a sealed golden); offering it is #44.
+//! Until then a VM's root disk is a golden that already exists, and the
+//! form says so rather than offering a file picker.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

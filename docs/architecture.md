@@ -148,8 +148,7 @@ platform. The authorization model, in the order it runs:
 2. **The question.** `NamespaceAccess` asks rustkube **as the viewer**:
    `GET /api/v1/namespaces` first, since a 200 is the self-scoped answer
    OpenShift's project list gives. rustkube's RBAC makes that
-   all-or-nothing, and it serves no `SelfSubjectAccessReview`
-   ([rustkube#59](https://github.com/glennswest/rustkube/issues/59)), so a
+   all-or-nothing, so a
    403 falls back to one probe per known namespace — `GET
    /api/v1/namespaces/{ns}/pods?limit=1`, **not** the Namespace object,
    because a Namespace is cluster-scoped and a RoleBinding cannot grant
@@ -157,7 +156,9 @@ platform. The authorization model, in the order it runs:
    seconds would otherwise be a denial of service on the apiserver by way
    of a UI. One `NamespaceAccess` is shared by the kubernetes and vm
    plugins, so the same question is asked once and cannot be answered two
-   ways.
+   ways. rustkube serves `SelfSubjectAccessReview` and
+   `SelfSubjectRulesReview` since v0.9.0 (rustkube#59); the console does not
+   ask them yet (#45), so it cannot hide an action before it 403s.
 3. **Reads.** `/api/v1/components` and `/ws/components` are filtered per
    viewer, with surviving relations re-pointed, so a hidden object is
    unreachable by REST, by socket and by following an edge. A plugin route
@@ -433,7 +434,9 @@ reported as selecting nothing rather than guessed at.
 
 Flows — allowed and denied, the actual answer to "why can nothing reach
 this" — and per-module agent health come from Hubble and the agent's own
-REST API, neither enabled in the image yet (stormpump#11, tracked on #4).
+REST API. The image enables both (stormpump#11, closed: the agent's
+metrics address is set and hubble-relay ships as a golden, gRPC :4245);
+the console reads neither yet (#4).
 
 ## Built-in plugins
 
@@ -468,13 +471,16 @@ is a thin typed layer over the standard REST paths.
   the pod), nodes, identities, network policies (selector and rule counts,
   DELETE) — plus core NetworkPolicy, under one `k8s:cilium` card. CRD kinds
   are optional in the watch cache: a 404 is "not installed", synced and
-  empty, re-checked each minute. **Not built:** Hubble flows — they need a
-  relay the console can reach (stormpump#11, #4).
-- **Pod logs — not available.** rustkube has no `/log` subresource and
-  rustkube-node no `/containerLogs`, although the node writes CRI log files
-  under `/var/log/pods/…` (rustkube#55 and rustkube-node#34, closed as
-  duplicates of stormvm#5, which gives a VM's serial instead). Nothing
-  links a pod to its logs; a node's page links to that node's fleet logs.
+  empty, re-checked each minute. **Not built:** Hubble flows — the relay
+  ships (stormpump#11), the console does not read it (#4).
+- **Pod logs — served upstream, not shown here.** rustkube v0.8.1 serves
+  `GET /api/v1/namespaces/{ns}/pods/{name}/log`, proxied to the kubelet's
+  `containerLogs` with `container`, `follow`, `tailLines`, `sinceSeconds`,
+  `timestamps` and `previous` (rustkube#55); the kubelet streams `follow`
+  since rustkube-node v0.3.0 (#34). The console has no pod page to show
+  them on (#12). A terminal waits on the kubelet answering exec
+  (rustkube-node#56; the apiserver proxies it, rustkube#42). A node's page
+  links to that node's fleet logs.
 
 ### logs
 
@@ -745,9 +751,10 @@ restored through the machine it belongs to. Routes:
 `GET|POST …/vms/{ns}/{name}/snapshots`, `DELETE …/snapshots/{snap}`,
 `POST …/snapshots/{snap}/restore`. Without the CRDs the tab says so and
 names stormpump#28. `deploy/verify-vm-snapshots.sh` is the live check.
-Known upstream gap: rustkube#100 — a CR's DELETED watch event carries the
-plural as its namespace, so a deleted snapshot (or a stopped VM's
-instance) stays in the console's cache until it relists.
+A rustkube before v0.15.2 names the plural as a custom resource's
+namespace in its DELETED watch event (rustkube#100, fixed), so against one
+a deleted snapshot (or a stopped VM's instance) stays in the console's
+cache until it relists.
 
 **Addresses, asked against done (#24).** `vm/src/network.rs` gives one row
 per interface from two sources that disagree today. What was *asked* is
@@ -908,7 +915,12 @@ they are the mirror pods in kube-system. A claim Pending under a class with
 `volumeBindingMode: WaitForFirstConsumer` (its own class, or the default)
 is Idle, reads "Pending — provisioned when a pod or VM uses it", and offers
 Attach to a VM (`#/attach/{ns}/{claim}`: the project's machines, each one
-click, as a disk). rustkube does not default a claim's phase (rustkube#102);
+click, as a disk). A claim of the built-in `stormblock` class
+(provisioner `stormblock.storm.io`, `WaitForFirstConsumer`) is cloned and
+attached by the node's own kubelet through its stormblock engine — no CSI;
+every other class goes through its CSI driver (rustkube-node README). The
+console shows the claim here and its engine volume under Storage →
+Volumes, the claim as its consumer. rustkube does not default a claim's phase (rustkube#102);
 a missing phase is read as the API's default, Pending.
 `deploy/verify-projects.sh` is the live check, as three real identities.
 
@@ -1028,7 +1040,10 @@ create, rather than showing nothing.
   the README. Fleet-discovered endpoints (every node's stormdrive) need
   none.
 - **Health** — `/healthz` (process, `ok`), `/readyz` (plugins; 503 on
-  Error). **No metrics endpoint.**
+  Error). **No metrics endpoint** — and `/metrics` falls through to the
+  app with 200 HTML (#41). Any other path under `/api/` or `/ws/` that no
+  route serves answers a JSON **404** (`{"error": "no such route: …"}`),
+  never the app; everything else is the SPA.
 - **stormd summary** — `GET /api/summary` in stormd's plugin-card shape, so
   the console's own container card shows plugin count, node count, and
   health.
@@ -1100,19 +1115,16 @@ filed on its owner. The console says so on the page where the gap shows.
 
 | Repo | Issue | What waits on it |
 |------|-------|------------------|
-| rustkube | [#59](https://github.com/glennswest/rustkube/issues/59) no `SelfSubjectAccessReview` | one call per viewer instead of a probe per namespace; showing an action only when it would be allowed |
-| rustkube | [#100](https://github.com/glennswest/rustkube/issues/100) a custom resource's DELETED watch event names the plural as its namespace | a deleted VM instance or snapshot leaving a watching console |
 | rustkube | [#101](https://github.com/glennswest/rustkube/issues/101) `stringData` not folded into `data`; [#102](https://github.com/glennswest/rustkube/issues/102) a claim's phase not defaulted | readers taking `data` alone; worked around here |
-| rustkube, rustkube-node | #55, #34 (closed as duplicates of stormvm#5) | `kubectl logs` for ordinary pods — reopen if wanted |
+| rustkube-node | #56 exec, attach, portForward | a pod terminal |
 | stormcos | [#38](https://github.com/glennswest/stormcos/issues/38) fleet lifecycle has no API | join, promote, demote, drain |
 | stormcos | [#94](https://github.com/glennswest/stormcos/issues/94) the engine token; [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path | Storage on a v18 engine; a golden stormd does not restart |
-| stormpump | [#11](https://github.com/glennswest/stormpump/issues/11) Cilium metrics, Hubble, relay | the flow view (#4) |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
-| stormblock-registry | [#5](https://github.com/glennswest/stormblock-registry/issues/5) raw media | importing an existing VM disk |
 | stormdrive | #12 per-drive usage | usage on other nodes' drives |
+| cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
 | fastetcd | [#28](https://github.com/glennswest/fastetcd/issues/28) v3 JSON gateway, [#29](https://github.com/glennswest/fastetcd/issues/29) traffic counters | members, keyspace and verbs on fastetcd; traffic on its card |
-| stormconsole | #36 scale, cordon, drain; #35 registry credential; #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor) | — |
+| stormconsole | #12 pod page (logs are served upstream); #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

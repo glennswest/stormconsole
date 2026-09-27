@@ -3,6 +3,27 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-27
+- **docs:** refreshed from the code and the upstreams as they are today
+  (#40). Config keys, defaults and ports re-checked against `config.rs`:
+  unchanged. Corrected:
+  - pod logs are served upstream (rustkube v0.8.1, rustkube-node v0.3.0)
+    and not shown here for want of a pod page (#12); a terminal waits on
+    rustkube-node#56;
+  - rustkube#100 is fixed in v0.15.2, rustkube#59 (access reviews) in
+    v0.9.0, stormblock-registry#5 (media import) in v0.19.0, and
+    stormpump#11 (Hubble relay, agent metrics) is closed. The gaps table
+    moves them to the console's own issues (#45, #44, #4);
+  - claims of the `stormblock` class are served by the built-in stormblock
+    driver (the node's kubelet through its engine), CSI only for other
+    classes;
+  - unknown `/api/*` and `/ws/*` paths answer a JSON 404, and `/metrics`
+    still falls through to the app (#41).
+
+  Filed what the docs promised and the code does not do: #44 (VM disk
+  import), #45 (access reviews, RBAC-aware actions), #42 (where SSH keys
+  live, a decision) and cadvisor#15 (per-VM stats).
+
 ## [v0.21.0] — 2026-09-27
 
 ### 2026-09-27

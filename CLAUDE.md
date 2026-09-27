@@ -77,11 +77,10 @@ Containerfile needed on that path.
       action through the console worked and the watch removed the pod from
       the feed. rustkube emits no events without controller-manager — the
       events view shows an honest empty list.
-- [x] Pod logs — superseded: rustkube#55 and rustkube-node#34 were closed
-      as duplicates of stormvm#5, which gives a VM's serial as an
-      interactive socket rather than a log read. `kubectl logs` for
-      ordinary pods is consequently unserved by anything; reopen those two
-      if it is wanted
+- [ ] Pod logs — served upstream: rustkube v0.8.1 `pods/{name}/log`
+      (rustkube#55), streamed by rustkube-node v0.3.0 (#34). Not shown here
+      yet: there is no pod page (#12). A terminal waits on the kubelet
+      serving exec (rustkube-node#56)
 
 ### Phase 3 — logs plugin ✅ complete 2026-08-28
 - [x] Collector: socket2 multicast join on `239.255.42.1:5514`, lenient
@@ -831,12 +830,17 @@ through the engine), CSI only for other classes.
 - [ ] Dynamic remote plugins (manifest + reverse proxy, OpenShift
       dynamic-plugin style / stormd `[process.ui]` style)
 - [ ] YAML edit/apply views for rustkube resources
-- [ ] RBAC-aware UI (rustkube SSAR-equivalent)
+- [ ] RBAC-aware UI — rustkube serves the reviews since v0.9.0 (#45)
 
 ## Cross-project issues filed
 
 Tracked in `docs/architecture.md` §Integration gaps. File with `gh issue
 create` on the owning repo; never fix in this repo (Core Rule 11).
+
+2026-09-27: cadvisor#15 (per-VM stats keyed to the VMI, for #14),
+stormvm#31 comment (a snapshot schedule). Here: #40 (stale docs), #41
+(`/metrics` answers HTML), #42 (Decide: SSH keys home), #43 (Decide: the
+rack label), #44 (VM disk import), #45 (access reviews).
 
 2026-09-22: stormvm#18 (disk hotplug — no device verb beside the console
 doors, and `Caps` carries no hotplug flag although `DESIGN.md` says it
@@ -851,10 +855,10 @@ answer, so it has to arrive as data a console can render), rustkube#59 (no SelfS
 viewer, and deciding whether to show an action before it 403s is
 impossible), stormdrive#3 (bay and controller live only in the rendered
 `detail` string, so a UI has to regex prose to place a drive in a
-chassis). Still waiting: rustkube#55 + rustkube-node#34 (pod logs — and
-with them a VM's serial, which the kubelet already writes to the pod log),
-stormblock-registry#5 (raw media, and with it VM disk import), stormpump#11
-(Cilium metrics, Hubble, relay), and stormvm's own console service.
+chassis). Since delivered: rustkube#55 + rustkube-node#34 (pod logs,
+#12), stormblock-registry#5 (media import, #44), stormpump#11 (Hubble
+relay, #4), rustkube#59 (access reviews, #45) and stormvm's console
+service (v0.10.0).
 
 2026-09-02: stormcast#1 (repetition collapse compares raw lines, so
 tracing's leading timestamp defeats it — one looping service put 10,920

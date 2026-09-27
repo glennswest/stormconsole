@@ -153,8 +153,9 @@ Every key and default: README §Configuration.
 
 - Scale a workload; cordon, uncordon, drain a node — **#36**
 - Fleet lifecycle: join, promote, demote, drain — no API (**stormcos#38**)
-- Pod logs — nothing serves them (rustkube#55 / rustkube-node#34)
-- Cilium flows and Hubble — **stormpump#11** (#4)
+- A pod page with its logs — served upstream, not shown yet (**#12**)
+- Cilium flows and Hubble — shipped in the image, not read yet (**#4**)
+- Import a VM disk by URL — the registry serves it (**#44**)
 - VM metrics over time — cadvisor not wired (**#14**)
 - Users and groups without a file, certificate identity, audit — **#15**
 - Remote plugins — a component contributing its own UI — designed only
@@ -170,8 +171,8 @@ Open, and why it matters:
   the console does not serve: stormd can restart a healthy console.
 - **stormcos#94** — v18 engines need their token: until it is wired,
   Storage reads 401 on a node.
-- **rustkube#100** — a deleted custom resource stays on a watching
-  console (stopped VMs, deleted snapshots).
+- **#42** (a decision) — SSH keys live in `default`, where a
+  project-only user cannot write them.
 - **#35** — the registry plugin sends no credential.
 - Upstream data still coming: fastetcd#28/#29, stormdrive#12, stormvm#16,
   #41, #45.

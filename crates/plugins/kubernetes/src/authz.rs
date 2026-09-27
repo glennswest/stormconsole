@@ -14,9 +14,9 @@
 //! 2. RBAC makes that all-or-nothing — a user with access to one
 //!    namespace and no cluster-wide `list namespaces` gets a `403`, not a
 //!    short list. Upstream solves this with `SelfSubjectAccessReview`,
-//!    which rustkube does not serve (filed there). Until it does, a `403`
-//!    falls back to asking about each namespace the console already knows
-//!    of, one request each.
+//!    which rustkube serves since v0.9.0 (rustkube#59) and this module
+//!    does not ask yet (#45). Until it does, a `403` falls back to asking
+//!    about each namespace the console already knows of, one request each.
 //!
 //!    The question asked has to be one RBAC can actually answer for a
 //!    namespaced user: **not** `GET /api/v1/namespaces/{ns}`, because a

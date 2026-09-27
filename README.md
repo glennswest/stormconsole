@@ -32,6 +32,15 @@ create forms and a slice of the component feed every page is drawn from.
 | fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served | compact, defragment, disarm, snapshot (admin) |
 | stormipmi (`ipmi`) | stormipmi (:9097) Machines API | Hardware → Machines: by service tag, BMC, power, the release each boots, default image, adopt, SOL console | power, set release/default, test mark, adopt (admin) |
 
+**Claims.** A PersistentVolumeClaim of the built-in `stormblock` class
+(provisioner `stormblock.storm.io`, binding `WaitForFirstConsumer`) is
+served by the **built-in stormblock driver**: the node's own kubelet clones
+and attaches it through its stormblock engine — no CSI. Every other class
+goes through its CSI driver. The console shows the claim in its project
+("Pending — provisioned when a pod or VM uses it" until something does,
+with Attach to a VM) and the engine volume under Storage → Volumes with
+the claim as its consumer.
+
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
 `#/vm/<ns>/<name>` · `#/images` · `#/machines` · `#/drives` (`?group=shelf`) ·
@@ -144,7 +153,8 @@ did not answer.
 | `GET /readyz` | `{health, plugins}`; **503** when overall health is Error |
 | `GET /api/version` | `{console, release}` — the release from the nodes' `osImage` |
 | `GET /api/summary` | the stormd plugin card |
-| metrics | **none**; there is no `/metrics` |
+| metrics | **none** — `/metrics` is not a route and falls through to the app with 200 HTML (#41) |
+| unknown `/api/…`, `/ws/…` | JSON **404** `{"error": "no such route: …"}`; any other path is the app |
 
 ## Authentication and roles
 
@@ -195,13 +205,18 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 
 ## Not done, and why
 
-- **Pod logs** — nothing serves `kubectl logs` for ordinary pods
-  (rustkube#55, rustkube-node#34, closed as duplicates of stormvm#5).
+- **A pod page** (#12) — pod logs are served upstream (rustkube v0.8.1
+  `pods/{name}/log`, streamed by rustkube-node v0.3.0) and the console does
+  not show them yet; a terminal also waits on the kubelet answering exec
+  (rustkube-node#56).
 - **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
   with no API (stormcos#38); the console offers none.
 - **Scale a workload, cordon/uncordon and drain a node** — not built (#36).
-- **Cilium flows, Hubble, agent metrics** — stormpump#11 (#4).
-- **VM metrics over time** — cadvisor is not wired (#14); **VM hotplug and
+- **Cilium flows, Hubble, agent metrics** — the image ships them
+  (stormpump#11, closed); the console does not read them yet (#4).
+- **VM metrics over time** — cadvisor is not wired (#14; per-VM stats
+  keyed to the VMI are cadvisor#15); **importing a VM disk** — sbregistry's
+  media path is served (v0.19.0) and the console does not offer it (#44); **VM hotplug and
   memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —
   stormvm#41; **VMs on the pod network** (and so isolation covering them) —
   stormvm#16; **snapshot step, disks, size** — stormvm#45.
@@ -209,8 +224,15 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   gateway (fastetcd#28); traffic counters (fastetcd#29).
 - **Per-drive usage on other nodes** — stormdrive#12 (this node's comes from
   its engine).
-- **Watch deletes of custom resources** — rustkube#100: a deleted VM
-  instance or snapshot stays on a watching console until it relists.
+- **Watch deletes of custom resources** need rustkube ≥ v0.15.2
+  (rustkube#100): against an older apiserver a deleted VM instance or
+  snapshot stays on a watching console until it relists.
+- **Actions the viewer may not take are still offered** and answered by
+  the apiserver's 403; rustkube serves `SelfSubjectRulesReview` (v0.9.0)
+  and the console does not ask it yet (#45).
+- **Where SSH keys live** — `[vm] ssh_keys_namespace` defaults to
+  `default`, a system namespace where a project-only user cannot write
+  (#42, a decision).
 - **Registry reads carry no credential** — a registry with an auth file and
   no anonymous pull answers the console 401 (#35).
 - **Users and groups without editing a file, certificate identity, audit**
