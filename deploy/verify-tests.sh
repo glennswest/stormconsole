@@ -104,10 +104,15 @@ say "medium"
 run medium r2
 say "the apiserver under 25 concurrent Service creates (what a wave does), by curl"
 curl -sf -X POST "$API/api/v1/namespaces" -H 'content-type: application/json' -d '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"probe"}}' >/dev/null
+# Only these curls are waited on: a bare `wait` would wait on the
+# datastore, the apiserver and the console, which never exit.
+pids=()
 for i in $(seq 1 25); do
   curl -s -o /dev/null -w "%{http_code} %{time_total}\n" -m 60 -X POST "$API/api/v1/namespaces/probe/services" -H 'content-type: application/json' \
-    -d "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"name\":\"p$i\"},\"spec\":{\"ports\":[{\"port\":80}]}}" &
-done > "$W/probe.txt"; wait
+    -d "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"name\":\"p$i\"},\"spec\":{\"ports\":[{\"port\":80}]}}" >> "$W/probe.txt" &
+  pids+=($!)
+done
+wait "${pids[@]}" || true
 sort "$W/probe.txt" | uniq -c | awk '{print "  ", $0}' | head -8
 awk '{if ($2>m) m=$2} END {print "   slowest:", m, "s"}' "$W/probe.txt"
 for i in $(seq 1 3); do
