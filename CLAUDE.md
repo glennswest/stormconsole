@@ -795,6 +795,25 @@ through the engine), CSI only for other classes.
       SelfSubjectAccessReview; RBAC-aware actions), #42 (keys home)
 - [x] Changelog; sc-build (exit 0, 4f80ff7); close #40
 
+### Lifecycle from every phase (#37)
+Filed from stormvm#21: Restart/Stop were enabled only from `Running`, so a
+machine whose start failed, or stuck in `Scheduling`, could not be
+restarted from its row — exactly when a restart is wanted.
+
+- [ ] Row actions: Restart, Stop and Start from every phase. Stop disabled
+      only when already stopped, Start only when running. A bare instance
+      (no definition) keeps Restart/Start disabled with the reason; its
+      Stop is the delete it always was
+- [ ] Handlers made true to that: Start from a failed/stuck instance
+      replaces it (running=true + the instance deleted); Restart sets
+      running=true before deleting the instance, so it also recovers a
+      definition wanting nothing; Stop sets running=false and deletes a
+      lingering instance
+- [ ] A defined machine's Stop goes through the definition (it deleted the
+      instance, which the definition then put back)
+- [ ] `status.message` beside Failed on the row (reason and message both)
+- [ ] Tests, changelog, docs; sc-build; live check; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
