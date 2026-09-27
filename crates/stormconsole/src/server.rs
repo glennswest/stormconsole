@@ -249,8 +249,16 @@ async fn push_snapshots(mut socket: WebSocket, state: AppState, viewer: Viewer) 
 struct Assets;
 
 /// Embedded SPA with index fallback — every non-API path is the app.
+///
+/// An API path nothing serves is a 404, not the app: `/api/plugins/<a
+/// plugin that is off>/…` answered 200 with the page's HTML, which a client
+/// reads as success and then fails to parse (#27's medium suite found it).
 async fn spa(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
+    if path == "api" || path.starts_with("api/") || path == "ws" || path.starts_with("ws/") {
+        return (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"error": format!("no such route: /{path}")})))
+            .into_response();
+    }
     let path = if path.is_empty() { "index.html" } else { path };
     let file = Assets::get(path).or_else(|| Assets::get("index.html"));
     match file {

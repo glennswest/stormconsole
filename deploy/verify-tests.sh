@@ -17,7 +17,13 @@ RUSTKUBE_VER=${RUSTKUBE_VER:-v0.15.0}
 FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
 mkdir -p "$HOME/scratch"
 W=$(mktemp -d "$HOME/scratch/verify-tests.XXXXXX")
-cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$W"; }
+cleanup() {
+  kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true
+  # Rootless podman's storage is owned by sub-UIDs: removed from inside its
+  # own user namespace, or not at all.
+  [ -d "$W/podman" ] && podman unshare rm -rf "$W/podman" "$W/podman-run" 2>/dev/null || true
+  rm -rf "$W"
+}
 trap cleanup EXIT
 say() { printf '\n=== %s\n' "$*"; }
 ROOT=$PWD
@@ -74,7 +80,8 @@ for line in open(sys.argv[1]):
         print("   summary", d["summary"])
         continue
     extra = {k: v for k, v in d.items() if k not in ("test", "status", "ms", "detail")}
-    print("   %-4s %-30s %6s ms  %s%s" % (d["status"], d["test"], d["ms"], d["detail"][:110], ("  " + json.dumps(extra)) if extra else ""))
+    detail = d["detail"] if d["status"] == "fail" else d["detail"][:110]
+    print("   %-4s %-30s %6s ms  %s%s" % (d["status"], d["test"], d["ms"], detail, ("  " + json.dumps(extra)) if extra else ""))
 PY
   echo "   exit $code"
   printf '   left in %s: ' "$ns"
@@ -86,6 +93,20 @@ say "short"
 run short r1
 say "medium"
 run medium r2
+say "the apiserver under 25 concurrent Service creates (what a wave does), by curl"
+curl -sf -X POST "$API/api/v1/namespaces" -H 'content-type: application/json' -d '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"probe"}}' >/dev/null
+for i in $(seq 1 25); do
+  curl -s -o /dev/null -w "%{http_code} %{time_total}\n" -m 60 -X POST "$API/api/v1/namespaces/probe/services" -H 'content-type: application/json' \
+    -d "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"name\":\"p$i\"},\"spec\":{\"ports\":[{\"port\":80}]}}" &
+done > "$W/probe.txt"; wait
+sort "$W/probe.txt" | uniq -c | awk '{print "  ", $0}' | head -8
+awk '{if ($2>m) m=$2} END {print "   slowest:", m, "s"}' "$W/probe.txt"
+for i in $(seq 1 3); do
+  curl -s -o /dev/null -w "   sequential create: %{http_code} %{time_total}s\n" -m 60 -X POST "$API/api/v1/namespaces/probe/services" -H 'content-type: application/json' \
+    -d "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"name\":\"s$i\"},\"spec\":{\"ports\":[{\"port\":80}]}}"
+done
+tail -5 "$W/api.log" | sed 's/^/   apiserver: /'
+
 say "long (a short night: 4 minutes, waves of 40)"
 run long r3 STORM_TIMEOUT=240 STORMCONSOLE_TEST_WAVE=40
 
