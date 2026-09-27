@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.21.0] — 2026-09-27
+
 ### 2026-09-27
 - **test:** short, medium and long test containers per the stormcos test
   standard (#27): `test/` (its own crate and lock), `test/build.sh`,

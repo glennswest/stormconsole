@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.20.1**
+Current: **0.21.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)

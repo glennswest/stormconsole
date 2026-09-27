@@ -13,7 +13,7 @@ One Rust binary, the browser app inside it, on **:9094**.
 It shows a StormCOS cluster as it is, and acts on it through each
 component's own API.
 
-v0.20.1 · `npx @marp-team/marp-cli docs/presentation.md`
+v0.21.0 · `npx @marp-team/marp-cli docs/presentation.md`
 
 ---
 
@@ -163,7 +163,7 @@ Every key and default: README §Configuration.
 
 ## Status and what matters
 
-**0.20.1**, every page live-verified against its real upstream.
+**0.21.0**, every page live-verified against its real upstream.
 
 Open, and why it matters:
 - **stormcos#102** — the golden's liveness path is `/admin/healthz`, which

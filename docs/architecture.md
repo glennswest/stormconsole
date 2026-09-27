@@ -12,7 +12,7 @@ rustkube-node (kubelet/kube-proxy/CNI). This console talks to no other.
 
 This document is the design. Where the code does not do something yet it
 says so, and names the issue; everything else here is what the code does
-(v0.20.1). The README is the operational reference — config, ports, auth.
+(v0.21.0). The README is the operational reference — config, ports, auth.
 
 ## What the console is (and is not)
 

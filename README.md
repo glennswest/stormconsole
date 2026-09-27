@@ -9,7 +9,7 @@ component's own API. Every domain is a **plugin**; the host knows none of
 them. The orchestrator is rustkube (+ rustkube-node) only.
 
 It is a view of real running nodes, never an installer (stormcos
-`docs/CLUSTER.md`). Version **0.20.1**. Design: [docs/architecture.md](docs/architecture.md).
+`docs/CLUSTER.md`). Version **0.21.0**. Design: [docs/architecture.md](docs/architecture.md).
 In eleven slides: [docs/presentation.md](docs/presentation.md) (Marp —
 `npx @marp-team/marp-cli docs/presentation.md`).
 
@@ -220,6 +220,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 
 ## Status
 
-0.20.1. Every page above is live-verified against the real upstream (or,
+0.21.0. Every page above is live-verified against the real upstream (or,
 for the drives rack, 1,600 stand-in drives over real transport); see
 [CHANGELOG.md](CHANGELOG.md) and the work plan in [CLAUDE.md](CLAUDE.md).
