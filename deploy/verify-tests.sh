@@ -116,13 +116,17 @@ wait "${pids[@]}" || true
 sort "$W/probe.txt" | uniq -c | awk '{print "  ", $0}' | head -8
 awk '{if ($2>m) m=$2} END {print "   slowest:", m, "s"}' "$W/probe.txt"
 for i in $(seq 1 3); do
-  curl -s -o /dev/null -w "   sequential create: %{http_code} %{time_total}s\n" -m 60 -X POST "$API/api/v1/namespaces/probe/services" -H 'content-type: application/json' \
+  curl -s -o /dev/null -w "   sequential ConfigMap create: %{http_code} %{time_total}s\n" -m 60 -X POST "$API/api/v1/namespaces/probe/configmaps" -H 'content-type: application/json' \
+    -d "{\"apiVersion\":\"v1\",\"kind\":\"ConfigMap\",\"metadata\":{\"name\":\"c$i\"},\"data\":{\"a\":\"b\"}}"
+done
+for i in $(seq 1 3); do
+  curl -s -o /dev/null -w "   sequential Service create: %{http_code} %{time_total}s\n" -m 60 -X POST "$API/api/v1/namespaces/probe/services" -H 'content-type: application/json' \
     -d "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"name\":\"s$i\"},\"spec\":{\"ports\":[{\"port\":80}]}}"
 done
 tail -n 5 "$W/api.log" | sed 's/^/   apiserver: /'
 
-say "long (a short night: 4 minutes, waves of 40)"
-run long r3 STORM_TIMEOUT=240 STORMCONSOLE_TEST_WAVE=40
+say "long (a short night: 7 minutes, waves of 30)"
+run long r3 STORM_TIMEOUT=420 STORMCONSOLE_TEST_WAVE=30
 
 say "edges"
 echo " no console on the node:"; run short r4 STORMCONSOLE_URL=http://127.0.0.1:9

@@ -20,7 +20,9 @@ pub struct Kube {
 
 impl Kube {
     pub fn new(env: &Env) -> Result<Kube, String> {
-        let mut b = reqwest::Client::builder().timeout(Duration::from_secs(30));
+        // Generous: a busy apiserver is not what these suites measure, and one
+        // slow create is not the console failing.
+        let mut b = reqwest::Client::builder().timeout(Duration::from_secs(120));
         if let Some(ca) = &env.ca {
             let cert = reqwest::Certificate::from_pem(ca).map_err(|e| format!("ServiceAccount ca.crt: {e}"))?;
             b = b.add_root_certificate(cert);

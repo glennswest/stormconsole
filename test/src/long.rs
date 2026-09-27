@@ -20,10 +20,20 @@ use crate::Ctx;
 /// 300 ms is not a baseline a scheduler hiccup should fail against.
 const SLOWDOWN: f64 = 3.0;
 const FLOOR_MS: u128 = 5_000;
+/// Creates and deletes in flight at once. Kept low: rustkube serializes
+/// Service creates (~1.5 s each, rustkube#103), and what is measured here is
+/// the console following the cluster, not how fast the apiserver takes a
+/// burst.
+const IN_FLIGHT: usize = 5;
 
 struct Wave {
     n: usize,
     size: usize,
+    /// How long the apiserver took to take the wave, and to delete it —
+    /// reported beside the console's numbers, not judged here.
+    make_ms: u128,
+    delete_ms: u128,
+    /// From the last create returning to the console showing all of them.
     appear_ms: u128,
     drain_ms: u128,
     feed_ms: u128,
@@ -57,7 +67,7 @@ pub async fn run(ctx: &Ctx, r: &mut Report) {
     let mut n = 0;
     loop {
         // Leave room for one more wave like the slowest so far, and cleanup.
-        let slowest = waves.iter().map(|w| w.appear_ms + w.drain_ms).max().unwrap_or(0);
+        let slowest = waves.iter().map(|w| w.make_ms + w.delete_ms + w.appear_ms + w.drain_ms).max().unwrap_or(0);
         let need = Duration::from_millis((slowest * 2) as u64) + Duration::from_secs(60);
         if !waves.is_empty() && ctx.env.remaining() < need {
             break;
@@ -84,7 +94,8 @@ pub async fn run(ctx: &Ctx, r: &mut Report) {
                         Outcome::Fail(format!("{} left behind after the drain", w.residue))
                     },
                     t.elapsed().as_millis(),
-                    Some(json!({"wave": w.n, "size": w.size, "appear_ms": w.appear_ms as u64, "drain_ms": w.drain_ms as u64,
+                    Some(json!({"wave": w.n, "size": w.size, "make_ms": w.make_ms as u64, "delete_ms": w.delete_ms as u64,
+                                "appear_ms": w.appear_ms as u64, "drain_ms": w.drain_ms as u64,
                                 "feed_ms": w.feed_ms as u64, "feed_bytes": w.feed_bytes, "residue": w.residue})),
                 );
                 waves.push(w);
@@ -115,7 +126,7 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
     let wait = ctx.env.seen_wait + Duration::from_millis(size as u64 * 50);
 
     let t = Instant::now();
-    for chunk in names.chunks(25) {
+    for chunk in names.chunks(IN_FLIGHT) {
         let made = join_all(chunk.iter().map(|m| {
             let (path, obj) = (ctx.kube.services(), ctx.kube.service(m));
             async move { ctx.kube.create(&path, &obj).await }
@@ -125,6 +136,8 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
             return Err(format!("making the wave: {e}"));
         }
     }
+    let make_ms = t.elapsed().as_millis();
+    let t = Instant::now();
     ctx.console
         .until(wait, |f| {
             let have: std::collections::HashSet<&str> = f.iter().filter_map(|c| c["id"].as_str()).collect();
@@ -141,7 +154,7 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
     let feed_bytes = full.text.len();
 
     let t = Instant::now();
-    for chunk in names.chunks(25) {
+    for chunk in names.chunks(IN_FLIGHT) {
         let gone = join_all(chunk.iter().map(|m| {
             let path = format!("{}/{m}", ctx.kube.services());
             async move { ctx.kube.delete(&path).await }
@@ -151,6 +164,8 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
             return Err(format!("draining the wave: {e}"));
         }
     }
+    let delete_ms = t.elapsed().as_millis();
+    let t = Instant::now();
     let drained = ctx
         .console
         .until(wait, |f| !f.iter().any(|c| c["id"].as_str().is_some_and(|i| ids.iter().any(|x| x == i))))
@@ -165,7 +180,7 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
     if drained.is_err() && shown == 0 && held == 0 {
         return Err("the drain timed out, then cleared".into());
     }
-    Ok(Wave { n, size, appear_ms, drain_ms, feed_ms, feed_bytes, residue: shown + held })
+    Ok(Wave { n, size, make_ms, delete_ms, appear_ms, drain_ms, feed_ms, feed_bytes, residue: shown + held })
 }
 
 /// The verdict across waves: slower than the first, or anything left.
