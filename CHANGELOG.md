@@ -4,6 +4,16 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-09-27
+- **fix:** VM Restart, Stop and Start are offered from every phase, not
+  only `Running` — a machine whose start failed, or stuck scheduling, can
+  be restarted from its row (#37, from stormvm#21). Stop is disabled only
+  when the machine is stopped, Start only while it runs. The verbs are made
+  true from every phase: Start from a failed or stuck instance replaces
+  it; Restart writes `running: true` before deleting the instance, so it
+  also brings up a stopped machine; Stop writes `running: false` and
+  deletes a lingering instance. A defined machine's Stop now goes through
+  its definition (it deleted the instance, which the definition put
+  straight back). A Failed row shows `status.message` beside the reason
 - **docs:** refreshed from the code and the upstreams as they are today
   (#40). Config keys, defaults and ports re-checked against `config.rs`:
   unchanged. Corrected:

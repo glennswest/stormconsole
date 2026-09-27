@@ -30,6 +30,7 @@ pub mod disks;
 pub mod images;
 pub mod keys;
 mod keystore;
+pub mod lifecycle;
 pub mod network;
 pub mod settings;
 pub mod snapshots;
@@ -508,34 +509,72 @@ fn from_apiserver(status: reqwest::StatusCode, body: Value, done: &str) -> Respo
     (StatusCode::BAD_GATEWAY, Json(json!({"error": msg}))).into_response()
 }
 
-/// Start and stop are one field. KubeVirt's `spec.running` is the switch;
-/// writing it is the whole of a VM's lifecycle on the apiserver side, and
-/// what acts on it is the cluster's business, not the console's.
-async fn set_running(
+/// Start, stop and restart, from every phase (#37). What each does is
+/// [`lifecycle::plan`]; this carries it out, as the viewer, so the
+/// apiserver's RBAC decides whether they may — not the console's standing.
+///
+/// Whether the machine is defined, and the phase of its instance, come
+/// from the watch. A stale answer costs little: the switch is written to a
+/// definition that is not there (the apiserver's 404, passed on), or the
+/// instance delete finds nothing, which is not an error.
+async fn lifecycle_verb(
     inner: &Inner,
     viewer: &Viewer,
     ns: &str,
     name: &str,
-    running: bool,
+    verb: lifecycle::Verb,
 ) -> Response {
     if let Some(refusal) = refuse_hidden(inner, viewer, ns).await {
         return refusal;
     }
     let Some(client) = &inner.client else { return no_apiserver() };
-    let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
-    // Carried as the viewer, so the apiserver's RBAC decides whether they
-    // may start it — not the console's own standing.
-    match client
-        .patch_merge(&path, &json!({"spec": {"running": running}}), viewer.token.as_deref())
-        .await
-    {
-        Ok((status, body)) => from_apiserver(
-            status,
-            body,
-            if running { "start requested" } else { "stop requested" },
-        ),
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    let key = format!("{ns}/{name}");
+    let defined = inner.store.object("vm", &key).await.is_some();
+    let instance = inner.store.object("vmi", &key).await;
+    let phase = instance
+        .as_ref()
+        .map(|o| o.pointer("/status/phase").and_then(Value::as_str).unwrap_or("Unknown"));
+    let plan = match lifecycle::plan(verb, ns, name, defined, phase) {
+        Ok(p) => p,
+        Err(why) => return (StatusCode::CONFLICT, Json(json!({"error": why}))).into_response(),
+    };
+    // The switch first: an instance deleted under a definition that still
+    // says "running" comes straight back, which is a restart and not a stop.
+    if let Some(running) = plan.running {
+        let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
+        match client
+            .patch_merge(&path, &json!({"spec": {"running": running}}), viewer.token.as_deref())
+            .await
+        {
+            Ok((status, _)) if status.is_success() => {}
+            Ok((status, body)) => return from_apiserver(status, body, ""),
+            Err(e) => {
+                return (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response()
+            }
+        }
     }
+    if plan.delete_instance {
+        match client
+            .delete(
+                &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
+                viewer.token.as_deref(),
+            )
+            .await
+        {
+            Ok(s) if s.is_success() || (s == reqwest::StatusCode::NOT_FOUND && plan.running.is_some()) => {}
+            Ok(s) => {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({"error": format!("apiserver returned {}", s.as_u16())})),
+                )
+                    .into_response()
+            }
+            Err(e) => {
+                return (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response()
+            }
+        }
+    }
+    Json(json!({"message": lifecycle::done(verb, ns, name, &plan, phase)})).into_response()
 }
 
 async fn start(
@@ -543,7 +582,7 @@ async fn start(
     viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
-    set_running(&inner, &viewer, &ns, &name, true).await
+    lifecycle_verb(&inner, &viewer, &ns, &name, lifecycle::Verb::Start).await
 }
 
 async fn stop(
@@ -551,7 +590,7 @@ async fn stop(
     viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
-    set_running(&inner, &viewer, &ns, &name, false).await
+    lifecycle_verb(&inner, &viewer, &ns, &name, lifecycle::Verb::Stop).await
 }
 
 /// Restart is the instance deleted out from under a definition that wants
@@ -567,46 +606,7 @@ async fn restart(
     viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
-    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
-        return refusal;
-    }
-    let Some(client) = &inner.client else { return no_apiserver() };
-    let defined = client
-        .get_as(
-            &format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}"),
-            viewer.token.as_deref(),
-        )
-        .await
-        .is_ok();
-    if !defined {
-        return (
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": format!(
-                    "{ns}/{name} has no VirtualMachine defining it — stopping the instance would \
-                     not bring it back, so there is nothing to restart"
-                )
-            })),
-        )
-            .into_response();
-    }
-    match client
-        .delete(
-            &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
-            viewer.token.as_deref(),
-        )
-        .await
-    {
-        Ok(s) if s.is_success() => {
-            Json(json!({"message": format!("{ns}/{name} restarting")})).into_response()
-        }
-        Ok(s) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({"error": format!("apiserver returned {}", s.as_u16())})),
-        )
-            .into_response(),
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
-    }
+    lifecycle_verb(&inner, &viewer, &ns, &name, lifecycle::Verb::Restart).await
 }
 
 async fn delete_machine(
@@ -674,27 +674,15 @@ async fn delete_machine(
 /// Stopping an instance is deleting it. There is no other verb: a VMI is
 /// the running machine, and nothing about it survives being stopped
 /// except its definition, if it has one.
+/// Stop from the instance's side. The same verb as the machine's Stop —
+/// a defined machine is stopped through its definition, because deleting
+/// only the instance of one that wants to run is a restart (#37).
 async fn delete_instance(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
     Path((ns, name)): Path<(String, String)>,
 ) -> Response {
-    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
-        return refusal;
-    }
-    let Some(client) = &inner.client else { return no_apiserver() };
-    match client
-        .delete(
-            &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
-            viewer.token.as_deref(),
-        )
-        .await
-    {
-        Ok(s) if s.is_success() => Json(json!({"message": format!("{ns}/{name} stopped")})).into_response(),
-        Ok(s) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", s.as_u16())})))
-            .into_response(),
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
-    }
+    lifecycle_verb(&inner, &viewer, &ns, &name, lifecycle::Verb::Stop).await
 }
 
 /// The verbs stormvm serves beside the doors: `pause`, `unpause`,

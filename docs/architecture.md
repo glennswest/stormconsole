@@ -663,6 +663,22 @@ answer. Stopping an instance that nothing will restart is destructive and
 is published `danger`, which is what keeps it behind the row menu beside
 Delete.
 
+All three are offered from **every phase** (#37): a machine whose start
+failed, or that sits in `Scheduling`, is exactly the one somebody wants to
+restart. Stop is disabled only when the machine is already stopped (no
+instance, and the definition does not ask to run), Start only while it is
+`Running`. KubeVirt has two levers, `spec.running` and deleting the
+instance, and each verb is some of both (`vm/src/lifecycle.rs`): Start
+writes `running: true` and, from a Failed/Succeeded/stuck instance, deletes
+it so the definition makes a fresh one; Restart writes `running: true`
+then deletes the instance whatever its phase, so it also brings up a
+stopped definition; Stop writes `running: false` then deletes the
+instance, so a Failed one does not linger under a machine that says
+stopped. A defined machine is always stopped through its definition —
+deleting only the instance of one that wants to run is a restart. A
+Failed row carries the kubelet's `status.reason` and `status.message`
+both, so the reason is on the row.
+
 **The verbs beside the doors.** stormvm serves `pause`, `unpause`,
 `softreboot`, `reset`, `freeze` and `thaw`, and reports per machine which
 of them it can take — `control.lifecycle` for the control socket,

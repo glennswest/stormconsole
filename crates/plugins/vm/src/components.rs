@@ -147,9 +147,15 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         let mut detail = vec![phase.to_string()];
         // A VM that would not start says why here rather than in a log on
         // a node with no shell — the kubelet writes the reason.
-        if let Some(msg) = s(obj, "/status/reason").or_else(|| s(obj, "/status/message")) {
-            if phase != "Running" {
-                detail.push(msg.to_string());
+        //
+        // Both halves: `reason` is the one-word class and `message` the
+        // sentence that says what went wrong, and a Failed row that shows
+        // only the first sends somebody looking for the second (#37).
+        if phase != "Running" {
+            for msg in [s(obj, "/status/reason"), s(obj, "/status/message")].into_iter().flatten() {
+                if !msg.is_empty() && !detail.iter().any(|d| d == msg) {
+                    detail.push(msg.to_string());
+                }
             }
         }
 
@@ -262,33 +268,29 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         }
         // On the row, so the common things do not need a detail view first.
         //
-        // Stopping a running instance is deleting the instance: there is no
-        // other verb, and nothing about a VMI survives being stopped except
-        // its definition, if it has one. So "stop" is destructive for an
-        // instance applied on its own — there is nothing left to start it
-        // again — and ordinary for one a VirtualMachine defines.
+        // From every phase (#37). These were offered only from `Running`,
+        // so a machine whose start had failed, or that sat scheduling for
+        // ever, could not be restarted from its row -- exactly when a
+        // restart is wanted. What each verb does from each phase is
+        // `lifecycle::plan`; the row only says which are meaningful. An
+        // instance exists, so the machine is not stopped: Stop is always
+        // there, and Start is there whenever it is not running.
         //
-        // Restart is the same delete with the definition present to put the
-        // machine back; without one it is a delete wearing a reassuring
-        // name, so it is offered disabled rather than not at all, because
-        // "why can I not restart this" is a question the row should answer.
+        // Without a definition there is nothing to start it from and
+        // nothing to put it back, so Start and Restart are offered
+        // disabled rather than not at all -- "why can I not restart this"
+        // is a question the row should answer -- and Stop, which deletes
+        // the only thing there is, is marked destructive.
+        let machine = |v: &str| format!("/api/plugins/vm/machines/{ns}/{name}/{v}");
+        let stop_path = if defined {
+            machine("stop")
+        } else {
+            format!("/api/plugins/vm/instances/{ns}/{name}/stop")
+        };
         c.actions = vec![
-            action(
-                "restart",
-                "Restart",
-                "POST",
-                format!("/api/plugins/vm/machines/{ns}/{name}/restart"),
-                defined && phase == "Running",
-                false,
-            ),
-            action(
-                "stop",
-                "Stop",
-                "POST",
-                format!("/api/plugins/vm/instances/{ns}/{name}/stop"),
-                phase == "Running",
-                !defined,
-            ),
+            action("start", "Start", "POST", machine("start"), defined && phase != "Running", false),
+            action("restart", "Restart", "POST", machine("restart"), defined, false),
+            action("stop", "Stop", "POST", stop_path, true, !defined),
         ];
         // The verbs the hypervisor itself serves, offered only where
         // stormvm reports the machine can take them.
@@ -445,15 +447,16 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         if let Some(m) = memory(&domain) {
             c.metrics.push(Metric::new("memory", m));
         }
-        if live {
-            c.relations.push(Relation::has_one("instance", format!("vm:instance:{key}")));
-        }
+        // No instance, so from here Start and Restart both bring one up
+        // (#37); Stop is there while the definition still asks to run —
+        // a machine waiting for an instance that never comes is stopped by
+        // saying so, and one already stopped has nothing to stop.
         c.actions.push(action(
             "start",
             "Start",
             "POST",
             format!("/api/plugins/vm/machines/{key}/start"),
-            !live,
+            true,
             false,
         ));
         c.actions.push(action(
@@ -461,7 +464,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             "Restart",
             "POST",
             format!("/api/plugins/vm/machines/{key}/restart"),
-            live,
+            true,
             false,
         ));
         c.actions.push(action(
@@ -469,7 +472,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             "Stop",
             "POST",
             format!("/api/plugins/vm/machines/{key}/stop"),
-            live || running == Some(true),
+            running == Some(true),
             true,
         ));
         c.actions.push(action(
@@ -602,7 +605,7 @@ mod tests {
         let sn = snap("vmi", "default/web-1", json!({"status": {"phase": "Running"}}));
         let acts = &map(&sn)[0].actions;
         let ids: Vec<&str> = acts.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, vec!["restart", "stop", "delete"]);
+        assert_eq!(ids, vec!["start", "restart", "stop", "delete"]);
         assert_eq!(ids.len(), ids.iter().collect::<std::collections::HashSet<_>>().len());
     }
 
@@ -633,6 +636,72 @@ mod tests {
         assert!(!m.actions.iter().find(|a| a.id == "stop").unwrap().danger);
     }
 
+    /// A machine whose start failed is the one a restart is wanted for
+    /// (#37): Restart, Start and Stop are all offered from Failed, through
+    /// the definition, and the row says why it failed in full.
+    #[test]
+    fn a_failed_machine_can_be_restarted_from_its_row() {
+        for phase in ["Failed", "Scheduling", "Pending", "Succeeded"] {
+            let mut sn = snap("vm", "web/vm1", json!({"spec": {"running": true}}));
+            sn.insert(
+                "vmi",
+                HashMap::from([(
+                    "web/vm1".to_string(),
+                    json!({"status": {"phase": phase, "reason": "Error",
+                                      "message": "qemu exited 1: could not open disk root"}}),
+                )]),
+            );
+            let out = map(&sn);
+            let m = out.iter().find(|c| c.id == "vm:machine:web/vm1").unwrap();
+            let act = |id: &str| m.actions.iter().find(|a| a.id == id).unwrap();
+            for id in ["start", "restart", "stop"] {
+                assert!(act(id).enabled, "{id} from {phase}");
+                assert!(!act(id).danger, "{id} from {phase}");
+                assert_eq!(act(id).path, format!("/api/plugins/vm/machines/web/vm1/{id}"));
+            }
+            assert!(m.detail.contains("Error"), "{}", m.detail);
+            assert!(m.detail.contains("qemu exited 1: could not open disk root"), "{}", m.detail);
+        }
+    }
+
+    /// Start is the one verb a running machine does not offer.
+    #[test]
+    fn a_running_machine_offers_restart_and_stop_not_start() {
+        let mut sn = snap("vm", "web/vm1", json!({"spec": {"running": true}}));
+        sn.insert("vmi", HashMap::from([("web/vm1".to_string(), json!({"status": {"phase": "Running"}}))]));
+        let out = map(&sn);
+        let m = out.iter().find(|c| c.id == "vm:machine:web/vm1").unwrap();
+        let on = |id: &str| m.actions.iter().find(|a| a.id == id).unwrap().enabled;
+        assert!(!on("start"));
+        assert!(on("restart") && on("stop"));
+    }
+
+    /// A stopped definition: Start and Restart bring it up, Stop has
+    /// nothing to stop. One waiting for an instance can be told to stop.
+    #[test]
+    fn a_stopped_machine_offers_start_and_restart_not_stop() {
+        let sn = snap("vm", "web/vm1", json!({"spec": {"running": false}}));
+        let m = &map(&sn)[0];
+        let on = |id: &str| m.actions.iter().find(|a| a.id == id).unwrap().enabled;
+        assert!(on("start") && on("restart"));
+        assert!(!on("stop"));
+        let sn = snap("vm", "web/vm1", json!({"spec": {"running": true}}));
+        let m = &map(&sn)[0];
+        assert!(m.actions.iter().find(|a| a.id == "stop").unwrap().enabled);
+    }
+
+    /// A bare instance that failed: nothing to start it from, so Start and
+    /// Restart stay disabled; Stop is the delete, marked as one.
+    #[test]
+    fn a_failed_bare_instance_can_only_be_stopped() {
+        let sn = snap("vmi", "web/vm1", json!({"status": {"phase": "Failed"}}));
+        let m = &map(&sn)[0];
+        let act = |id: &str| m.actions.iter().find(|a| a.id == id).unwrap();
+        assert!(!act("start").enabled && !act("restart").enabled);
+        assert!(act("stop").enabled && act("stop").danger);
+        assert_eq!(act("stop").path, "/api/plugins/vm/instances/web/vm1/stop");
+    }
+
     /// stormvm reports per machine what it can be asked to do; a verb is
     /// offered only where it can actually be served. A button that 404s
     /// makes a client report that *the VM* refused, which sends whoever
@@ -644,7 +713,7 @@ mod tests {
         // No stormvm, or not running this machine: kube verbs only.
         let ids: Vec<String> =
             map(&sn)[0].actions.iter().map(|a| a.id.clone()).collect();
-        assert_eq!(ids, vec!["restart", "stop", "delete"]);
+        assert_eq!(ids, vec!["start", "restart", "stop", "delete"]);
 
         // A control socket, no guest agent.
         let running = Running::from([(
@@ -656,7 +725,7 @@ mod tests {
         let ids: Vec<&str> = c.actions.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(
             ids,
-            vec!["restart", "stop", "softreboot", "pause", "unpause", "reset", "console", "delete"]
+            vec!["start", "restart", "stop", "softreboot", "pause", "unpause", "reset", "console", "delete"]
         );
         // Serial is the only door here, so Console opens it and offers no
         // alternatives — a menu with one entry is a menu nobody wants.
