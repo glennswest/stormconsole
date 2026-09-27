@@ -51,9 +51,11 @@ KA=$(find "$W" -maxdepth 3 -type f -name kube-apiserver -perm -u+x | head -1)
 for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:$EP/health && break; sleep 0.5; done
 "$KA" --bind-addr 127.0.0.1 --secure-port $((B + 1)) --etcd-servers http://127.0.0.1:$EP --insecure true --dev-anonymous-admin true > "$W/api.log" 2>&1 &
 KAPID=$!
-for _ in $(seq 120); do curl -sf -o /dev/null "$API/readyz" && break; sleep 0.5; done
-curl -sf -o /dev/null "$API/readyz" || { echo "the apiserver never became ready"; tail -20 "$W/api.log" "$W/etcd.log"; exit 1; }
-alive() { kill -0 "$KAPID" 2>/dev/null && echo "   apiserver: running" || { echo "   apiserver: DEAD"; tail -15 "$W/api.log" | sed 's/^/   api.log: /'; }; }
+for _ in $(seq 240); do curl -sf -o /dev/null "$API/readyz" && break; sleep 0.5; done
+curl -sf -o /dev/null "$API/readyz" || {
+  echo "the apiserver never became ready (fastetcd :$EP, apiserver :$((B + 1)))"
+  tail -n 20 "$W/api.log" | sed 's/^/  api.log: /'; tail -n 10 "$W/etcd.log" | sed 's/^/  etcd.log: /'; exit 1; }
+alive() { kill -0 "$KAPID" 2>/dev/null && echo "   apiserver: running" || { echo "   apiserver: DEAD"; tail -n 15 "$W/api.log" | sed 's/^/   api.log: /'; }; }
 console() { # port, extra toml
   mkdir -p "$W/c$1"
   { echo "listen_addr = \"127.0.0.1:$1\""; echo "data_dir = \"$W/c$1\""; printf '%s\n' "$2"
@@ -112,7 +114,7 @@ for i in $(seq 1 3); do
   curl -s -o /dev/null -w "   sequential create: %{http_code} %{time_total}s\n" -m 60 -X POST "$API/api/v1/namespaces/probe/services" -H 'content-type: application/json' \
     -d "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"name\":\"s$i\"},\"spec\":{\"ports\":[{\"port\":80}]}}"
 done
-tail -5 "$W/api.log" | sed 's/^/   apiserver: /'
+tail -n 5 "$W/api.log" | sed 's/^/   apiserver: /'
 
 say "long (a short night: 4 minutes, waves of 40)"
 run long r3 STORM_TIMEOUT=240 STORMCONSOLE_TEST_WAVE=40
