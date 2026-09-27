@@ -749,6 +749,25 @@ stormipmi and stormcast — shown, and filed on stormcentral.
 - Rendered with `npx @marp-team/marp-cli@4` through sc-build: 11 slides,
   no unrendered fences. Filed stormcentral#39 (depends_on is 4 of 13)
 
+### Test containers (#27) — in progress 2026-09-27
+stormcentral `docs/test-standard.md`: one image from `test/Containerfile`
+(repo root context), `/test short|medium|long`, `test/build.sh` builds the
+static binary on the build box, JSON lines + exit 0/1/2, everything in the
+run's namespace, labelled `storm.io/test-run`, no machine assumptions.
+Pattern: stormipmi's `test/`.
+
+- [ ] `test/` crate (own workspace): env, report, apiserver + console
+      clients, websocket
+- [ ] short: health, version, SPA, feed, nav, and the main job — a Service
+      made through the apiserver appears in the console's feed and leaves
+- [ ] medium: open/closed surface, plugin cards, creators, websocket push,
+      apply into the project, object YAML, edit + 409, delete through the
+      console, refusals (no project, system namespace, bad YAML, proxy)
+- [ ] long: waves of Services sized from the node's pod capacity —
+      propagation latency, feed size/latency, residue per wave
+- [ ] `test/stormconsole-test.yaml` (Job, RBAC, requires), Containerfile,
+      build.sh; docs; a harness on dev against a real console + rustkube
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
