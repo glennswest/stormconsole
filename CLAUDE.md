@@ -779,6 +779,23 @@ Pattern: stormipmi's `test/`.
   a ConfigMap, serializes, and slows as Services accumulate — the long
   suite paces its creates (5 in flight) and times the console apart
 
+### Docs refresh from the code (2026-09-27) — in progress
+Since 2026-09-18 the code changed only in `server.rs` after the #21 pass
+(unknown `/api/*` and `/ws/*` answer JSON 404). Config keys, defaults and
+ports checked against `config.rs` again: all match. What is stale is the
+**upstream**: pod logs are served (rustkube v0.8.1, rustkube-node v0.3.0),
+rustkube#100 is fixed (v0.15.2), rustkube#59 is served (v0.9.0),
+stormblock-registry#5 shipped (v0.19.0), stormpump#11 closed. Owner's
+description: PVCs are the built-in `stormblock` driver (the node's kubelet
+through the engine), CSI only for other classes.
+
+- [ ] README, architecture, presentation, CLAUDE.md: the above corrected;
+      the 404 behaviour and `/metrics` (#41); claims via the built-in driver
+- [ ] Doc promises the code does not keep → issues: #40 (stale docs,
+      closed by this), #44 (VM disk import is unblocked), #45 (use
+      SelfSubjectAccessReview; RBAC-aware actions), #42 (keys home)
+- [ ] Changelog; sc-build; close #40
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
