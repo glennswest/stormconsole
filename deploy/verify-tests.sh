@@ -27,8 +27,11 @@ cleanup() {
 trap cleanup EXIT
 say() { printf '\n=== %s\n' "$*"; }
 ROOT=$PWD
-P=19108
-API=http://127.0.0.1:26448
+# Ports of its own: other sessions' checks share this box.
+B=$(( 20000 + (RANDOM % 400) * 10 ))
+P=$B
+API=http://127.0.0.1:$((B + 1))
+EP=$((B + 2)); PP=$((B + 3)); MP=$((B + 4)); P2=$((B + 5))
 
 say "build the console, and the test binary with test/build.sh"
 cargo build -q -p stormconsole
@@ -43,11 +46,14 @@ curl -sfL "https://github.com/glennswest/fastetcd/releases/download/$FASTETCD_VE
 curl -sfL "https://github.com/glennswest/rustkube/releases/download/$RUSTKUBE_VER/rustkube-apiserver-$RUSTKUBE_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
 FE=$(find "$W" -maxdepth 3 -type f -name fastetcd -perm -u+x | head -1)
 KA=$(find "$W" -maxdepth 3 -type f -name kube-apiserver -perm -u+x | head -1)
-"$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls http://127.0.0.1:23797 --advertise-client-urls http://127.0.0.1:23797 \
-  --listen-peer-urls http://127.0.0.1:23807 --initial-advertise-peer-urls http://127.0.0.1:23807 --listen-metrics-url 127.0.0.1:23817 > "$W/etcd.log" 2>&1 &
-for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:23797/health && break; sleep 0.5; done
-"$KA" --bind-addr 127.0.0.1 --secure-port 26448 --etcd-servers http://127.0.0.1:23797 --insecure true --dev-anonymous-admin true > "$W/api.log" 2>&1 &
+"$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls http://127.0.0.1:$EP --advertise-client-urls http://127.0.0.1:$EP \
+  --listen-peer-urls http://127.0.0.1:$PP --initial-advertise-peer-urls http://127.0.0.1:$PP --listen-metrics-url 127.0.0.1:$MP > "$W/etcd.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:$EP/health && break; sleep 0.5; done
+"$KA" --bind-addr 127.0.0.1 --secure-port $((B + 1)) --etcd-servers http://127.0.0.1:$EP --insecure true --dev-anonymous-admin true > "$W/api.log" 2>&1 &
+KAPID=$!
 for _ in $(seq 120); do curl -sf -o /dev/null "$API/readyz" && break; sleep 0.5; done
+curl -sf -o /dev/null "$API/readyz" || { echo "the apiserver never became ready"; tail -20 "$W/api.log" "$W/etcd.log"; exit 1; }
+alive() { kill -0 "$KAPID" 2>/dev/null && echo "   apiserver: running" || { echo "   apiserver: DEAD"; tail -15 "$W/api.log" | sed 's/^/   api.log: /'; }; }
 console() { # port, extra toml
   mkdir -p "$W/c$1"
   { echo "listen_addr = \"127.0.0.1:$1\""; echo "data_dir = \"$W/c$1\""; printf '%s\n' "$2"
@@ -85,7 +91,8 @@ for line in open(sys.argv[1]):
 PY
   echo "   exit $code"
   printf '   left in %s: ' "$ns"
-  curl -sf "$API/api/v1/namespaces/$ns/services" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]), "services")'
+  curl -sf -m 10 "$API/api/v1/namespaces/$ns/services" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]), "services")' 2>/dev/null || echo "(the apiserver did not answer)"
+  alive
   [ -s "$W/$suite-$id.err" ] && sed 's/^/   stderr: /' "$W/$suite-$id.err" | head -5 || true
 }
 
@@ -115,10 +122,10 @@ echo " no console on the node:"; run short r4 STORMCONSOLE_URL=http://127.0.0.1:
 echo " the runner forgot STORM_API:"
 set +e; env -i PATH="$PATH" STORM_NAMESPACE=x STORM_RUN_ID=x STORM_NODE=127.0.0.1 "$T" short; echo "   exit $?"; set -e
 H=$(printf pw | "$BIN" --hash-password)
-console 19109 "[api]
+console $P2 "[api]
 auth_token = \"tok\""
-echo " a console with auth on, no token:"; run short r5 STORMCONSOLE_URL=http://127.0.0.1:19109
-echo " the same, with its token:"; run short r6 STORMCONSOLE_URL=http://127.0.0.1:19109 STORMCONSOLE_TOKEN=tok
+echo " a console with auth on, no token:"; run short r5 STORMCONSOLE_URL=http://127.0.0.1:$P2
+echo " the same, with its token:"; run short r6 STORMCONSOLE_URL=http://127.0.0.1:$P2 STORMCONSOLE_TOKEN=tok
 
 say "the image"
 if command -v podman >/dev/null; then
