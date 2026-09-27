@@ -67,6 +67,28 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
 
+## Tests on a node
+
+The stormcos test standard (stormcentral `docs/test-standard.md`): one image
+from `test/Containerfile` (repo root as context; `test/build.sh` builds the
+static binary first), run by stormcentral as a Job in the run's own
+namespace as `/test short|medium|long` — JSON lines on stdout and in
+`/results`, exit 0 all passed, 1 a failure, 2 could not run. The Job and its
+RBAC are `test/stormconsole-test.yaml`.
+
+| Suite | Budget | Proves |
+|---|---|---|
+| `short` | < 2 min | up on the node — health, readiness, version, the app, the feed, the navigation — and its main job: a Service made through the apiserver appears in the console's feed, and leaves it |
+| `medium` | < 30 min | the short suite, then: what is open without a session; every plugin card; the create forms; the websocket pushing a change; YAML into the project, refused with no project, refused when malformed; an object's YAML; an edit, and a stale edit refused (409); events; delete through the console; projects; a VM refused in a system namespace; a proxy kept to its upstream; an unknown API path 404 |
+| `long` | the night | waves of Services sized from the node's allocatable pods: how long the console takes to show and drop each wave, the feed's size and answer time, what each wave leaves — a slowdown beyond 3× or any residue fails |
+
+`requires: [service: stormconsole]`, nothing else: a node without the console
+reports every test skipped, and a console with authentication on needs
+`STORMCONSOLE_TOKEN` from the runner or reports skipped. Everything it makes
+is in the run's namespace, labelled `storm.io/test-run`, and removed.
+`sc-build deploy/verify-tests.sh` runs all three the way stormcentral does,
+against a real console and rustkube, plus the edges and a podman build.
+
 ## Run
 
 ```

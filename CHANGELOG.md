@@ -3,6 +3,18 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-27
+- **test:** short, medium and long test containers per the stormcos test
+  standard (#27): `test/` (its own crate and lock), `test/build.sh`,
+  `test/Containerfile` (scratch, `/test`), `test/stormconsole-test.yaml`
+  (the Job, namespaced RBAC, `requires: [service: stormconsole]`). JSON
+  lines and exit 0/1/2; everything in the run's namespace and removed;
+  skip where the console is absent or needs a token it was not given.
+  `deploy/verify-tests.sh` runs them against a real console and rustkube.
+- **fix(server):** an API path nothing serves (`/api/plugins/<a plugin
+  that is off>/…`) answers 404, not the app's HTML with 200 — found by the
+  medium suite.
+
 ### 2026-09-26
 - **docs:** `docs/presentation.md` — the console's purpose and
   functionality in eleven Marp slides, from the code and the #21 docs:
