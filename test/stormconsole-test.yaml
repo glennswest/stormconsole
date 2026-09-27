@@ -1,0 +1,111 @@
+# stormconsole-test-<suite>: how stormcentral runs stormconsole's tests on a
+# test machine, per stormcentral docs/test-standard.md.
+#
+# Test metadata (what the runner matches against the machine):
+#   suites:   short (< 2 min), medium (< 30 min), long (the night window)
+#   requires: [service: stormconsole]
+#             No hardware. The console is started on single-node clusters
+#             and optional elsewhere: on a node without it, every test
+#             reports skip, never pass. A console with authentication on
+#             needs STORMCONSOLE_TOKEN (its auth_token) from the runner, or
+#             reports skip; stormcos ships it with authentication off.
+#   hostNetwork: false      (the console is reached at STORM_NODE:9094)
+#   api:      namespaced: Services and ConfigMaps in the run's namespace.
+#             Cluster-scoped read: nodes (the long suite sizes its waves from
+#             the node's allocatable pods).
+#   targets:  the console at STORM_NODE:9094. Its writes (YAML apply, edit,
+#             delete) all land in the run's namespace; the refusals checked
+#             (no project, a system namespace, bad YAML) write nothing.
+#   external: none
+#
+# The runner creates the namespace test-stormconsole-<suite>-<run id>, fills
+# in NAMESPACE / RUN_ID / NODE / API / SUITE / TIMEOUT / TIMEOUT_PLUS_MARGIN
+# / COMMIT / IMAGE below, applies this, waits for the Job, collects /results
+# with the logs, and deletes the namespace, then the cluster-scoped objects
+# by their storm.io/test-run label.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stormconsole-test
+  namespace: ${NAMESPACE}
+  labels: { storm.io/test-run: "${RUN_ID}" }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stormconsole-test
+  namespace: ${NAMESPACE}
+  labels: { storm.io/test-run: "${RUN_ID}" }
+rules:
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["create", "get", "list", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stormconsole-test
+  namespace: ${NAMESPACE}
+  labels: { storm.io/test-run: "${RUN_ID}" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: stormconsole-test }
+subjects:
+  - { kind: ServiceAccount, name: stormconsole-test, namespace: "${NAMESPACE}" }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: stormconsole-test-${RUN_ID}
+  labels: { storm.io/test-run: "${RUN_ID}" }
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: stormconsole-test-${RUN_ID}
+  labels: { storm.io/test-run: "${RUN_ID}" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: "stormconsole-test-${RUN_ID}" }
+subjects:
+  - { kind: ServiceAccount, name: stormconsole-test, namespace: "${NAMESPACE}" }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stormconsole-test
+  namespace: ${NAMESPACE}
+  labels: { storm.io/test-run: "${RUN_ID}" }
+spec:
+  backoffLimit: 0            # a retry would hide the finding
+  activeDeadlineSeconds: ${TIMEOUT_PLUS_MARGIN}
+  template:
+    metadata:
+      labels: { storm.io/test-run: "${RUN_ID}" }
+    spec:
+      restartPolicy: Never
+      serviceAccountName: stormconsole-test
+      automountServiceAccountToken: true
+      containers:
+        - name: stormconsole-test
+          image: ${IMAGE}
+          command: ["/test", "${SUITE}"]
+          env:
+            - { name: STORM_API, value: "${API}" }
+            - { name: STORM_NAMESPACE, value: "${NAMESPACE}" }
+            - { name: STORM_RUN_ID, value: "${RUN_ID}" }
+            - { name: STORM_NODE, value: "${NODE}" }
+            - { name: STORM_SUITE, value: "${SUITE}" }
+            - { name: STORM_TIMEOUT, value: "${TIMEOUT}" }
+            - { name: STORM_COMPONENT, value: stormconsole }
+            - { name: STORM_COMMIT, value: "${COMMIT}" }
+          volumeMounts:
+            - { name: results, mountPath: /results }
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - { name: results, emptyDir: {} }

@@ -1,0 +1,28 @@
+[package]
+name = "stormconsole-test"
+version = "0.1.0"
+edition = "2021"
+description = "stormconsole's test container: short, medium and long suites against the console on a running node, per stormcentral docs/test-standard.md."
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Its own workspace: the golden's `cargo build --release --locked` at the repo
+# root never sees it, and it has its own Cargo.lock.
+[workspace]
+
+[lib]
+name = "stormconsole_test"
+path = "src/lib.rs"
+
+[[bin]]
+name = "stormconsole-test"
+path = "src/main.rs"
+
+# The console is never linked in: it is reached over the network, on the
+# node, and the cluster through the apiserver.
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde_json = "1"
+tokio-tungstenite = "0.29"
+futures-util = "0.3"

@@ -1,0 +1,17 @@
+# stormconsole-test-<suite>: stormconsole's test container, per stormcentral
+# docs/test-standard.md. One image serves all three suites: the Job runs
+# `/test short|medium|long` (test/stormconsole-test.yaml).
+#
+#   test/build.sh && podman build -f test/Containerfile \
+#     --build-arg COMMIT=$(git rev-parse HEAD) -t stormconsole-test .
+#
+# The context is the repo root; test/build.sh has already built the static
+# binary on the build box. It needs nothing under it, so the image is
+# scratch: it verifies the apiserver with the ServiceAccount's mounted ca.crt.
+FROM scratch
+ARG SUITE=short
+ARG COMMIT=unknown
+LABEL storm.io/test-of="stormconsole" storm.io/test-commit="${COMMIT}" storm.io/test-suite="${SUITE}"
+ENV STORM_SUITE=${SUITE}
+COPY test/.stage/stormconsole-test /test
+ENTRYPOINT ["/test"]
