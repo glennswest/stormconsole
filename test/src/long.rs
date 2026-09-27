@@ -21,7 +21,7 @@ use crate::Ctx;
 const SLOWDOWN: f64 = 3.0;
 const FLOOR_MS: u128 = 5_000;
 /// Creates and deletes in flight at once. Kept low: rustkube serializes
-/// Service creates (~1.5 s each, rustkube#103), and what is measured here is
+/// Service creates (~1.5 s each, rustkube#113), and what is measured here is
 /// the console following the cluster, not how fast the apiserver takes a
 /// burst.
 const IN_FLIGHT: usize = 5;

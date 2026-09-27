@@ -11,6 +11,7 @@
   lines and exit 0/1/2; everything in the run's namespace and removed;
   skip where the console is absent or needs a token it was not given.
   `deploy/verify-tests.sh` runs them against a real console and rustkube.
+  Filed rustkube#113 (Service creates ~30× a ConfigMap, serialized).
 - **fix(server):** an API path nothing serves (`/api/plugins/<a plugin
   that is off>/…`) answers 404, not the app's HTML with 200 — found by the
   medium suite.

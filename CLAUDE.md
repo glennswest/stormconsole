@@ -749,24 +749,35 @@ stormipmi and stormcast — shown, and filed on stormcentral.
 - Rendered with `npx @marp-team/marp-cli@4` through sc-build: 11 slides,
   no unrendered fences. Filed stormcentral#39 (depends_on is 4 of 13)
 
-### Test containers (#27) — in progress 2026-09-27
+### Test containers (#27) ✅ v0.21.0 2026-09-27
 stormcentral `docs/test-standard.md`: one image from `test/Containerfile`
 (repo root context), `/test short|medium|long`, `test/build.sh` builds the
 static binary on the build box, JSON lines + exit 0/1/2, everything in the
 run's namespace, labelled `storm.io/test-run`, no machine assumptions.
 Pattern: stormipmi's `test/`.
 
-- [ ] `test/` crate (own workspace): env, report, apiserver + console
+- [x] `test/` crate (own workspace): env, report, apiserver + console
       clients, websocket
-- [ ] short: health, version, SPA, feed, nav, and the main job — a Service
+- [x] short: health, version, SPA, feed, nav, and the main job — a Service
       made through the apiserver appears in the console's feed and leaves
-- [ ] medium: open/closed surface, plugin cards, creators, websocket push,
+- [x] medium: open/closed surface, plugin cards, creators, websocket push,
       apply into the project, object YAML, edit + 409, delete through the
       console, refusals (no project, system namespace, bad YAML, proxy)
-- [ ] long: waves of Services sized from the node's pod capacity —
+- [x] long: waves of Services sized from the node's pod capacity —
       propagation latency, feed size/latency, residue per wave
-- [ ] `test/stormconsole-test.yaml` (Job, RBAC, requires), Containerfile,
+- [x] `test/stormconsole-test.yaml` (Job, RBAC, requires), Containerfile,
       build.sh; docs; a harness on dev against a real console + rustkube
+- Verified with `sc-build deploy/verify-tests.sh` (real fastetcd +
+  rustkube v0.15.0 + console): short 8/8, medium 24/24, long 2 waves
+  (30 then 45 Services: shown in 255/1523 ms, dropped in 506/2026 ms,
+  feed 1 ms, residue 0), 0 left in every run's namespace; no console →
+  skip exit 0; runner missing STORM_API → exit 2; auth on, no token →
+  skip; with the token → 8/8; podman built the image (6 MB, `/test`,
+  labels). The medium suite found the console answering an unknown API
+  path with the app's HTML (fixed: 404)
+- Filed **rustkube#113**: a Service create is ~1.5 s against 0.05 s for
+  a ConfigMap, serializes, and slows as Services accumulate — the long
+  suite paces its creates (5 in flight) and times the console apart
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
