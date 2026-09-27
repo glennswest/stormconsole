@@ -116,7 +116,11 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
 
     let t = Instant::now();
     for chunk in names.chunks(25) {
-        let made = join_all(chunk.iter().map(|m| ctx.kube.create(&ctx.kube.services(), &ctx.kube.service(m)))).await;
+        let made = join_all(chunk.iter().map(|m| {
+            let (path, obj) = (ctx.kube.services(), ctx.kube.service(m));
+            async move { ctx.kube.create(&path, &obj).await }
+        }))
+        .await;
         if let Some(Err(e)) = made.into_iter().find(|x| x.is_err()) {
             return Err(format!("making the wave: {e}"));
         }
@@ -138,7 +142,11 @@ async fn wave(ctx: &Ctx, n: usize, size: usize) -> Result<Wave, String> {
 
     let t = Instant::now();
     for chunk in names.chunks(25) {
-        let gone = join_all(chunk.iter().map(|m| ctx.kube.delete(&format!("{}/{m}", ctx.kube.services())))).await;
+        let gone = join_all(chunk.iter().map(|m| {
+            let path = format!("{}/{m}", ctx.kube.services());
+            async move { ctx.kube.delete(&path).await }
+        }))
+        .await;
         if let Some(Err(e)) = gone.into_iter().find(|x| x.is_err()) {
             return Err(format!("draining the wave: {e}"));
         }
