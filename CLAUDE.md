@@ -812,7 +812,9 @@ restarted from its row — exactly when a restart is wanted.
 - [x] A defined machine's Stop goes through the definition (it deleted the
       instance, which the definition then put back)
 - [x] `status.message` beside Failed on the row (reason and message both)
-- [x] Tests, changelog, docs; sc-build; live check; golden
+- [x] Tests, changelog, docs; sc-build; live check
+- [ ] Golden: requested 2026-09-28, aborted by the platform ("the stormd
+      golden has no bin/stormd") — stormcentral#135; re-request when fixed
 - Verified with `sc-build` (all tests) and `sc-build
   deploy/verify-vm-lifecycle.sh` (real fastetcd v1.2.0 + rustkube v0.15.3,
   the kubelet's status written through `/status`): 24/24 — a Failed
