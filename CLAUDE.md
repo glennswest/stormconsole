@@ -19,7 +19,12 @@ Version locations:
 ## Key context
 
 - Design: `docs/architecture.md`
-- Build on `root@dev.g8.lo`, never on the Mac (see parent CLAUDE.md).
+- Build and test with `sc-build` after pushing (it builds the pushed commit
+  on dev.g8.lo as `stormbuild` and deletes it); never on this VM, never as
+  root. `web/dist/` is committed: rebuild it with
+  `SC_BUILD_OUT=dist.tgz SC_BUILD_OUT_TO=tmp/dist.tgz sc-build 'cd web &&
+  npm ci && npx vite build && tar czf ../dist.tgz dist'` and unpack it into
+  `web/`.
 - UI system and contract: [stormview](https://github.com/glennswest/stormview)
   — Rust crate (ComponentSummary et al.) + npm package (themes, DataGrid,
   ComponentCard, ComponentGrid, RelationPicker, HealthDot, LoginPanel).
@@ -892,17 +897,19 @@ serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
       reach a node exists now, so what is missing is only something to
       call
 
-### Phase 5 — storage & images plugins
-- [ ] stormdrive plugin: aggregate per-node :9092 (drives, SMART, wear,
-      locate, fleet lifecycle)
-- [ ] stormblock plugin: :9090 volumes/exports/luns/slabs/arrays
-- [ ] sbregistry plugin: goldens, clones, pallets, images (components feed
-      issue filed)
+### Phase 5 — storage & images plugins ✅
+- [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
+      (v0.22.0, #29)
+- [x] stormblock plugin: volumes/slabs/arrays/exports/drives (v0.4.0),
+      Volumes vs Images (v0.19.0, #19), placement per drive (v0.22.0)
+- [x] sbregistry plugin: goldens, clones, pallets, images (v0.4.0), the
+      catalog and media jobs (v0.19.0)
 
 ### Later
 - [ ] Dynamic remote plugins (manifest + reverse proxy, OpenShift
       dynamic-plugin style / stormd `[process.ui]` style)
-- [ ] YAML edit/apply views for rustkube resources
+- [x] YAML edit/apply views for rustkube resources (v0.8.0: `/apply`, and
+      `GET|PUT /api/plugins/k8s/object/{kind}/{key}` on every watched kind)
 - [ ] RBAC-aware UI — rustkube serves the reviews since v0.9.0 (#45)
 
 ## Cross-project issues filed

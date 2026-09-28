@@ -69,9 +69,9 @@ the real upstreams it needs on dev and deleting them after:
 | `sc-build deploy/…` | Checks |
 |---|---|
 | `verify-projects.sh` | projects, members, isolation, project-first create — as three real rustkube identities |
-| `verify-vm-net.sh`, `verify-vm-keys.sh`, `verify-vm-snapshots.sh` | VM addresses, SSH keys, snapshots — real fastetcd + rustkube |
+| `verify-vm-net.sh`, `verify-vm-keys.sh`, `verify-vm-snapshots.sh`, `verify-vm-lifecycle.sh` | VM addresses, SSH keys, snapshots, Start/Stop/Restart from every phase — real fastetcd + rustkube |
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only |
-| `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes |
+| `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |

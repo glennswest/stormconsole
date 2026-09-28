@@ -648,8 +648,9 @@ definition is what should exist and whether it should run, the instance is
 the machine that *is* running. vCPU is read however the spec spelled it
 (`cores`, the sockets×cores×threads product, or a resource request) — a
 page that understands one spelling is wrong for every VM that used
-another. Lifecycle is `spec.running` and nothing else; stopping an
-instance is deleting it, since a VMI *is* the running machine.
+another. Lifecycle is two levers and nothing else: the definition's
+`spec.running`, and deleting the instance, since a VMI *is* the running
+machine (below: how each verb pulls them).
 
 The verbs are on the row, so the common ones need no detail page first —
 `POST …/machines/{ns}/{name}/{start,stop,restart}` and `DELETE

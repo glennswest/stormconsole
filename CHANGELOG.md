@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-28
+- **docs:** refreshed from the code again. Since the 2026-09-27 pass, only
+  #37 (VM lifecycle) and #29 (drive usage) changed code, and `config.rs`
+  did not change at all, so config keys, defaults and ports are as
+  documented. Corrected:
+  - `docs/architecture.md` still said VM lifecycle was `spec.running` alone;
+  - the README's live-check table lacked `verify-vm-lifecycle.sh` and the
+    #29 half of `verify-drives.sh`;
+  - CLAUDE.md said to build on `root@dev.g8.lo`. It now says sc-build, and
+    how the committed `web/dist` is rebuilt;
+  - CLAUDE.md listed Phase 5 and YAML edit as open, though both shipped.
+
+  No new doc promises the code does not keep were found.
+
 ## [v0.22.0] — 2026-09-28
 
 ### 2026-09-28
