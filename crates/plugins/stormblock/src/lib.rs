@@ -19,6 +19,8 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
+pub mod placement;
+
 const PROXY: &str = "/api/plugins/sb/proxy";
 
 struct State {
@@ -34,6 +36,8 @@ struct Inner {
     token: Option<String>,
     client: reqwest::Client,
     state: RwLock<State>,
+    /// The last per-drive placement answer and when it was made (#29).
+    placement: tokio::sync::Mutex<Option<(std::time::Instant, Value)>>,
 }
 
 pub struct StormblockPlugin {
@@ -56,6 +60,7 @@ impl StormblockPlugin {
                     detail: "not yet polled".into(),
                     components: vec![],
                 }),
+                placement: tokio::sync::Mutex::new(None),
             }),
         }
     }
@@ -115,6 +120,8 @@ impl ConsolePlugin for StormblockPlugin {
 
     fn routes(&self) -> axum::Router {
         axum::Router::new()
+            .route("/placement", axum::routing::get(placement_route))
+            .with_state(self.inner.clone())
             .nest(
                 "/proxy",
                 console_core::proxy::router_as(self.inner.client.clone(), self.inner.base.clone(), self.inner.token.clone()),
@@ -165,6 +172,25 @@ async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
     }
     let v: Value = resp.json().await.map_err(|e| e.to_string())?;
     Ok(v.get("items").and_then(Value::as_array).cloned().unwrap_or_default())
+}
+
+/// `GET /api/plugins/sb/placement` — this node's volumes by the drive they
+/// are on (#29). The engine's error is passed on as the answer's `error`,
+/// so the page can say why a drive shows no volumes.
+async fn placement_route(axum::extract::State(inner): axum::extract::State<Arc<Inner>>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let mut cache = inner.placement.lock().await;
+    if let Some((at, v)) = cache.as_ref() {
+        if at.elapsed() < placement::FRESH {
+            return axum::Json(v.clone()).into_response();
+        }
+    }
+    let v = match list(&inner, "/api/v1/volumes?placement=true").await {
+        Ok(vols) => placement::by_drive(&vols),
+        Err(e) => serde_json::json!({"error": e, "volumes": 0, "placed": 0, "drives": {}}),
+    };
+    *cache = Some((std::time::Instant::now(), v.clone()));
+    axum::Json(v).into_response()
 }
 
 async fn poll(inner: &Inner) {

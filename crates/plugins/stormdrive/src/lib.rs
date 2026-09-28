@@ -18,6 +18,13 @@
 //! stormdrive — most of a fleet's hosts, on a rack of storage nodes and
 //! compute nodes — is simply not answering and adds no rows; the card counts
 //! it.
+//!
+//! **Usage in bytes, on demand** (#29): `GET /api/plugins/drive/usage` reads
+//! every node's `/api/v1/drives` when a page asks and says, per drive, what
+//! is used, free, outside a slab and promised, the slabs on it and any
+//! drain — see [`usage`].
+
+pub mod usage;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -28,7 +35,7 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::any;
+use axum::routing::{any, get};
 use axum::{Json, Router};
 use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, Metric, NavSection};
 use plugin_logs::LogHosts;
@@ -48,6 +55,8 @@ struct Inner {
     hosts: Option<LogHosts>,
     remotes: RwLock<BTreeMap<String, Arc<Feed>>>,
     client: reqwest::Client,
+    /// The last usage answer and when it was made (#29).
+    usage: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
 }
 
 pub struct DrivesPlugin {
@@ -115,6 +124,7 @@ impl DrivesPlugin {
                 hosts,
                 remotes: RwLock::new(BTreeMap::new()),
                 client: reqwest::Client::new(),
+                usage: tokio::sync::Mutex::new(None),
             }),
         }
     }
@@ -151,6 +161,7 @@ impl ConsolePlugin for DrivesPlugin {
     fn routes(&self) -> Router {
         Router::new()
             .route("/node/{host}/proxy/{*path}", any(node_proxy))
+            .route("/usage", get(usage_route))
             .with_state(self.inner.clone())
             .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.local.base.clone()))
     }
@@ -222,6 +233,53 @@ fn rank(h: Health) -> u8 {
         Health::Ok => 3,
         Health::Idle => 4,
     }
+}
+
+/// `GET /api/plugins/drive/usage` — every node's drives in bytes (#29).
+async fn usage_route(State(inner): State<Arc<Inner>>) -> Response {
+    // Held across the fetch, so concurrent pages wait for one answer
+    // rather than each dialling every node.
+    let mut cache = inner.usage.lock().await;
+    if let Some((at, v)) = cache.as_ref() {
+        if at.elapsed() < usage::FRESH {
+            return Json(v.clone()).into_response();
+        }
+    }
+    let local = if inner.local_name.is_empty() { "this node".to_string() } else { inner.local_name.clone() };
+    let mut targets = vec![(local, inner.local.base.clone(), prefix(None))];
+    for (host, feed) in inner.remotes.read().await.iter() {
+        targets.push((host.clone(), feed.base.clone(), prefix(Some(host))));
+    }
+    let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| {
+        let client = inner.client.clone();
+        let url = format!("{base}/api/v1/drives");
+        async move {
+            let resp = client
+                .get(&url)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+                .map_err(|e| {
+                    use std::error::Error as _;
+                    e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+                })?;
+            if !resp.status().is_success() {
+                return Err(format!("stormdrive answered {}", resp.status()));
+            }
+            resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+        }
+    }))
+    .await;
+    let mut drives = Vec::new();
+    let mut nodes = Vec::new();
+    for ((node, _, pre), result) in targets.iter().zip(answers) {
+        let (d, status) = usage::node_answer(node, result, pre);
+        drives.extend(d);
+        nodes.push(status);
+    }
+    let v = json!({"drives": drives, "nodes": nodes});
+    *cache = Some((std::time::Instant::now(), v.clone()));
+    Json(v).into_response()
 }
 
 /// A remote node's drive actions, through the console.

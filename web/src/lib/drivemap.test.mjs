@@ -2,7 +2,7 @@
 // with plain node — `node web/src/lib/drivemap.test.mjs` — no browser, no
 // bundler. It checks the joins and the grouping and measures them.
 import assert from 'node:assert/strict'
-import { build, groups, totals, heat, cells, columns, parseBytes, formatBytes, passes } from './drivemap.js'
+import { build, groups, totals, heat, cells, columns, parseBytes, formatBytes, passes, pools, noUsage } from './drivemap.js'
 
 function drive(host, i, extra = {}) {
   const local = host === null
@@ -86,6 +86,56 @@ assert.equal(records.find((d) => d.id === 'drive:drive:5').member, 'rebuilding')
 assert.equal(records.find((d) => d.id === 'drive:@storm-1:drive:5').member, null, "another node's /dev/sd5 is not this engine's")
 assert.equal(heat(records.find((d) => d.id === 'drive:@storm-1:drive:0'), 'usage').css, null, 'no data is drawn as no data')
 
+// #29: stormdrive's usage in bytes for every node, and this node's volumes
+// by drive. storm-2 answers for all 160 drives; storm-6 is silent.
+const TB = 1024 ** 4
+const usage = { drives: [], nodes: [{ node: 'storm-2', ok: true }, { node: 'storm-6', ok: false, error: 'refused' }] }
+for (let i = 0; i < 160; i++) {
+  const hot = i === 3
+  usage.drives.push({
+    component: `drive:@storm-2:drive:${i}`, node: 'storm-2', serial: `storm-2-SN${i}`, capacity: parseBytes('7.3 TB'),
+    overcommit: { enabled: i < 80, ratio: 2 },
+    ...(i === 9 ? { drain: { state: 'running', moved: 4, failed: 0, remaining: 6, reason: 'operator', then_leave: true } } : {}),
+    usage: {
+      capacity: parseBytes('7.3 TB'), in_slabs: 7 * TB, used: hot ? 7 * TB : 1 * TB, free_in_slabs: hot ? 0 : 6 * TB,
+      outside_slabs: parseBytes('7.3 TB') - 7 * TB, free: parseBytes('7.3 TB') - (hot ? 7 : 1) * TB, promisable: 14 * TB,
+      committed: 3 * TB, headroom: 11 * TB,
+      slabs: [{ id: `s${i}`, role: 'data', tier: i < 80 ? 'hot' : 'warm', total: 7 * TB, used: hot ? 7 * TB : TB, free: hot ? 0 : 6 * TB, committed: 3 * TB }],
+    },
+  })
+}
+// A drive stormdrive knows but has no usage for yet.
+usage.drives[159] = { component: 'drive:@storm-2:drive:159', node: 'storm-2', serial: 'storm-2-SN159', capacity: 1 }
+const placement = { volumes: 2, placed: 2, drives: { 'storm-2-SN4': [
+  { component: 'sb:volume:v1', id: 'v1', name: 'db', kind: 'volume', consumer: 'PersistentVolumeClaim shop/db', consumer_link: 'k8s:pvc:shop/db', bytes: 4096, legs: 2, shared_legs: 0, state: 'ok', slabs: [] }] } }
+const t4 = performance.now()
+const joined = build(comps, { usage, placement }).records
+const t5 = performance.now()
+const s2 = (i) => joined.find((d) => d.id === `drive:@storm-2:drive:${i}`)
+assert.equal(s2(0).usage.source, 'stormdrive', "another node's usage, from its own stormdrive")
+assert.ok(Math.abs(s2(0).usage.frac - 1 / 7.3) < 0.01)
+assert.equal(s2(3).usage.frac > 0.9, true)
+assert.equal(s2(9).drain.remaining, 6)
+assert.equal(s2(4).volumes[0].consumer_link, 'k8s:pvc:shop/db', 'the volumes on a drive, joined by serial')
+assert.equal(s2(159).usage, null)
+assert.match(noUsage(s2(159)), /no usage for it yet/)
+assert.match(noUsage(joined.find((d) => d.id === 'drive:@storm-6:drive:0')), /did not answer/)
+assert.equal(joined.find((d) => d.id === 'drive:drive:0').usage.source, 'engine', 'an older stormdrive: the engine still answers')
+const jc = (f) => joined.filter((d) => passes(d, f)).length
+assert.equal(jc('draining'), 1)
+assert.equal(jc('full'), 2, "this node's full drive and storm-2's")
+const jt = totals(joined)
+assert.equal(jt.withUsage, 159 + 2)
+const ps = pools(joined)
+const hot = ps.find((p) => p.node === 'storm-2' && p.tier === 'hot')
+const warm = ps.find((p) => p.node === 'storm-2' && p.tier === 'warm')
+assert.equal(hot.drives, 80)
+assert.equal(hot.promisable, 80 * 14 * TB, 'overcommit 2× doubles what the hot slabs may promise')
+assert.equal(warm.promisable, 79 * 7 * TB, 'warm drives are not overcommitted')
+assert.equal(hot.committed, 80 * 3 * TB)
+assert.equal(hot.headroom, 80 * 11 * TB)
+assert.equal(ps.filter((p) => p.node === 'here').length, 0, 'the engine fallback carries no slab list, so no pool is guessed')
+
 // Filters.
 const count = (f) => records.filter((d) => passes(d, f)).length
 assert.equal(count('failing'), 1)
@@ -103,5 +153,6 @@ assert.equal(heat(here0, 'temp').text, '30 °C')
 
 console.log(`1,600 drives on ${all.nodes} nodes, ${formatBytes(all.capacity)} raw: ` +
   `${byChassis.length} chassis, ${byRack.length} racks, ${all.failing} failing, ${all.degraded} degraded, ${all.rebuilding} rebuilding, ${all.full} full`)
+console.log(`with usage and placement: build ${(t5 - t4).toFixed(1)} ms, ${ps.length} pools`)
 console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toFixed(1)} ms · totals ${(t3 - t2).toFixed(1)} ms`)
 console.log('PASS')
