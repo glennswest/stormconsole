@@ -155,7 +155,8 @@ impl ConsolePlugin for DrivesPlugin {
         vec![NavSection::new("Hardware", 45)
             .admin()
             .item_at("Drives", "#/drives", 10)
-            .item_at("Shelves", "#/drives?group=shelf", 20)]
+            .item_at("Shelves", "#/drives?group=shelf", 20)
+            .item_at("Pools", "#/drives?group=pool", 30)]
     }
 
     fn routes(&self) -> Router {

@@ -413,6 +413,9 @@ export function idsForRoute(href) {
   // The two hardware routes count different things: the shelves page is
   // a list of enclosures, not of the disks in them.
   if (path === '#/drives') {
+    // Pools are summed from each node's usage, fetched by the page, not
+    // carried in the feed: nothing to count here (#29).
+    if (q.get('group') === 'pool') return null
     // By kind, not id prefix: other nodes' drives are `drive:@<host>:` (#32).
     const kind = q.get('group') === 'shelf' ? 'shelf' : 'drive'
     return feed.components.filter((c) => c.kind === kind).map((c) => c.id)
