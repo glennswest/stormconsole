@@ -829,12 +829,11 @@ collector has an address for, at :9092, plus `[stormdrive] nodes`. A remote
 node's ids are `drive:@<host>:…` (under the plugin's prefix, as the
 registry requires) and its actions go through
 `/api/plugins/drive/node/<host>/proxy`. Every drive and shelf carries a `node` metric; a host with no
-stormdrive adds no rows and is counted on the card. Per-drive usage is
-stormdrive#12; until then the stormblock plugin publishes, for this node,
-`sb:use:<serial>` (slab bytes and free, summed over the slabs that name the
-drive, stormblock#136) and `sb:member:<dev>` (a drive-level array member's
-state), and the kubernetes plugin a node's `rack` from its label
-`topology.storm.io/rack`. The page's model is `web/src/lib/drivemap.js`
+stormdrive adds no rows and is counted on the card. The stormblock plugin
+publishes, for this node, `sb:member:<dev>` (a drive-level array member's
+state) and `sb:use:<serial>` (slab bytes and free — used only for a drive
+whose stormdrive predates usage), and the kubernetes plugin a node's `rack`
+from its label `topology.storm.io/rack`. The page's model is `web/src/lib/drivemap.js`
 (pure; `drivemap.test.mjs` runs it at 10×160 with plain node): it joins
 those by serial and device path (this node's drives only — another node's
 `/dev/sd5` is not this engine's), filters (failing, degraded, rebuilding,
@@ -845,6 +844,49 @@ page is a map by default: each chassis a grid of its bays (12 across up to
 60 bays, 15 above), empty bays kept, rebuilding outlined; a totals band
 whose counts are filters; a list view capped at 200 a group. The live check
 is `deploy/verify-drives.sh`.
+
+### Each drive's usage, slabs and volumes; pools (#29)
+
+The feed says how full a drive is in words; a page that adds up 1,600
+drives needs bytes, and a drive's slabs and volumes are too much to push to
+every open tab. So two answers are **fetched by the Drives page while it is
+open** (every 10 s) and cached in the plugin, not carried in the feed:
+
+- `GET /api/plugins/drive/usage` — every node's stormdrive `GET
+  /api/v1/drives` (v0.13.0+, stormdrive#12/#13), reduced per drive to raw
+  bytes: capacity, in slabs, used, free in slabs, outside any slab, free,
+  what the slabs may promise under the drive's overcommit ratio, committed
+  and headroom when the engine reports them (stormblock#152), each slab
+  (role, tier, total, used, free, committed), the overcommit setting, and a
+  drain (`state`, moved/remaining/failed, reason, whether it then leaves the
+  fleet). Keyed by the component id the console serves the drive as
+  (`<prefix>:drive:<id>`). Nodes are read concurrently, 5 s each; an answer
+  is reused for 10 s, and the lock is held across the fetch so concurrent
+  pages share one read. Each node's line says whether it answered and how
+  many of its drives carried usage — a stormdrive older than v0.13.0 carries
+  none, and the page says that rather than "no slabs".
+- `GET /api/plugins/sb/placement` — this node's engine `GET
+  /api/v1/volumes?placement=true` (stormblock v17.1.0+, #136) turned inside
+  out: per drive (by serial; the WWN, then the path, when the engine names
+  no serial), the volumes with legs on it, largest first, each with its
+  kind, consumer and a link to it, bytes and legs here, legs shared with
+  another volume (a clone's with its golden), the worst state of its slabs
+  on this drive (`missing`, `failed`, `quarantined`, `draining`, `ok`) with
+  any drain's progress, its policy and whether a rebuild is owed. Reused for
+  15 s: it walks every volume's extent map.
+- The engine's pool (`/api/v1/slabs/pool`) through the existing proxy.
+
+The model (`drivemap.js`) prefers stormdrive's usage on every node and falls
+back to the engine's `sb:use` for a stormdrive without it. A picked drive
+shows where it is (node, shelf, bay, controller, serial), what is left, the
+usage bar (used / free in slabs / not in a slab), overcommit, committed and
+headroom, a drain in progress, its slabs, and the volumes on it with who
+uses each; a filter finds drains. **Pools** (`#/drives?group=pool`) sum
+every slab on every drive per node, role and tier: total, written, free,
+may-promise, committed and headroom. Committed is summed only where every
+slab of the pool reports it — a partial sum would read as headroom that is
+not there. Volumes on *another* node's drives are not read: the console
+talks to this node's engine only, and the page says so for such a drive.
 
 ### Images are the registry's; Volumes are what is attached (#19)
 
@@ -1137,7 +1179,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormcos | [#94](https://github.com/glennswest/stormcos/issues/94) the engine token; [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path | Storage on a v18 engine; a golden stormd does not restart |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
-| stormdrive | #12 per-drive usage | usage on other nodes' drives |
+| stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
 | fastetcd | [#28](https://github.com/glennswest/fastetcd/issues/28) v3 JSON gateway, [#29](https://github.com/glennswest/fastetcd/issues/29) traffic counters | members, keyspace and verbs on fastetcd; traffic on its card |
 | stormconsole | #12 pod page (logs are served upstream); #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |

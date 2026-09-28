@@ -95,8 +95,10 @@ them.
   its consumer; Unattached apart; delete disabled while in use.
 - **Drives, at rack scale.** Every node's drives as a map: each chassis bay
   by bay, coloured by health, temperature, wear or usage; grouped by chassis,
-  node or rack; failing / degraded / rebuilding / full filters; totals to
-  EB. Checked at 1,600 drives.
+  node or rack; failing / degraded / rebuilding / draining / full filters;
+  totals to EB. Each drive: what is left, its slabs, the volumes on it and
+  who uses them, a drain in progress; pools per node, role and tier.
+  Checked at 1,600 drives.
 - **Machines.** Bare metal by service tag from stormipmi: BMC, power, the
   release each boots, default image, adopt, SOL console — admin-only writes.
 - **Datastore.** fastetcd's revision, size vs quota, alarms, leader.
@@ -174,7 +176,7 @@ Open, and why it matters:
 - **#42** (a decision) — SSH keys live in `default`, where a
   project-only user cannot write them.
 - **#35** — the registry plugin sends no credential.
-- Upstream data still coming: fastetcd#28/#29, stormdrive#12, stormvm#16,
+- Upstream data still coming: fastetcd#28/#29, stormblock#152, stormvm#16,
   #41, #45.
 
 Docs: README (operational), `docs/architecture.md` (design), CHANGELOG.

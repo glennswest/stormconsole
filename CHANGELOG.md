@@ -3,6 +3,32 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-28
+- **feat:** each drive's usage, slabs and volumes, on every node (#29). The
+  Drives page reads every node's stormdrive usage in bytes (stormdrive
+  v0.13.0+, #12/#13) through a new `GET /api/plugins/drive/usage`, fetched
+  while the page is open and cached 10 s. A picked drive shows:
+  - where it is, including its controller (stormdrive#3's `hba`);
+  - what is left;
+  - used / free in slabs / not in a slab;
+  - overcommit, committed and headroom;
+  - a drain in progress;
+  - its slabs with their use;
+  - the volumes on it, from this node's engine placement
+    (`GET /api/plugins/sb/placement`, stormblock#136, cached 15 s). Each
+    volume has its consumer linked, its legs (shared ones marked) and the
+    worst state of its slabs there.
+
+  Totals now cover every node, and there is a Draining filter. **Pools**
+  (`#/drives?group=pool`, Hardware → Pools) sum every slab per node, role
+  and tier. Committed and headroom are summed only where every slab
+  reports them (stormblock#152), and the engine's pool pressure is shown. A
+  drive with no usage says why (its node's stormdrive did not answer, or
+  predates usage). A drive on another node says its volumes are not read
+  here.
+- **test:** `deploy/verify-drives.sh` checks all of the above against
+  stand-ins in stormdrive v0.15.0's and stormblock's own shapes: 25 checks,
+  plus a node going away.
 ### 2026-09-27
 - **fix:** VM Restart, Stop and Start are offered from every phase, not
   only `Running` — a machine whose start failed, or stuck scheduling, can

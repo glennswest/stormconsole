@@ -25,7 +25,7 @@ create forms and a slice of the component feed every page is drawn from.
 | vmimages (`img`) | vmcloud-image-operator (:9099) | VM catalogue, VM goldens, local copies | make a golden, retry, delete (the `CloudImage`, via the apiserver), unmanage |
 | fleet (`fleet`) | the stormcast log group's hosts; this node's stormd APIs | Nodes, and on demand one node's services | this node's stormd services start/stop/restart |
 | logs (`logs`) | stormcast multicast `239.255.42.1:5514` (RFC 5424) into a redb ring | Fleet logs: filter, search, live follow | — |
-| stormdrive (`drive`) | stormdrive (:9092) on this node **and every fleet node** | Drives as a rack map (chassis by bay, heat by health/temp/wear/usage), shelves | locate, fleet join/leave, tests, format, designate |
+| stormdrive (`drive`) | stormdrive (:9092) on this node **and every fleet node** | Drives as a rack map (chassis by bay, heat by health/temp/wear/usage); each drive's usage in bytes, its slabs, the volumes on it and any drain; shelves; pools per node, role and tier | locate, fleet join/leave, drain, overcommit, tests, format, designate |
 | stormstorage (`storage`) | stormstorage (:9093) feed | Storage pools | the feed's own actions |
 | stormblock (`sb`) | stormblock engine (:9090) | Volumes (attached, with consumer), Unattached, slabs, arrays, exports | delete a volume (not while in use), create volume/export |
 | sbregistry (`reg`) | stormblock-registry (:5100) | Images → Catalog (goldens, blanks, media, lineage, clones, download progress), pushed images, pallets | create golden/clone |
@@ -43,7 +43,7 @@ the claim as its consumer.
 
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
-`#/vm/<ns>/<name>` · `#/images` · `#/machines` · `#/drives` (`?group=shelf`) ·
+`#/vm/<ns>/<name>` · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) ·
 `#/nodes` · `#/node/<host>` · `#/logs` · `#/etcd/keys` · `#/account/keys` ·
 `#/attach/<ns>/<claim>` · `#/grid?id=&rel=`. The masthead carries the
 Project selector, Create, cluster health, the key (your SSH keys),
@@ -222,8 +222,12 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   stormvm#16; **snapshot step, disks, size** — stormvm#45.
 - **Datastore members, keyspace and verbs on fastetcd** — its v3 JSON
   gateway (fastetcd#28); traffic counters (fastetcd#29).
-- **Per-drive usage on other nodes** — stormdrive#12 (this node's comes from
-  its engine).
+- **Volumes on another node's drives** — the console reads only this node's
+  engine, so a drive on another node lists no volumes, and says so. Each
+  drive's *usage* comes from its own node's stormdrive (v0.13.0+).
+- **Committed and headroom** per slab and pool need the engine to report
+  committed bytes (stormblock#152); until every slab of a pool does, the
+  pool claims no headroom.
 - **Watch deletes of custom resources** need rustkube ≥ v0.15.2
   (rustkube#100): against an older apiserver a deleted VM instance or
   snapshot stays on a watching console until it relists.
