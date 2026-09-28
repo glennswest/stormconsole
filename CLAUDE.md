@@ -795,24 +795,33 @@ through the engine), CSI only for other classes.
       SelfSubjectAccessReview; RBAC-aware actions), #42 (keys home)
 - [x] Changelog; sc-build (exit 0, 4f80ff7); close #40
 
-### Lifecycle from every phase (#37)
+### Lifecycle from every phase (#37) ✅ 2026-09-28
 Filed from stormvm#21: Restart/Stop were enabled only from `Running`, so a
 machine whose start failed, or stuck in `Scheduling`, could not be
 restarted from its row — exactly when a restart is wanted.
 
-- [ ] Row actions: Restart, Stop and Start from every phase. Stop disabled
+- [x] Row actions: Restart, Stop and Start from every phase. Stop disabled
       only when already stopped, Start only when running. A bare instance
       (no definition) keeps Restart/Start disabled with the reason; its
       Stop is the delete it always was
-- [ ] Handlers made true to that: Start from a failed/stuck instance
+- [x] Handlers made true to that: Start from a failed/stuck instance
       replaces it (running=true + the instance deleted); Restart sets
       running=true before deleting the instance, so it also recovers a
       definition wanting nothing; Stop sets running=false and deletes a
       lingering instance
-- [ ] A defined machine's Stop goes through the definition (it deleted the
+- [x] A defined machine's Stop goes through the definition (it deleted the
       instance, which the definition then put back)
-- [ ] `status.message` beside Failed on the row (reason and message both)
-- [ ] Tests, changelog, docs; sc-build; live check; golden
+- [x] `status.message` beside Failed on the row (reason and message both)
+- [x] Tests, changelog, docs; sc-build; live check; golden
+- Verified with `sc-build` (all tests) and `sc-build
+  deploy/verify-vm-lifecycle.sh` (real fastetcd v1.2.0 + rustkube v0.15.3,
+  the kubelet's status written through `/status`): 24/24 — a Failed
+  machine offers Start/Restart/Stop with reason and message on the row;
+  Restart and Start from Failed write running=true and delete the dead
+  instance; Running has Start off, Stop → running=false + instance gone;
+  a stopped definition offers Start/Restart not Stop, Restart brings it
+  up; stuck Scheduling restarts; a bare Failed instance refuses
+  Start/Restart 409 with the sentence, its Stop (danger) deletes it
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
