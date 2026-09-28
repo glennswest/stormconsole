@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.22.0] — 2026-09-28
+
 ### 2026-09-28
 - **feat:** each drive's usage, slabs and volumes, on every node (#29). The
   Drives page reads every node's stormdrive usage in bytes (stormdrive
