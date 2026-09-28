@@ -825,6 +825,34 @@ restarted from its row — exactly when a restart is wanted.
   up; stuck Scheduling restarts; a bare Failed instance refuses
   Start/Restart 409 with the sentence, its Stop (danger) deletes it
 
+### Each drive's usage, slabs and volumes (#29)
+Data, read from the code (2026-09-28): stormdrive 0.15.0 (#12/#13, golden
+`golden-stormdrive-01a422df544f`) serialises per drive in `GET
+/api/v1/drives`: `usage` (capacity, in_slabs, used, free_in_slabs,
+outside_slabs, free, promisable, committed?, headroom?, `slabs[]` with id,
+role, tier, total/allocated/free/committed), `overcommit {enabled, ratio}`,
+`drain {state, moved, failed, remaining, reason, then_leave}`; the feed
+carries `bay` and `hba` (#3). stormblock ≥ v17.1.0: `GET
+/api/v1/volumes?placement=true` → per volume `placement.drives[]` (drive
+serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
+`rebuild`; `GET /api/v1/slabs/pool` (pressure, by tier).
+
+- [ ] drive plugin: `GET /api/plugins/drive/usage` — every node's
+      `/api/v1/drives` fetched on demand (cached 10 s), reduced to raw
+      bytes per drive: usage, slabs, overcommit, drain; unreachable nodes
+      named
+- [ ] sb plugin: `GET /api/plugins/sb/placement` — this node's volumes by
+      drive serial (volume, kind, consumer, bytes, legs, shared, slab state,
+      rebuild); `GET /api/plugins/sb/pool`
+- [ ] drivemap.js: usage from stormdrive for every node (the engine's
+      `sb:use` only as a fallback for an older stormdrive), `draining`
+      filter, pools per node × role × tier
+- [ ] DrivesView: the picked drive — location incl. controller, usage bar,
+      overcommit/committed/headroom, its slabs with their use, its volumes
+      with their consumer, drain progress; `#/pools`
+- [ ] Tests (Rust + drivemap), docs, changelog; live check with stand-ins;
+      release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
