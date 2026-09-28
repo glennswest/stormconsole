@@ -825,7 +825,7 @@ restarted from its row — exactly when a restart is wanted.
   up; stuck Scheduling restarts; a bare Failed instance refuses
   Start/Restart 409 with the sentence, its Stop (danger) deletes it
 
-### Each drive's usage, slabs and volumes (#29)
+### Each drive's usage, slabs and volumes (#29) ✅ v0.22.0 2026-09-28
 Data, read from the code (2026-09-28): stormdrive 0.15.0 (#12/#13, golden
 `golden-stormdrive-01a422df544f`) serialises per drive in `GET
 /api/v1/drives`: `usage` (capacity, in_slabs, used, free_in_slabs,
@@ -837,21 +837,36 @@ carries `bay` and `hba` (#3). stormblock ≥ v17.1.0: `GET
 serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
 `rebuild`; `GET /api/v1/slabs/pool` (pressure, by tier).
 
-- [ ] drive plugin: `GET /api/plugins/drive/usage` — every node's
+- [x] drive plugin: `GET /api/plugins/drive/usage` — every node's
       `/api/v1/drives` fetched on demand (cached 10 s), reduced to raw
       bytes per drive: usage, slabs, overcommit, drain; unreachable nodes
       named
-- [ ] sb plugin: `GET /api/plugins/sb/placement` — this node's volumes by
+- [x] sb plugin: `GET /api/plugins/sb/placement` — this node's volumes by
       drive serial (volume, kind, consumer, bytes, legs, shared, slab state,
       rebuild); `GET /api/plugins/sb/pool`
-- [ ] drivemap.js: usage from stormdrive for every node (the engine's
+- [x] drivemap.js: usage from stormdrive for every node (the engine's
       `sb:use` only as a fallback for an older stormdrive), `draining`
       filter, pools per node × role × tier
-- [ ] DrivesView: the picked drive — location incl. controller, usage bar,
+- [x] DrivesView: the picked drive — location incl. controller, usage bar,
       overcommit/committed/headroom, its slabs with their use, its volumes
       with their consumer, drain progress; `#/pools`
-- [ ] Tests (Rust + drivemap), docs, changelog; live check with stand-ins;
+- [x] Tests (Rust + drivemap), docs, changelog; live check with stand-ins;
       release; golden
+- Verified with `sc-build deploy/verify-drives.sh` (0 failed): ten stand-in
+  stormdrives serving `/api/v1/drives` in v0.15.0's serialised shape
+  (storm-7 as a pre-usage stormdrive), a stand-in engine with volumes and
+  placement in stormblock's shape, a real rustkube and a real console. 1,600
+  drives in bytes from 10 nodes; storm-x named; storm-7 "reports no usage";
+  storm-4 drive 5 at 95% → full; storm-2 drive 9 draining (30 left);
+  slabs with committed where reported; both answers cached (3 more reads →
+  no new node read, no new placement walk); here-SN000 → vm-web-root
+  (VirtualMachine web/web-1, 100 legs shared) then pvc-db (PVC shop/db),
+  here-SN001's leg draining; pools 9 nodes × 2 tiers, no headroom claimed
+  where committed is partial, may-promise per drive's ratio; model 24 ms;
+  storm-9 killed → named. `drivemap.test.mjs` PASS; 284 Rust tests; the
+  `--locked` musl release build
+- Not viewed in a browser (there is none here)
+- Volumes on *another* node's drives are not read (this node's engine only)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
