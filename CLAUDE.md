@@ -813,8 +813,8 @@ restarted from its row — exactly when a restart is wanted.
       instance, which the definition then put back)
 - [x] `status.message` beside Failed on the row (reason and message both)
 - [x] Tests, changelog, docs; sc-build; live check
-- [ ] Golden: requested 2026-09-28, aborted by the platform ("the stormd
-      golden has no bin/stormd") — stormcentral#135; re-request when fixed
+- [x] Golden: the first request aborted on the platform (stormcentral#135);
+      shipped in golden-stormconsole-e3677bb239e7 (v0.22.0, stormcos#157)
 - Verified with `sc-build` (all tests) and `sc-build
   deploy/verify-vm-lifecycle.sh` (real fastetcd v1.2.0 + rustkube v0.15.3,
   the kubelet's status written through `/status`): 24/24 — a Failed
