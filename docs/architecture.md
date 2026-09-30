@@ -961,7 +961,10 @@ services) — are never a project: not in the viewer's list, not a create
 target (`/apply` refuses them except for `admin`, VM create always), not
 deleted or isolated from the console. **Every create targets a project**:
 `Creator.project` makes the dialog show a project picker with New project
-inline (suggested `<user>-work`, `<user>-vms` for machines); YAML goes to
+inline (suggested `<user>-work`, `<user>-vms` for machines). The picker's
+default is set once per opening and is never an override: a reload of the
+project list fills it only while it is empty or names a project that has
+gone, so a New project choice and its typed name stay (#56). YAML goes to
 `/apply?project=`, and a namespaced document that names no namespace goes
 there — never to `default`, which is refused with a sentence when nothing
 was chosen. The masthead selector is a **Project** selector. Lists always
@@ -981,7 +984,10 @@ every other class goes through its CSI driver (rustkube-node README). The
 console shows the claim here and its engine volume under Storage →
 Volumes, the claim as its consumer. rustkube does not default a claim's phase (rustkube#102);
 a missing phase is read as the API's default, Pending.
-`deploy/verify-projects.sh` is the live check, as three real identities.
+`deploy/verify-projects.sh` is the live check, as three real identities;
+`deploy/verify-create-project.sh` drives the dialog itself in a headless
+Chromium (Create VM → New project → name → create, twice; any page error
+fails it).
 
 ### stormblock
 

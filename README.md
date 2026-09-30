@@ -69,6 +69,7 @@ the real upstreams it needs on dev and deleting them after:
 | `sc-build deploy/…` | Checks |
 |---|---|
 | `verify-projects.sh` | projects, members, isolation, project-first create — as three real rustkube identities |
+| `verify-create-project.sh` | the Create dialog in a headless Chromium (Playwright): Create VM → New project → name → create, with no page errors — real fastetcd + rustkube |
 | `verify-vm-net.sh`, `verify-vm-keys.sh`, `verify-vm-snapshots.sh`, `verify-vm-lifecycle.sh` | VM addresses, SSH keys, snapshots, Start/Stop/Restart from every phase — real fastetcd + rustkube |
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |

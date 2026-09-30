@@ -876,13 +876,23 @@ serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
 ### Create: "+ New project…" can be named, and nothing breaks (#56)
 Owner on C2NR0Q2 (golden-stormconsole-b5667ebc5e42): Create VM offers New
 project but it cannot be named, and the dialog breaks the whole console.
-- [ ] `deploy/verify-create-project.sh`: real fastetcd + rustkube + console,
+- [x] `deploy/verify-create-project.sh`: real fastetcd + rustkube + console,
       the SPA built from the commit, driven by headless Chromium
       (Playwright): open Create VM, New project, type, create — twice; fail
       on any page error. Run first on unfixed main to reproduce
-- [ ] Fix `CreateDialog.svelte`: defaults set once per opening, never
+- [x] Fix `CreateDialog.svelte`: defaults set once per opening, never
       overwriting a choice; effects that do not re-trigger themselves
-- [ ] web/dist rebuilt; changelog, docs; sc-build; close; golden
+- [x] web/dist rebuilt; changelog, docs; sc-build; close; golden
+- Cause: the reset effect wrote `lists`/`values` and then read them, so it
+  re-ran itself until `effect_update_depth_exceeded` — thrown on opening
+  Create VM (the only creator with a checklist), after which nothing on
+  the page updated. Reproduced on unfixed main by the browser check (the
+  VM was created, the dialog never said so, the next click timed out)
+- Verified with `sc-build deploy/verify-create-project.sh`: no projects →
+  starts on New project with `alice-vms`, kept 4 s, created (namespace
+  requester alice, vm1 in it); one project → New project chosen, stays,
+  `alice-lab` kept, vm2 created there; Projects lists both; the dialog
+  opens and cancels again; no page errors
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

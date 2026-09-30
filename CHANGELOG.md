@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-09-30
+- **fix:** Create dialog (#56) — "+ New project…" could not be named, and
+  opening Create VM stopped the whole console. The dialog's reset effect
+  wrote state it then read (`lists = {}`, then `lists[f.name] = …`), so it
+  re-ran itself until Svelte threw `effect_update_depth_exceeded`, after
+  which nothing on the page updated. Its writes are now untracked and run
+  once per opening. The project picker's default no longer overrides a
+  choice: a project-list reload fills it only while it is empty or names a
+  project that has gone, and the new-project name is suggested once.
+- **test:** `deploy/verify-create-project.sh` + `create-project.browser.cjs`
+  — the SPA built from the commit, driven by headless Chromium against a
+  real console, fastetcd and rustkube. It failed on the unfixed code with
+  that error and passes on the fix.
+
 ### 2026-09-28
 - **docs:** refreshed from the code again. Since the 2026-09-27 pass, only
   #37 (VM lifecycle) and #29 (drive usage) changed code, and `config.rs`
