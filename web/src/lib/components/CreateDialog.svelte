@@ -3,6 +3,7 @@
   // or a form built from its fields. What it posts and where is entirely
   // the creator's declaration — this component knows nothing about pods
   // or volumes.
+  import { untrack } from 'svelte'
   import { create, closeCreator, projects, loadProjects, newProject, k8sns } from '../stores.svelte.js'
 
   const c = $derived(create.open)
@@ -16,49 +17,79 @@
   // per plugin cannot know.
   let lists = $state({})
 
+  // Everything the dialog starts with, set once per opening (#56). The
+  // effect reads only `c`; the reset runs untracked, because it writes the
+  // very state it then reads (`lists = {}`, then `lists[f.name] = …`), and
+  // an effect that reads what it wrote re-runs itself — forever, until
+  // Svelte gives up with effect_update_depth_exceeded and the whole console
+  // stops updating. That was the "breaks the whole gui".
   $effect(() => {
-    if (!c) return
-    text = c.template || ''
+    const cur = c
+    if (cur) untrack(() => opened(cur))
+  })
+
+  function opened(cur) {
+    text = cur.template || ''
     const v = {}
-    for (const f of c.fields || []) v[f.name] = f.default || ''
+    for (const f of cur.fields || []) v[f.name] = f.default || ''
     values = v
     error = ''
     done = ''
-    lists = {}
-    for (const f of c.fields || []) {
+    proj = ''
+    newName = ''
+    suggested = false
+    const l = {}
+    for (const f of cur.fields || []) {
       if (f.kind !== 'checklist' || !f.source) continue
-      lists[f.name] = { loading: true, options: [], note: '' }
+      l[f.name] = { loading: true, options: [], note: '' }
       // Left unset until it answers, so a list that never loads is not
       // submitted as "none ticked" — the server's default is all.
-      delete values[f.name]
+      delete v[f.name]
       fetch(f.source)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
         .then((d) => {
+          if (create.open !== cur) return // answered after the dialog moved on
           lists[f.name] = { loading: false, options: d.options || [], note: d.note || '' }
           values[f.name] = (d.options || []).filter((o) => o.checked).map((o) => o.value)
         })
         .catch((e) => {
+          if (create.open !== cur) return
           lists[f.name] = { loading: false, options: [], note: `could not load: ${e.message}` }
         })
     }
-  })
+    lists = l
+  }
 
   // Which project it goes in (#28). Every namespaced create asks, and
   // nothing lands in `default` by omission. With no projects yet, the
   // dialog starts on "New project" with a name already suggested.
+  //
+  // A default, never an override (#56): this runs again whenever the
+  // project list reloads, and it used to reassign the choice each time, so
+  // "+ New project…" and the name typed under it were taken back. It now
+  // fills the picker only while it is empty or names a project that has
+  // gone, and suggests a name once per opening.
   let proj = $state('')
   let newName = $state('')
+  let suggested = false
   $effect(() => {
     if (!c?.project) return
     if (!projects.loaded) {
-      loadProjects()
+      untrack(loadProjects)
       return
     }
     const names = projects.list.map((p) => p.name)
-    proj = names.includes(k8sns.selected) ? k8sns.selected : names[0] || '__new'
-    const purpose = c.id.startsWith('vm:') ? 'vms' : 'work'
-    const base = (projects.suggested || 'my-work').replace(/-work$/, `-${purpose}`)
-    newName = names.includes(base) ? '' : base
+    const scope = k8sns.selected
+    const base = (projects.suggested || 'my-work').replace(/-work$/, `-${c.id.startsWith('vm:') ? 'vms' : 'work'}`)
+    untrack(() => {
+      if (proj !== '__new' && !names.includes(proj)) {
+        proj = names.includes(scope) ? scope : names[0] || '__new'
+      }
+      if (!suggested) {
+        suggested = true
+        if (!newName && !names.includes(base)) newName = base
+      }
+    })
   })
 
   /// The project to send, creating it first when that was the choice.
