@@ -873,6 +873,17 @@ serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
 - Not viewed in a browser (there is none here)
 - Volumes on *another* node's drives are not read (this node's engine only)
 
+### Create: "+ New project…" can be named, and nothing breaks (#56)
+Owner on C2NR0Q2 (golden-stormconsole-b5667ebc5e42): Create VM offers New
+project but it cannot be named, and the dialog breaks the whole console.
+- [ ] `deploy/verify-create-project.sh`: real fastetcd + rustkube + console,
+      the SPA built from the commit, driven by headless Chromium
+      (Playwright): open Create VM, New project, type, create — twice; fail
+      on any page error. Run first on unfixed main to reproduce
+- [ ] Fix `CreateDialog.svelte`: defaults set once per opening, never
+      overwriting a choice; effects that do not re-trigger themselves
+- [ ] web/dist rebuilt; changelog, docs; sc-build; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
