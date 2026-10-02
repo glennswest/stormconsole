@@ -388,7 +388,7 @@ async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) 
         .into_response();
     }
 
-    // Probed together rather than in sequence: fifteen ports at two
+    // Probed together rather than in sequence: two dozen ports at two
     // seconds each is half a minute of staring at a spinner.
     let probes = node::NODE_PORTS.iter().map(|(port, expected)| {
         let client = inner.client.clone();

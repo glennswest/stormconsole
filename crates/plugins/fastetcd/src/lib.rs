@@ -8,7 +8,7 @@
 //!   today, and enough for the store's health.
 //! - **etcd's v3 JSON gateway** (`POST /v3/…` on :2379): status, members,
 //!   leader, raft term and index, alarms, the keyspace, and the
-//!   maintenance verbs. etcd serves it; fastetcd does not yet
+//!   maintenance verbs. etcd serves it, and fastetcd since v1.8.0
 //!   (fastetcd#28). Everything that needs it is read from it when it
 //!   answers and *said to be missing* when it does not — never an empty
 //!   member table that reads as a cluster with no members.
@@ -55,11 +55,11 @@ const REGISTRY: &str = "/registry/";
 /// shown as a count and "more".
 const SCAN_LIMIT: u64 = 50_000;
 const GATEWAY_GAP: &str = "members, leader, raft term and index, alarms by member, the keyspace and \
-     the maintenance verbs need etcd's v3 JSON gateway, which fastetcd does not serve yet (fastetcd#28)";
-const TRAFFIC_GAP: &str = "fastetcd exports no request or watch counters yet (fastetcd#29)";
+     the maintenance verbs need etcd's v3 JSON gateway, which this fastetcd does not serve (fastetcd v1.8.0 and later do, fastetcd#28)";
+const TRAFFIC_GAP: &str = "this fastetcd exports no request or watch counters (fastetcd v1.7.0 and later do, fastetcd#29)";
 
 /// Counters that become per-second rates between polls, with etcd's names
-/// (fastetcd#29 asks for exactly these).
+/// (fastetcd#29 delivered exactly these in v1.7.0).
 const RATES: &[(&str, &[&str])] = &[
     ("puts/s", &["etcd_debugging_mvcc_put_total"]),
     ("ranges/s", &["etcd_debugging_mvcc_range_total"]),

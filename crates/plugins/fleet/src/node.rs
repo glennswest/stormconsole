@@ -32,7 +32,9 @@ use stormview::{ComponentSummary, Health};
 ///
 /// Checked against stormcos `deploy/build-goldens.sh` (#21): the control
 /// plane's stormd instances are 9081–9085, and a service golden's stormd API
-/// is its port + 100 (stormlb's port 80 → 180). stormblock (9090), stormvm
+/// is its port + 100 (stormlb's port 80 → 180). Rechecked against
+/// stormcentral's component registry (#61): stormupdate, nfsop, stormrdp,
+/// stormcluster, nextnfs and minismbd are service goldens too. stormblock (9090), stormvm
 /// (9095) and sbregistry (5100) serve no feed and were always "silent" here;
 /// their stormd APIs (9190, 9195, …) are what answers. 9080 is stormd's own
 /// default, for a stormd run outside StormCOS.
@@ -53,8 +55,14 @@ pub const NODE_PORTS: &[(u16, &str)] = &[
     (9195, "stormvm (stormd)"),
     (9196, "cadvisor (stormd)"),
     (9197, "stormipmi (stormd)"),
+    (9188, "stormupdate (stormd)"),
+    (9198, "nfsop (stormd)"),
     (9199, "vmcloud-image-operator (stormd)"),
+    (9201, "stormrdp (stormd)"),
+    (9202, "stormcluster (stormd)"),
     (180, "stormlb (stormd)"),
+    (8180, "nextnfs (stormd)"),
+    (8545, "minismbd (stormd)"),
 ];
 
 /// One service found on a node: what answered, on which port, and what it

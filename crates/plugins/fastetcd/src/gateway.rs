@@ -1,7 +1,7 @@
 //! etcd's v3 JSON gateway: `POST /v3/…` on the client port.
 //!
-//! The same surface etcd itself serves beside gRPC, so this reads fastetcd
-//! once fastetcd#28 lands and reads etcd today. Keys and values are base64
+//! The same surface etcd itself serves beside gRPC, so this reads etcd and
+//! fastetcd v1.8.0 and later (fastetcd#28) alike. Keys and values are base64
 //! and 64-bit integers arrive as strings, per protobuf's JSON mapping; the
 //! readers here take either, and either spelling of a field name, because
 //! grpc-gateway's `OrigName` setting has changed between etcd releases.

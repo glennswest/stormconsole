@@ -195,11 +195,13 @@ fn default_stormd_host() -> String {
 }
 
 /// Where this node's stormd APIs can be: the control plane's 9081–9085, a
-/// service golden's port + 100 (9180–9199), and the two services whose
-/// ports are outside that range — stormlb (80 → 180) and stormimds
-/// (8169 → 8269), per stormcos `deploy/build-goldens.sh`.
+/// service golden's port + 100 (9180–9199), and the services whose ports
+/// are outside that range — stormlb (80 → 180), nextnfs (8080 → 8180),
+/// stormimds (8169 → 8269), minismbd (8445 → 8545), stormrdp (9101 → 9201)
+/// and stormcluster (9102 → 9202), per stormcos `deploy/build-goldens.sh`
+/// and stormcentral's component registry (#61).
 fn default_stormd_ports() -> Vec<u16> {
-    (9080..=9089).chain(9180..=9199).chain([180, 8269]).collect()
+    (9080..=9089).chain(9180..=9199).chain([9201, 9202, 180, 8180, 8269, 8545]).collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -366,7 +368,7 @@ pub struct Fastetcd {
     #[serde(default = "on")]
     pub enabled: bool,
     /// The client port, e.g. "http://127.0.0.1:2379": `/health`, and
-    /// etcd's v3 JSON gateway when it is served (fastetcd#28).
+    /// etcd's v3 JSON gateway (fastetcd v1.8.0 and later, fastetcd#28).
     pub url: Option<String>,
     /// The metrics listener. fastetcd binds it to loopback :2381 by
     /// default, which is why the console reads it from the node.
@@ -595,6 +597,9 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
         assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");
         assert!(c.fleet.stormd_ports.contains(&9085) && c.fleet.stormd_ports.contains(&9194));
+        for p in [9201, 9202, 8180, 8545] {
+            assert!(c.fleet.stormd_ports.contains(&p), "{p} missing from the default stormd ports");
+        }
     }
 
     #[test]
