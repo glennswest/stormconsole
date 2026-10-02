@@ -455,10 +455,9 @@ watch and slow-watcher metrics).
       after kill. The script had never run before (py3.12 f-strings); the
       lock was missing the crate (#23)
 
-Left for upstream: members, keyspace and verbs on *fastetcd* wait on
-fastetcd#28; traffic (puts/txns per second, lagging watchers) on
-fastetcd#29. The plugin already reads both shapes, so they light up
-without a console change.
+Upstream since delivered: fastetcd#28 (gateway, v1.8.0) and fastetcd#29
+(traffic, v1.7.0). The plugin reads both shapes; checking it live against
+such a fastetcd is #64.
 
 ### A VM's addresses, asked against done (#24) ✅ v0.14.0 2026-09-25
 rustkube-node now writes `status.interfaces[]` per NIC: `name`, `mac`,
@@ -893,6 +892,19 @@ project but it cannot be named, and the dialog breaks the whole console.
   requester alice, vm1 in it); one project → New project chosen, stays,
   `alice-lab` kept, vm2 created there; Projects lists both; the dialog
   opens and cancels again; no page errors
+
+### Docs refresh from the code (2026-10-02) ✅
+Since 2026-09-25, code changed after the 2026-09-28 pass only in #56 (the
+Create dialog, documented with it). Stale was upstream and the platform,
+collected in #61: fastetcd serves the v3 gateway (v1.8.0) and traffic
+counters (v1.7.0); stormcos#94 is done; the node config path is
+`/etc/stormconsole/stormconsole.toml`; the default stormd ports missed
+9201/9202/8180/8545 (fixed in code with the node page's layout, e289d2d,
+sc-build 284 tests).
+- [x] README, architecture, presentation, changelog
+- [x] Filed #64: the datastore page against a fastetcd ≥ v1.8.0
+- [x] The health path: `/admin/healthz` is the app's 200, so the golden's
+      probe always passes (stormcos#102, stormcentral#226 — not ours)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

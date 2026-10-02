@@ -575,8 +575,11 @@ ten is a warning, longer is an error — and each node card links to the
 logs filtered to it.
 
 This node's **services** are its stormd instances, discovered by probing
-the StormCOS port layout on loopback (control plane 9081–9085; node
-services at port + 100: stormdrive 9192, stormstorage 9193, console 9194).
+the StormCOS port layout on loopback (`[fleet] stormd_ports`: control
+plane 9081–9085; a service golden's stormd at its port + 100 — 9180–9199
+for stormdrive 9192, stormstorage 9193, console 9194 and the rest, then
+stormrdp 9201, stormcluster 9202, stormlb 180, nextnfs 8180, stormimds
+8269, minismbd 8545).
 Each one's own stormview feed is folded in under `fleet:svc:<name>` —
 the system card (as kind `service`) and its processes, with start/stop/
 restart carried through `/api/plugins/fleet/proxy/{port}/…`. Mounts and
@@ -609,7 +612,8 @@ role" from "role unknown", and nothing on this side defaults them to zero.
 
 Another node's services are drilled into on demand — `GET
 /api/plugins/fleet/nodes/{host}` probes its port layout (`node::NODE_PORTS`,
-checked against stormcos `build-goldens.sh`: only ports that serve a feed)
+checked against stormcos `build-goldens.sh` and stormcentral's component
+registry: only ports that serve a feed, 24 of them, probed together)
 and `…/nodes/{addr}/{port}/…` proxies to one, for an address the collector
 has heard and a port in the layout. **Not built:** the fleet actions —
 join, promote, demote, drain — which have no API (stormcos#38).
@@ -902,7 +906,8 @@ in use; **Unattached volumes** apart; image kinds are not in either. An older
 engine carries neither field: its unsealed volumes all go to Volumes and the
 engine card says why the split is missing. A guarded engine (v18 guards
 reads too) needs `[stormblock] token_file`, used for the poll and the proxy
-(stormcos#94 wires it on nodes). The sbregistry plugin reads the catalog
+(on a node stormcos sets `/run/stormblock/engine/api_token` and mounts
+`/run/stormblock` read-only — stormcos#94, done). The sbregistry plugin reads the catalog
 (`/v1/catalog/images`, sbregistry v0.23.0) as `reg:cat:<name>` — kind,
 component/source, sizes, clones and clone names, releases, digest, location,
 the engine volume underneath, and its base as an upward edge, which is the
@@ -1020,9 +1025,9 @@ things over HTTP, and the plugin reads both:
 - **etcd's v3 JSON gateway**, `POST /v3/…` on the client port: status
   (leader, raft term and index, version), the member list, alarms by
   member, `range` for the keyspace, and the maintenance verbs. etcd serves
-  it; fastetcd does not yet ([fastetcd#28]). Everything that needs it is
-  read from it when it answers and **said to be missing** when it does not
-  — the store's row names the issue, and there is no member table at all
+  it, and fastetcd since v1.8.0 ([fastetcd#28]). Everything that needs it
+  is read from it when it answers and **said to be missing** when it does
+  not — the store's row names the release that serves it, and there is no member table at all
   rather than an empty one that reads as a cluster with no members.
 
 No gRPC client, deliberately: that was the owner's call on #20, and
@@ -1054,11 +1059,13 @@ file a browser saves is one `etcdutl snapshot status` reads.
 
 Traffic — puts/ranges/txns per second, watchers, lagging watchers — is
 computed from counter deltas between polls when `/metrics` exports the
-counters, and fastetcd does not yet ([fastetcd#29]).
+counters, with etcd's names, which fastetcd does since v1.7.0
+([fastetcd#29]).
 
 `deploy/verify-etcd.sh` (run with `sc-build deploy/verify-etcd.sh`) runs
-the console against a real etcd for the gateway path and a real fastetcd
-for today's.
+the console against a real etcd 3.5 for the gateway path and a real
+fastetcd v1.2.0 for the metrics-only path. It has not yet been run against
+a fastetcd that serves the gateway and the counters (#64).
 
 [fastetcd#28]: https://github.com/glennswest/fastetcd/issues/28
 [fastetcd#29]: https://github.com/glennswest/fastetcd/issues/29
@@ -1115,15 +1122,24 @@ create, rather than showing nothing.
 
 ## Deployment
 
-On StormCOS the console is a **service golden** that stormcos's
-`deploy/build-goldens.sh` builds (`service_golden stormconsole 32M … 9094`):
-the static musl binary with the SPA embedded, under stormd (whose own API
-is on 9194), a **flat** config — `listen_addr = "0.0.0.0:9094"`, `data_dir =
-"/var/lib/stormconsole"` — the `stormconsole-data` and `stormconsole-logs`
-volumes, exit 78 not restarted, started on single-node clusters. The
-console accepts the flat shape as well as its own sectioned one. The
-golden's liveness path is `/admin/healthz` today, which the console does
-not serve — stormcos#102 (it must be `/healthz`).
+On StormCOS the console is a **service golden**. Its entry in
+stormcentral's component registry says what it is — port 9094, argv
+`--config /etc/stormconsole/stormconsole.toml`, the config text, the
+`stormconsole-data` and `stormconsole-logs` volumes (64 MB each) — and
+stormcos's `deploy/build-goldens.sh` builds it (`service_golden
+stormconsole 32M … 9094`): the static musl binary with the SPA embedded,
+under stormd (whose own API is on 9194), exit 78 not restarted, started on
+single-node clusters. The config is the **flat** shape — `listen_addr =
+"0.0.0.0:9094"`, `data_dir = "/var/lib/stormconsole"` — plus `[stormblock]
+token_file = "/run/stormblock/engine/api_token"`, the host's
+`/run/stormblock` mounted read-only (stormcos#94). The console accepts the
+flat shape as well as its own sectioned one; `/etc/stormconsole/config.toml`
+is only the default outside a node.
+
+The golden's liveness path is `/admin/healthz` today. The console does not
+route it: like any non-API path it is the app's HTML with a 200, so the
+probe always passes and detects nothing. It must be `/healthz` —
+stormcos#102, and stormcentral#226 for the registry entry.
 
 Outside StormCOS, `Containerfile` builds the same thing on `stormdbase`:
 
@@ -1183,13 +1199,12 @@ filed on its owner. The console says so on the page where the gap shows.
 | rustkube | [#101](https://github.com/glennswest/rustkube/issues/101) `stringData` not folded into `data`; [#102](https://github.com/glennswest/rustkube/issues/102) a claim's phase not defaulted | readers taking `data` alone; worked around here |
 | rustkube-node | #56 exec, attach, portForward | a pod terminal |
 | stormcos | [#38](https://github.com/glennswest/stormcos/issues/38) fleet lifecycle has no API | join, promote, demote, drain |
-| stormcos | [#94](https://github.com/glennswest/stormcos/issues/94) the engine token; [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path | Storage on a v18 engine; a golden stormd does not restart |
+| stormcos | [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path (and stormcentral [#226](https://github.com/glennswest/stormcentral/issues/226), the registry entry) | a liveness probe that can fail: `/admin/healthz` is the app's 200 |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
-| fastetcd | [#28](https://github.com/glennswest/fastetcd/issues/28) v3 JSON gateway, [#29](https://github.com/glennswest/fastetcd/issues/29) traffic counters | members, keyspace and verbs on fastetcd; traffic on its card |
-| stormconsole | #12 pod page (logs are served upstream); #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #12 pod page (logs are served upstream); #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #47 fastetcd over TLS; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

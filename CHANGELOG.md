@@ -3,6 +3,34 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-02
+- **fix:** the fleet's default `[fleet] stormd_ports` and the node page's
+  port layout missed six service goldens' stormd APIs — stormrdp 9201,
+  stormcluster 9202, nextnfs 8180, minismbd 8545 (ports outside
+  9180–9199), and, on the node page only, stormupdate 9188 and nfsop 9198.
+  Checked against stormcos `build-goldens.sh` and stormcentral's component
+  registry (#61).
+- **fix:** fastetcd's gap lines name the release that closes them — the v3
+  JSON gateway since fastetcd v1.8.0 (fastetcd#28), the traffic counters
+  since v1.7.0 (fastetcd#29) — instead of saying fastetcd does not serve
+  them yet.
+- **docs:** refreshed from the code. Since 2026-09-25 the only code change
+  after the 2026-09-28 pass was #56 (the Create dialog), already
+  documented; what was stale was upstream and the platform (#61):
+  - fastetcd serves the gateway and the counters now; the gaps table no
+    longer lists them, and #64 is the live check that has not been run;
+  - stormcos#94 is done: on a node stormcos sets `[stormblock] token_file
+    = "/run/stormblock/engine/api_token"`, removed from the open gaps;
+  - the node config path is `/etc/stormconsole/stormconsole.toml`
+    (`--config`, from stormcentral's component registry);
+    `/etc/stormconsole/config.toml` is only the default off a node;
+  - how it ships names the component registry entry;
+  - the golden's `/admin/healthz` probe is not a probe that restarts a
+    healthy console, as the deck said: the console answers it with the
+    app's 200, so it always passes (stormcos#102, stormcentral#226);
+  - the deck's status line: v0.22.0, and that most pages have not been
+    viewed in a browser (#58).
+
 ### 2026-09-30
 - **fix:** Create dialog (#56) — "+ New project…" could not be named, and
   opening Create VM stopped the whole console. The dialog's reset effect

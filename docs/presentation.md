@@ -130,7 +130,7 @@ real upstreams up on dev.
 | Metrics | **none** |
 | API | `/api/v1/components`, `/ws/components`, `/api/v1/console/{nav,creators,access,events}`, `/api/v1/auth/*`, `/api/plugins/<id>/…` |
 | CLI | `stormconsole [--config <path>]` · `--hash-password` |
-| Config | `/etc/stormconsole/config.toml`, TOML, unknown keys refused; one section per plugin (`enabled`, `url`, tokens) |
+| Config | `--config`; on a node `/etc/stormconsole/stormconsole.toml` (default `/etc/stormconsole/config.toml`), TOML, unknown keys refused; one section per plugin (`enabled`, `url`, tokens) |
 | Exit | 78 bad config (stormd does not restart it), 1 cannot bind |
 
 Every key and default: README §Configuration.
@@ -142,9 +142,10 @@ Every key and default: README §Configuration.
 - **Built** with `sc-build` on dev: musl static binary, SPA embedded
   (`web/dist` committed).
 - **Shipped** as a stormcos **service golden**, `stormconsole` (32 MB), from
-  stormcos `deploy/build-goldens.sh`: under stormd (API 9194), flat config
-  (`listen_addr`, `data_dir`), data and log volumes, exit 78 not restarted,
-  started on single-node clusters.
+  its entry in stormcentral's component registry, built by stormcos
+  `deploy/build-goldens.sh`: under stormd (API 9194), flat config
+  (`listen_addr`, `data_dir`, the engine's `token_file`), data and log
+  volumes, exit 78 not restarted, started on single-node clusters.
 - **Updated** by a new golden: `stormcentral component build stormconsole`
   → a stormcos release request → the next release carries it.
 - **Outside StormCOS:** the `Containerfile` on `stormdbase`, stormd on 9080.
@@ -166,17 +167,17 @@ Every key and default: README §Configuration.
 
 ## Status and what matters
 
-**0.21.0**, every page live-verified against its real upstream.
+**0.22.0**, every page's API live-verified against its real upstream; most pages not yet viewed in a browser (**#58**).
 
 Open, and why it matters:
-- **stormcos#102** — the golden's liveness path is `/admin/healthz`, which
-  the console does not serve: stormd can restart a healthy console.
-- **stormcos#94** — v18 engines need their token: until it is wired,
-  Storage reads 401 on a node.
+- **stormcos#102** / stormcentral#226 — the golden's liveness path is
+  `/admin/healthz`, which the console does not route: it answers the app
+  with a 200, so the probe always passes and a hung console is never seen.
 - **#42** (a decision) — SSH keys live in `default`, where a
   project-only user cannot write them.
 - **#35** — the registry plugin sends no credential.
-- Upstream data still coming: fastetcd#28/#29, stormblock#152, stormvm#16,
-  #41, #45.
+- **#64** — fastetcd serves the v3 gateway and traffic counters now
+  (v1.8.0); the datastore page has not yet been checked against it.
+- Upstream data still coming: stormblock#152, stormvm#16, #41, #45.
 
 Docs: README (operational), `docs/architecture.md` (design), CHANGELOG.

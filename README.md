@@ -29,7 +29,7 @@ create forms and a slice of the component feed every page is drawn from.
 | stormstorage (`storage`) | stormstorage (:9093) feed | Storage pools | the feed's own actions |
 | stormblock (`sb`) | stormblock engine (:9090) | Volumes (attached, with consumer), Unattached, slabs, arrays, exports | delete a volume (not while in use), create volume/export |
 | sbregistry (`reg`) | stormblock-registry (:5100) | Images → Catalog (goldens, blanks, media, lineage, clones, download progress), pushed images, pallets | create golden/clone |
-| fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served | compact, defragment, disarm, snapshot (admin) |
+| fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served (etcd; fastetcd v1.8.0+) | compact, defragment, disarm, snapshot (admin) |
 | stormipmi (`ipmi`) | stormipmi (:9097) Machines API | Hardware → Machines: by service tag, BMC, power, the release each boots, default image, adopt, SOL console | power, set release/default, test mark, adopt (admin) |
 
 **Claims.** A PersistentVolumeClaim of the built-in `stormblock` class
@@ -103,6 +103,7 @@ against a real console and rustkube, plus the edges and a podman build.
 
 ```
 stormconsole [--config <path>]      default /etc/stormconsole/config.toml
+                                    (on a node: /etc/stormconsole/stormconsole.toml)
 printf %s 'pw' | stormconsole --hash-password   an argon2 password_hash, then exit
 ```
 
@@ -131,11 +132,11 @@ Full example: [config/config.toml](config/config.toml).
 | `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
 | `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | the local default is unverified (self-signed stormcert); a configured server is verified unless set |
 | `[kubernetes] system_namespaces` | `["cilium"]` | never a project, besides `default`, `openshift`, `kube-*`, `openshift-*` |
-| `[fleet] enabled / mcast_group / stormd_host / stormd_ports` | on / `239.255.42.1:5514` / `127.0.0.1` / 9080–9089, 9180–9199, 180, 8269 | |
+| `[fleet] enabled / mcast_group / stormd_host / stormd_ports` | on / `239.255.42.1:5514` / `127.0.0.1` / 9080–9089, 9180–9199, 9201, 9202, 180, 8180, 8269, 8545 | a service golden's stormd is its port + 100 |
 | `[logs] enabled / mcast_group / db_path / ring_cap / retain_hours / dedup` | on / `239.255.42.1:5514` / `<data_dir>/logs.redb` / 200000 / 168 / true | |
 | `[stormdrive] enabled / url / nodes` | on / `http://127.0.0.1:9092` / {} | `nodes` = `host = "url"`, beside the fleet-discovered ones |
 | `[stormstorage] enabled / url` | on / `http://127.0.0.1:9093` | |
-| `[stormblock] enabled / url / token_file` | on / `http://127.0.0.1:9090` / — | the engine's `<data_dir>/api_token`; a v18 engine answers 401 to reads without it |
+| `[stormblock] enabled / url / token_file` | on / `http://127.0.0.1:9090` / — | the engine's `<data_dir>/api_token`; a v18 engine answers 401 to reads without it. On a node stormcos sets `/run/stormblock/engine/api_token` |
 | `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | |
 | `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |
 | `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
@@ -190,15 +191,23 @@ warns about that on every start.
 
 ## How it ships
 
-A stormcos **service golden**, `stormconsole` (32 MB), built by stormcos
+A stormcos **service golden**, `stormconsole` (32 MB), described by its
+entry in stormcentral's component registry (port 9094, argv `--config
+/etc/stormconsole/stormconsole.toml`, its config text, `stormconsole-data`
+64 MB and `stormconsole-logs` 64 MB) and built by stormcos
 `deploy/build-goldens.sh`: the static musl binary with the SPA inside,
-under stormd, with the flat config (`listen_addr = "0.0.0.0:9094"`,
-`data_dir = "/var/lib/stormconsole"`), `stormconsole-data` and
-`stormconsole-logs` volumes, stormd's API on 9194, exit 78 not restarted,
-started on single-node clusters. Goldens are requested with
-`stormcentral component build stormconsole`. Not yet right on the stormcos
-side: the golden's liveness path (stormcos#102 — it must be `/healthz`) and
-the engine token for Storage (stormcos#94).
+under stormd (its API on 9194), exit 78 not restarted, started on
+single-node clusters. The config it is given is the flat shape —
+`listen_addr = "0.0.0.0:9094"`, `data_dir = "/var/lib/stormconsole"` — plus
+`[stormblock] token_file = "/run/stormblock/engine/api_token"`, with the
+host's `/run/stormblock` mounted read-only (stormcos#94, done). Goldens are
+requested with `stormcentral component build stormconsole`; a release
+installs them.
+
+Not yet right on the platform side: the golden's liveness path is
+`/admin/healthz`, which the console does not route — it falls through to
+the app's HTML with a 200, so the probe always passes and detects nothing.
+It must be `/healthz` (stormcos#102, stormcentral#226).
 
 `Containerfile` + `config/stormd.toml` build the same thing as a container
 on `stormdbase` (stormd on 9080, the console under it, liveness
@@ -221,8 +230,12 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —
   stormvm#41; **VMs on the pod network** (and so isolation covering them) —
   stormvm#16; **snapshot step, disks, size** — stormvm#45.
-- **Datastore members, keyspace and verbs on fastetcd** — its v3 JSON
-  gateway (fastetcd#28); traffic counters (fastetcd#29).
+- **Datastore members, keyspace, verbs and traffic on fastetcd** — fastetcd
+  serves the v3 JSON gateway since v1.8.0 (fastetcd#28) and etcd's traffic
+  counters since v1.7.0 (fastetcd#29), and the plugin reads both in etcd's
+  shape; it has been checked live against etcd 3.5 and fastetcd v1.2.0 only
+  (#64). An older fastetcd gets a line naming the release that has them.
+  fastetcd with TLS and a client certificate is #47.
 - **Volumes on another node's drives** — the console reads only this node's
   engine, so a drive on another node lists no volumes, and says so. Each
   drive's *usage* comes from its own node's stormdrive (v0.13.0+).
