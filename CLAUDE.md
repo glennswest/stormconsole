@@ -906,6 +906,35 @@ sc-build 284 tests).
 - [x] The health path: `/admin/healthz` is the app's 200, so the golden's
       probe always passes (stormcos#102, stormcentral#226 — not ours)
 
+### Pod and VM detail: network, image, metadata, traffic, logs (#69)
+Owner (2026-10-02): full network info, image + sha + last checked + build
+date, all metadata, traffic counters, logs in the UI with the last 5 runs.
+Read from the code (2026-10-02): the kubelet writes `image`, `imageID`
+(a digest under containerd, the image string again under stormpump),
+`restartCount`, `state` (terminated without reason), `podIPs`, `hostIP`;
+no `lastState`, no resolved time, no OCI labels, no MTU/routes/CNI
+(filed **rustkube-node#130**, **#131**). pods/log forwards `container,
+previous, tailLines, timestamps, follow, limitBytes`; `previous` is only
+the run before. Counters: the kubelet's `/metrics/cadvisor` on :10250
+(rx/tx bytes per pod interface), bearer checked by TokenReview — rustkube
+has no node proxy (rustkube#108), so the console dials the kubelet at the
+node's address. Golden provenance: stormcentral `GET /api/v1/goldens
+?component=` (authenticated). VMs: no tap counters (stormvm#48), serial
+replay already on the Serial console tab.
+- [ ] k8s `pod.rs`: `GET /pods/{ns}/{name}` — metadata, owner chain,
+      QoS, priority, SA, conditions, containers (image, digest, pull
+      policy, ports, restarts, state, lastState when present), network
+      (IPs, hostNetwork, DNS, Services selecting it + endpoints, Cilium
+      identity/policies), gaps named
+- [ ] Logs: `GET /pods/{ns}/{name}/log` (as the viewer, streamed when
+      following); the console keeps the last 5 runs per container
+      (`previous` fetched when restartCount moves), `GET …/runs`
+- [ ] Traffic: `GET /pods/{ns}/{name}/traffic` from the node's kubelet
+- [ ] Golden provenance for `stormpump://` via optional `[stormcentral]`
+- [ ] `#/pod/:ns/:name`: Overview, Network, Logs, Events, YAML; pod rows
+      link to it; VM page: metadata card, image card, traffic gap named
+- [ ] Tests, docs, changelog; live check; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
