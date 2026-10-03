@@ -3,6 +3,50 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-02 — the pod page (#69)
+- **feat:** a pod has a page, `#/pod/<ns>/<name>`, and its row links to it
+  (plus a Logs action). Overview: phase, node, every pod address, QoS,
+  priority, service account, restart policy, the owner chain (ReplicaSet →
+  Deployment, Job → CronJob), conditions with times, labels, annotations,
+  events; a Containers table (init and ephemeral included) with state,
+  restarts and last termination; an Images card per container — the
+  reference, the `sha256:` digest from the node's `imageID`, the image ID,
+  pull policy, when it was last checked, and how it was built. Network:
+  addresses, host network, DNS (policy and config), Cilium (datapath,
+  identity, the policies that select it), the interfaces when the CNI
+  records them, traffic, the Services that select the pod with their
+  cluster IPs and ports and whether this pod is among their ready
+  Endpoints, and the container ports. Logs, Events, YAML.
+- **feat:** logs in the UI, as OpenShift shows them: per container, opening
+  on the last 1,000 lines and following live (pause holds new lines and
+  says how many; resume adds them), search with highlight, wrap,
+  timestamps, download; the previous run from the node; and **the last 5
+  runs per container kept by the console** — it watches restart counts and
+  fetches `previous` as each run ends, saying how many it missed between
+  two looks. `GET /api/plugins/k8s/pods/{ns}/{name}/log` streams the
+  apiserver's `pods/log` as the viewer; `…/runs/{container}/{run}`.
+- **feat:** traffic counters — `GET …/pods/{ns}/{name}/traffic` reads the
+  kubelet's `/metrics/cadvisor` on the pod's node (:10250), rx/tx per
+  interface; the page polls every 5 s and draws rates as sparklines.
+  rustkube has no node proxy (rustkube#108), so the console dials the
+  kubelet with the viewer's bearer or its own.
+- **feat:** `[stormcentral] url / token_file` (optional): a `stormpump://`
+  image shows the newest golden stormcentral built for that component —
+  built at, by, commit, build id, tar sha256 — labelled as the newest, since
+  the node does not say which it runs.
+- **feat:** the VM page gains Images (each disk's source and digest),
+  Metadata (labels, annotations, conditions, boot time) and the gaps — no
+  per-VM counters yet (stormvm#48) — with the serial log on its console tab.
+- **docs:** what the node does not report is named on the page where it
+  would be, with its issue — filed **rustkube-node#130** (lastState and
+  termination reason, a digest for `stormpump://`, when an image was
+  resolved, OCI build info) and **rustkube-node#131** (packets, errors and
+  drops; network-status with MTU, gateway, routes and CNI; runs before the
+  previous one). README, architecture, presentation, example config.
+- **test:** `deploy/verify-pod-page.sh` — a real fastetcd + rustkube
+  v0.15.3, a stand-in kubelet and stormcentral, a real console; the API
+  checked with curl and every tab driven in headless Chromium.
+
 ### 2026-10-02
 - **fix:** the fleet's default `[fleet] stormd_ports` and the node page's
   port layout missed six service goldens' stormd APIs — stormrdp 9201,

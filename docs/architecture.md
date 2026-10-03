@@ -473,14 +473,43 @@ is a thin typed layer over the standard REST paths.
   are optional in the watch cache: a 404 is "not installed", synced and
   empty, re-checked each minute. **Not built:** Hubble flows — the relay
   ships (stormpump#11), the console does not read it (#4).
-- **Pod logs — served upstream, not shown here.** rustkube v0.8.1 serves
-  `GET /api/v1/namespaces/{ns}/pods/{name}/log`, proxied to the kubelet's
-  `containerLogs` with `container`, `follow`, `tailLines`, `sinceSeconds`,
-  `timestamps` and `previous` (rustkube#55); the kubelet streams `follow`
-  since rustkube-node v0.3.0 (#34). The console has no pod page to show
-  them on (#12). A terminal waits on the kubelet answering exec
-  (rustkube-node#56; the apiserver proxies it, rustkube#42). A node's page
-  links to that node's fleet logs.
+- **The pod page** (`#/pod/<ns>/<name>`, #69; `pod.rs`, `podpage.rs`,
+  `logruns.rs`). One answer, `GET /api/plugins/k8s/pods/{ns}/{name}`,
+  drawn from the watch cache plus three reads the cache cannot make: the
+  owner chain past a ReplicaSet (asked as the viewer; ReplicaSets are not
+  watched), each selecting Service's Endpoints (is this pod in the ready
+  addresses), and, for a `stormpump://` image, the newest golden
+  stormcentral built for that component (`GET /api/v1/goldens?component=`,
+  only with `[stormcentral]`). Containers — init, regular, ephemeral —
+  carry the spec beside the status: image, `imageID`, the `sha256:` found
+  in either, pull policy (defaulted as Kubernetes does), ports, resources,
+  state, `lastState`. What the node does not write comes back as `gaps`,
+  each with its issue (rustkube-node#130, #131), and is read the day it
+  does (`lastState`, `storm.io/image-resolved.<container>`,
+  `k8s.v1.cni.cncf.io/network-status`).
+  - **Logs**: `GET …/log` is the apiserver's `pods/{name}/log` asked as
+    the viewer (`container`, `previous`, `tailLines`, `limitBytes`,
+    `timestamps`, `follow`) and streamed through as it arrives; `download`
+    adds a filename. The node serves only the current run and the one
+    before, so **the console keeps the last 5 runs** per container
+    (`logruns.rs`): every 10 s it compares each container's
+    `restartCount` with the last it saw, and when one moved it fetches
+    `previous` — at that moment the run that just ended — keeping its last
+    256 KiB. A run that ended and was replaced between two looks is
+    counted as `missed` on the next one kept. In memory; a deleted pod
+    drops its runs. `GET …/runs/{container}/{run}`.
+  - **Traffic**: `GET …/traffic` reads `/metrics/cadvisor` from the
+    kubelet on the pod's node (`https://<hostIP or the node's
+    InternalIP>:10250`, the viewer's bearer or the console's; the kubelet
+    checks it with a TokenReview). rustkube has no node proxy
+    (rustkube#108), so this is the console's one direct dial to a node
+    service it does not run beside. rx/tx bytes per interface today; the
+    packets, errors and drops families are read when exported (#131). A
+    host-network pod has no counters of its own, and says so. The page
+    polls every 5 s and draws rates between reads.
+  A terminal waits on the kubelet answering exec (rustkube-node#56; the
+  apiserver proxies it, rustkube#42). A node's page links to that node's
+  fleet logs.
 
 ### logs
 
@@ -641,6 +670,16 @@ objects. So the plugin watches
 `kubevirt.io/v1` with the same client and list+watch loop the Cilium view
 uses — `plugin-kubernetes` exports `Client`, `KubeStore` and `watch` for
 it — and there is no second source of truth to reconcile.
+
+The machine's page asks it the pod page's questions too (#69,
+`facts.rs`): its labels and annotations (the definition's, the
+instance's over them), conditions and the node's boot marks
+(`storm.io/startedUnix`, `bootSeconds`); each disk's source image — a
+golden clone, a container disk, a claim — with the `sha256:` where the
+reference carries one; and what nothing reports yet, named: a digest for a
+golden (rustkube-node#130) and any interface counters (stormvm#48, and the
+tap as rustkube-node#131 asks). The guest's serial log is the Serial
+console tab, which opens on what stormvm replays.
 
 It is a plugin rather than two more kinds in the kubernetes plugin because
 a VM is a domain: its own navigation, its own creation forms, its own
@@ -1198,13 +1237,16 @@ filed on its owner. The console says so on the page where the gap shows.
 |------|-------|------------------|
 | rustkube | [#101](https://github.com/glennswest/rustkube/issues/101) `stringData` not folded into `data`; [#102](https://github.com/glennswest/rustkube/issues/102) a claim's phase not defaulted | readers taking `data` alone; worked around here |
 | rustkube-node | #56 exec, attach, portForward | a pod terminal |
+| rustkube-node | [#130](https://github.com/glennswest/rustkube-node/issues/130) lastState, terminated reason, a digest for `stormpump://`, when the image was resolved, OCI build info; [#131](https://github.com/glennswest/rustkube-node/issues/131) packets/errors/drops, network-status (MTU, gateway, routes, CNI), runs before the previous one | the pod page's gaps |
+| rustkube | [#108](https://github.com/glennswest/rustkube/issues/108) `nodes/{name}/proxy` | counters through the apiserver instead of dialling each kubelet |
+| stormvm | #48 per-VM metrics | a VM's traffic counters |
 | stormcos | [#38](https://github.com/glennswest/stormcos/issues/38) fleet lifecycle has no API | join, promote, demote, drain |
 | stormcos | [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path (and stormcentral [#226](https://github.com/glennswest/stormcentral/issues/226), the registry entry) | a liveness probe that can fail: `/admin/healthz` is the app's 200 |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
-| stormconsole | #12 pod page (logs are served upstream); #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #47 fastetcd over TLS; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #47 fastetcd over TLS; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

@@ -134,3 +134,10 @@ enabled = true
 # admin-only here, and carry stormipmi's api.tokenFile bearer when it has one.
 # url = "http://127.0.0.1:9097"
 # token_file = "/etc/stormconsole/stormipmi.token"
+
+# [stormcentral]
+# Where a stormpump:// image's golden is recorded: the pod page shows its
+# build (built at, by, commit, build id) beside the image. Off unless a url
+# is set; stormcentral's golden list needs a bearer it accepts.
+# url = "http://stormcentral.g8.lo"
+# token_file = "/etc/stormconsole/stormcentral.token"

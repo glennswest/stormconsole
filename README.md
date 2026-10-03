@@ -20,8 +20,8 @@ create forms and a slice of the component feed every page is drawn from.
 
 | Plugin (id) | Reads | Shows | Acts |
 |---|---|---|---|
-| kubernetes (`k8s`) | rustkube apiserver, list+watch of 23 kinds; the Cilium agent's `/healthz` | Projects; workloads, services, claims, policies, Cilium; the Cluster section (nodes, namespaces, PVs, storage classes, CRDs, cluster roles); events | projects (request, members, isolation, delete), YAML import/edit, delete — **as the viewer**, so RBAC decides |
-| vm (`vm`) | KubeVirt `VirtualMachine`/`VirtualMachineInstance` and `snapshot.kubevirt.io` through the apiserver; stormvm (:9095) for consoles and verbs | Virtual machines: addresses asked vs done, disks, settings, SSH keys, snapshots, serial and framebuffer consoles | create, start/stop/restart, pause/reset/freeze…, settings, disks, snapshot/restore, keys |
+| kubernetes (`k8s`) | rustkube apiserver, list+watch of 23 kinds; the Cilium agent's `/healthz`; each node's kubelet `/metrics/cadvisor` (:10250) for a pod's counters; stormcentral's goldens, when `[stormcentral]` is set | Projects; workloads, services, claims, policies, Cilium; the Cluster section (nodes, namespaces, PVs, storage classes, CRDs, cluster roles); events; **a pod's page** — owners, containers, image and digest, the golden's build, addresses, DNS, the Services that select it and whether it is in their Endpoints, Cilium, traffic, logs (current, previous, and the last 5 runs the console kept) | projects (request, members, isolation, delete), YAML import/edit, delete — **as the viewer**, so RBAC decides |
+| vm (`vm`) | KubeVirt `VirtualMachine`/`VirtualMachineInstance` and `snapshot.kubevirt.io` through the apiserver; stormvm (:9095) for consoles and verbs | Virtual machines: addresses asked vs done, disks, images, metadata, settings, SSH keys, snapshots, serial and framebuffer consoles | create, start/stop/restart, pause/reset/freeze…, settings, disks, snapshot/restore, keys |
 | vmimages (`img`) | vmcloud-image-operator (:9099) | VM catalogue, VM goldens, local copies | make a golden, retry, delete (the `CloudImage`, via the apiserver), unmanage |
 | fleet (`fleet`) | the stormcast log group's hosts; this node's stormd APIs | Nodes, and on demand one node's services | this node's stormd services start/stop/restart |
 | logs (`logs`) | stormcast multicast `239.255.42.1:5514` (RFC 5424) into a redb ring | Fleet logs: filter, search, live follow | — |
@@ -43,7 +43,7 @@ the claim as its consumer.
 
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
-`#/vm/<ns>/<name>` · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) ·
+`#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) ·
 `#/nodes` · `#/node/<host>` · `#/logs` · `#/etcd/keys` · `#/account/keys` ·
 `#/attach/<ns>/<claim>` · `#/grid?id=&rel=`. The masthead carries the
 Project selector, Create, cluster health, the key (your SSH keys),
@@ -76,6 +76,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
+| `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`) and stormcentral; the API with curl and every tab in Chromium, screenshots in `shots.tgz` |
 
 ## Tests on a node
 
@@ -142,6 +143,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
 | `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |
+| `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
 
 An upstream that is not there is not an error: its card says which address
 did not answer.
@@ -156,6 +158,7 @@ did not answer.
 | `GET /api/version` | `{console, release}` — the release from the nodes' `osImage` |
 | `GET /api/summary` | the stormd plugin card |
 | metrics | **none** — `/metrics` is not a route and falls through to the app with 200 HTML (#41) |
+| outbound | each pod's node at **:10250** (the kubelet's `/metrics/cadvisor`, with the viewer's or the console's bearer — rustkube has no node proxy, rustkube#108) |
 | unknown `/api/…`, `/ws/…` | JSON **404** `{"error": "no such route: …"}`; any other path is the app |
 
 ## Authentication and roles
@@ -215,10 +218,17 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 
 ## Not done, and why
 
-- **A pod page** (#12) — pod logs are served upstream (rustkube v0.8.1
-  `pods/{name}/log`, streamed by rustkube-node v0.3.0) and the console does
-  not show them yet; a terminal also waits on the kubelet answering exec
-  (rustkube-node#56).
+- **On the pod page, what the node does not report** — a container's
+  `lastState` and termination reason, a digest for a `stormpump://` image,
+  when an image was last resolved, and its OCI build info
+  (rustkube-node#130); the interface's MTU, gateway, routes and CNI,
+  packets/errors/drops, and runs before the previous one
+  (rustkube-node#131). Each is read when present and named where it is
+  not. The console keeps the last 5 runs per container itself, in memory.
+  Which golden a node runs is not on the pod, so the page shows the newest
+  stormcentral built for the component and says so. A **terminal** waits
+  on the kubelet answering exec (rustkube-node#56); **Environment** (#12).
+  A VM's traffic counters: stormvm#48.
 - **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
   with no API (stormcos#38); the console offers none.
 - **Scale a workload, cordon/uncordon and drain a node** — not built (#36).
