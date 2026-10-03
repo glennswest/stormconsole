@@ -31,6 +31,7 @@ create forms and a slice of the component feed every page is drawn from.
 | sbregistry (`reg`) | stormblock-registry (:5100) | Images → Registry images (component, container and slab registry images, blanks, media, lineage, instances, download progress), pushed images, pallets | create a registry image or an instance |
 | fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served (etcd; fastetcd v1.8.0+) | compact, defragment, disarm, snapshot (admin) |
 | stormipmi (`ipmi`) | stormipmi (:9097) Machines API | Hardware → Machines: by service tag, BMC, power, the release each boots, default image, adopt, SOL console | power, set release/default, test mark, adopt (admin) |
+| stormcluster (`cluster`) | stormcluster (:9102) feed and operations API, on this node — any node's answers for the cluster | Cluster → Membership: the cluster (or this SNO), members with role, state and the cluster CA, discovered nodes, the last operations and their steps | form, join (as workers, or masters in pairs), promote (in pairs), demote, drain, uncordon, split to SNO (keep or wipe), resume — each previewed as stormcluster's plan first (admin) |
 
 **Claims.** A PersistentVolumeClaim of the built-in `stormblock` class
 (provisioner `stormblock.storm.io`, binding `WaitForFirstConsumer`) is
@@ -82,6 +83,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
+| `verify-cluster.sh` | the Cluster page — three real stormclusters (b1–b3) on loopback addresses and a private multicast group, stand-ins for the node lifecycle API and fastetcd's gateway; the proxy with curl, then form, join, resume, a refusal, promote in pairs, split, drain in Chromium as an admin and an operator |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
 | `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`) and stormcentral; the API with curl and every tab in Chromium, screenshots in `shots.tgz`; and the words (#70) — stand-in registry, engine and image operator, every page that shows a registry image searched for “golden” |
@@ -151,6 +153,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
 | `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |
+| `[stormcluster] enabled / url / token_file` | on / `http://127.0.0.1:9102` / — | stormcluster's `token_file`, held server-side; without it a guarded stormcluster refuses every write with 401 |
 | `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
 
 An upstream that is not there is not an error: its card says which address
@@ -182,7 +185,8 @@ warns about that on every start.
   restart signs everyone out). Tokens and passwords are compared in
   constant time.
 - **Roles**: `viewer` reads; `operator` writes; `admin` also gets what is
-  admin-only — Machines writes and typing into a SOL console, the datastore,
+  admin-only — Machines writes and typing into a SOL console, every cluster
+  membership operation, the datastore,
   YAML into a system namespace. The write gate is **one check in the host,
   by method**: any non-GET under `/api/plugins/` needs `operator`.
 - **Identity upstream**: a user with a `kube_token` is asked about as

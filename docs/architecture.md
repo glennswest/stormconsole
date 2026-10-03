@@ -1003,6 +1003,45 @@ boot intent (stormipmi's 501 shown as it says it), test marks, the default
 image, and new hosts to adopt with their BMC. `deploy/verify-machines.sh` is
 the live check on stormipmi's own rig.
 
+### Cluster membership, from stormcluster (#63)
+
+`crates/plugins/stormcluster` (name `cluster`) reads stormcluster
+(stormcluster#1) at `[stormcluster] url` — default this node's :9102, since
+stormcluster runs on every node and any one answers for the cluster. Its
+stormview feed comes in as `cluster:system` (the cluster: name, masters,
+workers, seed; or "<node> (SNO)"), `cluster:member:<node>` (role, state,
+address, hardware, the cluster CA on the seed), `cluster:peer:<node>`
+(discovered and not a member: release, edition, hardware, or "beacon only")
+and `cluster:op:<id>` (the last five operations), every action a body-less
+POST routed through the plugin's proxy.
+
+`/api/plugins/cluster/proxy/*` forwards only stormcluster's operator API
+(`api/v1/{health,self,peers,cluster,etcd,components,operations,members}`;
+`api/v1/record` is between stormclusters and is not the browser's to name;
+`..` refused). Reads are open; **every write is `admin` only**, carries
+stormcluster's bearer (`[stormcluster] token_file`) added server-side, and
+leaves an audit line naming the user. A write's answer is reshaped so any
+page can read it: a request forwarded to its coordinator
+(`{"coordinator","response"}`) is unwrapped with `coordinator` kept; a
+refusal (`409 {"refused":[…]}`) keeps its list and also carries it as
+`error`, so a generic row button says the reasons rather than "409
+Conflict"; a dry run's steps are given stormcluster's own sentence for each
+(its `Step::describe`, copied until the plan carries one — stormcluster#11).
+
+`#/cluster` (Cluster → Membership): the cluster, then Members, the nodes
+discovered, and Operations with their steps (the running one opened on its
+own). Every action except Resume first asks for the plan (`?dryRun=true`)
+and shows its steps and warnings in a dialog; nothing runs until Run.
+Split asks keep or wipe the node's data, and re-plans on the choice. A
+refusal is shown as stormcluster's reasons, every one. Two operations need
+a body a button cannot carry, so they are forms that build `POST
+/api/v1/operations`: **Form a cluster** (a name, its masters — 1, 3 or 5,
+the first the seed — and workers, from the SNO peers) and **Join nodes**
+(as workers, or as masters in pairs so the control plane stays odd), with
+**Promote workers** in pairs beside it. `/api/plugins/cluster/me` tells the
+page whether to offer the buttons. `deploy/verify-cluster.sh` is the live
+check.
+
 ### Projects (#28)
 
  A project is a namespace with an owner, served by
@@ -1243,6 +1282,7 @@ stormconsole/
       sbregistry/            # the registry: catalog, goldens, clones, pallets, images
       fastetcd/              # the datastore: /metrics + etcd's v3 gateway
       stormipmi/             # bare metal: the Machines API and SOL
+      stormcluster/          # cluster membership: form, join, promote, split
   web/                       # Svelte 5 SPA (stormview npm); web/dist committed, embedded
   config/                    # config.toml (example), stormd.toml (Containerfile)
   deploy/                    # verify-*.sh — live checks run with sc-build
@@ -1262,7 +1302,8 @@ filed on its owner. The console says so on the page where the gap shows.
 | rustkube-node | [#130](https://github.com/glennswest/rustkube-node/issues/130) lastState, terminated reason, a digest for `stormpump://`, when the image was resolved, OCI build info; [#131](https://github.com/glennswest/rustkube-node/issues/131) packets/errors/drops, network-status (MTU, gateway, routes, CNI), runs before the previous one | the pod page's gaps |
 | rustkube | [#108](https://github.com/glennswest/rustkube/issues/108) `nodes/{name}/proxy` | counters through the apiserver instead of dialling each kubelet |
 | stormvm | #48 per-VM metrics | a VM's traffic counters |
-| stormcos | [#38](https://github.com/glennswest/stormcos/issues/38) fleet lifecycle has no API | join, promote, demote, drain |
+| stormcos | [#38](https://github.com/glennswest/stormcos/issues/38) the node lifecycle API stormcluster calls | a form, join, promote, demote or split actually running on a node (the Cluster page plans and starts them) |
+| stormcluster | [#11](https://github.com/glennswest/stormcluster/issues/11) a dry-run plan's steps carry no description | the console copies `Step::describe` |
 | stormcos | [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path (and stormcentral [#226](https://github.com/glennswest/stormcentral/issues/226), the registry entry) | a liveness probe that can fail: `/admin/healthz` is the app's 200 |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
