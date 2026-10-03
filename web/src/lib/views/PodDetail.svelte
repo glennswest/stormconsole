@@ -259,7 +259,7 @@
                     {#if c.lastState}
                       {stateLine(c.lastState)}{#if c.lastState.finishedAt}<span class="dim"> · {ago(c.lastState.finishedAt)} ago</span>{/if}
                     {:else if c.restartCount > 0}
-                      <span class="dim">not reported ({gapFor('last termination')?.issue || 'rustkube-node#130'}){#if c.runs?.length} — <a href={`#/pod/${ns}/${name}?tab=Logs&container=${encodeURIComponent(c.name)}`} onclick={() => (tab = 'Logs')}>{c.runs.length} kept {c.runs.length === 1 ? 'run' : 'runs'}</a>{/if}</span>
+                      <span class="dim">not reported ({gapFor('last termination')?.issue || 'rustkube-node#130'}){#if c.runs?.length}{' '}— <a href={`#/pod/${ns}/${name}?tab=Logs&container=${encodeURIComponent(c.name)}`} onclick={() => (tab = 'Logs')}>{c.runs.length} kept {c.runs.length === 1 ? 'run' : 'runs'}</a>{/if}</span>
                     {:else}—{/if}
                   </td>
                   <td class="mono img">{c.image}</td>
@@ -424,7 +424,7 @@
               {/each}
             </tbody>
           </table>
-          <p class="dim">From the kubelet on {traffic.node}, read every 5 s while this page is open; rates are between reads.{#if traffic.missing} Not exported: {traffic.missing}.{/if}</p>
+          <p class="dim">From the kubelet on {traffic.node}, read every 5 s while this page is open; rates are between reads.{#if traffic.missing}{' '}Not exported: {traffic.missing}.{/if}</p>
         {/if}
       </section>
 
