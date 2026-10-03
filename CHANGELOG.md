@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.23.1] — 2026-10-02
+
+### Fixed
+- `Cargo.lock` lists plugin-kubernetes's new `chrono` dependency: v0.23.0's
+  lock was stale, so the golden's `--locked` build refused it (#71).
+
 ## [v0.23.0] — 2026-10-02
 
 ### 2026-10-02 — the pod page (#69)
