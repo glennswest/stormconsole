@@ -167,7 +167,7 @@ Every key and default: README §Configuration.
 
 ## Status and what matters
 
-**0.22.0**, every page's API live-verified against its real upstream; most pages not yet viewed in a browser (**#58**).
+**0.23.0**, every page's API live-verified against its real upstream; most pages not yet viewed in a browser (**#58**).
 
 Open, and why it matters:
 - **stormcos#102** / stormcentral#226 — the golden's liveness path is

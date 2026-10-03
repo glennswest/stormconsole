@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.23.0] — 2026-10-02
+
 ### 2026-10-02 — the pod page (#69)
 - **feat:** a pod has a page, `#/pod/<ns>/<name>`, and its row links to it
   (plus a Logs action). Overview: phase, node, every pod address, QoS,

@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.22.0**
+Current: **0.23.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -921,19 +921,35 @@ has no node proxy (rustkube#108), so the console dials the kubelet at the
 node's address. Golden provenance: stormcentral `GET /api/v1/goldens
 ?component=` (authenticated). VMs: no tap counters (stormvm#48), serial
 replay already on the Serial console tab.
-- [ ] k8s `pod.rs`: `GET /pods/{ns}/{name}` — metadata, owner chain,
+- [x] k8s `pod.rs`: `GET /pods/{ns}/{name}` — metadata, owner chain,
       QoS, priority, SA, conditions, containers (image, digest, pull
       policy, ports, restarts, state, lastState when present), network
       (IPs, hostNetwork, DNS, Services selecting it + endpoints, Cilium
       identity/policies), gaps named
-- [ ] Logs: `GET /pods/{ns}/{name}/log` (as the viewer, streamed when
+- [x] Logs: `GET /pods/{ns}/{name}/log` (as the viewer, streamed when
       following); the console keeps the last 5 runs per container
       (`previous` fetched when restartCount moves), `GET …/runs`
-- [ ] Traffic: `GET /pods/{ns}/{name}/traffic` from the node's kubelet
-- [ ] Golden provenance for `stormpump://` via optional `[stormcentral]`
-- [ ] `#/pod/:ns/:name`: Overview, Network, Logs, Events, YAML; pod rows
+- [x] Traffic: `GET /pods/{ns}/{name}/traffic` from the node's kubelet
+- [x] Golden provenance for `stormpump://` via optional `[stormcentral]`
+- [x] `#/pod/:ns/:name`: Overview, Network, Logs, Events, YAML; pod rows
       link to it; VM page: metadata card, image card, traffic gap named
-- [ ] Tests, docs, changelog; live check; release; golden
+- [x] Tests, docs, changelog; live check; release; golden
+- Verified with `sc-build deploy/verify-pod-page.sh` (real fastetcd v1.2.0
+  + rustkube v0.15.3 apiserver, a stand-in kubelet on :10250 serving
+  containerLogs and /metrics/cadvisor, a stand-in stormcentral, a real
+  console with its SPA): 33 API checks and 29 in headless Chromium, no
+  page errors; screenshots read. Owners ReplicaSet → Deployment, digests
+  from imageID, stormpump without one and its gap named, the cilium
+  golden with built_at, Service web (not db) with this pod ready, both
+  addresses, DNS; tailLines, timestamps, follow streaming, previous 400 in
+  the node's words then the run before, download filename; restarts
+  0 → 1 → 4 kept runs 0 and 3 with 2 missed, a missed run 404; traffic
+  for this pod only, growing, drawn as a rate; Pause/Resume, search,
+  kept runs selectable, the stormpump container's logs, YAML
+- Not on a real blade: the owner's acceptance (cilium's pod on 11.6x) is
+  the first look at a real kubelet's answers — the stand-ins follow
+  rustkube-node's code as read on 2026-10-02
+- Left on #12: Terminal (rustkube-node#56), Environment
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
