@@ -63,6 +63,11 @@ python3 deploy/pod-page.standins.py "$W/kl.crt" "$W/kl.key" "$W/rc" $SC sctoken 
 for _ in $(seq 40); do grep -q "stand-ins up" "$W/standins.log" && break; sleep 0.25; done
 cat "$W/standins.log"
 
+say "start the word stand-ins: sbregistry, the engine, the image operator (#70)"
+python3 deploy/words.standins.py 19110 19111 19112 > "$W/words.log" 2>&1 &
+for _ in $(seq 40); do grep -q "word stand-ins up" "$W/words.log" && break; sleep 0.25; done
+cat "$W/words.log"
+
 say "start fastetcd and the apiserver"
 "$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls http://127.0.0.1:23797 \
   --advertise-client-urls http://127.0.0.1:23797 --listen-peer-urls http://127.0.0.1:23807 \
@@ -144,11 +149,11 @@ enabled = false
 [stormstorage]
 enabled = false
 [stormblock]
-enabled = false
+url = "http://127.0.0.1:19111"
 [sbregistry]
-enabled = false
+url = "http://127.0.0.1:19110"
 [vmimages]
-enabled = false
+url = "http://127.0.0.1:19112"
 [fastetcd]
 enabled = false
 [stormipmi]
@@ -225,10 +230,14 @@ say "Playwright and a headless Chromium"
 mkdir -p "$W/pw" "$OUT/shots"
 (cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
-cp deploy/pod-page.browser.cjs "$W/pw/"
+cp deploy/pod-page.browser.cjs deploy/words.browser.cjs "$W/pw/"
 set +e
 (cd "$W/pw" && CONSOLE="$C" SHOTS="$OUT/shots" node pod-page.browser.cjs)
 RC=$?
+say "the words (#70): registry images and instances, nowhere golden"
+(cd "$W/pw" && CONSOLE="$C" SHOTS="$OUT/shots" node words.browser.cjs)
+WRC=$?
+[ "$RC" = 0 ] && RC=$WRC
 set -e
 tar czf "$OUT/shots.tgz" -C "$OUT" shots
 
