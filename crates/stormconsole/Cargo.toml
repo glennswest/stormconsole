@@ -19,6 +19,7 @@ plugin-vmimages.workspace = true
 plugin-vm.workspace = true
 plugin-fastetcd.workspace = true
 plugin-stormipmi.workspace = true
+plugin-stormcluster.workspace = true
 
 # Password hashing. argon2 rather than a digest: a password store is the
 # one place where being *slow* is the feature, and SHA-256 is fast enough

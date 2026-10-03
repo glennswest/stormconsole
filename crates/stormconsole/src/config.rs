@@ -45,6 +45,8 @@ pub struct Config {
     #[serde(default)]
     pub stormipmi: Stormipmi,
     #[serde(default)]
+    pub stormcluster: Stormcluster,
+    #[serde(default)]
     pub stormcentral: Stormcentral,
 }
 
@@ -403,6 +405,26 @@ impl Default for Stormipmi {
     }
 }
 
+/// The Cluster page (#63): stormcluster, which runs on every node and
+/// answers for the whole cluster — any node's will do, so this node's.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Stormcluster {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// e.g. "http://10.0.0.1:9102". Unset means this node's :9102.
+    pub url: Option<String>,
+    /// stormcluster's `token_file`, when it has one: every write it takes
+    /// needs this bearer. The console holds it; the browser never sees it.
+    pub token_file: Option<String>,
+}
+
+impl Default for Stormcluster {
+    fn default() -> Self {
+        Self { enabled: true, url: None, token_file: None }
+    }
+}
+
 /// stormcentral, where a `stormpump://` golden's provenance is recorded
 /// (#69): component, commit, build id, built at, built by. Off unless a
 /// url is set — its golden list is authenticated, and a node holds no
@@ -490,6 +512,10 @@ impl Config {
 
     pub fn stormipmi_url(&self) -> String {
         self.stormipmi.url.clone().unwrap_or_else(|| "http://127.0.0.1:9097".to_string())
+    }
+
+    pub fn stormcluster_url(&self) -> String {
+        self.stormcluster.url.clone().unwrap_or_else(|| "http://127.0.0.1:9102".to_string())
     }
 
     pub fn fastetcd_url(&self) -> String {
@@ -611,6 +637,8 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
         assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");
+        assert_eq!(c.stormcluster_url(), "http://127.0.0.1:9102");
+        assert!(c.stormcluster.enabled && c.stormcluster.token_file.is_none());
         assert!(c.fleet.stormd_ports.contains(&9085) && c.fleet.stormd_ports.contains(&9194));
         for p in [9201, 9202, 8180, 8545] {
             assert!(c.fleet.stormd_ports.contains(&p), "{p} missing from the default stormd ports");

@@ -1131,6 +1131,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-stormcluster"
+version = "0.24.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "console-core",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "plugin-stormdrive"
 version = "0.24.0"
 dependencies = [
@@ -1771,6 +1785,7 @@ dependencies = [
  "plugin-logs",
  "plugin-sbregistry",
  "plugin-stormblock",
+ "plugin-stormcluster",
  "plugin-stormdrive",
  "plugin-stormipmi",
  "plugin-stormstorage",

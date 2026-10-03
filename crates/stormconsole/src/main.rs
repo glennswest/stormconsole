@@ -203,6 +203,18 @@ async fn main() {
         });
         plugins.push(Arc::new(plugin_stormipmi::StormipmiPlugin::new(&config.stormipmi_url(), token)));
     }
+    // What the cluster is made of, and changing it (#63). The same shape as
+    // stormipmi: reads open, writes admin only with stormcluster's token.
+    if config.stormcluster.enabled {
+        let token = config.stormcluster.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!(file = f, "stormcluster token_file unreadable, writes will be refused: {e}");
+                None
+            }
+        });
+        plugins.push(Arc::new(plugin_stormcluster::StormclusterPlugin::new(&config.stormcluster_url(), token)));
+    }
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
     }

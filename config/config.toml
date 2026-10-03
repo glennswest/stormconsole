@@ -135,6 +135,16 @@ enabled = true
 # url = "http://127.0.0.1:9097"
 # token_file = "/etc/stormconsole/stormipmi.token"
 
+[stormcluster]
+enabled = true
+# The Cluster page: members, discovered peers and operations, from the
+# stormcluster that runs on every node (any node's answers for the whole
+# cluster). Reads are open; form, join, promote, demote, drain, uncordon,
+# split and resume are admin-only here, and carry stormcluster's
+# token_file bearer when it has one.
+# url = "http://127.0.0.1:9102"
+# token_file = "/etc/stormconsole/stormcluster.token"
+
 # [stormcentral]
 # Where a stormpump:// image's golden is recorded: the pod page shows its
 # build (built at, by, commit, build id) beside the image. Off unless a url
