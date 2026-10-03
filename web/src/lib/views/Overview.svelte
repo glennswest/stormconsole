@@ -2,7 +2,7 @@
   // The console's front door: how the whole feed is doing, then each
   // plugin's own summary and its objects underneath. Holds no model of
   // its own — everything here is the aggregated feed, grouped.
-  import { shown } from '../ui/words.js'
+  import { shown as asShown } from '../ui/words.js'
   import { feed, rollup, prefs, setView } from '../stores.svelte.js'
   import ComponentCard from 'stormview/components/ComponentCard.svelte'
   import ResourceTable from '../components/ResourceTable.svelte'
@@ -110,7 +110,7 @@
     <h2 class="eyebrow">Plugins</h2>
     <div class="grid sc-cards">
       {#each plugins as p (p.id)}
-        <ComponentCard component={shown(p)} resolve={resolveId} {invoke} />
+        <ComponentCard component={asShown(p)} resolve={resolveId} {invoke} />
       {/each}
     </div>
 
@@ -138,7 +138,7 @@
         {#if prefs.view === 'cards'}
           <div class="grid sc-cards">
             {#each list as c (c.id)}
-              <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
+              <ComponentCard component={asShown(c)} resolve={resolveId} {invoke} />
             {/each}
           </div>
         {:else}

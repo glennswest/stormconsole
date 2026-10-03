@@ -5,7 +5,7 @@
   // actions and this view holds no model of its own. Definitions and
   // instances are listed together because "defined but stopped" and
   // "running" are both answers to "what VMs do I have".
-  import { shown } from '../ui/words.js'
+  import { shown as asShown } from '../ui/words.js'
   import { feed, k8sns, prefs, setView, idsForRoute } from '../stores.svelte.js'
   import { call } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
@@ -86,7 +86,7 @@
     {:else if prefs.view === 'cards'}
       <div class="grid sc-cards">
         {#each rows as c (c.id)}
-          <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
+          <ComponentCard component={asShown(c)} resolve={resolveId} {invoke} />
         {/each}
       </div>
     {:else}

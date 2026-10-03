@@ -2,7 +2,7 @@
   // A list rooted at one component — where a nav item or a card's ⊞ lands.
   // With ?rel= the top rows are that relationship's targets; without it,
   // the component itself is the single expandable root.
-  import { term, shown, sameRelation } from '../ui/words.js'
+  import { term, shown as asShown, sameRelation } from '../ui/words.js'
   import { route } from '../router.svelte.js'
   import { feed, prefs, setView, idsForRoute } from '../stores.svelte.js'
   import ResourceTable from '../components/ResourceTable.svelte'
@@ -127,7 +127,7 @@
       {:else if prefs.view === 'cards'}
         <div class="grid sc-cards">
           {#each rows as c (c.id)}
-            <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
+            <ComponentCard component={asShown(c)} resolve={resolveId} {invoke} />
           {/each}
         </div>
       {:else}

@@ -11,7 +11,7 @@
   // the thing worth noticing, and it is the only thing the log group can
   // honestly tell you. What a node is *running* is a question for its own
   // page, which asks it directly.
-  import { shown } from '../ui/words.js'
+  import { shown as asShown } from '../ui/words.js'
   import { feed, prefs, setView } from '../stores.svelte.js'
   import { call } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
@@ -86,7 +86,7 @@
     {:else if prefs.view === 'cards'}
       <div class="grid sc-cards">
         {#each rows as c (c.id)}
-          <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
+          <ComponentCard component={asShown(c)} resolve={resolveId} {invoke} />
         {/each}
       </div>
     {:else}
