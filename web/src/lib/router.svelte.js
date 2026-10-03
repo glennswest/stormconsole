@@ -24,6 +24,8 @@ const routes = [
   { pattern: '#/attach/:ns/:name', name: 'attachclaim' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
+  // One pod, all of it (#69).
+  { pattern: '#/pod/:ns/:name', name: 'poddetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },
   // A namespace is a place, not a row: it has a page of its own, and it
   // is matched before the generic kind list because it is longer.

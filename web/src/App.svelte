@@ -16,6 +16,7 @@
   import NodesView from './lib/views/NodesView.svelte'
   import VmList from './lib/views/VmList.svelte'
   import VmDetail from './lib/views/VmDetail.svelte'
+  import PodDetail from './lib/views/PodDetail.svelte'
   import EtcdKeys from './lib/views/EtcdKeys.svelte'
   import AccountKeys from './lib/views/AccountKeys.svelte'
   import ProjectsView from './lib/views/ProjectsView.svelte'
@@ -40,6 +41,7 @@
     nodedetail: NodeDetail,
     vmlist: VmList,
     vmdetail: VmDetail,
+    poddetail: PodDetail,
     etcdkeys: EtcdKeys,
     accountkeys: AccountKeys,
     projects: ProjectsView,

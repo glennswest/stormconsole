@@ -27,6 +27,7 @@ pub mod components;
 pub mod console;
 mod create;
 pub mod disks;
+pub mod facts;
 pub mod images;
 pub mod keys;
 mod keystore;
@@ -983,6 +984,7 @@ async fn detail(
     let yaml = plugin_kubernetes::to_yaml(
         machine.as_ref().or(instance.as_ref()).unwrap_or(&Value::Null),
     );
+    let images = facts::images(&spec);
     Json(json!({
         "namespace": ns,
         "name": name,
@@ -1001,6 +1003,10 @@ async fn detail(
         "running": instance.is_some(),
         "console": caps,
         "settings": settings::of(machine.as_ref(), instance.as_ref()),
+        // The same questions the pod page answers (#69).
+        "metadata": facts::metadata(machine.as_ref(), instance.as_ref()),
+        "images": images,
+        "gaps": facts::gaps(&images),
         "yaml": yaml,
     }))
     .into_response()

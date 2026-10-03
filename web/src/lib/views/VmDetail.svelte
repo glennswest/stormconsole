@@ -590,6 +590,53 @@
             </table>
           {/if}
         </div>
+
+        <!-- The questions the pod page answers, asked of a machine (#69). -->
+        <div class="card">
+          <h2>Images</h2>
+          {#if !vm.images?.length}
+            <p class="none">No disk comes from an image.</p>
+          {:else}
+            <dl>
+              {#each vm.images as im (im.disk)}
+                <dt>{im.disk}</dt>
+                <dd>
+                  <span class="mono">{im.source}</span> <span class="dim">{im.kind}</span>
+                  <div class="dim mono">
+                    {#if im.digest}{im.digest}<CopyButton value={im.digest} label="Copy digest" />{:else}digest not reported{/if}
+                  </div>
+                </dd>
+              {/each}
+            </dl>
+          {/if}
+        </div>
+
+        <div class="card">
+          <h2>Metadata</h2>
+          <dl>
+            <dt>Created</dt><dd>{vm.metadata?.created || '—'}</dd>
+            {#if vm.metadata?.bootSeconds != null}<dt>Booted in</dt><dd>{vm.metadata.bootSeconds} s</dd>{/if}
+            {#if vm.metadata?.startedUnix}<dt>Started</dt><dd>{new Date(vm.metadata.startedUnix * 1000).toISOString().replace('.000', '')}</dd>{/if}
+            <dt>Labels</dt>
+            <dd class="mono">{#each Object.entries(vm.metadata?.labels || {}) as [k, v] (k)}<div>{k}={v}</div>{:else}—{/each}</dd>
+            <dt>Annotations</dt>
+            <dd class="mono">{#each Object.entries(vm.metadata?.annotations || {}) as [k, v] (k)}<div title={v}>{k}={v.length > 80 ? v.slice(0, 80) + '…' : v}</div>{:else}—{/each}</dd>
+            <dt>Conditions</dt>
+            <dd>{#each vm.metadata?.conditions || [] as c (c.type)}<div>{c.type} <span class="dim">{c.status}{c.reason ? ` · ${c.reason}` : ''}</span></div>{:else}—{/each}</dd>
+          </dl>
+        </div>
+
+        <div class="card">
+          <h2>Traffic and log</h2>
+          <p class="none">
+            The guest’s serial log is on the
+            <a href={`#/vm/${ns}/${name}?door=serial`} onclick={() => (tab = 'Serial console')}>Serial console</a>
+            — it opens with what the guest has already written, then follows it.
+          </p>
+          <ul class="rows gaps">
+            {#each vm.gaps || [] as g (g.what)}<li class="dim"><span><strong>{g.what}</strong> — {g.why} ({g.issue})</span></li>{/each}
+          </ul>
+        </div>
       </section>
 
       <!-- Underneath the machine, not behind a tab.
