@@ -62,7 +62,7 @@ impl ConsolePlugin for SbregistryPlugin {
         // (#19): the catalog first. Clones are volumes, under Storage.
         vec![NavSection::new("Images", 50)
             .admin()
-            .item("Catalog", "#/images")
+            .item("Registry images", "#/images")
             .item("Pushed images", "#/grid?id=reg:registry&rel=images")
             .item("Pallets", "#/grid?id=reg:registry&rel=pallets")]
     }
@@ -71,7 +71,7 @@ impl ConsolePlugin for SbregistryPlugin {
         vec![
             Creator::form(
                 "reg:golden",
-                "Golden",
+                "Registry image",
                 "/api/plugins/reg/proxy/v1/goldens",
                 vec![
                     Field::text("name", "Repository").hint("as pushed, e.g. library/nats").required(),
@@ -79,18 +79,18 @@ impl ConsolePlugin for SbregistryPlugin {
                     Field::select("force", "Rebuild if sealed", &["false", "true"]),
                 ],
             )
-            .describe("Cut a sealed golden template from an image in this registry")
+            .describe("Seal a registry image — sealed and immutable, what instances are cloned from — from an image pushed to this registry")
             .at(&["#/grid?id=reg:registry&rel=goldens"]),
             Creator::form(
                 "reg:clone",
-                "Clone",
+                "Instance",
                 "/api/plugins/reg/proxy/v1/clones",
                 vec![
-                    Field::text("golden", "Golden").hint("golden name, image ref, digest or template name").required(),
+                    Field::text("golden", "Registry image").hint("registry image name, image ref, digest or template name").required(),
                     Field::text("consumer", "Consumer").hint("optional: what will hold it, to bind in one call"),
                 ],
             )
-            .describe("A writable clone of a golden, ready to attach")
+            .describe("An instance: a writable copy-on-write clone of a registry image, ready to attach")
             .at(&["#/grid?id=reg:registry&rel=clones"]),
         ]
     }
@@ -314,7 +314,7 @@ fn clone_(v: &Value) -> ComponentSummary {
         label: field(v, &["volume_name"]).unwrap_or_else(|| id.clone()),
         health: Health::Ok,
         detail: format!(
-            "of {golden} · template {}{}",
+            "clone of {golden} · template {}{}",
             field(v, &["template"]).unwrap_or_default(),
             if attached { " · attached" } else { "" }
         ),

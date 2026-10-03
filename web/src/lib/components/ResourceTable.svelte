@@ -24,6 +24,7 @@
   // what opens is the whole of it: the detail unabbreviated, every metric,
   // the references as links, and every action including the ones kept off
   // the row.
+  import { term } from '../ui/words.js'
   import StatusPill from './StatusPill.svelte'
   import EventBox from './EventBox.svelte'
   import { noteActivity } from '../stores.svelte.js'
@@ -314,7 +315,7 @@
 
   // A relation name is written for a machine (`has_many`, `local_copies`);
   // a column heading is read by a person.
-  const title = (n) => n.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+  const title = (n) => term(n).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 
   // The expanded row spans the table. This was a literal that counted
   // seven columns and knew about Kind, so every placement column it did
@@ -501,13 +502,13 @@
             <td class="place">{placement(row, pname)}</td>
           {/each}
           <td class="status"><StatusPill health={row.health} /></td>
-          {#if withKind}<td class="kind">{row.kind}</td>{/if}
+          {#if withKind}<td class="kind">{term(row.kind)}</td>{/if}
           <td class="detail">{row.detail ?? ''}</td>
           <td class="metrics">
             {#each row.metrics || [] as m}
               <span class="m">
-                <span class="ml">{m.label}</span>
-                <span class="mv {m.tone || ''}">{m.value}{m.unit || ''}</span>
+                <span class="ml">{term(m.label)}</span>
+                <span class="mv {m.tone || ''}">{m.label === 'kind' ? term(m.value) : m.value}{m.unit || ''}</span>
                 {#if isAddresses(m.value)}<CopyButton value={m.value} label="Copy" />{/if}
               </span>
             {/each}
@@ -557,7 +558,7 @@
                 {#if row.metrics?.length}
                   <dl class="facts">
                     {#each row.metrics as m}
-                      <div><dt>{m.label}</dt><dd class="{m.tone || ''}">{m.value}{m.unit || ''}{#if isAddresses(m.value)}<CopyButton value={m.value} label="Copy" />{/if}</dd></div>
+                      <div><dt>{term(m.label)}</dt><dd class="{m.tone || ''}">{m.label === 'kind' ? term(m.value) : m.value}{m.unit || ''}{#if isAddresses(m.value)}<CopyButton value={m.value} label="Copy" />{/if}</dd></div>
                     {/each}
                   </dl>
                 {/if}

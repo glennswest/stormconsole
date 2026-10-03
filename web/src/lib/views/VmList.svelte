@@ -5,6 +5,7 @@
   // actions and this view holds no model of its own. Definitions and
   // instances are listed together because "defined but stopped" and
   // "running" are both answers to "what VMs do I have".
+  import { shown } from '../ui/words.js'
   import { feed, k8sns, prefs, setView, idsForRoute } from '../stores.svelte.js'
   import { call } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
@@ -55,7 +56,7 @@
         ? 'The kubevirt.io resources are not installed on this cluster, so nothing here can carry a VM. They arrive with stormpump’s manifest set.'
         : k8sns.selected
           ? 'Nothing runs in the selected namespace. Switch namespaces in the masthead, or create a VM here.'
-          : 'This cluster can run VMs and none has been created. A VM here is a VirtualMachineInstance the kubelet reconciles; create one from a golden.'}
+          : 'This cluster can run VMs and none has been created. A VM here is a VirtualMachineInstance the kubelet reconciles; create one from a registry image.'}
     >
       {#snippet action()}
         <CreateMenu at="#/vms" primary={true} />
@@ -85,7 +86,7 @@
     {:else if prefs.view === 'cards'}
       <div class="grid sc-cards">
         {#each rows as c (c.id)}
-          <ComponentCard component={c} resolve={resolveId} {invoke} />
+          <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
         {/each}
       </div>
     {:else}

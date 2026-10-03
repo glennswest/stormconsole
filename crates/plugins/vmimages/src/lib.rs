@@ -125,7 +125,7 @@ impl ConsolePlugin for VmImagesPlugin {
         vec![NavSection::new("Images", 50)
             .admin()
             .item("VM catalogue", "#/grid?id=img:operator&rel=catalogue")
-            .item("VM goldens", "#/grid?id=img:operator&rel=goldens")
+            .item("VM registry images", "#/grid?id=img:operator&rel=goldens")
             .item("Local copies", "#/grid?id=img:operator&rel=local")]
     }
 
@@ -150,14 +150,15 @@ impl ConsolePlugin for VmImagesPlugin {
                 with_none.extend(nodes.iter().copied());
                 fields.push(
                     Field::select("node", "Also put it on", &with_none)
-                        .hint("optional: a local copy on this node as soon as the golden is made"),
+                        .hint("optional: a local copy on this node as soon as the registry image is made"),
                 );
             }
             out.push(
-                Creator::form("img:golden", "VM golden", &format!("{PROXY}/api/v1/images"), fields)
+                Creator::form("img:golden", "VM registry image", &format!("{PROXY}/api/v1/images"), fields)
                     .describe(
-                        "Golden a public cloud image for the fleet: sbregistry fetches it, \
-                         the engine decodes and seals it, and every node clones it from there",
+                        "Make a public cloud image a registry image for the fleet: sbregistry \
+                         fetches it, the engine decodes and seals it, and every node clones \
+                         its instances from there",
                     )
                     .at(&["#/grid?id=img:operator&rel=catalogue", "#/grid?id=img:operator&rel=goldens"]),
             );
@@ -169,13 +170,13 @@ impl ConsolePlugin for VmImagesPlugin {
                     "Local copy",
                     &format!("{PROXY}/api/v1/local"),
                     vec![
-                        Field::select("image", "Golden", &goldens).required(),
+                        Field::select("image", "Registry image", &goldens).required(),
                         Field::select("node", "Node", &nodes).required(),
                         Field::text("size", "Grow to")
                             .hint("optional, e.g. 40Gi — a cloud image is sized for its own contents"),
                     ],
                 )
-                .describe("Import the golden onto one node, under the name a VM's dataVolume asks for")
+                .describe("Import the registry image onto one node, under the name a VM's dataVolume asks for")
                 .at(&["#/grid?id=img:operator&rel=goldens", "#/grid?id=img:operator&rel=local"]),
             );
         }
@@ -361,11 +362,11 @@ fn verdict(version: &Value, goldens: &[ComponentSummary], local: &[ComponentSumm
     let building = version.get("building").and_then(Value::as_array).map(|a| a.len()).unwrap_or(0);
     let built = goldens.iter().filter(|c| c.health == Health::Ok).count();
     match (failed, building) {
-        (0, 0) => (Health::Ok, format!("v{v} · {built} golden(s), {} local", local.len())),
+        (0, 0) => (Health::Ok, format!("v{v} · {built} registry image(s), {} local", local.len())),
         (0, n) => (Health::Ok, format!("v{v} · building {n}")),
         (f, _) => (
             Health::Warn,
-            format!("v{v} · {f} failed · {built} golden(s), {} local", local.len()),
+            format!("v{v} · {f} failed · {built} registry image(s), {} local", local.len()),
         ),
     }
 }
@@ -477,13 +478,13 @@ fn catalog_actions(reference: &str, existing: &Option<(String, String)>) -> Vec<
         tone: tone.map(str::to_string),
     };
     match existing {
-        None => vec![build("Make golden", None)],
+        None => vec![build("Make registry image", None)],
         Some((name, phase)) if phase == "Available" => vec![Action {
             // Deleting the CloudImage is what re-enables the build. The
             // golden's bytes are not touched: a VM cloned from it keeps
             // working, which is why this is not as destructive as it reads.
             id: "delete".into(),
-            label: "Delete golden".into(),
+            label: "Delete registry image".into(),
             method: "DELETE".into(),
             // The CloudImage itself, through the apiserver as the viewer:
             // the operator serves no DELETE on /api/v1/images/{name} (it

@@ -106,7 +106,7 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                            password is a machine nothing can log into"),
             ],
         )
-        .describe("A VM on this cluster, from a golden")
+        .describe("A VM on this cluster, its root disk an instance of a registry image")
         // The project is the dialog's picker, sent as `namespace` (#28):
         // a free-text field defaulting to `default` is how machines ended
         // up beside the system's own objects.
@@ -201,7 +201,7 @@ pub fn instance(f: &Form) -> Result<Value, String> {
         return Err("a virtual machine needs a name".into());
     }
     if f.golden.trim().is_empty() {
-        return Err("a root disk needs a golden to clone from".into());
+        return Err("a root disk needs a registry image to clone from".into());
     }
     let cores: i64 = f.cores.trim().parse().unwrap_or(2);
     if cores < 1 {
@@ -378,7 +378,7 @@ pub fn seed_secret_name(name: &str) -> String {
 fn root_disk(catalogue: &Catalogue) -> Field {
     if catalogue.choices.is_empty() {
         let hint = if catalogue.note.is_empty() {
-            "a sealed golden to CoW-clone, e.g. rocky-10-cloud".to_string()
+            "a registry image to clone copy-on-write, e.g. rocky-10-cloud".to_string()
         } else {
             catalogue.note.clone()
         };
@@ -387,7 +387,7 @@ fn root_disk(catalogue: &Catalogue) -> Field {
     // The golden name is submitted; the sentence is only read.
     //
     // These were one string until a machine was created whose root disk was
-    // named "alma 10 x86_64 — not goldened yet, will be built": the option
+    // named "alma 10 x86_64 — not a registry image yet, will be made one": the option
     // carried the label, and the server mapped it back to a value after the
     // fact. That mapping missed the moment the catalogue changed between
     // rendering the form and submitting it, and there is no mapping now.
@@ -497,7 +497,7 @@ pub async fn create(
         match golden_from_reference(&inner, &form.golden, &form.node).await {
             Ok(name) => form.golden = name,
             Err(e) => {
-                warn!(reference = %form.golden, error = %e, "vm create: could not golden the image");
+                warn!(reference = %form.golden, error = %e, "vm create: could not make the image a registry image");
                 return (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response()
             }
         }
@@ -1016,7 +1016,7 @@ mod tests {
         assert!(instance(&f).unwrap_err().contains("name"));
         let mut f = form();
         f.golden = String::new();
-        assert!(instance(&f).unwrap_err().contains("golden"));
+        assert!(instance(&f).unwrap_err().contains("registry image"));
         let mut f = form();
         f.cores = "0".into();
         assert!(instance(&f).unwrap_err().contains("vCPU"));
@@ -1068,11 +1068,11 @@ mod tests {
                 },
                 Choice {
                     value: "rocky-10-x86_64".into(),
-                    label: "rocky-10-x86_64 — goldened, will be copied to the node".into(),
+                    label: "rocky-10-x86_64 — a registry image already, will be copied to the node".into(),
                 },
                 Choice {
                     value: "debian:13".into(),
-                    label: "debian 13 x86_64 — not goldened yet, will be built".into(),
+                    label: "debian 13 x86_64 — not a registry image yet, will be made one".into(),
                 },
             ],
             note: String::new(),
@@ -1095,7 +1095,7 @@ mod tests {
         let f = root_disk(&Catalogue::default());
         assert_eq!(f.kind, "text");
         assert!(f.required);
-        assert!(f.hint.contains("golden"));
+        assert!(f.hint.contains("registry image"));
     }
 
     #[test]
@@ -1108,7 +1108,7 @@ mod tests {
     fn a_label_maps_back_to_its_value() {
         let c = catalogue();
         assert_eq!(value_of(&c, "fedora-43-x86_64 — on this node"), "fedora-43-x86_64");
-        assert_eq!(value_of(&c, "debian 13 x86_64 — not goldened yet, will be built"), "debian:13");
+        assert_eq!(value_of(&c, "debian 13 x86_64 — not a registry image yet, will be made one"), "debian:13");
     }
 
     #[test]
@@ -1125,7 +1125,7 @@ mod tests {
         assert!(!images::is_reference(&value_of(&c, "fedora-43-x86_64 — on this node")));
         assert!(images::is_reference(&value_of(
             &c,
-            "debian 13 x86_64 — not goldened yet, will be built"
+            "debian 13 x86_64 — not a registry image yet, will be made one"
         )));
     }
 }

@@ -133,6 +133,11 @@
     return bits.join(' · ')
   }
   const short = (d) => (d ? `${d.slice(0, 19)}…` : '')
+  // `from rustkube-node@4263d80, …` — what the registry image was built from.
+  const sourcesLine = (g) => {
+    const parts = Object.entries(g?.sources || {}).map(([repo, commit]) => `${repo}@${String(commit).slice(0, 7)}`)
+    return parts.length ? ` from ${parts.join(', ')}` : ''
+  }
   const builtAt = (g) => (g?.builtAt ? new Date(g.builtAt * 1000).toISOString().replace('.000', '') : '')
   const gapFor = (what) => pod?.gaps?.find((g) => g.what === what)
   const invoke = (a) => call(a.method, a.path)
@@ -293,17 +298,30 @@
                 {#if c.imageResolved}<span title={c.imageResolved}>{ago(c.imageResolved)} ago</span>
                 {:else}<span class="dim">not recorded by the node ({gapFor('image last checked')?.issue})</span>{/if}
               </dd>
-              <dt>Built</dt>
-              <dd>
-                {#if c.source === 'stormpump'}
+              {#if c.source === 'stormpump'}
+                <!-- What this container's instance was cloned from (#70). The
+                     one place the API's word is shown: the JSON field is
+                     `golden`, and someone matching the page to it needs to
+                     know that. -->
+                <dt>
+                  Registry image
+                  <span class="info" title="registry image (golden) — “golden” is the API’s name for it">ⓘ</span>
+                </dt>
+                <dd>
                   {#if c.golden?.available}
-                    {builtAt(c.golden)} by {c.golden.builtBy || '—'}
-                    <div class="dim">{c.golden.name} · {c.golden.version || ''} · commit <span class="mono">{(c.golden.commit || '').slice(0, 12)}</span> · build {c.golden.buildId || '—'}</div>
-                    {#if c.golden.tarSha256}<div class="dim mono">tar sha256:{short(c.golden.tarSha256)}</div>{/if}
+                    <span class="mono">{c.golden.component}@{(c.golden.commit || '').slice(0, 12)}</span>
+                    <span class="dim">(sealed digest {c.golden.deviceSha256 ? `sha256:${short(c.golden.deviceSha256)}` : 'not recorded'}, built {builtAt(c.golden).slice(0, 10)}{sourcesLine(c.golden)})</span>
+                    <div class="dim">{c.golden.name} · {c.golden.version || ''} · build {c.golden.buildId || '—'} · by {c.golden.builtBy || '—'}</div>
                     <div class="dim">{c.golden.which}</div>
                   {:else}
                     <span class="dim">{c.golden?.reason || 'unknown'}</span>
                   {/if}
+                </dd>
+              {/if}
+              <dt>Built</dt>
+              <dd>
+                {#if c.source === 'stormpump'}
+                  {#if c.golden?.available}{builtAt(c.golden)}{:else}<span class="dim">—</span>{/if}
                 {:else}
                   <span class="dim">{gapFor('build info')?.why} ({gapFor('build info')?.issue})</span>
                 {/if}
@@ -520,4 +538,5 @@
   button.link { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; }
   button.danger { color: var(--error, #f85149); }
   .events-card { margin-top: 12px; }
+  .info { cursor: help; color: var(--text-faint); font-size: var(--sc-t-meta); }
 </style>

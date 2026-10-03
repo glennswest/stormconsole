@@ -13,12 +13,12 @@
   import ResourceTable from '../components/ResourceTable.svelte'
 
   const KINDS = [
-    ['component', 'Component goldens', 'what a node runs a service from'],
+    ['component', 'Component registry images', 'what a node runs a service from'],
     ['blank', 'Blanks', 'empty filesystems a claim or a component’s data is cut from'],
     ['media', 'VM media', 'cloud images and ISOs a machine boots from'],
-    ['golden', 'Image goldens', 'a container image, made a volume'],
-    ['base', 'Bases', 'shared layers goldens are built on'],
-    ['slab_golden', 'Slab goldens', 'members of a node’s system slab'],
+    ['golden', 'Container registry images', 'a container image, sealed as a volume'],
+    ['base', 'Bases', 'shared layers registry images are built on'],
+    ['slab_golden', 'Slab registry images', 'members of a node’s system slab'],
     ['release_part', 'Release parts', 'what a published release is composed of'],
     ['sealed', 'Other sealed volumes', 'sealed, and nothing here knows what they are'],
   ]
@@ -52,7 +52,7 @@
 </script>
 
 <div class="sc-page">
-  <PageHeader crumbs={[{ label: 'Images' }, { label: 'Catalog' }]} title="Images" count={feed.loaded ? all.length : null} />
+  <PageHeader crumbs={[{ label: 'Images' }, { label: 'Registry images' }]} title="Registry images" count={feed.loaded ? all.length : null} />
 
   <p class="lead">
     Everything a machine, a claim or a service is cloned from — held by the registry, stored as the

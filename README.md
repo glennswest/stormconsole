@@ -20,15 +20,15 @@ create forms and a slice of the component feed every page is drawn from.
 
 | Plugin (id) | Reads | Shows | Acts |
 |---|---|---|---|
-| kubernetes (`k8s`) | rustkube apiserver, list+watch of 23 kinds; the Cilium agent's `/healthz`; each node's kubelet `/metrics/cadvisor` (:10250) for a pod's counters; stormcentral's goldens, when `[stormcentral]` is set | Projects; workloads, services, claims, policies, Cilium; the Cluster section (nodes, namespaces, PVs, storage classes, CRDs, cluster roles); events; **a pod's page** — owners, containers, image and digest, the golden's build, addresses, DNS, the Services that select it and whether it is in their Endpoints, Cilium, traffic, logs (current, previous, and the last 5 runs the console kept) | projects (request, members, isolation, delete), YAML import/edit, delete — **as the viewer**, so RBAC decides |
+| kubernetes (`k8s`) | rustkube apiserver, list+watch of 23 kinds; the Cilium agent's `/healthz`; each node's kubelet `/metrics/cadvisor` (:10250) for a pod's counters; stormcentral's registry images (goldens), when `[stormcentral]` is set | Projects; workloads, services, claims, policies, Cilium; the Cluster section (nodes, namespaces, PVs, storage classes, CRDs, cluster roles); events; **a pod's page** — owners, containers, image and digest, the golden's build, addresses, DNS, the Services that select it and whether it is in their Endpoints, Cilium, traffic, logs (current, previous, and the last 5 runs the console kept) | projects (request, members, isolation, delete), YAML import/edit, delete — **as the viewer**, so RBAC decides |
 | vm (`vm`) | KubeVirt `VirtualMachine`/`VirtualMachineInstance` and `snapshot.kubevirt.io` through the apiserver; stormvm (:9095) for consoles and verbs | Virtual machines: addresses asked vs done, disks, images, metadata, settings, SSH keys, snapshots, serial and framebuffer consoles | create, start/stop/restart, pause/reset/freeze…, settings, disks, snapshot/restore, keys |
-| vmimages (`img`) | vmcloud-image-operator (:9099) | VM catalogue, VM goldens, local copies | make a golden, retry, delete (the `CloudImage`, via the apiserver), unmanage |
+| vmimages (`img`) | vmcloud-image-operator (:9099) | VM catalogue, VM registry images, local copies | make a registry image, retry, delete (the `CloudImage`, via the apiserver), unmanage |
 | fleet (`fleet`) | the stormcast log group's hosts; this node's stormd APIs | Nodes, and on demand one node's services | this node's stormd services start/stop/restart |
 | logs (`logs`) | stormcast multicast `239.255.42.1:5514` (RFC 5424) into a redb ring | Fleet logs: filter, search, live follow | — |
 | stormdrive (`drive`) | stormdrive (:9092) on this node **and every fleet node** | Drives as a rack map (chassis by bay, heat by health/temp/wear/usage); each drive's usage in bytes, its slabs, the volumes on it and any drain; shelves; pools per node, role and tier | locate, fleet join/leave, drain, overcommit, tests, format, designate |
 | stormstorage (`storage`) | stormstorage (:9093) feed | Storage pools | the feed's own actions |
 | stormblock (`sb`) | stormblock engine (:9090) | Volumes (attached, with consumer), Unattached, slabs, arrays, exports | delete a volume (not while in use), create volume/export |
-| sbregistry (`reg`) | stormblock-registry (:5100) | Images → Catalog (goldens, blanks, media, lineage, clones, download progress), pushed images, pallets | create golden/clone |
+| sbregistry (`reg`) | stormblock-registry (:5100) | Images → Registry images (component, container and slab registry images, blanks, media, lineage, instances, download progress), pushed images, pallets | create a registry image or an instance |
 | fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served (etcd; fastetcd v1.8.0+) | compact, defragment, disarm, snapshot (admin) |
 | stormipmi (`ipmi`) | stormipmi (:9097) Machines API | Hardware → Machines: by service tag, BMC, power, the release each boots, default image, adopt, SOL console | power, set release/default, test mark, adopt (admin) |
 
@@ -40,6 +40,14 @@ goes through its CSI driver. The console shows the claim in its project
 ("Pending — provisioned when a pod or VM uses it" until something does,
 with Attach to a VM) and the engine volume under Storage → Volumes with
 the claim as its consumer.
+
+**Words** (#70). What the platform's APIs call a *golden* — a sealed,
+immutable image on forge — the console calls a **registry image**, and
+the copy-on-write clone a pod, VM or boot runs on is its **instance**.
+Only the page's words changed: ids, kinds, relation and metric names, form
+fields and JSON keep `golden`, and the SPA translates the tokens it shows
+(`web/src/lib/ui/words.js`, mirrored by `console_core::words`). The pod
+page names the API's word once, in the Registry image row's tooltip.
 
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
@@ -225,7 +233,7 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   packets/errors/drops, and runs before the previous one
   (rustkube-node#131). Each is read when present and named where it is
   not. The console keeps the last 5 runs per container itself, in memory.
-  Which golden a node runs is not on the pod, so the page shows the newest
+  Which registry image a node's instance was cloned from is not on the pod, so the page shows the newest
   stormcentral built for the component and says so. A **terminal** waits
   on the kubelet answering exec (rustkube-node#56); **Environment** (#12).
   A VM's traffic counters: stormvm#48.

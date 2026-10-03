@@ -100,7 +100,8 @@ pub fn image(v: &Value, jobs: &[Value]) -> ComponentSummary {
     let what = field(v, &["component"])
         .or_else(|| field(v, &["source"]))
         .unwrap_or_default();
-    let mut detail: Vec<String> = vec![kind.clone()];
+    // The page's word for the kind; the `kind` metric keeps the API's (#70).
+    let mut detail: Vec<String> = vec![console_core::words::term(&kind).to_string()];
     if !first.is_empty() {
         detail.insert(0, first);
     }
@@ -225,7 +226,7 @@ mod tests {
         let c = image(&v, &[]);
         assert_eq!(c.id, "reg:cat:img-3f9a0c1d2e4b-root");
         assert_eq!(c.health, Health::Ok);
-        assert_eq!(c.detail, "golden · nginx:1.27 · 1.0 GB");
+        assert_eq!(c.detail, "registry image · nginx:1.27 · 1.0 GB");
         let m = |l: &str| c.metrics.iter().find(|x| x.label == l).map(|x| x.value.clone());
         assert_eq!(m("clones"), Some("3".into()));
         assert_eq!(m("releases"), Some("11.43 (+1 older)".into()));

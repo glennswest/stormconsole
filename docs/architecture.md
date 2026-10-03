@@ -184,6 +184,28 @@ stormd `[process.ui]` style). That would make the console extensible by
 components it has never heard of — same philosophy as stormview's open
 `kind`. Nothing implements it; today every plugin is compiled in.
 
+### Words: registry image and instance (#70)
+
+The platform's word for a sealed, immutable image on forge is *golden*.
+Nothing runs on one: a pod, a VM or a boot runs on a copy-on-write clone
+of it. So the console says **registry image** for the sealed entry and
+**instance** (or "clone of <registry image>") for the clone, and never
+"golden" — except once, in the pod page's tooltip that names the API's
+word for someone matching the page to the JSON.
+
+Only the visible words changed. Everything automation reads keeps
+`golden`: component ids (`reg:golden:…`, `img:golden:…`), `kind`,
+relation and metric names (`goldens`), creator ids, form field names, the
+catalog's kinds (`golden`, `slab_golden`) and every JSON key. Prose the
+backend writes (details, hints, descriptions, errors, action, nav and
+creator labels) is worded directly; a detail built from a kind goes
+through `console_core::words::term`. Tokens the SPA prints itself — a
+kind, a metric label, the `kind` metric's value, a relation name — go
+through `term()` in `web/src/lib/ui/words.js` at render, and stormview's
+card gets a translated copy (`shown(c)`); a `rel=` link in either
+vocabulary resolves to the API's relation name. Exact tokens only: a name
+such as `golden-stormlb` is data and is shown as it is.
+
 ### Frontend model
 
 Svelte 5 + Vite, `stormview` npm package, embedded in the binary

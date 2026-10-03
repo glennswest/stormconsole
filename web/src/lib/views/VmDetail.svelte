@@ -515,7 +515,7 @@
               <div class="adddisk">
                 <input bind:value={newDisk.name} placeholder="name" aria-label="Disk name" />
                 <select bind:value={newDisk.source} aria-label="Disk source">
-                  <option value="golden">from a golden</option>
+                  <option value="golden">an instance of a registry image</option>
                   <option value="pvc">a claim</option>
                   <option value="empty">empty, of size</option>
                 </select>

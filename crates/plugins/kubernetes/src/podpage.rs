@@ -129,7 +129,7 @@ async fn golden(inner: &Inner, component: &str) -> Value {
         Some(g) => json!({
             "available": true,
             "component": component,
-            "which": "the newest golden stormcentral built for this component; the node does not report which one it runs (rustkube-node#130)",
+            "which": "the newest registry image stormcentral built for this component; the node does not report which one its instance was cloned from (rustkube-node#130)",
             "name": g.get("name"),
             "version": g.get("version"),
             "commit": g.get("commit"),
@@ -141,7 +141,7 @@ async fn golden(inner: &Inner, component: &str) -> Value {
             "sources": g.get("sources"),
             "releases": g.get("releases"),
         }),
-        None => json!({"available": false, "reason": format!("stormcentral has no golden for {component}")}),
+        None => json!({"available": false, "reason": format!("stormcentral has no registry image for {component}")}),
     }
 }
 

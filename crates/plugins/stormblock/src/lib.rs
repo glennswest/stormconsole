@@ -616,7 +616,8 @@ fn volume(v: &Value) -> ComponentSummary {
                 used_by.as_ref().map(|(w, _)| w.as_str()).unwrap_or("")
             ),
             "clone" => format!("{kind} · {alloc} of {size} written"),
-            _ => format!("{kind} · {size}"),
+            // The page's word; the `kind` metric keeps the engine's (#70).
+            _ => format!("{} · {size}", console_core::words::term(kind)),
         },
         metrics,
         // Not while something is using it: the engine refuses anyway, and a
@@ -812,7 +813,7 @@ mod tests {
         // says that rather than repeating facts that have their own columns.
         let metric = |l: &str| c.metrics.iter().find(|m| m.label == l).map(|m| m.value.clone());
         assert_eq!(metric("kind"), Some("golden".into()));
-        assert!(c.detail.starts_with("golden"), "{}", c.detail);
+        assert!(c.detail.starts_with("registry image"), "{}", c.detail);
         assert!(c.detail.contains("128.0 MB"), "{}", c.detail);
         // Marks, not prose: scannable down a list of hundreds.
         assert_eq!(metric("sealed"), Some("✓".into()));

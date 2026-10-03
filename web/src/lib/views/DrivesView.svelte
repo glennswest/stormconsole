@@ -330,7 +330,7 @@
                   <td>{v.kind}</td>
                   <td>{#if v.consumer}{#if v.consumer_link}<a href={hrefOf(v.consumer_link)}>{v.consumer}</a>{:else}{v.consumer}{/if}{:else}<span class="dim">nothing</span>{/if}</td>
                   <td class="n">{formatBytes(v.bytes)}</td>
-                  <td class="n" title={v.shared_legs ? `${v.shared_legs} shared with another volume (a clone and its golden)` : ''}>{v.legs}{v.shared_legs ? ` (${v.shared_legs} shared)` : ''}</td>
+                  <td class="n" title={v.shared_legs ? `${v.shared_legs} shared with another volume (an instance and the registry image it was cloned from)` : ''}>{v.legs}{v.shared_legs ? ` (${v.shared_legs} shared)` : ''}</td>
                   <td class:warn={v.state !== 'ok'}>{v.state}{v.rebuild && v.rebuild !== 'none' ? ` · rebuild ${v.rebuild}` : ''}{v.policy ? ` · ${v.policy}` : ''}</td>
                 </tr>
               {/each}

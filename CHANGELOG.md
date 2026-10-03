@@ -3,6 +3,22 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-02 — registry images and instances (#70)
+- **feat:** the console calls a golden a **registry image** everywhere it
+  shows one, and the copy-on-write clone a pod, VM or boot runs on its
+  **instance** ("instance of <registry image>", "clone of …"). Nav
+  (Images → Registry images, VM registry images), the Images page and its
+  groups, Create (Registry image, Instance, VM registry image), action
+  labels (Make / Delete registry image), form labels and hints, details,
+  the VM page's disks and images, the Drives page, the pod page (a
+  Registry image row: `cilium@<commit> (sealed digest …, built … from
+  repo@commit)`) and error messages.
+- **feat:** APIs keep `golden`: ids, kinds, relation and metric names, form
+  fields, JSON. The SPA translates the tokens it shows
+  (`web/src/lib/ui/words.js`; `console_core::words` for details the backend
+  builds from a kind), and a `rel=` link in either vocabulary works. The
+  API's word is named once, in the pod page's Registry image tooltip.
+
 ## [v0.23.1] — 2026-10-02
 
 ### Fixed

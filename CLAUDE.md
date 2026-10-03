@@ -951,6 +951,17 @@ replay already on the Serial console tab.
   rustkube-node's code as read on 2026-10-02
 - Left on #12: Terminal (rustkube-node#56), Environment
 
+### Registry images and instances (#70)
+Owner: the console calls goldens "registry images"; the CoW clone a
+workload runs on is its "instance". UI words only — APIs keep `golden`.
+- [x] Backend prose reworded; details built from a kind through
+      `console_core::words::term`
+- [x] SPA: `ui/words.js` `term()`/`shown()`/`sameRelation()` on kinds,
+      metric labels, the kind metric's value, relation names, stormview
+      cards; visible text reworded; the pod page's Registry image row and
+      its one tooltip naming "golden"
+- [ ] Tests, dist, docs, changelog; sc-build; browser check; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

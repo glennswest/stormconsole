@@ -55,7 +55,7 @@ pub fn images(spec: &Value) -> Vec<Value> {
         let (kind, source) = if let Some(i) = v.pointer("/containerDisk/image").and_then(Value::as_str) {
             ("container disk", i)
         } else if let Some(g) = v.pointer("/dataVolume/name").and_then(Value::as_str) {
-            ("golden clone", g)
+            ("instance of registry image", g)
         } else if let Some(c) = v.pointer("/persistentVolumeClaim/claimName").and_then(Value::as_str) {
             ("claim", c)
         } else {
@@ -78,7 +78,7 @@ pub fn gaps(images: &[Value]) -> Vec<Value> {
     if images.iter().any(|i| i["digest"].is_null()) {
         out.push(json!({
             "what": "image digest",
-            "why": "the node reports no sha256 for the image or golden a disk was made from",
+            "why": "the node reports no sha256 for the registry image a disk was cloned from",
             "issue": plugin_kubernetes::pod::STATUS_ISSUE,
         }));
     }
@@ -119,7 +119,7 @@ mod tests {
         ]});
         let i = images(&spec);
         assert_eq!(i.len(), 3);
-        assert_eq!(i[0]["kind"], "golden clone");
+        assert_eq!(i[0]["kind"], "instance of registry image");
         assert!(i[0]["digest"].is_null());
         assert_eq!(i[1]["digest"], format!("sha256:{hex}"));
         let g = gaps(&i);

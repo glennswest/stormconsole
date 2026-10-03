@@ -45,7 +45,7 @@ impl Source {
             "pvc" | "claim" => Ok(Source::Claim),
             "empty" | "blank" => Ok(Source::Empty),
             other => Err(format!(
-                "{other:?} is not a disk source this console offers — golden, pvc or empty"
+                "{other:?} is not a disk source this console offers — \"golden\" (an instance of a registry image), \"pvc\" (a claim) or \"empty\""
             )),
         }
     }
@@ -92,7 +92,7 @@ pub fn add(spec: &Value, a: &Add) -> Result<Value, String> {
     }
     let from = a.from.trim();
     if from.is_empty() {
-        return Err("a disk needs something behind it: a golden, a claim, or a size".into());
+        return Err("a disk needs something behind it: a registry image, a claim, or a size".into());
     }
     let source = Source::parse(a.source.trim())?;
     let bus = match a.bus.trim() {

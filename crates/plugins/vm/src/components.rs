@@ -74,7 +74,7 @@ pub fn disks(spec: &Value) -> Vec<(String, String)> {
 fn backing(v: Option<&Value>) -> String {
     let Some(v) = v else { return "no volume".to_string() };
     for (key, label) in [
-        ("dataVolume", "golden"),
+        ("dataVolume", "instance of"),
         ("persistentVolumeClaim", "pvc"),
         ("containerDisk", "container disk"),
         ("hostDisk", "host disk"),
@@ -812,7 +812,7 @@ mod tests {
             ]
         });
         let d = disks(&spec);
-        assert_eq!(d[0], ("root".into(), "golden rocky-10".into()));
+        assert_eq!(d[0], ("root".into(), "instance of rocky-10".into()));
         assert_eq!(d[1], ("data".into(), "pvc pg".into()));
         assert_eq!(d[2], ("orphan".into(), "no volume".into()));
     }

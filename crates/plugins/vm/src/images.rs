@@ -326,7 +326,7 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
         if fleet_ok {
             "the image operator has no images and an empty catalogue".into()
         } else {
-            format!("no answer from the image operator at {base} — type a golden name")
+            format!("no answer from the image operator at {base} — type a registry image name")
         }
     } else {
         String::new()
@@ -375,7 +375,7 @@ pub async fn ensure_local(
     // Which image owns this golden name. A placement is made from the image,
     // not from the name a VM asks for.
     let image = image_for_golden(http, base, golden).await.ok_or_else(|| {
-        format!("no image in the catalogue produces the golden {golden}")
+        format!("no image in the catalogue produces the registry image {golden}")
     })?;
     let body = json_body(&image, node);
     let r = http

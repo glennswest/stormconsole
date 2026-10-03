@@ -2,6 +2,7 @@
   // One kubernetes kind, listed. Rows are feed components, so nesting and
   // actions come from their relations and this view holds no model of its
   // own — it adds the chrome: scope, search, state filter, table or cards.
+  import { shown } from '../ui/words.js'
   import { route } from '../router.svelte.js'
   import {
     feed, k8sns, nav, prefs, setView, idsForRoute, kindTitle, isNamespaced, kinds,
@@ -136,7 +137,7 @@
     {:else if prefs.view === 'cards'}
       <div class="grid sc-cards">
         {#each rows as c (c.id)}
-          <ComponentCard component={c} resolve={resolveId} {invoke} />
+          <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
         {/each}
       </div>
     {:else}

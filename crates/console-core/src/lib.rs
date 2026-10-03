@@ -23,6 +23,7 @@ pub mod proxy;
 mod registry;
 pub mod upstream;
 pub mod value;
+pub mod words;
 
 pub use access::{Access, Scope, Viewer};
 pub use events::{Event, Events};

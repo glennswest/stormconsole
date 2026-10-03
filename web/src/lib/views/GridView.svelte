@@ -2,6 +2,7 @@
   // A list rooted at one component — where a nav item or a card's ⊞ lands.
   // With ?rel= the top rows are that relationship's targets; without it,
   // the component itself is the single expandable root.
+  import { term, shown, sameRelation } from '../ui/words.js'
   import { route } from '../router.svelte.js'
   import { feed, prefs, setView, idsForRoute } from '../stores.svelte.js'
   import ResourceTable from '../components/ResourceTable.svelte'
@@ -14,8 +15,13 @@
   import { call } from '../api.js'
 
   const id = $derived(route.current.query.get('id'))
-  const rel = $derived(route.current.query.get('rel'))
+  const relParam = $derived(route.current.query.get('rel'))
   const root = $derived(feed.components.find((c) => c.id === id))
+  // A card links with the word it shows (`registry images`); the page
+  // works in the API's relation name, so creators and counts match (#70).
+  const rel = $derived(
+    relParam && (root?.relations || []).find((r) => sameRelation(r.name, relParam))?.name || relParam
+  )
   const hash = $derived(`#/grid?id=${id}${rel ? `&rel=${rel}` : ''}`)
 
   let search = $state('')
@@ -46,7 +52,7 @@
           `${c.label} ${c.detail || ''}`.toLowerCase().includes(search.toLowerCase())
       )
   )
-  const title = $derived(rel ? rel.replace(/_/g, ' ') : root?.label || '')
+  const title = $derived(rel ? term(rel).replace(/_/g, ' ') : root?.label || '')
 </script>
 
 <div class="sc-page">
@@ -103,7 +109,7 @@
             <select bind:value={kind} aria-label="Filter by kind">
               <option value="">All kinds</option>
               {#each kinds as k}
-                <option value={k}>{k}</option>
+                <option value={k}>{term(k)}</option>
               {/each}
             </select>
           {/if}
@@ -121,7 +127,7 @@
       {:else if prefs.view === 'cards'}
         <div class="grid sc-cards">
           {#each rows as c (c.id)}
-            <ComponentCard component={c} resolve={resolveId} {invoke} />
+            <ComponentCard component={shown(c)} resolve={resolveId} {invoke} />
           {/each}
         </div>
       {:else}

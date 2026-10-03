@@ -4,6 +4,7 @@
 // consumer always holds a complete picture and there is no client-side
 // merging.
 
+import { sameRelation } from './ui/words.js'
 import { get, postJson, reconnectingSocket } from './api.js'
 import { setDefaultTheme } from 'stormview/theme'
 
@@ -446,7 +447,7 @@ export function idsForRoute(href) {
     if (!root) return null
     const rel = q.get('rel')
     if (!rel) return [root.id]
-    const r = (root.relations || []).find((x) => x.name === rel)
+    const r = (root.relations || []).find((x) => sameRelation(x.name, rel))
     return r ? r.targets : []
   }
 
