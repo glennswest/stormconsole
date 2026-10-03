@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.24.0] — 2026-10-02
+
 ### 2026-10-02 — registry images and instances (#70)
 - **feat:** the console calls a golden a **registry image** everywhere it
   shows one, and the copy-on-write clone a pod, VM or boot runs on its
@@ -17,7 +19,10 @@
   fields, JSON. The SPA translates the tokens it shows
   (`web/src/lib/ui/words.js`; `console_core::words` for details the backend
   builds from a kind), and a `rel=` link in either vocabulary works. The
-  API's word is named once, in the pod page's Registry image tooltip.
+  API's word is named once, in the pod page's Registry image tooltip,
+  which also carries stormcentral's own name for the object.
+- **test:** `verify-pod-page.sh` gains a words pass in Chromium over every
+  page that shows a registry image or an instance (#70).
 
 ## [v0.23.1] — 2026-10-02
 
