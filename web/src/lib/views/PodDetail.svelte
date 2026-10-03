@@ -233,7 +233,7 @@
                 <span>↑ {perSec(rate(history[i.interface], 'tx'))}</span>
               </div>
             {/each}
-            <p class="dim"><a href="#" onclick={(e) => { e.preventDefault(); tab = 'Network' }}>Counters and history on Network</a></p>
+            <p class="dim"><button class="link" onclick={() => (tab = 'Network')}>Counters and history on Network</button></p>
           {/if}
         </div>
       </section>

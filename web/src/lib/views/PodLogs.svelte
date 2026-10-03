@@ -16,7 +16,11 @@
   const MAX_LINES = 5000
   const TAIL = 1000
 
-  let container = $state(initial || containers.find((c) => c.role === 'container')?.name || containers[0]?.name || '')
+  // The container to open on, chosen once: the page refreshes its
+  // container list every few seconds and that must not move the viewer.
+  let container = $state(
+    untrack(() => initial || containers.find((c) => c.role === 'container')?.name || containers[0]?.name || '')
+  )
   let source = $state('current')
   let follow = $state(true)
   let paused = $state(false)
