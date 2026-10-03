@@ -15,7 +15,10 @@ pub mod cache;
 pub mod client;
 mod components;
 pub mod network;
+pub mod logruns;
 pub mod objevents;
+pub mod pod;
+mod podpage;
 pub mod projects;
 
 use std::sync::Arc;
@@ -72,6 +75,10 @@ struct Inner {
     store: Arc<Store>,
     http: reqwest::Client,
     access: Arc<authz::NamespaceAccess>,
+    /// The last runs of every container, kept by the console (#69).
+    runs: Arc<logruns::LogRuns>,
+    /// Where a `stormpump://` golden's provenance is read (#69).
+    stormcentral: Option<podpage::Stormcentral>,
 }
 
 pub struct KubernetesPlugin {
@@ -79,6 +86,16 @@ pub struct KubernetesPlugin {
 }
 
 impl KubernetesPlugin {
+    /// stormcentral, for the provenance of a `stormpump://` image on the
+    /// pod page. Called right after `new`, before anything shares the
+    /// plugin.
+    pub fn with_stormcentral(mut self, url: String, token: Option<String>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.stormcentral = Some(podpage::Stormcentral { url, token });
+        }
+        self
+    }
+
     /// The shared namespace-authorization answer, so the VM plugin asks
     /// the same question once rather than a second time.
     pub fn namespace_access(&self) -> Arc<authz::NamespaceAccess> {
@@ -103,6 +120,8 @@ impl KubernetesPlugin {
                 store: store.clone(),
                 http: http.clone(),
                 access: authz::NamespaceAccess::new(server_for_access, http, store),
+                runs: Arc::new(logruns::LogRuns::default()),
+                stormcentral: None,
             }),
         }
     }
@@ -165,6 +184,10 @@ impl ConsolePlugin for KubernetesPlugin {
         Router::new()
             .route("/kinds", get(kinds))
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
+            .route("/pods/{ns}/{name}", get(podpage::detail))
+            .route("/pods/{ns}/{name}/log", get(podpage::log))
+            .route("/pods/{ns}/{name}/traffic", get(podpage::traffic))
+            .route("/pods/{ns}/{name}/runs/{container}/{run}", get(podpage::run_text))
             .route("/events", get(events))
             .route("/namespaces/{ns}", get(namespace_detail))
             .route("/object/{kind}/{*key}", get(object).put(edit_object))
@@ -319,6 +342,13 @@ impl ConsolePlugin for KubernetesPlugin {
             shutdown.cancelled().await;
             return;
         };
+        {
+            let runs = self.inner.runs.clone();
+            let store = self.inner.store.clone();
+            let client = client.clone();
+            let token = shutdown.clone();
+            tokio::spawn(async move { logruns::run(runs, store, client, token).await });
+        }
         for spec in RESOURCES {
             let store = self.inner.store.clone();
             let client = client.clone();

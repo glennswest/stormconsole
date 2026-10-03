@@ -44,6 +44,8 @@ pub struct Config {
     pub fastetcd: Fastetcd,
     #[serde(default)]
     pub stormipmi: Stormipmi,
+    #[serde(default)]
+    pub stormcentral: Stormcentral,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -399,6 +401,19 @@ impl Default for Stormipmi {
     fn default() -> Self {
         Self { enabled: true, url: None, token_file: None }
     }
+}
+
+/// stormcentral, where a `stormpump://` golden's provenance is recorded
+/// (#69): component, commit, build id, built at, built by. Off unless a
+/// url is set — its golden list is authenticated, and a node holds no
+/// stormcentral token by default.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Stormcentral {
+    /// e.g. "http://stormcentral.g8.lo".
+    pub url: Option<String>,
+    /// A file holding a bearer stormcentral accepts (an agent token).
+    pub token_file: Option<String>,
 }
 
 fn on() -> bool {

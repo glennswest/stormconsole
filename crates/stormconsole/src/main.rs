@@ -115,11 +115,23 @@ async fn main() {
     // answer rather than asking the apiserver the same question twice.
     let mut namespace_access = None;
     if config.kubernetes.enabled {
-        let k8s = Arc::new(plugin_kubernetes::KubernetesPlugin::new(
+        let mut k8s = plugin_kubernetes::KubernetesPlugin::new(
             Some(config.kubernetes_server()),
             config.kubernetes.token.clone(),
             config.kubernetes_insecure(),
-        ));
+        );
+        // The provenance of a `stormpump://` image on the pod page (#69).
+        if let Some(url) = &config.stormcentral.url {
+            let token = config.stormcentral.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
+                Ok(t) => Some(t.trim().to_string()),
+                Err(e) => {
+                    tracing::warn!(file = f, "stormcentral token_file unreadable: {e}");
+                    None
+                }
+            });
+            k8s = k8s.with_stormcentral(url.clone(), token);
+        }
+        let k8s = Arc::new(k8s);
         k8s.namespace_access().set_system_namespaces(config.kubernetes.system_namespaces.clone());
         namespace_access = Some(k8s.namespace_access());
         plugins.push(k8s);

@@ -312,6 +312,17 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         let label = short_label(name, node);
         let mut c = base("pod", key, name, health, detail);
         c.label = label;
+        // A pod has a page (#69): network, image, metadata, traffic, logs.
+        c.link = Some(format!("#/pod/{key}"));
+        c.actions.push(console_core::Action {
+            id: "logs".into(),
+            label: "Logs".into(),
+            method: "GET".into(),
+            path: format!("#/pod/{key}?tab=Logs"),
+            enabled: true,
+            danger: false,
+            tone: None,
+        });
         // How many of its containers are up, before anything else.
         //
         // "Running" with 0/1 ready is the commonest way a pod lies: the phase

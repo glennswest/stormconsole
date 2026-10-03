@@ -80,6 +80,28 @@ impl RkClient {
         Ok(resp.json().await?)
     }
 
+    /// A text body — a container's log, read as the console.
+    pub async fn get_text(&self, path: &str) -> Result<String, RkError> {
+        let resp = self.request(reqwest::Method::GET, path, None).send().await?;
+        if !resp.status().is_success() {
+            return Err(RkError::Status(resp.status()));
+        }
+        Ok(resp.text().await?)
+    }
+
+    /// The response itself, whatever its status — for a body that is
+    /// passed through as it arrives (a followed log), and a refusal whose
+    /// words are the apiserver's.
+    pub async fn get_raw_as(&self, path: &str, as_viewer: Option<&str>) -> Result<reqwest::Response, RkError> {
+        Ok(self.request(reqwest::Method::GET, path, as_viewer).send().await?)
+    }
+
+    /// The console's own bearer, for a hop the apiserver does not proxy
+    /// (a kubelet checks it with a TokenReview).
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
     /// Create: POST a JSON object to a collection. The apiserver's status
     /// and body come back whatever they are — a 409 is the caller's to
     /// report, not an error here.

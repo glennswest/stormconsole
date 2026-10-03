@@ -19,3 +19,4 @@ serde_yaml.workspace = true
 tracing.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
+chrono.workspace = true
