@@ -974,6 +974,35 @@ workload runs on is its "instance". UI words only — APIs keep `golden`.
   `golden-<component>…` is shown as named (catalog rows); the pod page
   shows `component@commit` and puts stormcentral's name in the tooltip
 
+### Cluster page: stormcluster's feed and its operations (#63)
+stormcluster (stormcluster#1) runs on every node, :9102, and serves a
+stormview feed: `system` (the cluster or this SNO), `member:<node>`,
+`peer:<node>`, `op:<id>`, each card with its actions as body-less POSTs
+(`/api/v1/peers/{n}/form|join?role=`, `/api/v1/members/{n}/promote|demote|
+drain|uncordon|split[?keepData=false]`, `/api/v1/operations/{id}/resume`).
+`POST /api/v1/operations` takes `{"op":"form"|"join"|…}`; `?dryRun=true`
+on all of them answers `{"plan":{"steps":[…],"warnings":[…]}}`; a refusal
+is `409 {"refused":[…]}`; a request forwarded to the coordinator comes back
+as `{"coordinator", "response"}`. Writes take a bearer when stormcluster's
+`token_file` is set. Read from stormcluster 61777dd (docs/api.md, feed.rs,
+http.rs, plan.rs).
+- [ ] `crates/plugins/stormcluster` (name `cluster`): the feed (3 s), a
+      proxy limited to the operator API (not `/record`), writes `admin`
+      only with the bearer added server-side; answers normalised — a
+      forwarded answer unwrapped with its coordinator named, a refusal
+      also carried as `error` so a generic row button says the reasons,
+      plan steps given a `description` (stormcluster's `describe` wording)
+      when the plan does not carry one
+- [ ] Config `[stormcluster] enabled/url/token_file` (default this node's
+      :9102); nav Cluster → Membership `#/cluster`
+- [ ] `#/cluster`: the cluster, then members, peers, operations (steps of
+      each); every action but Resume previews its plan first (steps,
+      warnings) and runs on confirm; Split asks keep/wipe data; refusals as
+      a list; Form (name, masters 1/3/5, workers) and Join (as worker, or
+      as master in pairs) as forms building the operations body
+- [ ] Tests, docs, changelog; live check against a real stormcluster on
+      dev (two instances, the second a peer); release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
