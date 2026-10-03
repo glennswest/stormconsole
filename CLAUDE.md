@@ -960,7 +960,19 @@ workload runs on is its "instance". UI words only — APIs keep `golden`.
       metric labels, the kind metric's value, relation names, stormview
       cards; visible text reworded; the pod page's Registry image row and
       its one tooltip naming "golden"
-- [ ] Tests, dist, docs, changelog; sc-build; browser check; release; golden
+- [x] Tests, dist, docs, changelog; sc-build; browser check; release; golden
+- Verified with `sc-build deploy/verify-pod-page.sh` (its words pass): a
+  stand-in sbregistry, engine and image operator whose names avoid the
+  word and whose kinds and fields keep it, a real console; Chromium read
+  the visible text, every title/aria-label/placeholder/option, the opened
+  navigator, opened rows and the Create menu on the overview, Registry
+  images, the registry's registry-image and instance lists, VM registry
+  images, the VM catalogue, volumes, the engine, a card view, a `rel=`
+  link in the page's word, and the pod page: no "golden" anywhere except
+  the pod page's one tooltip. 29/29 words checks, 305 Rust tests
+- Data keeps its names: an object stormcentral or forge named
+  `golden-<component>…` is shown as named (catalog rows); the pod page
+  shows `component@commit` and puts stormcentral's name in the tooltip
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

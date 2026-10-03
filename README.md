@@ -84,7 +84,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
-| `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`) and stormcentral; the API with curl and every tab in Chromium, screenshots in `shots.tgz` |
+| `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`) and stormcentral; the API with curl and every tab in Chromium, screenshots in `shots.tgz`; and the words (#70) — stand-in registry, engine and image operator, every page that shows a registry image searched for “golden” |
 
 ## Tests on a node
 
