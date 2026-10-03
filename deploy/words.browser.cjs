@@ -36,8 +36,8 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
     })
   const hits = (text) => text.split('\n').filter((l) => /golden/i.test(l))
 
-  const tooltip = '@title: registry image (golden) — “golden” is the API’s name for it'
-  const allowed = (l) => l === tooltip
+  // The one tooltip, which may also carry stormcentral's name for the object.
+  const allowed = (l) => l.startsWith('@title: registry image (golden) — “golden” is the API’s name for it')
 
   async function visit(hash, what, expect = [], act = null) {
     await page.goto(`${BASE}/${hash}`)
@@ -46,7 +46,8 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
     const text = await words()
     const bad = hits(text).filter((l) => !allowed(l))
     check(bad.length === 0, `${what}: no "golden"`, bad.slice(0, 4).join(' | '))
-    for (const e of expect) check(text.includes(e), `${what}: says “${e}”`)
+    // Headings are uppercased by CSS, and innerText returns what is drawn.
+    for (const e of expect) check(text.toLowerCase().includes(e.toLowerCase()), `${what}: says “${e}”`)
     await page.screenshot({ path: `${SHOTS}/words-${what.replace(/\W+/g, '-')}.png`, fullPage: true })
     return text
   }

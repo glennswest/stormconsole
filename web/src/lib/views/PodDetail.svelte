@@ -305,13 +305,13 @@
                      know that. -->
                 <dt>
                   Registry image
-                  <span class="info" title="registry image (golden) — “golden” is the API’s name for it">ⓘ</span>
+                  <span class="info" title={`registry image (golden) — “golden” is the API’s name for it${c.golden?.name ? `; stormcentral’s name for this one is ${c.golden.name}` : ''}`}>ⓘ</span>
                 </dt>
                 <dd>
                   {#if c.golden?.available}
                     <span class="mono">{c.golden.component}@{(c.golden.commit || '').slice(0, 12)}</span>
                     <span class="dim">(sealed digest {c.golden.deviceSha256 ? `sha256:${short(c.golden.deviceSha256)}` : 'not recorded'}, built {builtAt(c.golden).slice(0, 10)}{sourcesLine(c.golden)})</span>
-                    <div class="dim">{c.golden.name} · {c.golden.version || ''} · build {c.golden.buildId || '—'} · by {c.golden.builtBy || '—'}</div>
+                    <div class="dim">{c.golden.version || ''} · build {c.golden.buildId || '—'} · by {c.golden.builtBy || '—'}</div>
                     <div class="dim">{c.golden.which}</div>
                   {:else}
                     <span class="dim">{c.golden?.reason || 'unknown'}</span>
