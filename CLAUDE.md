@@ -974,7 +974,7 @@ workload runs on is its "instance". UI words only — APIs keep `golden`.
   `golden-<component>…` is shown as named (catalog rows); the pod page
   shows `component@commit` and puts stormcentral's name in the tooltip
 
-### Cluster page: stormcluster's feed and its operations (#63)
+### Cluster page: stormcluster's feed and its operations (#63) ✅ v0.25.0 2026-10-03
 stormcluster (stormcluster#1) runs on every node, :9102, and serves a
 stormview feed: `system` (the cluster or this SNO), `member:<node>`,
 `peer:<node>`, `op:<id>`, each card with its actions as body-less POSTs
@@ -1017,6 +1017,7 @@ http.rs, plan.rs).
   nothing, Drain run → failed at cordon (no apiserver); ops sees all,
   offered nothing; no page errors. Demoting the seed refused with why
 - Filed **stormcluster#11** (plan steps carry no description)
+- Shipped in v0.25.0, golden-stormconsole-84db69059bc5 (stormcos#157)
 - Not run against a real node API (stormcos#38) or a real apiserver: a
   form/join/split actually changing a node is stormcluster's to verify
 
