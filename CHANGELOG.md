@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.25.0] — 2026-10-03
+
 ### 2026-10-03 — the Cluster page, from stormcluster (#63)
 - **feat:** `crates/plugins/stormcluster` (name `cluster`): stormcluster's
   feed (`[stormcluster] url`, default this node's :9102) — the cluster or
