@@ -34,7 +34,8 @@ async function until(fn, ms = 20000) {
   page.setDefaultTimeout(5000)
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.split('\n')[0]}`))
   page.on('response', (r) => {
-    if (r.status() === 404) errors.push(`404: ${r.url()}`)
+    // The masthead asks the kubernetes plugin, which this rig leaves off.
+    if (r.status() === 404 && !r.url().includes('/api/plugins/k8s/')) errors.push(`404: ${r.url()}`)
   })
   page.on('console', (m) => {
     if (m.type() === 'error' && !/the server responded with a status of (409|401|403|404)/.test(m.text())) errors.push(`console: ${m.text().split('\n')[0]}`)
@@ -77,7 +78,8 @@ async function until(fn, ms = 20000) {
     const formRow = page.locator('table.rows tr:not(.opsteps)', { hasText: 'form b1' })
     check(await until(async () => (await formRow.innerText()).includes('4/4')), 'the form operation finished its 4 steps', await formRow.innerText().catch(() => ''))
     await formRow.getByRole('button', { name: 'Steps' }).click()
-    check(await until(async () => (await page.locator('tr.opsteps').first().textContent()).includes('done')), 'its steps are listed as done')
+    check(await until(async () => (await page.locator('tr.opsteps').first().textContent()).includes('done')), 'its steps are listed as done',
+      (await page.locator('tr.opsteps').first().evaluate((e) => e.outerHTML).catch((e) => e.message)).slice(0, 600))
 
     console.log('\n--- 3. Join b2 as a worker: it fails at the token, and is resumable')
     await row('', 'b2').getByRole('button', { name: 'Join as worker' }).click()
@@ -92,7 +94,7 @@ async function until(fn, ms = 20000) {
     check(await until(() => resume.isEnabled()), 'Resume is offered')
     await joinRow.getByRole('button', { name: 'Steps' }).click()
     check(await until(async () => (await page.locator('tr.opsteps .st-failed').count()) > 0), 'the failed step is shown with its error',
-      await page.locator('tr.opsteps .st-failed').first().innerText().catch(() => ''))
+      (await page.locator('tr.opsteps').last().evaluate((e) => e.outerHTML).catch((e) => e.message)).slice(0, 600))
     await resume.click()
     check(await until(async () => /started join-/.test(await outcome.innerText())), 'Resume runs it again', await outcome.innerText().catch(() => ''))
     await page.screenshot({ path: 'joined.png', fullPage: true })
