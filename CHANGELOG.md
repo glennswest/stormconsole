@@ -3,6 +3,30 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-03 — the Cluster page, from stormcluster (#63)
+- **feat:** `crates/plugins/stormcluster` (name `cluster`): stormcluster's
+  feed (`[stormcluster] url`, default this node's :9102) — the cluster or
+  this SNO, members, discovered peers, the last operations — polled every
+  3 s. Its proxy forwards only the operator API (not `/api/v1/record`);
+  reads are open, every write is admin-only with stormcluster's
+  `token_file` bearer added server-side and an audit line per act.
+- **feat:** answers a page can read: a request forwarded to its
+  coordinator is unwrapped and names it; a `409 {"refused": [...]}` keeps
+  its reasons and carries them as `error` too; a dry-run plan's steps get
+  stormcluster's own sentence (filed stormcluster#11 to serve it).
+- **feat:** `#/cluster` (Cluster → Membership): the cluster, members (role,
+  state, address, hardware, the cluster CA), the nodes discovered, and
+  operations with their steps. Every action but Resume shows stormcluster's
+  plan (`?dryRun=true`) — steps and warnings — before it runs; Split asks
+  keep or wipe; a refusal is shown as its list of reasons. Form a cluster
+  (name, masters 1/3/5, workers), Join nodes (as workers, or masters in
+  pairs) and Promote workers (in pairs) are forms that build `POST
+  /api/v1/operations`.
+- **test:** `deploy/verify-cluster.sh`: three real stormclusters on
+  loopback addresses and a private multicast group, stand-ins for the node
+  lifecycle API and fastetcd's gateway, a console with an admin and an
+  operator; the proxy with curl and the page in Chromium.
+
 ## [v0.24.0] — 2026-10-02
 
 ### 2026-10-02 — registry images and instances (#70)

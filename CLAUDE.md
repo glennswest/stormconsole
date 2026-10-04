@@ -986,22 +986,39 @@ is `409 {"refused":[…]}`; a request forwarded to the coordinator comes back
 as `{"coordinator", "response"}`. Writes take a bearer when stormcluster's
 `token_file` is set. Read from stormcluster 61777dd (docs/api.md, feed.rs,
 http.rs, plan.rs).
-- [ ] `crates/plugins/stormcluster` (name `cluster`): the feed (3 s), a
+- [x] `crates/plugins/stormcluster` (name `cluster`): the feed (3 s), a
       proxy limited to the operator API (not `/record`), writes `admin`
       only with the bearer added server-side; answers normalised — a
       forwarded answer unwrapped with its coordinator named, a refusal
       also carried as `error` so a generic row button says the reasons,
       plan steps given a `description` (stormcluster's `describe` wording)
       when the plan does not carry one
-- [ ] Config `[stormcluster] enabled/url/token_file` (default this node's
+- [x] Config `[stormcluster] enabled/url/token_file` (default this node's
       :9102); nav Cluster → Membership `#/cluster`
-- [ ] `#/cluster`: the cluster, then members, peers, operations (steps of
+- [x] `#/cluster`: the cluster, then members, peers, operations (steps of
       each); every action but Resume previews its plan first (steps,
       warnings) and runs on confirm; Split asks keep/wipe data; refusals as
       a list; Form (name, masters 1/3/5, workers) and Join (as worker, or
       as master in pairs) as forms building the operations body
-- [ ] Tests, docs, changelog; live check against a real stormcluster on
-      dev (two instances, the second a peer); release; golden
+- [x] Tests, docs, changelog; live check against a real stormcluster on
+      dev; release; golden
+- Verified with `sc-build deploy/verify-cluster.sh` (57 checks, 0 failed):
+  three real stormclusters at 61777dd (b1–b3 on 127.0.0.11–13, private
+  group 239.255.42.63:25563), stand-in node API and fastetcd gateway, a
+  console with admin and ops. Proxy: ops 403 even on a dry run; `/record`
+  and non-API paths 404; two masters 409 with the reason as `error`; an
+  unknown node named; Form planned in stormcluster's words; a form seeded
+  on b2 planned by b2 and named; a console without the token gets 401 in
+  words. Chromium: SNO and peers; Form (two masters refused on the page,
+  plan, Run, b1 member with the cluster CA, 4/4 steps done); Join b2 →
+  failed at the enrollment (no stormcert), failed step shown, Resume;
+  with a three-member record: Promote one → refused with its reason,
+  Promote a pair planned, Split keep → wipe re-planned, Cancel runs
+  nothing, Drain run → failed at cordon (no apiserver); ops sees all,
+  offered nothing; no page errors. Demoting the seed refused with why
+- Filed **stormcluster#11** (plan steps carry no description)
+- Not run against a real node API (stormcos#38) or a real apiserver: a
+  form/join/split actually changing a node is stormcluster's to verify
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
