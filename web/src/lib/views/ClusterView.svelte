@@ -119,6 +119,8 @@
       if (!ok) return refused(title, data, status)
       const msg = data.id ? `started ${data.id}${data.coordinator ? ` on ${data.coordinator}` : ''}` : 'done'
       outcome = { title, message: msg }
+      // The form that asked for it has done its job.
+      form.open = join.open = promote.open = false
       noteActivity({ reason: title, message: msg, source: 'Cluster' })
       if (data.id) opened[data.id] = data
       await load()
