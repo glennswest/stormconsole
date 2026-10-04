@@ -48,6 +48,12 @@ async function until(fn, ms = 20000) {
   const row = (table, name) => page.locator(`table.rows tr`, { has: page.locator('.strong', { hasText: new RegExp(`^${name}$`) }) })
   const outcome = page.locator('section.outcome')
   const body = () => page.locator('main').innerText()
+  // A running operation's steps are opened by the page itself; open the
+  // rest. ("Hide steps" contains "Steps", so the name is matched exactly.)
+  const openSteps = async (r) => {
+    const b = r.getByRole('button', { name: 'Steps', exact: true })
+    if (await b.count()) await b.click()
+  }
 
   try {
     console.log('\n--- 1. an SNO and its peers')
@@ -77,7 +83,7 @@ async function until(fn, ms = 20000) {
     check(await until(async () => (await page.locator('h1').innerText()).startsWith('storm')), 'the page is now the cluster storm', await page.locator('h1').innerText())
     const formRow = page.locator('table.rows tr:not(.opsteps)', { hasText: 'form b1' })
     check(await until(async () => (await formRow.innerText()).includes('4/4')), 'the form operation finished its 4 steps', await formRow.innerText().catch(() => ''))
-    await formRow.getByRole('button', { name: 'Steps' }).click()
+    await openSteps(formRow)
     check(await until(async () => (await page.locator('tr.opsteps').first().textContent()).includes('done')), 'its steps are listed as done',
       (await page.locator('tr.opsteps').first().evaluate((e) => e.outerHTML).catch((e) => e.message)).slice(0, 600))
 
@@ -92,7 +98,7 @@ async function until(fn, ms = 20000) {
     check(await until(async () => (await joinRow.getAttribute('class')).includes('health-error'), 120000), 'the join failed (no stormcert here)', `${Math.round((Date.now() - t0) / 1000)} s: ${await joinRow.innerText().catch(() => '')}`)
     const resume = joinRow.getByRole('button', { name: 'Resume' })
     check(await until(() => resume.isEnabled()), 'Resume is offered')
-    await joinRow.getByRole('button', { name: 'Steps' }).click()
+    await openSteps(joinRow)
     check(await until(async () => (await page.locator('tr.opsteps .st-failed').count()) > 0), 'the failed step is shown with its error',
       (await page.locator('tr.opsteps').last().evaluate((e) => e.outerHTML).catch((e) => e.message)).slice(0, 600))
     await resume.click()
