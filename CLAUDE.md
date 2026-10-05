@@ -1021,6 +1021,31 @@ http.rs, plan.rs).
 - Not run against a real node API (stormcos#38) or a real apiserver: a
   form/join/split actually changing a node is stormcluster's to verify
 
+### Destructive storage: storage-admins only, typed confirm, as the user (#82)
+stormcos#250 ships ClusterRoles `storage-admin` (every verb on
+`storage.storm.io`) and `storage-viewer` (get/list/watch); the components'
+own checks are stormdrive#45, stormraid#8, stormblock#274 (all open). The
+engine already calls these verbs destructive (`serve/api.rs`
+`is_destructive`: every DELETE, PUT forge, seal, tar, files, gc, trim
+apply, fsck repair) and wants its admin token for them.
+- [ ] `console_core::storage`: one rule, `classify(method, path, query)` →
+      resource + verb in `storage.storm.io`, over the drive (format,
+      sanitize, wipe, partition, destructive test, worker jobs), engine
+      (the engine's own list + array/slab create) and stormstorage proxies;
+      `Reviewer` asks a SelfSubjectAccessReview **as the viewer** (cached
+      30 s per token), fails closed (no identity, no apiserver, 404)
+- [ ] Host middleware: a classified request needs the review's yes (else
+      403 with the reason) and `X-Storm-Confirm` equal to the object's
+      name — the serial for a drive, the label otherwise (else 428 naming
+      it); then the proxy forwards the **viewer's** bearer, never the
+      console's or the engine token
+- [ ] Feed: classified actions stripped for anyone the review refuses;
+      `GET /api/v1/console/guard?method=&path=` for the SPA
+- [ ] SPA: a typed confirm (type the serial) before any guarded action
+- [ ] Tests, docs, changelog; `deploy/verify-storage-guard.sh` (real
+      fastetcd + rustkube with the storage roles, stand-in stormdrive and
+      engine recording the bearer, Chromium); release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
