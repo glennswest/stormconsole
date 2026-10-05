@@ -251,7 +251,13 @@ async fn main() {
         .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))));
     }
 
-    let registry = Arc::new(Registry::new(plugins));
+    // Destructive storage is asked of the apiserver as the viewer (#82);
+    // with kubernetes off there is nobody to ask, and nobody may.
+    let reviewer = console_core::storage::Reviewer::new(
+        config.kubernetes.enabled.then(|| config.kubernetes_server()),
+        config.kubernetes_insecure(),
+    );
+    let registry = Arc::new(Registry::new(plugins).with_reviewer(reviewer));
     let shutdown = CancellationToken::new();
     tokio::spawn(registry.clone().run(shutdown.clone()));
 

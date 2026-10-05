@@ -130,7 +130,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     let who = viewer(&state, &req);
     req.extensions_mut().insert(who.clone());
     if !state.auth_required {
-        return next.run(req).await;
+        return storage_gate(&state, &who, req, next).await;
     }
     let path = req.uri().path();
     // `/api/version` is the release the nodes booted, which the masthead
@@ -144,7 +144,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     }
     if let (Some(given), Some(token)) = (bearer(&req), state.config.api.auth_token.as_deref()) {
         if constant_time_eq(&given, token) {
-            return next.run(req).await;
+            return storage_gate(&state, &who, req, next).await;
         }
     }
     if let Some(id) = cookie_session(&req) {
@@ -152,10 +152,72 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             if let Some(refusal) = refuse_read_only(&who, &req) {
                 return refusal;
             }
-            return next.run(req).await;
+            return storage_gate(&state, &who, req, next).await;
         }
     }
     (StatusCode::UNAUTHORIZED, Json(json!({"error": "authentication required"}))).into_response()
+}
+
+/// Destructive storage — format, sanitize, wipe, partition, RAID sets,
+/// slabs, forge, volume deletes — needs two things beyond being allowed to
+/// write at all (#82, stormcos#250):
+///
+/// 1. **The apiserver's yes, as this person.** A SelfSubjectAccessReview
+///    for `storage.storm.io`, the resource and the verb, with the viewer's
+///    own kubernetes bearer. No console role substitutes for it, including
+///    `admin` and the console's own token: they carry no kubernetes
+///    identity, and the console's service account must not hold
+///    storage-admin. With authentication off nobody is signed in, so
+///    nobody may.
+/// 2. **The object's name, typed.** `X-Storm-Confirm` must be the drive's
+///    serial (or the object's name), so a stray click, a script replaying a
+///    URL or a generic button cannot do it. 428 names what to type.
+///
+/// Once both hold, the request carries [`ActAs`] and the proxy sends the
+/// viewer's bearer upstream, so the component's own check decides too.
+/// Every one that goes through is logged: who, what, which object.
+///
+/// [`ActAs`]: console_core::storage::ActAs
+async fn storage_gate(state: &AppState, who: &Viewer, mut req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let query = req.uri().query().map(str::to_string);
+    let Some(g) = state.registry.guard(who, &method, &path, query.as_deref()).await else {
+        return next.run(req).await;
+    };
+    let user = who.user.as_deref().unwrap_or("anonymous");
+    if !g.decision.allowed {
+        tracing::warn!(user, %method, path, what = %g.guarded.what, "storage: refused — {}", g.decision.reason);
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": format!("{}: {}", g.guarded.what, g.decision.reason), "guard": g})),
+        )
+            .into_response();
+    }
+    let typed = req
+        .headers()
+        .get(console_core::storage::CONFIRM_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .unwrap_or("");
+    if typed != g.confirm {
+        let error = if typed.is_empty() {
+            format!("type {} to {}", g.confirm, g.guarded.what)
+        } else {
+            format!("{typed:?} is not {}: type it exactly to {}", g.confirm, g.guarded.what)
+        };
+        return (StatusCode::PRECONDITION_REQUIRED, Json(json!({"error": error, "guard": g}))).into_response();
+    }
+    // `allowed` is only ever true for a viewer with a token.
+    let Some(token) = who.token.clone() else {
+        return (StatusCode::FORBIDDEN, Json(json!({"error": "no kubernetes identity to act as"}))).into_response();
+    };
+    tracing::info!(
+        user, %method, path, what = %g.guarded.what, object = %g.confirm,
+        "storage: {} {} on {} as {user}", g.guarded.verb, g.guarded.resource, g.confirm
+    );
+    req.extensions_mut().insert(console_core::storage::ActAs(token));
+    next.run(req).await
 }
 
 /// A reader may not write, enforced **once, here, by method** (#15).

@@ -12,17 +12,68 @@ use tracing::warn;
 use crate::access::{Access, Viewer};
 use crate::nav::{merge, NavSection};
 use crate::plugin::ConsolePlugin;
+use crate::storage::{self, Decision, Guarded, Reviewer};
 
 pub struct Registry {
     plugins: Vec<Arc<dyn ConsolePlugin>>,
     snapshot: RwLock<Arc<Vec<ComponentSummary>>>,
     tx: broadcast::Sender<Arc<Vec<ComponentSummary>>>,
+    reviewer: Reviewer,
+}
+
+/// What the console says about one request before it is made: whether it
+/// is destructive storage, whether this viewer may, and what to type.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct Guard {
+    #[serde(flatten)]
+    pub guarded: Guarded,
+    #[serde(flatten)]
+    pub decision: Decision,
+    /// The word the person types to confirm: the drive's serial, or the
+    /// object's name.
+    pub confirm: String,
 }
 
 impl Registry {
+    /// A registry with no apiserver to ask: destructive storage is refused
+    /// to everyone. [`Registry::with_reviewer`] gives it one.
     pub fn new(plugins: Vec<Arc<dyn ConsolePlugin>>) -> Self {
         let (tx, _) = broadcast::channel(16);
-        Self { plugins, snapshot: RwLock::new(Arc::new(Vec::new())), tx }
+        Self { plugins, snapshot: RwLock::new(Arc::new(Vec::new())), tx, reviewer: Reviewer::new(None, false) }
+    }
+
+    /// Ask this reviewer whether a viewer is a storage-admin (#82).
+    pub fn with_reviewer(mut self, reviewer: Reviewer) -> Self {
+        self.reviewer = reviewer;
+        self
+    }
+
+    /// Is this request destructive storage, may this viewer, and what must
+    /// they type? `None` for everything that is not destructive storage.
+    pub async fn guard(&self, viewer: &Viewer, method: &axum::http::Method, path: &str, query: Option<&str>) -> Option<Guard> {
+        let guarded = storage::classify(method, path, query)?;
+        let decision = self.reviewer.review(viewer, &guarded.resource, &guarded.verb).await;
+        let confirm = self.confirm_word(method.as_str(), path, &guarded).await;
+        Some(Guard { guarded, decision, confirm })
+    }
+
+    /// What to type to confirm: taken from the component that offers this
+    /// action — its serial where it has one (a drive), else its label — so
+    /// the word is the one on the screen and not an id from the path.
+    async fn confirm_word(&self, method: &str, path: &str, guarded: &Guarded) -> String {
+        let all = self.components().await;
+        let owner = all.iter().find(|c| {
+            c.actions.iter().any(|a| a.method.eq_ignore_ascii_case(method) && a.path.split('?').next() == Some(path))
+        });
+        match owner {
+            Some(c) => c
+                .metrics
+                .iter()
+                .find(|m| m.label == "serial" && !m.value.trim().is_empty())
+                .map(|m| m.value.trim().to_string())
+                .unwrap_or_else(|| c.label.clone()),
+            None => guarded.target.clone(),
+        }
     }
 
     pub fn plugins(&self) -> &[Arc<dyn ConsolePlugin>] {
@@ -57,6 +108,43 @@ impl Registry {
     /// edge either. Cheap when nothing is limited: the shared Arc comes
     /// straight back.
     pub async fn components_for(&self, viewer: &Viewer) -> Arc<Vec<ComponentSummary>> {
+        let all = self.scoped_for(viewer).await;
+        self.strip_storage(viewer, all).await
+    }
+
+    /// Drop every destructive storage action this viewer may not take
+    /// (#82): shown only to storage-admins, so a viewer sees the drive and
+    /// not the Format button. One review per distinct resource and verb,
+    /// and the shared Arc comes straight back when nothing is withheld.
+    async fn strip_storage(&self, viewer: &Viewer, all: Arc<Vec<ComponentSummary>>) -> Arc<Vec<ComponentSummary>> {
+        use std::collections::HashMap;
+        let mut asked: HashMap<(String, String), bool> = HashMap::new();
+        let mut refused = false;
+        for c in all.iter() {
+            for a in &c.actions {
+                let Some(g) = classify_action(a) else { continue };
+                let key = (g.resource, g.verb);
+                if !asked.contains_key(&key) {
+                    let ok = self.reviewer.review(viewer, &key.0, &key.1).await.allowed;
+                    refused |= !ok;
+                    asked.insert(key, ok);
+                }
+            }
+        }
+        if !refused {
+            return all;
+        }
+        let mut out = all.as_ref().clone();
+        for c in &mut out {
+            c.actions.retain(|a| match classify_action(a) {
+                Some(g) => asked.get(&(g.resource, g.verb)).copied().unwrap_or(false),
+                None => true,
+            });
+        }
+        Arc::new(out)
+    }
+
+    async fn scoped_for(&self, viewer: &Viewer) -> Arc<Vec<ComponentSummary>> {
         let all = self.components().await;
         let limits = self.limits(viewer).await;
         if limits.is_empty() {
@@ -239,6 +327,16 @@ impl Registry {
     }
 }
 
+/// An action in the feed, classified by the rule the host enforces.
+fn classify_action(a: &stormview::Action) -> Option<Guarded> {
+    let method = axum::http::Method::from_bytes(a.method.to_ascii_uppercase().as_bytes()).ok()?;
+    let (path, query) = match a.path.split_once('?') {
+        Some((p, q)) => (p, Some(q)),
+        None => (a.path.as_str(), None),
+    };
+    storage::classify(&method, path, query)
+}
+
 /// Does `plugin` own this component id? Its own card, or anything under
 /// its `{name}:` prefix — the same rule `refresh` warns about.
 fn owns(plugin: &str, id: &str) -> bool {
@@ -373,5 +471,58 @@ mod tests {
         assert_eq!(feed.len(), 2);
         assert_eq!(feed[0].id, "plugin:stub");
         assert_eq!(feed[1].id, "stub:thing");
+    }
+
+    struct Drives;
+
+    #[async_trait]
+    impl ConsolePlugin for Drives {
+        fn name(&self) -> &'static str {
+            "drive"
+        }
+        async fn components(&self) -> Vec<ComponentSummary> {
+            let act = |id: &str, path: &str| stormview::Action {
+                id: id.into(),
+                label: id.into(),
+                method: "POST".into(),
+                path: format!("/api/plugins/drive/proxy/api/v1/drives/7f3a/{path}"),
+                enabled: true,
+                danger: false,
+                tone: None,
+            };
+            vec![ComponentSummary {
+                id: "drive:7f3a".into(),
+                kind: "drive".into(),
+                label: "sdb · ST4000".into(),
+                health: Health::Ok,
+                detail: String::new(),
+                metrics: vec![stormview::Metric::new("serial", "ZC1234")],
+                actions: vec![act("locate-on", "locate/on"), act("format-4k", "format/4096")],
+                relations: vec![],
+                link: None,
+            }]
+        }
+    }
+
+    /// With nobody to ask, nobody is a storage-admin: the drive is shown,
+    /// Locate stays, Format goes — for an administrator of the console too.
+    #[tokio::test]
+    async fn destructive_storage_is_withheld_from_whoever_the_review_refuses() {
+        let r = Registry::new(vec![Arc::new(Drives)]);
+        r.refresh().await;
+        let admin = Viewer { user: Some("root".into()), token: Some("t".into()), roles: vec!["admin".into()], ..Default::default() };
+        let seen = r.components_for(&admin).await;
+        let d = seen.iter().find(|c| c.id == "drive:7f3a").unwrap();
+        let ids: Vec<&str> = d.actions.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, vec!["locate-on"]);
+
+        let m = axum::http::Method::POST;
+        let g = r.guard(&admin, &m, "/api/plugins/drive/proxy/api/v1/drives/7f3a/format/4096", None).await.unwrap();
+        assert!(!g.decision.allowed && g.decision.reason.contains("no apiserver"));
+        assert_eq!(g.confirm, "ZC1234", "the serial, not the id in the path");
+        assert!(r.guard(&admin, &m, "/api/plugins/drive/proxy/api/v1/drives/7f3a/locate/on", None).await.is_none());
+        // A request no component offers is confirmed by the id it names.
+        let g = r.guard(&admin, &m, "/api/plugins/drive/proxy/api/v1/drives/9999/sanitize", None).await.unwrap();
+        assert_eq!(g.confirm, "9999");
     }
 }

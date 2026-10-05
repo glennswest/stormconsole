@@ -12,7 +12,13 @@ export async function post(path) {
 
 /// Invoke a component action exactly as the feed declares it — a
 /// stormblock delete is a DELETE, a stormd restart a POST.
-export async function call(method, path) {
+///
+/// Destructive storage (format, sanitize, wipe, RAID sets, slabs, forge,
+/// volume deletes) answers 428 naming what to type (#82): the person types
+/// the drive's serial, or the object's name, and the request goes again
+/// carrying it. The server decides which actions those are and checks the
+/// word, so every button that comes through here gets the same question.
+export async function call(method, path, confirmed) {
   // A path that is a route opens it, rather than being fetched.
   //
   // Some actions are "go and look at this" -- a serial console, a screen --
@@ -24,12 +30,29 @@ export async function call(method, path) {
     window.location.hash = path.slice(1)
     return {}
   }
-  const resp = await fetch(path, { method: method || 'POST' })
+  const headers = confirmed === undefined ? {} : { 'X-Storm-Confirm': confirmed }
+  const resp = await fetch(path, { method: method || 'POST', headers })
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}))
+    if (resp.status === 428 && data.guard && confirmed === undefined) {
+      return call(method, path, typedConfirm(data.guard))
+    }
     throw new Error(data.error || `${resp.status} ${resp.statusText}`)
   }
   return resp.json().catch(() => ({}))
+}
+
+/// Ask for the object's name, typed. Stronger than OK: it has to be read
+/// off the screen, so it cannot be clicked through.
+function typedConfirm(g) {
+  const typed = window.prompt(
+    `${g.what[0].toUpperCase()}${g.what.slice(1)}: ${g.confirm}\n\n` +
+      `This destroys data and cannot be undone. It is done as you, and ` +
+      `only a storage-admin may.\n\nType ${g.confirm} to confirm.`,
+  )
+  if (typed === null) throw new Error('cancelled')
+  if (typed.trim() !== g.confirm) throw new Error(`not confirmed: that is not ${g.confirm}`)
+  return typed.trim()
 }
 
 /// A JSON body with a method. PUT is a replace or a patch and POST is a

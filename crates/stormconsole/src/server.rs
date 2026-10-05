@@ -92,6 +92,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/console/nav", get(nav))
         .route("/api/v1/console/creators", get(creators))
         .route("/api/v1/console/access", get(access))
+        .route("/api/v1/console/guard", get(guard))
         .route("/api/v1/console/events", get(object_events))
         .route("/api/v1/console/events/recent", get(recent_events))
         .route("/ws/components", get(ws_components))
@@ -149,6 +150,31 @@ async fn recent_events(State(state): State<AppState>, req: Request) -> Response 
 async fn access(State(state): State<AppState>, req: Request) -> Response {
     let viewer = auth::viewer(&state, &req);
     Json(state.registry.access_report(&viewer).await).into_response()
+}
+
+/// Before a button is pressed: is this request destructive storage, may
+/// this viewer, and what must they type (#82)? The page asks so it can
+/// show the typed confirmation; the host enforces the same answer on the
+/// request itself.
+async fn guard(State(state): State<AppState>, Query(q): Query<GuardQuery>, req: Request) -> Response {
+    let viewer = auth::viewer(&state, &req);
+    let Ok(method) = axum::http::Method::from_bytes(q.method.to_ascii_uppercase().as_bytes()) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "bad method"}))).into_response();
+    };
+    let (path, query) = match q.path.split_once('?') {
+        Some((p, qs)) => (p, Some(qs)),
+        None => (q.path.as_str(), None),
+    };
+    match state.registry.guard(&viewer, &method, path, query).await {
+        Some(g) => Json(json!({"guarded": true, "guard": g})).into_response(),
+        None => Json(json!({"guarded": false})).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GuardQuery {
+    method: String,
+    path: String,
 }
 
 async fn nav(State(state): State<AppState>) -> Response {

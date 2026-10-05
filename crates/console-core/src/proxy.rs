@@ -8,7 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{OriginalUri, Path, State};
+use axum::Extension;
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
@@ -101,13 +102,21 @@ pub fn router_as(client: reqwest::Client, upstream: String, bearer: Option<Strin
         .with_state(Arc::new(Target { client, upstream, bearer }))
 }
 
+/// Destructive storage goes upstream with the viewer's bearer, not this
+/// target's (#82): see [`crate::storage::upstream_bearer`].
 async fn handler(
     State(t): State<Arc<Target>>,
     Path(path): Path<String>,
     method: Method,
     uri: Uri,
+    OriginalUri(original): OriginalUri,
+    act: Option<Extension<crate::storage::ActAs>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    forward_as(&t.client, &t.upstream, &method, &path, uri.query(), &headers, body, t.bearer.as_deref()).await
+    let bearer = match crate::storage::upstream_bearer(&method, &original, act.as_deref(), t.bearer.as_deref()) {
+        Ok(b) => b,
+        Err(refused) => return refused,
+    };
+    forward_as(&t.client, &t.upstream, &method, &path, uri.query(), &headers, body, bearer).await
 }

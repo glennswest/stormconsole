@@ -32,11 +32,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{OriginalUri, Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, Metric, NavSection};
 use plugin_logs::LogHosts;
 use serde_json::json;
@@ -289,12 +289,21 @@ async fn node_proxy(
     Path((host, path)): Path<(String, String)>,
     method: Method,
     uri: Uri,
+    OriginalUri(original): OriginalUri,
+    act: Option<Extension<console_core::storage::ActAs>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    // A format on another node goes as the viewer, like one on this node.
+    let bearer = match console_core::storage::upstream_bearer(&method, &original, act.as_deref(), None) {
+        Ok(b) => b,
+        Err(refused) => return refused,
+    };
     let base = inner.remotes.read().await.get(&host).map(|f| f.base.clone());
     match base {
-        Some(b) => console_core::proxy::forward(&inner.client, &b, &method, &path, uri.query(), &headers, body).await,
+        Some(b) => {
+            console_core::proxy::forward_as(&inner.client, &b, &method, &path, uri.query(), &headers, body, bearer).await
+        }
         None => (StatusCode::NOT_FOUND, Json(json!({"error": format!("no stormdrive known on {host}")}))).into_response(),
     }
 }

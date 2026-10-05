@@ -24,6 +24,7 @@
   // what opens is the whole of it: the detail unabbreviated, every metric,
   // the references as links, and every action including the ones kept off
   // the row.
+  import { call } from '../api.js'
   import { term } from '../ui/words.js'
   import StatusPill from './StatusPill.svelte'
   import EventBox from './EventBox.svelte'
@@ -241,17 +242,11 @@
 
   async function run(action) {
     if (invoke) return invoke(action)
-    // A route, not a request -- see `call()` in api.js.
-    if (typeof action.path === 'string' && action.path.startsWith('#/')) {
-      window.location.hash = action.path.slice(1)
-      return
-    }
-    const resp = await fetch(action.path, { method: action.method || 'POST' })
-    const data = await resp.json().catch(() => ({}))
-    // A bare fetch resolves for a 500 as happily as for a 200, so the status
-    // has to be checked or a refusal reads as success.
-    if (!resp.ok) throw new Error(data.error || data.message || `${resp.status} ${resp.statusText}`)
-    return data
+    // `call` opens a route rather than fetching it, checks the status (a
+    // bare fetch resolves for a 500 as happily as for a 200, so a refusal
+    // read as success), and asks for the typed confirmation destructive
+    // storage needs (#82).
+    return call(action.method, action.path)
   }
 
   async function rowAction(row, action) {
