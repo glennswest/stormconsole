@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.27.0] — 2026-10-05
+
 ### 2026-10-05 — fastetcd over mutual TLS (#47)
 - **feat:** `[fastetcd] ca_file`, `cert_file`, `key_file`: the client
   verifies fastetcd against that CA only and presents the pair; reread when
