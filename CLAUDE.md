@@ -1063,6 +1063,19 @@ apply, fsck repair) and wants its admin token for them.
   stormraid#8, stormblock#274 — until #274 the engine refuses a user's
   bearer, so a volume delete in the console stops there
 
+### fastetcd over mutual TLS (#47)
+stormcos moves fastetcd's :2379 to mTLS with a stormcert pair (stormcos#81,
+docs/SECURITY.md); the console's plain client would lose the etcd page.
+- [ ] `[fastetcd] ca_file`, `cert_file`, `key_file`: the client trusts only
+      that CA (no built-in roots) and presents the pair; cert and key come
+      together, and TLS files with an `http://` url are a config error (78)
+- [ ] Rebuilt when a file changes (stormcert renews); a file missing or
+      unreadable is the etcd card's error naming it, not a crash loop
+- [ ] Tests; docs, example config, changelog; `deploy/verify-etcd-tls.sh`
+      against a real fastetcd serving mTLS (openssl CA, server + client
+      pairs): verified, refused without the pair, wrong CA named, reload;
+      release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
