@@ -433,6 +433,47 @@ route that read with a POST would be refused, and would be a route worth
 changing rather than an exception worth carving. Namespace scoping
 (`access()`) is a separate and narrower question and is unchanged.
 
+#### Destructive storage: storage-admins only (#82)
+
+stormcos#250 ships two ClusterRoles over `storage.storm.io`:
+`storage-admin` (every verb) and `storage-viewer` (get, list, watch),
+neither aggregated into admin/edit/view. Destroying storage is decided by
+them, not by a console role — `admin` included, because neither a console
+role nor the console's own credential is a kubernetes identity, and the
+console's service account must not hold storage-admin.
+
+One rule, `console_core::storage::classify(method, path, query)`, says
+which requests through the console are destructive storage and names the
+resource and verb: on the drive proxies (this node and `node/<host>/`)
+format, sanitize, wipe, erase, partition, the destructive test, drive
+worker jobs — `driveoperations`/`create`, as stormdrive#45 will have it; on
+the engine proxy the engine's own `is_destructive` (every DELETE, forge,
+seal, tar, files, gc, trim apply, fsck repair) plus RAID set create and
+member changes and slab create — resource from the path (`volumes`,
+`slabs`, `arrays`, `forge`); on stormstorage's, DELETE. Three places read
+it, so they cannot drift:
+
+1. **The feed.** `Registry::components_for` drops each such action unless
+   the viewer's review allows it — one SelfSubjectAccessReview per
+   distinct resource and verb, as the viewer, cached 30 s per token.
+2. **The host.** The auth middleware, after the reader gate, asks the
+   same review for the request: refused → 403 with the reason; then
+   `X-Storm-Confirm` must equal the object's word — the `serial` metric of
+   the component offering this action, else its label, else the id in the
+   path — or 428 naming it. Once both hold it logs the act and puts
+   `storage::ActAs(<viewer's bearer>)` on the request.
+3. **The proxy.** `proxy::router_as` and the drive plugin's node proxy send
+   `ActAs`'s bearer upstream for a classified request, and refuse one that
+   arrived without it; every other request keeps the console's own
+   credential. The component's SubjectAccessReview (stormdrive#45,
+   stormraid#8, stormblock#274) is then the last word.
+
+The review fails closed: no identity, no apiserver, 401/404/5xx, or any
+answer but `allowed: true` is a refusal with a sentence. The page asks
+`GET /api/v1/console/guard` only through the 428: `call()` prompts for the
+word and sends the request again carrying it, so every button — table row,
+card, shelf — gets the same question from the server.
+
 Still open (#15): users and groups that can be managed without editing a
 file on an immutable root, certificate identity from `stormcert`, and an
 audit of the capabilities that matter — consoles, deletes, goldens.

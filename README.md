@@ -86,6 +86,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-cluster.sh` | the Cluster page — three real stormclusters (b1–b3) on loopback addresses and a private multicast group, stand-ins for the node lifecycle API and fastetcd's gateway; the proxy with curl, then form, join, resume, a refusal, promote in pairs, split, drain in Chromium as an admin and an operator |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
+| `verify-storage-guard.sh` | destructive storage (#82) — real fastetcd + rustkube with the release's `storage-admin`/`storage-viewer` roles, stand-in stormdrives (here and storm-b) and engine recording each write's bearer; who is shown and refused what, the typed serial, whose bearer arrives, the audit line, a binding removed; Format in Chromium as a storage-admin and a storage-viewer |
 | `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`) and stormcentral; the API with curl and every tab in Chromium, screenshots in `shots.tgz`; and the words (#70) — stand-in registry, engine and image operator, every page that shows a registry image searched for “golden” |
 
 ## Tests on a node
@@ -193,6 +194,33 @@ warns about that on every start.
   themselves — the namespaces they see and every write they make are the
   apiserver's RBAC answer. Without one the console says so
   (`/api/v1/console/access`).
+- **Destructive storage is for storage-admins** (#82, stormcos#250):
+  format, sanitize, wipe, partition and the destructive test on a drive (on
+  any node), the drive worker's jobs; RAID set create, destroy, member
+  add/fail/replace; slab create and destroy; forge on/off; and everything
+  else the engine calls destructive (every DELETE — so deleting a volume —
+  seal, tar, files, gc, trim with apply, fsck with repair). For these, no
+  console role is enough, `admin` and the console's own `auth_token`
+  included:
+  - the console asks a **SelfSubjectAccessReview as the user** (their
+    `kube_token`) for `storage.storm.io`, the resource and the verb — the
+    release's `storage-admin` ClusterRole holds every verb there,
+    `storage-viewer` only reads. No identity (authentication off, the
+    token, a user without `kube_token`), no apiserver, or an apiserver
+    without the review: refused, with the reason. Answers stand 30 s;
+  - those actions are **not in the feed** for anyone the review refuses —
+    they see every drive, set, slab and volume, read-only;
+  - the request needs `X-Storm-Confirm` set to the **drive's serial** (the
+    object's name otherwise): 428 says what to type, and the page asks for
+    it after the OK;
+  - the proxy sends the **user's own bearer** upstream, never the
+    console's or the engine's node token, so the component's own
+    SubjectAccessReview decides too (stormdrive#45, stormraid#8,
+    stormblock#274). Until they do, stormdrive takes the request on the
+    console's check alone and the engine refuses it (it wants its admin
+    token): deleting a volume in the console waits on stormblock#274;
+  - each one done is logged — `storage: <verb> <resource> on <object> as
+    <user>` — and each refusal as `storage: refused`.
 
 ## Host API
 
@@ -201,6 +229,7 @@ warns about that on every start.
 | `GET /api/v1/components` · `WS /ws/components` | the feed, filtered per viewer; the socket pushes each change |
 | `GET /api/v1/console/nav` · `/creators` · `/access` | navigation, create forms, what this viewer is not shown |
 | `GET /api/v1/console/events?id=` · `/events/recent` | what happened to one object; the dock |
+| `GET /api/v1/console/guard?method=&path=` | is this request destructive storage, may this viewer, what to type (#82) |
 | `/api/v1/auth/login` · `/logout` · `/session` | |
 | `/api/plugins/<id>/…` | each plugin's own routes (see [docs/architecture.md](docs/architecture.md)) |
 

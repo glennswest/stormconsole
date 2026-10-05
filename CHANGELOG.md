@@ -3,6 +3,29 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-05 — destructive storage: storage-admins only, typed, as the user (#82)
+- **feat:** `console_core::storage`: one rule naming which requests are
+  destructive storage (drive format/sanitize/wipe/partition/destructive
+  test/worker jobs on any node; the engine's own destructive list; RAID
+  set create and member changes; slab create; forge) and the
+  `storage.storm.io` resource and verb, and a SelfSubjectAccessReview asked
+  **as the viewer**, cached 30 s, failing closed.
+- **feat:** the feed drops those actions for anyone the review refuses:
+  storage-viewers and everyone else see every drive, set, slab and volume
+  read-only.
+- **feat:** the host refuses them (403, the reason) without the review's
+  yes — for every console role, `admin` and the console's `auth_token`
+  included — and without `X-Storm-Confirm` equal to the drive's serial or
+  the object's name (428 naming it); each one done or refused is logged.
+- **feat:** the proxies send the **user's own bearer** for them, never the
+  console's or the engine's node token, so the component's own check
+  decides. **BREAKING:** deleting a volume through the console now needs
+  storage-admin, and the engine refuses a user's bearer until
+  stormblock#274.
+- **feat:** `GET /api/v1/console/guard?method=&path=`; the page asks for
+  the typed serial after the OK on any action answered 428.
+- **test:** `deploy/verify-storage-guard.sh`.
+
 ## [v0.25.0] — 2026-10-03
 
 ### 2026-10-03 — the Cluster page, from stormcluster (#63)
