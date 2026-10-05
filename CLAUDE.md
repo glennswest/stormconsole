@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.25.0**
+Current: **0.26.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1021,30 +1021,46 @@ http.rs, plan.rs).
 - Not run against a real node API (stormcos#38) or a real apiserver: a
   form/join/split actually changing a node is stormcluster's to verify
 
-### Destructive storage: storage-admins only, typed confirm, as the user (#82)
+### Destructive storage: storage-admins only, typed confirm, as the user (#82) ✅ v0.26.0 2026-10-05
 stormcos#250 ships ClusterRoles `storage-admin` (every verb on
 `storage.storm.io`) and `storage-viewer` (get/list/watch); the components'
 own checks are stormdrive#45, stormraid#8, stormblock#274 (all open). The
 engine already calls these verbs destructive (`serve/api.rs`
 `is_destructive`: every DELETE, PUT forge, seal, tar, files, gc, trim
 apply, fsck repair) and wants its admin token for them.
-- [ ] `console_core::storage`: one rule, `classify(method, path, query)` →
+- [x] `console_core::storage`: one rule, `classify(method, path, query)` →
       resource + verb in `storage.storm.io`, over the drive (format,
       sanitize, wipe, partition, destructive test, worker jobs), engine
       (the engine's own list + array/slab create) and stormstorage proxies;
       `Reviewer` asks a SelfSubjectAccessReview **as the viewer** (cached
       30 s per token), fails closed (no identity, no apiserver, 404)
-- [ ] Host middleware: a classified request needs the review's yes (else
+- [x] Host middleware: a classified request needs the review's yes (else
       403 with the reason) and `X-Storm-Confirm` equal to the object's
       name — the serial for a drive, the label otherwise (else 428 naming
       it); then the proxy forwards the **viewer's** bearer, never the
       console's or the engine token
-- [ ] Feed: classified actions stripped for anyone the review refuses;
+- [x] Feed: classified actions stripped for anyone the review refuses;
       `GET /api/v1/console/guard?method=&path=` for the SPA
-- [ ] SPA: a typed confirm (type the serial) before any guarded action
-- [ ] Tests, docs, changelog; `deploy/verify-storage-guard.sh` (real
+- [x] SPA: a typed confirm (type the serial) before any guarded action
+- [x] Tests, docs, changelog; `deploy/verify-storage-guard.sh` (real
       fastetcd + rustkube with the storage roles, stand-in stormdrive and
       engine recording the bearer, Chromium); release; golden
+- Verified with `sc-build deploy/verify-storage-guard.sh` (0 failed): real
+  fastetcd v1.2.0 + rustkube v0.15.3 carrying the release's storage roles;
+  alice (operator, storage-admin) sees Format/Destructive test/Delete, bob
+  (operator, storage-viewer) the same drives and volume with Locate only;
+  bob 403 with the reason on format, forge, slab destroy, RAID create,
+  nothing reaching a component; carol (reader + storage-admin) 403; the
+  console's own token 403 (no kubernetes identity); alice 428 without the
+  serial and with `sdb`, 200 with `ZC1234` — stormdrive, storm-b's
+  stormdrive and the engine got **alice's** bearer, ordinary writes still
+  the node token; root (system:masters) allowed; audit and refusal lines;
+  Chromium: OK then the typed prompt naming ZC1234, wrong word stops it,
+  serial formats once; bob offered no Format; a binding removed → Format
+  gone and 403 within 30 s
+- Waiting on the components to check the bearer themselves: stormdrive#45,
+  stormraid#8, stormblock#274 — until #274 the engine refuses a user's
+  bearer, so a volume delete in the console stops there
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
