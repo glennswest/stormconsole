@@ -469,10 +469,12 @@ it, so they cannot drift:
    stormraid#8, stormblock#274) is then the last word.
 
 The review fails closed: no identity, no apiserver, 401/404/5xx, or any
-answer but `allowed: true` is a refusal with a sentence. The page asks
-`GET /api/v1/console/guard` only through the 428: `call()` prompts for the
-word and sends the request again carrying it, so every button — table row,
-card, shelf — gets the same question from the server.
+answer but `allowed: true` is a refusal with a sentence. The page does not
+classify anything itself: `call()` answers a 428 by prompting for the word
+and sending the request again carrying it, so every button — table row,
+card, shelf — gets the same question from the server. `GET
+/api/v1/console/guard` answers the same thing up front, for a client that
+wants to ask first.
 
 Still open (#15): users and groups that can be managed without editing a
 file on an immutable root, certificate identity from `stormcert`, and an
