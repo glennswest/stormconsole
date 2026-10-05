@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.26.0] — 2026-10-05
+
 ### 2026-10-05 — destructive storage: storage-admins only, typed, as the user (#82)
 - **feat:** `console_core::storage`: one rule naming which requests are
   destructive storage (drive format/sanitize/wipe/partition/destructive
