@@ -157,8 +157,11 @@ as() { # user method path [confirm] — prints "<code> <body>"
 }
 code() { as "$@" | cut -d' ' -f1; }
 writes() { curl -s "http://127.0.0.1:$1/_writes"; }
+formats_as() { # port bearer — how many formats arrived with this bearer
+  writes "$1" | python3 -c 'import json,sys; print(sum(w["path"].endswith("/format/4096") and w["bearer"] == sys.argv[1] for w in json.load(sys.stdin)))' "$2"
+}
 nwrites() { writes "$1" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'; }
-last_bearer() { writes "$1" | python3 -c 'import json,sys; w=json.load(sys.stdin); print(w[-1]["bearer"] if w else "")'; }
+last_bearer() { writes "$1" | python3 -c 'import json,sys; w=json.load(sys.stdin); print((w[-1]["bearer"] or "") if w else "")'; }
 last_path() { writes "$1" | python3 -c 'import json,sys; w=json.load(sys.stdin); print(w[-1]["path"] if w else "")'; }
 
 # The feed as each person sees it: the action ids per component kind.
@@ -261,14 +264,14 @@ mkdir -p "$W/pw"
 (cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
 cp deploy/storage-guard.browser.cjs "$W/pw/"
-N1=$(nwrites $D1)
+N1=$(formats_as $D1 "$ALICE")
 set +e
 (cd "$W/pw" && CONSOLE="$C" node storage-guard.browser.cjs)
 BRC=$?
 set -e
 [ $BRC -eq 0 ] || bad "browser checks (rc=$BRC)"
-check "the browser's confirmed format reached stormdrive once more, as alice" \
-  bash -c '[ "$1" = $(( $2 + 1 )) ] && [ "$3" = "$4" ]' _ "$(nwrites $D1)" "$N1" "$(last_bearer $D1)" "$ALICE"
+check "the browser's confirmed format reached stormdrive once, as alice (the wrong word sent nothing)" \
+  test "$(formats_as $D1 "$ALICE")" = $((N1 + 1))
 
 say "a binding removed takes effect within the review's 30 s"
 k DELETE /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/alice-storage-admin
