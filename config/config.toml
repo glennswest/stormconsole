@@ -119,11 +119,18 @@ enabled = true
 enabled = true
 # The cluster's datastore. /health and etcd's v3 JSON gateway on the
 # client port — the gateway carries members, leader, raft, alarms, the
-# keyspace and compact/defrag/disarm/snapshot, and fastetcd does not serve
-# it yet (fastetcd#28), so until it does the card says so. /metrics is on
+# keyspace and compact/defrag/disarm/snapshot; fastetcd serves it since
+# v1.8.0 (fastetcd#28), and the card says so for an older one. /metrics is on
 # its own listener, loopback by default.
 # url = "http://127.0.0.1:2379"
 # metrics_url = "http://127.0.0.1:2381"
+# Mutual TLS on the client port, as stormcos runs it: fastetcd verified
+# against the node CA only, the console presenting its own pair. Reread
+# when the files change (stormcert renews them in place).
+# url = "https://127.0.0.1:2379"
+# ca_file = "/data/stormcert/ca.crt"
+# cert_file = "/data/stormcert/stormconsole-etcd.crt"
+# key_file = "/data/stormcert/stormconsole-etcd.key"
 
 [stormipmi]
 enabled = true

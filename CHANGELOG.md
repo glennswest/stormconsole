@@ -3,6 +3,22 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-05 — fastetcd over mutual TLS (#47)
+- **feat:** `[fastetcd] ca_file`, `cert_file`, `key_file`: the client
+  verifies fastetcd against that CA only and presents the pair; reread when
+  a file changes; a missing or bad file is the datastore card's error
+  naming it, not a failed start. Half a pair, or certificates with a
+  non-`https://` url, is a config error (exit 78).
+- **fix:** reqwest offers `h2`: fastetcd's TLS port (tonic) advertises only
+  `h2` in ALPN, and an http/1.1-only client could never complete the
+  handshake. `Cargo.lock` gains `h2`.
+- **fix:** the datastore card says the whole cause of a failed request
+  (`invalid peer certificate: UnknownIssuer`, `CertificateRequired`), not
+  "client error (Connect)".
+- **fix:** the client port not answering while the metrics listener does is
+  an error ("the client port did not answer: …"), not a healthy store.
+- **test:** `deploy/verify-etcd-tls.sh`.
+
 ## [v0.26.0] — 2026-10-05
 
 ### 2026-10-05 — destructive storage: storage-admins only, typed, as the user (#82)

@@ -85,6 +85,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-cluster.sh` | the Cluster page — three real stormclusters (b1–b3) on loopback addresses and a private multicast group, stand-ins for the node lifecycle API and fastetcd's gateway; the proxy with curl, then form, join, resume, a refusal, promote in pairs, split, drain in Chromium as an admin and an operator |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
+| `verify-etcd-tls.sh` | the datastore over mutual TLS (#47) — fastetcd built from its tag with `--client-cert-auth`, an openssl node CA and pairs (ECDSA and RSA, PKCS#8, as stormcert writes them); stormcos's shape healthy with members and the keyspace, each misconfiguration an error with its cause, a pair minted late and renewed picked up without a restart, the two config errors |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
 | `verify-storage-guard.sh` | destructive storage (#82) — real fastetcd + rustkube with the release's `storage-admin`/`storage-viewer` roles, stand-in stormdrives (here and storm-b) and engine recording each write's bearer; who is shown and refused what, the typed serial, whose bearer arrives, the audit line, a binding removed; Format in Chromium as a storage-admin and a storage-viewer |
 | `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`) and stormcentral; the API with curl and every tab in Chromium, screenshots in `shots.tgz`; and the words (#70) — stand-in registry, engine and image operator, every page that shows a registry image searched for “golden” |
@@ -153,6 +154,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |
 | `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
+| `[fastetcd] ca_file / cert_file / key_file` | none | mutual TLS on the client port (#47): fastetcd is verified against `ca_file` only (no built-in roots) and the console presents the pair. `cert_file` and `key_file` go together; any of them with a non-`https://` url is a config error (exit 78). Reread when a file changes; a missing or bad file is said on the datastore's card, naming it, and the console runs on. On a node: the stormcert node CA and the `stormconsole-etcd` pair under `/data/stormcert`, `url = "https://127.0.0.1:2379"` |
 | `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |
 | `[stormcluster] enabled / url / token_file` | on / `http://127.0.0.1:9102` / — | stormcluster's `token_file`, held server-side; without it a guarded stormcluster refuses every write with 401 |
 | `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
@@ -286,7 +288,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   counters since v1.7.0 (fastetcd#29), and the plugin reads both in etcd's
   shape; it has been checked live against etcd 3.5 and fastetcd v1.2.0 only
   (#64). An older fastetcd gets a line naming the release that has them.
-  fastetcd with TLS and a client certificate is #47.
 - **Volumes on another node's drives** — the console reads only this node's
   engine, so a drive on another node lists no volumes, and says so. Each
   drive's *usage* comes from its own node's stormdrive (v0.13.0+).

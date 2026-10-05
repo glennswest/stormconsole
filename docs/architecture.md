@@ -1173,6 +1173,21 @@ things over HTTP, and the plugin reads both:
   not — the store's row names the release that serves it, and there is no member table at all
   rather than an empty one that reads as a cluster with no members.
 
+**Over mutual TLS (#47).** stormcos moves the client port to TLS with a
+stormcert certificate and `--client-cert-auth` (stormcos#81). With `[fastetcd]
+ca_file`, `cert_file`, `key_file` the plugin's client (`fastetcd::tls`)
+trusts that CA alone and presents the pair; it compares the files'
+modification times every poll and rebuilds when one moved, since stormcert
+renews in place. A file missing or not PEM is the store's error, naming
+the file, and the next poll tries again — the console does not refuse to
+start over a pair that is minted after it. Three things only the live run
+against fastetcd showed: tonic's TLS offers only `h2` in ALPN, so reqwest
+needs `http2` or the handshake shares no protocol; one level of the error
+chain hid every TLS cause (`UnknownIssuer`, `CertificateRequired`), so the
+whole chain is said; and with the client port shut but the plain metrics
+listener answering, the card read healthy — now "the client port did not
+answer: <cause>" is an error.
+
 No gRPC client, deliberately: that was the owner's call on #20, and
 #28 is the alternative — one HTTP surface every tool can use, in etcd's
 own shape so `curl` recipes written for etcd work unchanged. The gateway
@@ -1352,7 +1367,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
-| stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #47 fastetcd over TLS; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 
