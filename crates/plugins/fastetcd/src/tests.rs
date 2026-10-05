@@ -107,6 +107,19 @@ fn nothing_answering_is_unreachable() {
     assert_eq!(metric(&cs[0], "alarms"), None, "nothing answered, so no alarm is known to be absent");
 }
 
+/// #47: the scrape answers, the client port does not — a TLS mistake on
+/// the node looks exactly like this, and must not read as healthy.
+#[test]
+fn metrics_without_the_client_port_is_an_error_naming_why() {
+    let mut s = fastetcd(HEALTHY);
+    s.alive = None;
+    s.alive_err = "client error (Connect): invalid peer certificate: UnknownIssuer".into();
+    s.gateway_err = Some(GwError::Failed("refused".into()));
+    let (h, line, _) = build(&s, None);
+    assert_eq!(h, Health::Error);
+    assert!(line.contains("client port did not answer") && line.contains("UnknownIssuer"), "{line}");
+}
+
 fn gateway(alarms: Vec<Alarm>) -> Seen {
     let mut s = fastetcd(HEALTHY);
     s.gateway_err = None;

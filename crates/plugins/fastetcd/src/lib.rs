@@ -375,6 +375,11 @@ fn build(seen: &Seen, serves: Option<&str>) -> (Health, String, Vec<ComponentSum
     let reached = seen.alive.is_some() || m.is_some() || st.is_some();
     let (health, why) = if !reached {
         (Health::Error, format!("unreachable: {}", seen.alive_err))
+    } else if seen.alive.is_none() {
+        // The metrics listener answered and the client port did not: the
+        // port every client uses — and the one a TLS mistake shuts (#47).
+        // The numbers below are the scrape's; "ok" would hide the cause.
+        (Health::Error, format!("the client port did not answer: {}", seen.alive_err))
     } else if seen.alive == Some(false) {
         (Health::Error, "answers /health unhealthy".to_string())
     } else if !alarms.is_empty() {
@@ -619,8 +624,7 @@ fn danger(id: &str, label: &str, path: &str) -> Action {
 }
 
 fn reason(e: &reqwest::Error) -> String {
-    use std::error::Error as _;
-    e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+    gateway::reason(e)
 }
 
 // ---- routes ---------------------------------------------------------------

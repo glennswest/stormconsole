@@ -47,7 +47,10 @@ serde_json = "1"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+# http2: fastetcd's client port is tonic, whose TLS offers only `h2` in ALPN;
+# a client that offers only http/1.1 shares no protocol with it and the
+# handshake fails before a byte of HTTP (#47).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "http2"] }
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4"] }
 clap = { version = "4", features = ["derive"] }

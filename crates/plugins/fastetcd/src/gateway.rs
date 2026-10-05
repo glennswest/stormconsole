@@ -267,9 +267,26 @@ fn id(v: &Value, keys: &[&str]) -> String {
     num(v, keys).map(|n| format!("{n:x}")).unwrap_or_default()
 }
 
-fn reason(e: &reqwest::Error) -> String {
+/// Why a request failed, down to the cause. One level ("client error
+/// (Connect)") hid every TLS reason — an unknown issuer, a certificate
+/// required, no protocol in common — which is the whole answer when a
+/// node moves the port to mutual TLS (#47).
+pub(crate) fn reason(e: &reqwest::Error) -> String {
     use std::error::Error as _;
-    e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = e.source();
+    while let Some(s) = cur {
+        let t = s.to_string();
+        if !parts.iter().any(|p| p.contains(&t)) {
+            parts.push(t);
+        }
+        cur = s.source();
+    }
+    if parts.is_empty() {
+        e.to_string()
+    } else {
+        parts.join(": ")
+    }
 }
 
 #[cfg(test)]
