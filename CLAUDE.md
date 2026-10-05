@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.26.0**
+Current: **0.27.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1063,18 +1063,28 @@ apply, fsck repair) and wants its admin token for them.
   stormraid#8, stormblock#274 — until #274 the engine refuses a user's
   bearer, so a volume delete in the console stops there
 
-### fastetcd over mutual TLS (#47)
+### fastetcd over mutual TLS (#47) ✅ v0.27.0 2026-10-05
 stormcos moves fastetcd's :2379 to mTLS with a stormcert pair (stormcos#81,
 docs/SECURITY.md); the console's plain client would lose the etcd page.
-- [ ] `[fastetcd] ca_file`, `cert_file`, `key_file`: the client trusts only
+- [x] `[fastetcd] ca_file`, `cert_file`, `key_file`: the client trusts only
       that CA (no built-in roots) and presents the pair; cert and key come
       together, and TLS files with an `http://` url are a config error (78)
-- [ ] Rebuilt when a file changes (stormcert renews); a file missing or
+- [x] Rebuilt when a file changes (stormcert renews); a file missing or
       unreadable is the etcd card's error naming it, not a crash loop
-- [ ] Tests; docs, example config, changelog; `deploy/verify-etcd-tls.sh`
+- [x] Tests; docs, example config, changelog; `deploy/verify-etcd-tls.sh`
       against a real fastetcd serving mTLS (openssl CA, server + client
       pairs): verified, refused without the pair, wrong CA named, reload;
       release; golden
+- Verified with `sc-build deploy/verify-etcd-tls.sh` (0 failed): fastetcd
+  v1.13.0 built from its tag, `--client-cert-auth` with an openssl node CA
+  (curl: no answer without a pair, none in plaintext). stormcos's shape →
+  ok with its member, the gateway, the keyspace and a value; CA only →
+  `CertificateRequired`; stranger CA → `UnknownIssuer`; http:// → error; a
+  pair missing → the file named, then minted → ok with no restart; the pair
+  swapped for an untrusted one → error, renewed → ok; http url + ca_file
+  and half a pair → exit 78. `verify-projects.sh` passes with h2 on
+- Found only live: tonic's ALPN is `h2` only (reqwest needed `http2`); one
+  level of error chain hid the TLS cause; a shut client port read healthy
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
