@@ -184,10 +184,11 @@ async fn main() {
     // The datastore rustkube stands on, so the relation is drawn only
     // when there is an apiserver component to draw it to.
     if config.fastetcd.enabled {
-        plugins.push(Arc::new(plugin_fastetcd::FastetcdPlugin::new(
+        plugins.push(Arc::new(plugin_fastetcd::FastetcdPlugin::with_tls(
             &config.fastetcd_url(),
             &config.fastetcd_metrics_url(),
             config.kubernetes.enabled.then(|| "plugin:k8s".to_string()),
+            config.fastetcd_tls(),
         )));
     }
     // Bare metal by service tag (#31). stormipmi's write token is read once

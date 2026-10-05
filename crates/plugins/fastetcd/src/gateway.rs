@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 pub struct Gateway<'a> {
-    pub client: &'a reqwest::Client,
+    pub client: reqwest::Client,
     pub base: &'a str,
 }
 

@@ -23,6 +23,7 @@
 mod decode;
 mod gateway;
 mod prom;
+pub mod tls;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -85,13 +86,14 @@ struct Inner {
     /// The apiserver component this store serves, when the kubernetes
     /// plugin is running.
     serves: Option<String>,
-    http: reqwest::Client,
+    /// Plain, or mutual TLS against the node CA (#47).
+    http: tls::Client,
     state: RwLock<Poll>,
 }
 
 impl Inner {
     fn gw(&self) -> Gateway<'_> {
-        Gateway { client: &self.http, base: &self.client_url }
+        Gateway { client: self.http.get(), base: &self.client_url }
     }
 }
 
@@ -104,12 +106,18 @@ impl FastetcdPlugin {
     /// `metrics_url` the metrics listener (`http://127.0.0.1:2381`).
     /// `serves` is the component id of what stands on this store.
     pub fn new(client_url: &str, metrics_url: &str, serves: Option<String>) -> Self {
+        Self::with_tls(client_url, metrics_url, serves, tls::TlsFiles::default())
+    }
+
+    /// [`FastetcdPlugin::new`], speaking TLS with these files: the CA to
+    /// verify fastetcd against and the pair to present (#47).
+    pub fn with_tls(client_url: &str, metrics_url: &str, serves: Option<String>, files: tls::TlsFiles) -> Self {
         Self {
             inner: Arc::new(Inner {
                 client_url: client_url.trim_end_matches('/').to_string(),
                 metrics_url: metrics_url.trim_end_matches('/').to_string(),
                 serves,
-                http: reqwest::Client::new(),
+                http: tls::Client::new(files),
                 state: RwLock::new(Poll {
                     health: Health::Unknown,
                     detail: "not yet polled".into(),
@@ -201,6 +209,30 @@ struct Seen {
 }
 
 async fn poll(inner: &Inner) {
+    inner.http.refresh();
+    if let Some(e) = inner.http.error() {
+        // Nothing can be asked without the client; say why on the card
+        // rather than as three connection errors that hide it.
+        let seen = Seen {
+            alive: None,
+            alive_err: e.clone(),
+            metrics: None,
+            metrics_err: e.clone(),
+            status: None,
+            members: vec![],
+            alarms: vec![],
+            gateway_err: Some(GwError::Failed(e)),
+            objects: None,
+            rates: vec![],
+        };
+        let (health, detail, components) = build(&seen, inner.serves.as_deref());
+        let mut st = inner.state.write().await;
+        st.gateway = false;
+        st.health = health;
+        st.detail = detail;
+        st.components = components;
+        return;
+    }
     let (alive, alive_err) = match health(inner).await {
         Ok(ok) => (Some(ok), String::new()),
         Err(e) => (None, e),
@@ -275,6 +307,7 @@ async fn poll(inner: &Inner) {
 async fn health(inner: &Inner) -> Result<bool, String> {
     let resp = inner
         .http
+        .get()
         .get(format!("{}/health", inner.client_url))
         .timeout(Duration::from_secs(5))
         .send()
@@ -289,6 +322,7 @@ async fn health(inner: &Inner) -> Result<bool, String> {
 async fn scrape(inner: &Inner) -> Result<Samples, String> {
     let resp = inner
         .http
+        .get()
         .get(format!("{}/metrics", inner.metrics_url))
         .timeout(Duration::from_secs(5))
         .send()
@@ -717,6 +751,7 @@ async fn snapshot_route(AxState(inner): St, viewer: Viewer) -> Response {
 
     let resp = match inner
         .http
+        .get()
         .post(format!("{}/v3/maintenance/snapshot", inner.client_url))
         .json(&json!({}))
         .send()
@@ -824,7 +859,7 @@ async fn defragment_route(AxState(inner): St, viewer: Viewer, Query(q): Query<Me
             Err(e) => return gw_refusal(e),
         },
     };
-    let gw = Gateway { client: &inner.http, base: &base };
+    let gw = Gateway { client: inner.http.get(), base: &base };
     match gw.defragment().await {
         Ok(_) => Json(json!({"defragmented": base})).into_response(),
         Err(e) => gw_refusal(e),

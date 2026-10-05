@@ -377,11 +377,19 @@ pub struct Fastetcd {
     /// The metrics listener. fastetcd binds it to loopback :2381 by
     /// default, which is why the console reads it from the node.
     pub metrics_url: Option<String>,
+    /// Mutual TLS on the client port (#47): the CA fastetcd's certificate
+    /// is verified against — only this one, no built-in roots — and the
+    /// pair the console presents. On a node: the stormcert node CA and the
+    /// `stormconsole-etcd` client pair under `/data/stormcert`, with `url =
+    /// "https://127.0.0.1:2379"`. `cert_file` and `key_file` go together.
+    pub ca_file: Option<String>,
+    pub cert_file: Option<String>,
+    pub key_file: Option<String>,
 }
 
 impl Default for Fastetcd {
     fn default() -> Self {
-        Self { enabled: true, url: None, metrics_url: None }
+        Self { enabled: true, url: None, metrics_url: None, ca_file: None, cert_file: None, key_file: None }
     }
 }
 
@@ -473,6 +481,16 @@ impl Config {
         let bind = self.bind();
         bind.parse::<std::net::SocketAddr>()
             .map_err(|e| format!("listen address {bind:?} is not host:port: {e}"))?;
+        let f = &self.fastetcd;
+        if f.cert_file.is_some() != f.key_file.is_some() {
+            return Err("[fastetcd] cert_file and key_file go together: set both, or neither".into());
+        }
+        if (f.ca_file.is_some() || f.cert_file.is_some()) && !self.fastetcd_url().starts_with("https://") {
+            return Err(format!(
+                "[fastetcd] ca_file/cert_file are set but url is {:?}: certificates are only used over https://",
+                self.fastetcd_url()
+            ));
+        }
         Ok(())
     }
 
@@ -520,6 +538,16 @@ impl Config {
 
     pub fn fastetcd_url(&self) -> String {
         self.fastetcd.url.clone().unwrap_or_else(|| "http://127.0.0.1:2379".to_string())
+    }
+
+    /// The `[fastetcd]` TLS files, for the plugin.
+    pub fn fastetcd_tls(&self) -> plugin_fastetcd::tls::TlsFiles {
+        let f = &self.fastetcd;
+        plugin_fastetcd::tls::TlsFiles {
+            ca: f.ca_file.as_ref().map(Into::into),
+            cert: f.cert_file.as_ref().map(Into::into),
+            key: f.key_file.as_ref().map(Into::into),
+        }
     }
 
     pub fn fastetcd_metrics_url(&self) -> String {
@@ -688,5 +716,25 @@ data_dir    = \"/var/lib/stormconsole\"
     fn bad_listen_address_is_a_config_error() {
         let e = Config::parse("listen_addr = \"9094\"\n").unwrap_err();
         assert!(e.contains("listen address"), "{e}");
+    }
+
+    /// #47: the node's mutual-TLS shape is accepted and reaches the plugin;
+    /// half a pair, or certificates with a plaintext url, are config errors.
+    #[test]
+    fn fastetcd_tls_files() {
+        let c = Config::parse(
+            "[fastetcd]\nurl = \"https://127.0.0.1:2379\"\nca_file = \"/data/stormcert/ca.crt\"\n\
+             cert_file = \"/data/stormcert/stormconsole-etcd.crt\"\nkey_file = \"/data/stormcert/stormconsole-etcd.key\"\n",
+        )
+        .unwrap();
+        let t = c.fastetcd_tls();
+        assert_eq!(t.ca.as_deref(), Some(std::path::Path::new("/data/stormcert/ca.crt")));
+        assert!(t.cert.is_some() && t.key.is_some());
+        assert!(Config::parse("").unwrap().fastetcd_tls().is_empty());
+
+        let e = Config::parse("[fastetcd]\nurl = \"https://e:2379\"\ncert_file = \"c\"\n").unwrap_err();
+        assert!(e.contains("go together"), "{e}");
+        let e = Config::parse("[fastetcd]\nca_file = \"ca\"\n").unwrap_err();
+        assert!(e.contains("https://"), "{e}");
     }
 }
