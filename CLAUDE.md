@@ -1083,6 +1083,7 @@ docs/SECURITY.md); the console's plain client would lose the etcd page.
   pair missing → the file named, then minted → ok with no restart; the pair
   swapped for an untrusted one → error, renewed → ok; http url + ca_file
   and half a pair → exit 78. `verify-projects.sh` passes with h2 on
+- Shipped in golden-stormconsole-fdf1206f5d6f (stormcos#157)
 - Found only live: tonic's ALPN is `h2` only (reqwest needed `http2`); one
   level of error chain hid the TLS cause; a shut client port read healthy
 
