@@ -1058,6 +1058,7 @@ apply, fsck repair) and wants its admin token for them.
   Chromium: OK then the typed prompt naming ZC1234, wrong word stops it,
   serial formats once; bob offered no Format; a binding removed → Format
   gone and 403 within 30 s
+- Shipped in golden-stormconsole-1977f1e1aa93 (stormcos#157)
 - Waiting on the components to check the bearer themselves: stormdrive#45,
   stormraid#8, stormblock#274 — until #274 the engine refuses a user's
   bearer, so a volume delete in the console stops there
