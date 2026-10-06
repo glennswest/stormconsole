@@ -236,6 +236,17 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
             ),
     ];
 
+    // Nothing is running, so nothing differs from what is running. Read
+    // from an absent instance every field came back empty, and an empty
+    // "running" value is not null — so a stopped machine read as pending on
+    // its network, bus, hostname and node, and showed `running:` beside
+    // each (found by the live check for #50).
+    let mut fields = fields;
+    if !live {
+        for f in &mut fields {
+            f.running = Value::Null;
+        }
+    }
     let pending: Vec<&'static str> =
         fields.iter().filter(|f| !f.running.is_null()).map(|f| f.name).collect();
 
@@ -599,6 +610,8 @@ mod tests {
     fn a_stopped_machine_is_not_warned_about_restarts_it_does_not_need() {
         let m = machine(2, "4Gi");
         let stopped = of(Some(&m), None);
+        assert!(stopped.pending.is_empty(), "a stopped machine is pending on nothing: {:?}", stopped.pending);
+        assert!(stopped.fields.iter().all(|f| f.running.is_null()));
         assert_eq!(field(&stopped, "cores").applies, Applies::WhenItStarts);
         assert_eq!(field(&stopped, "ssh_key").applies, Applies::WhenItStarts);
 

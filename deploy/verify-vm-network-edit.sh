@@ -150,7 +150,7 @@ R=$(put web stormbr0); echo "  $R"
 check "$(echo "$R" | py 'import json,sys; print(json.load(sys.stdin)["message"].endswith("after a restart"))')" "True" "the answer says after a restart"
 check "$(form web)" "stormbr0 pod pending" "the form: stormbr0, running pod, pending"
 sleep 4
-check "$(curl -sf $C/api/v1/components | py 'import json,sys; c=next(c for c in json.load(sys.stdin) if c["id"]=="vm:instance:default/web"); print([m["value"] for m in c["metrics"] if m["label"]=="pending"])')" "['network']" "the row says pending: network"
+check "$(curl -sf $C/api/v1/components | py 'import json,sys; c=next(c for c in json.load(sys.stdin) if c["id"] in ("vm:machine:default/web", "vm:instance:default/web")); print([m["value"] for m in c["metrics"] if m["label"]=="pending"])')" "['network']" "the row says pending: network"
 
 say "pinned: a per-interface annotation does not shadow the edit"
 check "$(form pinned)" "br9 None -" "before: br9 from storm.io/bridge.default"

@@ -13,6 +13,12 @@
   that would shadow it, reads the returned definition back and errors
   instead of saying "written" when it does not carry the value, and says
   what it wrote and that `spec.networks` is left as it was.
+- **fix:** a stopped machine is no longer "pending" on its network, disk
+  bus, hostname and node with an empty `running:` beside each — the run
+  side was read from an instance that does not exist.
+- **fix:** a saved VM edit is put in the console's cache from the
+  apiserver's answer, so the page's re-read right after Save shows it
+  instead of racing the watch.
 - **docs:** architecture's settings section no longer says the network is
   refused.
 
