@@ -1164,6 +1164,7 @@ server.
   UnknownIssuer`, nothing read; a CA not yet there → named, then picked up
   with no restart; an expired token → nothing, renewed in place →
   recovered; skip-verify → works and says so; contradictions exit 78
+- Shipped in golden-stormconsole-0a5296dcd21e (stormcos#324)
 - RBAC for `kube-system/stormconsole` and the mounts: stormcos#76; the
   resource list it needs: #78
 
