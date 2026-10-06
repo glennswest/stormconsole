@@ -17,6 +17,10 @@
   apiserver probe and the kubelet hop use its checked client.
 - **feat:** without `ca_file`, the loopback default warns at start that the
   certificate is not verified, and the card says so.
+- **fix:** the apiserver health probe carries the console's bearer: with
+  anonymous auth off it read "responded 401" on a working connection.
+- **fix:** a probe that cannot connect says the whole cause
+  ("invalid peer certificate: UnknownIssuer"), not "client error (Connect)".
 
 ## [v0.27.2] — 2026-10-06
 

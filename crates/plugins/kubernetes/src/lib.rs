@@ -372,7 +372,7 @@ impl ConsolePlugin for KubernetesPlugin {
         // under the console is picked up by the next check.
         match (&self.inner.probe, &self.inner.client) {
             (Some(probe), Some(client)) => loop {
-                probe.check(&client.conn().http()).await;
+                probe.check_as(&client.conn().http(), client.token().as_deref()).await;
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(10)) => {}
                     _ = shutdown.cancelled() => return,

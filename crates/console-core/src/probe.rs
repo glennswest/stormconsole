@@ -38,7 +38,18 @@ impl Probe {
 
     /// One observation: GET the URL, record health from the HTTP outcome.
     pub async fn check(&self, client: &reqwest::Client) {
-        let observed = match client.get(&self.url).timeout(Duration::from_secs(5)).send().await {
+        self.check_as(client, None).await
+    }
+
+    /// The same, carrying a bearer — for an upstream that refuses anonymous
+    /// reads, such as an apiserver with `--anonymous-auth false`, where a
+    /// bare probe reads 401 on a connection that is working (#33).
+    pub async fn check_as(&self, client: &reqwest::Client, bearer: Option<&str>) {
+        let mut req = client.get(&self.url).timeout(Duration::from_secs(5));
+        if let Some(t) = bearer {
+            req = req.bearer_auth(t);
+        }
+        let observed = match req.send().await {
             Ok(resp) if resp.status().is_success() => {
                 ProbeState { health: Health::Ok, detail: format!("reachable · {}", resp.status()) }
             }
@@ -71,9 +82,20 @@ impl Probe {
     }
 }
 
-/// reqwest error chains repeat the URL and the source; one level is enough
-/// for a card detail line.
+/// reqwest's top level repeats the URL, so it is skipped; the rest of the
+/// chain is said whole. One level read "client error (Connect)" for every
+/// TLS failure — the cause (`invalid peer certificate: UnknownIssuer`) is
+/// below it (#33, as #47 found for fastetcd).
 fn concise(e: &reqwest::Error) -> String {
     use std::error::Error as _;
-    e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+    let mut parts: Vec<String> = Vec::new();
+    let mut next = e.source();
+    while let Some(s) = next {
+        let m = s.to_string();
+        if !parts.iter().any(|p| p.contains(&m)) {
+            parts.push(m);
+        }
+        next = s.source();
+    }
+    if parts.is_empty() { e.to_string() } else { parts.join(": ") }
 }
