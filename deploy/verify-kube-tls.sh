@@ -64,8 +64,10 @@ token() { # <sub> <exp offset>
   s=$(printf '%s.%s' "$h" "$p" | openssl dgst -sha256 -sign "$W/sa.key" -binary | b64url)
   printf '%s.%s.%s' "$h" "$p" "$s"
 }
-GOOD=$(token system:serviceaccount:kube-system:stormconsole 3600)
-EXPIRED=$(token system:serviceaccount:kube-system:stormconsole -60)
+# A plain subject: rustkube gives a `system:serviceaccount:` one only its
+# ServiceAccount groups, and its RBAC is stormcos#76's to write.
+GOOD=$(token stormconsole 3600)
+EXPIRED=$(token stormconsole -60)
 
 say "fastetcd, and the apiserver over TLS with the node CA's pair"
 "$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls http://127.0.0.1:23798 \
