@@ -81,6 +81,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-create-project.sh` | the Create dialog in a headless Chromium (Playwright): Create VM → New project → name → create, with no page errors — real fastetcd + rustkube |
 | `verify-vm-net.sh`, `verify-vm-keys.sh`, `verify-vm-snapshots.sh`, `verify-vm-lifecycle.sh` | VM addresses, SSH keys, snapshots, Start/Stop/Restart from every phase — real fastetcd + rustkube |
 | `verify-vm-policy.sh` | machines outside policy (#51): NAT, host bridge and no-endpoint machines named in the isolate answer, the project card, the VM row and page — real fastetcd + rustkube, Chromium |
+| `verify-vm-network-edit.sh` | the VM settings network edit (#50): stopped, running and per-interface-pinned machines — the definition read back from the apiserver, the form and pending, the Settings tab in Chromium — real fastetcd + rustkube |
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |

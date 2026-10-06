@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.27.1**
+Current: **0.27.2**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1106,23 +1106,37 @@ project isolation reaches it. The console said "isolated" anyway.
   fastetcd v1.2.0 + rustkube v0.15.3, KubeVirt and Cilium CRDs, machines'
   status written as rustkube-node writes it; Chromium on the project and
   VM pages, no page errors
+- Shipped in golden-stormconsole-e25614720d2f (stormcos#324)
 - Left: a passt machine with no endpoint is named in the project's
   exceptions, but its own row/page say nothing (the vm plugin does not
   see Cilium's endpoints); moot until a node runs passt (stormvm#16)
 
-### A network edit that shows (#50)
+### A network edit that shows (#50) ✅ v0.27.2 2026-10-06
 The save writes `storm.io/bridge` on the definition's template; the form's
 value and the pending check read only `spec.networks`/`interfaces`, so a
 saved edit read back as `pod` and never went pending — "nothing happened".
-- [ ] `settings::network` reads what stormvm reads (`network::asked`:
+- [x] `settings::network` reads what stormvm reads (`network::asked`:
       `storm.io/bridge.<iface>`, then `storm.io/bridge`, then the network),
       on the template + object for the definition, the VMI's own for the run
-- [ ] Save: clears a per-interface `storm.io/bridge.<iface>` that would
+- [x] Save: clears a per-interface `storm.io/bridge.<iface>` that would
       shadow the write; reads the definition back and refuses to call it
       saved when it does not carry the value; the answer says what was
       written and that `spec.networks` is left as it was
-- [ ] Tests; `deploy/verify-vm-network-edit.sh` (stopped and running
-      machine, read back); docs, changelog; release; golden
+- [x] A saved edit is written through to the cache (`Store::observe`), so
+      the page's re-read after Save does not race the watch
+- [x] Found live: a stopped machine read as pending on every field (the
+      run side read from no instance) — fixed
+- [x] Tests; `deploy/verify-vm-network-edit.sh`; docs, changelog; release
+- Verified with `sc-build deploy/verify-vm-network-edit.sh` (0 failed):
+  real fastetcd v1.2.0 + rustkube v0.15.3. test1 (the owner's spec,
+  stopped): pod → stormbr0 held by the apiserver as the template
+  annotation with `spec.networks` unchanged, the form reading stormbr0 at
+  once, the Network card "host bridge stormbr0", back to pod removes it;
+  web (running): pending network on the form and the row; pinned
+  (`storm.io/bridge.default: br9`): cleared and replaced; Chromium did the
+  edit through the Settings tab with no page errors
+- So the owner's test1 edit most likely *did* save: the annotation was
+  written and nothing read it back
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
