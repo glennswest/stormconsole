@@ -1135,6 +1135,7 @@ saved edit read back as `pod` and never went pending — "nothing happened".
   web (running): pending network on the form and the row; pinned
   (`storm.io/bridge.default: br9`): cleared and replaced; Chromium did the
   edit through the Settings tab with no page errors
+- Shipped in golden-stormconsole-013795cd465d (stormcos#324)
 - So the owner's test1 edit most likely *did* save: the annotation was
   written and nothing read it back
 
