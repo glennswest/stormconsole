@@ -99,8 +99,9 @@ echo "2026.10.06" > "$W/release"
 for _ in $(seq 60); do curl -sf -o /dev/null "http://$A:19102/healthz" && break; sleep 0.5; done
 check "$(curl -s -o /dev/null -w '%{http_code}' "http://$A:19102/healthz")" "200" "stormcluster: plain health answers"
 check "$(curl -s -o /dev/null -w '%{http_code}' "http://$A:19102/api/v1/components")" "403" "plain: everything else refused"
-check "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$K/ca.crt" "https://$A:19102/api/v1/components")" "401" "TLS, no client certificate: 401"
-check "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$K/ca.crt" --cert "$K/stormconsole-client.crt" --key "$K/stormconsole-client.key" "https://$A:19102/api/v1/components")" "200" "TLS with the console's pair: 200"
+# --http1.1: stormcluster offers h2 and cannot speak it (stormcluster#30).
+check "$(curl --http1.1 -s -o /dev/null -w '%{http_code}' --cacert "$K/ca.crt" "https://$A:19102/api/v1/components")" "401" "TLS, no client certificate: 401"
+check "$(curl --http1.1 -s -o /dev/null -w '%{http_code}' --cacert "$K/ca.crt" --cert "$K/stormconsole-client.crt" --key "$K/stormconsole-client.key" "https://$A:19102/api/v1/components")" "200" "TLS with the console's pair: 200"
 
 CPID=
 console() { # <[stormcluster] body>
