@@ -3,6 +3,9 @@
 //! reads a handful of fields per kind and stays resilient to schema
 //! evolution and CRDs.
 
+use std::sync::Arc;
+
+use console_core::apiserver::{Bearer, Conn, Trust};
 use futures_util::StreamExt;
 use serde_json::Value;
 
@@ -18,8 +21,9 @@ use serde_json::Value;
 #[derive(Clone)]
 pub struct RkClient {
     base: String,
-    token: Option<String>,
-    http: reqwest::Client,
+    /// Who the console is to the apiserver and whose certificate it
+    /// trusts (#33) — shared with every other apiserver caller.
+    conn: Arc<Conn>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -33,16 +37,19 @@ pub enum RkError {
 }
 
 impl RkClient {
-    pub fn new(server: &str, token: Option<&str>, insecure: bool) -> Self {
-        let http = reqwest::Client::builder()
-            .danger_accept_invalid_certs(insecure)
-            .build()
-            .expect("reqwest client");
-        Self {
-            base: server.trim_end_matches('/').to_string(),
-            token: token.map(str::to_string),
-            http,
-        }
+    pub fn new(conn: Arc<Conn>) -> Self {
+        Self { base: conn.server().to_string(), conn }
+    }
+
+    /// An inline token and either no verification or the system roots —
+    /// the shape a test or a one-off caller wants.
+    pub fn plain(server: &str, token: Option<&str>, insecure: bool) -> Self {
+        let bearer = token.map(|t| Bearer::Inline(t.to_string())).unwrap_or(Bearer::None);
+        Self::new(Conn::new(server, bearer, if insecure { Trust::Unverified } else { Trust::System }))
+    }
+
+    pub fn conn(&self) -> &Arc<Conn> {
+        &self.conn
     }
 
     pub fn base(&self) -> &str {
@@ -51,8 +58,8 @@ impl RkClient {
 
     /// The bearer a request carries: the viewer's when they have one,
     /// otherwise the console's own.
-    fn auth<'a>(&'a self, as_viewer: Option<&'a str>) -> Option<&'a str> {
-        as_viewer.or(self.token.as_deref())
+    fn auth(&self, as_viewer: Option<&str>) -> Option<String> {
+        as_viewer.map(str::to_string).or_else(|| self.conn.token())
     }
 
     fn request(
@@ -61,7 +68,7 @@ impl RkClient {
         path: &str,
         as_viewer: Option<&str>,
     ) -> reqwest::RequestBuilder {
-        let req = self.http.request(method, format!("{}{}", self.base, path));
+        let req = self.conn.http().request(method, format!("{}{}", self.base, path));
         match self.auth(as_viewer) {
             Some(t) => req.bearer_auth(t),
             None => req,
@@ -98,8 +105,8 @@ impl RkClient {
 
     /// The console's own bearer, for a hop the apiserver does not proxy
     /// (a kubelet checks it with a TokenReview).
-    pub fn token(&self) -> Option<&str> {
-        self.token.as_deref()
+    pub fn token(&self) -> Option<String> {
+        self.conn.token()
     }
 
     /// Create: POST a JSON object to a collection. The apiserver's status
@@ -180,9 +187,9 @@ impl RkClient {
         );
         // The watch is the console's own read of the whole cluster, so it
         // always carries the console's credential, never a viewer's.
-        let req = match self.token.as_deref() {
-            Some(t) => self.http.get(url).bearer_auth(t),
-            None => self.http.get(url),
+        let req = match self.conn.token() {
+            Some(t) => self.conn.http().get(url).bearer_auth(t),
+            None => self.conn.http().get(url),
         };
         let resp = req.send().await?;
         if !resp.status().is_success() {

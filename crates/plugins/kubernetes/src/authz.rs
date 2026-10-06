@@ -231,8 +231,9 @@ mod tests {
 /// built beside the kubernetes plugin's watch cache (which already holds
 /// the namespace list) and handed to whoever else needs it.
 pub struct NamespaceAccess {
-    server: Option<String>,
-    http: reqwest::Client,
+    /// The apiserver, asked as the viewer — through the console's checked
+    /// connection, never its bearer (#33).
+    conn: Option<Arc<console_core::apiserver::Conn>>,
     store: Arc<Store>,
     authz: Authorizer,
     /// Namespaces beyond rustkube's reserved set that hold the system's own
@@ -257,10 +258,9 @@ pub fn is_system_namespace(ns: &str, extra: &[String]) -> bool {
 pub type Hidden = Option<(HashSet<String>, String)>;
 
 impl NamespaceAccess {
-    pub fn new(server: Option<String>, http: reqwest::Client, store: Arc<Store>) -> Arc<Self> {
+    pub fn new(conn: Option<Arc<console_core::apiserver::Conn>>, store: Arc<Store>) -> Arc<Self> {
         Arc::new(Self {
-            server,
-            http,
+            conn,
             store,
             authz: Authorizer::default(),
             system: std::sync::RwLock::new(vec!["cilium".into()]),
@@ -290,9 +290,9 @@ impl NamespaceAccess {
     /// `None` when nothing is hidden — no identity to authorize against,
     /// no apiserver, or a viewer who may see everything.
     pub async fn hidden(&self, viewer: &Viewer) -> Hidden {
-        let (Some(token), Some(server)) = (&viewer.token, &self.server) else { return None };
+        let (Some(token), Some(conn)) = (&viewer.token, &self.conn) else { return None };
         let known = self.store.namespaces().await;
-        let allowed = self.authz.allowed(server, &self.http, token, &known).await;
+        let allowed = self.authz.allowed(conn.server(), &conn.http(), token, &known).await;
         if allowed.source == Source::Unavailable {
             // An authorizer that cannot be reached must not quietly become
             // a permissive one, and must not blank the console either:

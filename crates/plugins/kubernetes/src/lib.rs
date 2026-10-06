@@ -102,15 +102,16 @@ impl KubernetesPlugin {
         self.inner.access.clone()
     }
 
-    pub fn new(server: Option<String>, token: Option<String>, insecure: bool) -> Self {
-        let client = server.as_ref().map(|s| RkClient::new(s, token.as_deref(), insecure));
+    /// `conn` is the apiserver — its address, the console's bearer and the
+    /// CA it is checked against (#33) — or `None` for no apiserver.
+    pub fn new(conn: Option<Arc<console_core::apiserver::Conn>>) -> Self {
+        let server = conn.as_ref().map(|c| c.server().to_string());
+        let client = conn.clone().map(RkClient::new);
         let probe = client.as_ref().map(|c| Probe::new(format!("{}/version", c.base())));
-        let http = reqwest::Client::builder()
-            .danger_accept_invalid_certs(insecure)
-            .build()
-            .expect("reqwest client");
+        // Plain: stormcentral and the Cilium agent's loopback health server.
+        // Nothing here carries the console's apiserver bearer.
+        let http = reqwest::Client::new();
         let store = Arc::new(Store::default());
-        let server_for_access = server.clone();
         Self {
             inner: Arc::new(Inner {
                 server,
@@ -119,7 +120,7 @@ impl KubernetesPlugin {
                 agent: Probe::new(CILIUM_AGENT_HEALTH),
                 store: store.clone(),
                 http: http.clone(),
-                access: authz::NamespaceAccess::new(server_for_access, http, store),
+                access: authz::NamespaceAccess::new(conn, store),
                 runs: Arc::new(logruns::LogRuns::default()),
                 stormcentral: None,
             }),
@@ -366,10 +367,18 @@ impl ConsolePlugin for KubernetesPlugin {
                 inner.agent.run(inner.http.clone(), Duration::from_secs(15), token).await;
             });
         }
-        if let Some(probe) = &self.inner.probe {
-            probe.run(self.inner.http.clone(), Duration::from_secs(10), shutdown).await;
-        } else {
-            shutdown.cancelled().await;
+        // Through the connection's own client, so `/version` is asked of the
+        // peer the bearer goes to, checked the same way — and a CA renewed
+        // under the console is picked up by the next check.
+        match (&self.inner.probe, &self.inner.client) {
+            (Some(probe), Some(client)) => loop {
+                probe.check(&client.conn().http()).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                    _ = shutdown.cancelled() => return,
+                }
+            },
+            _ => shutdown.cancelled().await,
         }
     }
 }
@@ -653,6 +662,23 @@ async fn apiserver_state(inner: &Inner) -> (Health, String) {
                 Health::Ok => Health::Warn,
                 other => other,
             };
+            // A token or CA file that cannot be used is the reason the
+            // apiserver is refusing or unreachable — said first (#33).
+            if let Some(e) = inner.client.as_ref().and_then(|c| c.conn().error()) {
+                return (Health::Error, format!("{e} · {} · {synced}/{total} kinds synced", s.detail));
+            }
+            // Said, not scored: the zero-config loopback default is unverified
+            // on every node until stormcos sets `ca_file` (stormcos#76), and a
+            // card that is yellow everywhere stops being read.
+            if inner.client.as_ref().is_some_and(|c| !c.conn().verified()) {
+                return (
+                    health,
+                    format!(
+                        "{} · {synced}/{total} kinds synced · certificate not verified ([kubernetes] ca_file)",
+                        s.detail
+                    ),
+                );
+            }
             (health, format!("{} · {synced}/{total} kinds synced", s.detail))
         }
         None => (Health::Idle, "no rustkube endpoint configured".to_string()),

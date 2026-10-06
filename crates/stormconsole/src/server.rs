@@ -23,6 +23,8 @@ pub struct AppState {
     pub registry: Arc<Registry>,
     pub sessions: Arc<auth::Sessions>,
     pub auth_required: bool,
+    /// The apiserver connection every caller shares (#33).
+    pub kube: Option<Arc<console_core::apiserver::Conn>>,
 }
 
 impl AppState {
@@ -35,15 +37,10 @@ impl AppState {
     /// first, because "some nodes are still on the old one" is the single most
     /// useful thing to know during an upgrade and the easiest to miss.
     async fn release(&self) -> serde_json::Value {
-        let Some(server) = self.config.kubernetes.enabled.then(|| self.config.kubernetes_server())
-        else {
+        let Some(conn) = self.kube.clone() else {
             return serde_json::json!(null);
         };
-        let client = plugin_kubernetes::Client::new(
-            &server,
-            self.config.kubernetes.token.as_deref(),
-            self.config.kubernetes_insecure(),
-        );
+        let client = plugin_kubernetes::Client::new(conn);
         let Ok(list) = client.get("/api/v1/nodes").await else {
             return serde_json::json!(null);
         };

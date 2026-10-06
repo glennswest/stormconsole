@@ -169,6 +169,19 @@ platform. The authorization model, in the order it runs:
    refused by the apiserver rather than by the console's guess about them.
    The *watches* keep the console's own credential — they have to see the
    whole cluster to serve anybody.
+   **The console's own credential (#33)** is one `console_core::apiserver::
+   Conn` shared by every caller — the watches, the plugins' writes, the
+   namespace probes, the storage reviews, `/api/version`'s release read,
+   and the pod page's hop to the kubelet. `[kubernetes] token_file` is
+   stormcert's ServiceAccount token (stormcert#27), re-read whenever its
+   modification time moves, so a renewal is used without a restart;
+   `ca_file` makes the client trust that CA and nothing else, rebuilt when
+   it changes. A CA that cannot be read fails closed (a client with no
+   roots reaches nothing, so no bearer goes to an unchecked peer), and a
+   token or CA file problem is the kubernetes card's error, naming the
+   file. Without `ca_file` the zero-config loopback default is the one
+   unchecked case: the console warns at start and the card says
+   "certificate not verified" until stormcos sets the file (stormcos#76).
 5. **Honesty.** What is withheld is counted and named ("4 namespaces you
    cannot view"), because a short list with no explanation reads as a
    broken console. An apiserver that cannot be asked hides nothing and

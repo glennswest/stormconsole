@@ -143,14 +143,13 @@ pub struct VmPlugin {
 }
 
 impl VmPlugin {
+    /// `conn` is the apiserver connection the kubernetes plugin uses (#33).
     pub fn new(
-        server: Option<String>,
-        token: Option<String>,
-        insecure: bool,
+        conn: Option<Arc<console_core::apiserver::Conn>>,
         stormvm: Option<String>,
         access: Option<Arc<NamespaceAccess>>,
     ) -> Self {
-        Self::with_images(server, token, insecure, stormvm, access, None)
+        Self::with_images(conn, stormvm, access, None)
     }
 
     /// The same, naming where `vmcloud-image-operator` answers.
@@ -159,14 +158,12 @@ impl VmPlugin {
     /// text. A console on a cluster without the operator should not offer an
     /// empty dropdown where a working text box used to be.
     pub fn with_images(
-        server: Option<String>,
-        token: Option<String>,
-        insecure: bool,
+        conn: Option<Arc<console_core::apiserver::Conn>>,
         stormvm: Option<String>,
         access: Option<Arc<NamespaceAccess>>,
         image_operator: Option<String>,
     ) -> Self {
-        let client = server.as_ref().map(|s| Client::new(s, token.as_deref(), insecure));
+        let client = conn.map(Client::new);
         Self {
             inner: Arc::new(Inner {
                 client,

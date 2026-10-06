@@ -114,12 +114,23 @@ async fn main() {
     // authorization answer derived from it; the VM plugin shares that one
     // answer rather than asking the apiserver the same question twice.
     let mut namespace_access = None;
-    if config.kubernetes.enabled {
-        let mut k8s = plugin_kubernetes::KubernetesPlugin::new(
-            Some(config.kubernetes_server()),
-            config.kubernetes.token.clone(),
-            config.kubernetes_insecure(),
-        );
+    // One connection to the apiserver for everything that speaks to it as
+    // the console (#33): the bearer from `token_file` follows its renewals,
+    // and the certificate is checked against `ca_file`.
+    let kube = config.kubernetes_conn();
+    if let Some(conn) = &kube {
+        if !conn.verified() {
+            tracing::warn!(
+                server = conn.server(),
+                "the apiserver's certificate is not verified; set [kubernetes] ca_file"
+            );
+        }
+        if let Some(e) = conn.error() {
+            tracing::warn!("{e}");
+        }
+    }
+    if let Some(conn) = kube.clone() {
+        let mut k8s = plugin_kubernetes::KubernetesPlugin::new(Some(conn));
         // The provenance of a `stormpump://` image on the pod page (#69).
         if let Some(url) = &config.stormcentral.url {
             let token = config.stormcentral.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
@@ -226,9 +237,7 @@ async fn main() {
         // With the apiserver, so an image's own events can be drawn beside it.
         plugins.push(Arc::new(plugin_vmimages::VmImagesPlugin::with_kube(
             &config.vmimages_url(),
-            config.kubernetes.enabled.then(|| config.kubernetes_server()),
-            config.kubernetes.token.clone(),
-            config.kubernetes_insecure(),
+            kube.clone(),
         )));
     }
     // VMs are kube objects here — the plugin watches the same apiserver
@@ -242,9 +251,7 @@ async fn main() {
         // answers about one cluster.
         let image_operator = config.vmimages.enabled.then(|| config.vmimages_url());
         plugins.push(Arc::new(plugin_vm::VmPlugin::with_images(
-            config.kubernetes.enabled.then(|| config.kubernetes_server()),
-            config.kubernetes.token.clone(),
-            config.kubernetes_insecure(),
+            kube.clone(),
             Some(config.stormvm_url()),
             namespace_access.clone(),
             image_operator,
@@ -254,10 +261,7 @@ async fn main() {
 
     // Destructive storage is asked of the apiserver as the viewer (#82);
     // with kubernetes off there is nobody to ask, and nobody may.
-    let reviewer = console_core::storage::Reviewer::new(
-        config.kubernetes.enabled.then(|| config.kubernetes_server()),
-        config.kubernetes_insecure(),
-    );
+    let reviewer = console_core::storage::Reviewer::new(kube.clone());
     let registry = Arc::new(Registry::new(plugins).with_reviewer(reviewer));
     let shutdown = CancellationToken::new();
     tokio::spawn(registry.clone().run(shutdown.clone()));
@@ -267,6 +271,7 @@ async fn main() {
         sessions: Arc::new(auth::Sessions::new()),
         registry,
         config: config.clone(),
+        kube: kube.clone(),
     };
 
     let bind = config.bind();

@@ -3,6 +3,21 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-06 — The apiserver with a token file and a CA (#33)
+- **feat:** `[kubernetes] token_file`: the console's bearer read from a file
+  (stormcert's ServiceAccount token, stormcert#27) and re-read whenever it
+  changes, so a renewal needs no restart. Not with `token` (exit 78).
+- **feat:** `[kubernetes] ca_file`: the apiserver's certificate is checked
+  against that CA alone, reloaded when it changes; a CA that cannot be read
+  fails closed and the kubernetes card names the file. Not with
+  `insecure_skip_tls_verify`, nor with an `http://` server (exit 78).
+- **refactor:** one apiserver connection (`console_core::apiserver::Conn`)
+  shared by the watches, the kubernetes, VM and image plugins, the
+  namespace probes, the storage reviews and the release read; the
+  apiserver probe and the kubelet hop use its checked client.
+- **feat:** without `ca_file`, the loopback default warns at start that the
+  certificate is not verified, and the card says so.
+
 ## [v0.27.2] — 2026-10-06
 
 ### 2026-10-06 — A network edit that shows (#50)

@@ -73,23 +73,17 @@ pub struct VmImagesPlugin {
 
 impl VmImagesPlugin {
     pub fn new(url: &str) -> Self {
-        Self::with_kube(url, None, None, false)
+        Self::with_kube(url, None)
     }
 
     /// The same, with the apiserver that holds each image's events.
-    pub fn with_kube(
-        url: &str,
-        server: Option<String>,
-        token: Option<String>,
-        insecure: bool,
-    ) -> Self {
+    /// `conn` is the apiserver connection the kubernetes plugin uses (#33).
+    pub fn with_kube(url: &str, conn: Option<std::sync::Arc<console_core::apiserver::Conn>>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 base: url.trim_end_matches('/').to_string(),
                 client: reqwest::Client::new(),
-                kube: server
-                    .as_ref()
-                    .map(|s| plugin_kubernetes::Client::new(s, token.as_deref(), insecure)),
+                kube: conn.map(plugin_kubernetes::Client::new),
                 state: RwLock::new(State {
                     health: Health::Unknown,
                     detail: "not yet polled".into(),

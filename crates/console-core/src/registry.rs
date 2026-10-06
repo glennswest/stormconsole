@@ -39,7 +39,7 @@ impl Registry {
     /// to everyone. [`Registry::with_reviewer`] gives it one.
     pub fn new(plugins: Vec<Arc<dyn ConsolePlugin>>) -> Self {
         let (tx, _) = broadcast::channel(16);
-        Self { plugins, snapshot: RwLock::new(Arc::new(Vec::new())), tx, reviewer: Reviewer::new(None, false) }
+        Self { plugins, snapshot: RwLock::new(Arc::new(Vec::new())), tx, reviewer: Reviewer::new(None) }
     }
 
     /// Ask this reviewer whether a viewer is a storage-admin (#82).

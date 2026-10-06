@@ -274,21 +274,18 @@ const TTL: Duration = Duration::from_secs(30);
 
 /// Asks the apiserver, as the viewer, whether they may do one storage verb.
 pub struct Reviewer {
-    base: Option<String>,
-    http: reqwest::Client,
+    /// The apiserver, through the console's checked connection (#33) — a
+    /// viewer's bearer goes only where the console's own would.
+    conn: Option<std::sync::Arc<crate::apiserver::Conn>>,
     cache: RwLock<HashMap<(String, String, String), (Instant, Decision)>>,
 }
 
 impl Reviewer {
     /// `base` is the apiserver; `None` means there is none to ask, and every
     /// destructive storage request is refused for that reason.
-    pub fn new(base: Option<String>, insecure: bool) -> Self {
-        let http = reqwest::Client::builder()
-            .danger_accept_invalid_certs(insecure)
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap_or_default();
-        Self { base: base.map(|b| b.trim_end_matches('/').to_string()), http, cache: RwLock::new(HashMap::new()) }
+    pub fn new(conn: Option<std::sync::Arc<crate::apiserver::Conn>>) -> Self {
+        let conn = conn.map(|c| c.with_timeout(Duration::from_secs(5)));
+        Self { conn, cache: RwLock::new(HashMap::new()) }
     }
 
     /// May this viewer do `verb` on `resource` in [`GROUP`]?
@@ -301,7 +298,7 @@ impl Reviewer {
                 None => "nobody is signed in: destructive storage actions need a signed-in user who holds storage-admin".into(),
             });
         };
-        let Some(base) = self.base.as_deref() else {
+        let Some(base) = self.conn.as_ref().map(|c| c.server().to_string()) else {
             return Decision::no("no apiserver is configured to ask whether this user is a storage-admin");
         };
         let key = (token.to_string(), resource.to_string(), verb.to_string());
@@ -310,7 +307,7 @@ impl Reviewer {
                 return d.clone();
             }
         }
-        let d = self.ask(base, token, resource, verb).await;
+        let d = self.ask(&base, token, resource, verb).await;
         let mut cache = self.cache.write().await;
         cache.retain(|_, (at, _)| at.elapsed() < TTL);
         cache.insert(key, (Instant::now(), d.clone()));
@@ -323,8 +320,9 @@ impl Reviewer {
             "kind": "SelfSubjectAccessReview",
             "spec": {"resourceAttributes": {"group": GROUP, "resource": resource, "verb": verb}},
         });
-        let resp = self
-            .http
+        let Some(conn) = &self.conn else { return Decision::no("no apiserver") };
+        let resp = conn
+            .http()
             .post(format!("{base}/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"))
             .bearer_auth(token)
             .json(&body)
@@ -448,12 +446,16 @@ mod tests {
 
     #[tokio::test]
     async fn no_identity_and_no_apiserver_are_refusals() {
-        let r = Reviewer::new(Some("https://127.0.0.1:1".into()), true);
+        let r = Reviewer::new(Some(crate::apiserver::Conn::new(
+            "https://127.0.0.1:1",
+            crate::apiserver::Bearer::None,
+            crate::apiserver::Trust::Unverified,
+        )));
         let d = r.review(&Viewer { roles: vec!["admin".into()], ..Viewer::anonymous() }, "volumes", "delete").await;
         assert!(!d.allowed && d.reason.contains("nobody is signed in"));
         let d = r.review(&Viewer { user: Some("token".into()), roles: vec!["admin".into()], ..Default::default() }, "volumes", "delete").await;
         assert!(!d.allowed && d.reason.contains("no kubernetes identity"));
-        let r = Reviewer::new(None, false);
+        let r = Reviewer::new(None);
         let d = r.review(&Viewer { user: Some("a".into()), token: Some("t".into()), ..Default::default() }, "volumes", "delete").await;
         assert!(!d.allowed && d.reason.contains("no apiserver"));
     }

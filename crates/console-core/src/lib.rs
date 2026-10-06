@@ -14,6 +14,7 @@ pub use stormview::{Action, ComponentSummary, Health, Metric, Relation, Relation
 
 pub mod events;
 pub mod access;
+pub mod apiserver;
 pub mod create;
 pub mod feed;
 mod nav;

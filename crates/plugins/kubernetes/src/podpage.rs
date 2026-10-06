@@ -342,8 +342,11 @@ pub async fn traffic(
     }
     let h = if host.contains(':') { format!("[{host}]") } else { host.clone() };
     let url = format!("https://{h}:{KUBELET_PORT}/metrics/cadvisor");
-    let token = viewer.token.as_deref().or_else(|| inner.client.as_ref().and_then(|c| c.token()));
-    let mut req = inner.http.get(&url).timeout(Duration::from_secs(5));
+    let token = viewer.token.clone().or_else(|| inner.client.as_ref().and_then(|c| c.token()));
+    // The apiserver connection's client: a bearer goes to the kubelet only
+    // when its certificate is checked the way the apiserver's is (#33).
+    let http = inner.client.as_ref().map(|c| c.conn().http()).unwrap_or_else(|| inner.http.clone());
+    let mut req = http.get(&url).timeout(Duration::from_secs(5));
     if let Some(t) = token {
         req = req.bearer_auth(t);
     }

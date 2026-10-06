@@ -145,7 +145,9 @@ Full example: [config/config.toml](config/config.toml).
 | `[api] bind` | `0.0.0.0:9094` | |
 | `[api] auth_token` | — | a machine credential (`Authorization: Bearer`); signing in with it is an admin session |
 | `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
-| `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | the local default is unverified (self-signed stormcert); a configured server is verified unless set |
+| `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | without `ca_file` the local default is unverified (warned at start, said on the card); a configured server is verified against the system roots unless set |
+| `[kubernetes] token_file` | — | the console's bearer from a file (stormcert's ServiceAccount token), re-read when it changes; not with `token` |
+| `[kubernetes] ca_file` | — | PEM CA the apiserver is checked against — only that CA; re-read when it changes; unreadable fails closed with the file named on the card; not with `insecure_skip_tls_verify` (exit 78) |
 | `[kubernetes] system_namespaces` | `["cilium"]` | never a project, besides `default`, `openshift`, `kube-*`, `openshift-*` |
 | `[fleet] enabled / mcast_group / stormd_host / stormd_ports` | on / `239.255.42.1:5514` / `127.0.0.1` / 9080–9089, 9180–9199, 9201, 9202, 180, 8180, 8269, 8545 | a service golden's stormd is its port + 100 |
 | `[logs] enabled / mcast_group / db_path / ring_cap / retain_hours / dedup` | on / `239.255.42.1:5514` / `<data_dir>/logs.redb` / 200000 / 168 / true | |

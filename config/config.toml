@@ -42,8 +42,10 @@ bind = "0.0.0.0:9094"
 [kubernetes]
 enabled = true
 # server = "https://192.168.8.150:6443"   # default https://127.0.0.1:6443 (unverified TLS)
-# token = ""                              # ServiceAccount bearer token
-# insecure_skip_tls_verify = true         # a configured server is verified unless set
+# token = ""                              # ServiceAccount bearer token, inline
+# token_file = "/etc/stormcert/stormconsole.token"  # or from a file, re-read when stormcert renews it
+# ca_file = "/etc/stormcert/ca.crt"       # check the apiserver against this CA only
+# insecure_skip_tls_verify = true         # a configured server is verified unless set; not with ca_file
 # Namespaces that hold the system's own things and are never a project:
 # not offered as a create target, not in "My projects". default, openshift,
 # kube-* and openshift-* always are.

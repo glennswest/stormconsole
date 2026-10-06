@@ -147,8 +147,15 @@ pub struct Kubernetes {
     pub enabled: bool,
     /// rustkube apiserver, e.g. "https://192.168.8.150:6443".
     pub server: Option<String>,
-    /// Bearer token (ServiceAccount JWT).
+    /// Bearer token (ServiceAccount JWT), inline.
     pub token: Option<String>,
+    /// A file holding the bearer — what stormcert writes and renews in place
+    /// (stormcert#27). Re-read whenever it changes. Not with `token`.
+    pub token_file: Option<String>,
+    /// PEM CA the apiserver's certificate is checked against — only this
+    /// CA is trusted. Re-read when it changes. Not with
+    /// `insecure_skip_tls_verify`.
+    pub ca_file: Option<String>,
     /// Accept the apiserver's self-signed cert.
     #[serde(default)]
     pub insecure_skip_tls_verify: bool,
@@ -160,7 +167,15 @@ pub struct Kubernetes {
 
 impl Default for Kubernetes {
     fn default() -> Self {
-        Self { enabled: true, server: None, token: None, insecure_skip_tls_verify: false, system_namespaces: system_namespaces() }
+        Self {
+            enabled: true,
+            server: None,
+            token: None,
+            token_file: None,
+            ca_file: None,
+            insecure_skip_tls_verify: false,
+            system_namespaces: system_namespaces(),
+        }
     }
 }
 
@@ -481,6 +496,21 @@ impl Config {
         let bind = self.bind();
         bind.parse::<std::net::SocketAddr>()
             .map_err(|e| format!("listen address {bind:?} is not host:port: {e}"))?;
+        let k = &self.kubernetes;
+        if k.token.is_some() && k.token_file.is_some() {
+            return Err("[kubernetes] token and token_file are both set: use one".into());
+        }
+        if k.ca_file.is_some() && k.insecure_skip_tls_verify {
+            return Err("[kubernetes] ca_file and insecure_skip_tls_verify are both set: \
+                        a CA to check against, or no check — not both"
+                .into());
+        }
+        if k.ca_file.is_some() && !self.kubernetes_server().starts_with("https://") {
+            return Err(format!(
+                "[kubernetes] ca_file is set but server is {:?}: a CA is only used over https://",
+                self.kubernetes_server()
+            ));
+        }
         let f = &self.fastetcd;
         if f.cert_file.is_some() != f.key_file.is_some() {
             return Err("[fastetcd] cert_file and key_file go together: set both, or neither".into());
@@ -509,11 +539,37 @@ impl Config {
         self.kubernetes.server.clone().unwrap_or_else(|| "https://127.0.0.1:6443".to_string())
     }
 
-    /// The node's apiserver serves a stormcert self-signed certificate and
-    /// the console golden mounts no CA, so the local default is accepted
-    /// unverified; a configured server is verified unless told otherwise.
+    /// Whether the apiserver's certificate goes unchecked. With `ca_file`
+    /// it is always checked (#33). Without one, a configured server is
+    /// checked against the system roots unless told otherwise, and the
+    /// zero-config loopback default — a stormcert certificate no system
+    /// root vouches for — is not: that is the one case the console warns
+    /// about at start, and stormcos closes it by setting `ca_file`
+    /// (stormcos#76).
     pub fn kubernetes_insecure(&self) -> bool {
-        self.kubernetes.insecure_skip_tls_verify || self.kubernetes.server.is_none()
+        self.kubernetes.ca_file.is_none()
+            && (self.kubernetes.insecure_skip_tls_verify || self.kubernetes.server.is_none())
+    }
+
+    /// The one apiserver connection every caller shares (#33), or `None`
+    /// when the kubernetes plugin is off.
+    pub fn kubernetes_conn(&self) -> Option<std::sync::Arc<console_core::apiserver::Conn>> {
+        use console_core::apiserver::{Bearer, Conn, Trust};
+        if !self.kubernetes.enabled {
+            return None;
+        }
+        let k = &self.kubernetes;
+        let bearer = match (&k.token_file, &k.token) {
+            (Some(f), _) => Bearer::File(f.into()),
+            (None, Some(t)) => Bearer::Inline(t.clone()),
+            (None, None) => Bearer::None,
+        };
+        let trust = match &k.ca_file {
+            Some(ca) => Trust::Ca(ca.into()),
+            None if self.kubernetes_insecure() => Trust::Unverified,
+            None => Trust::System,
+        };
+        Some(Conn::new(&self.kubernetes_server(), bearer, trust))
     }
 
     pub fn stormblock_url(&self) -> String {
@@ -671,6 +727,35 @@ data_dir    = \"/var/lib/stormconsole\"
         for p in [9201, 9202, 8180, 8545] {
             assert!(c.fleet.stormd_ports.contains(&p), "{p} missing from the default stormd ports");
         }
+    }
+
+    /// stormcert's token file and the node CA (#33).
+    #[test]
+    fn a_token_file_and_a_ca_file_are_used() {
+        use console_core::apiserver::Trust;
+        let c = Config::parse(
+            "[kubernetes]\ntoken_file = \"/etc/stormcert/stormconsole.token\"\nca_file = \"/etc/stormcert/ca.crt\"\n",
+        )
+        .unwrap();
+        // The loopback default with a CA is checked.
+        assert!(!c.kubernetes_insecure());
+        let conn = c.kubernetes_conn().unwrap();
+        assert_eq!(conn.trust(), &Trust::Ca("/etc/stormcert/ca.crt".into()));
+        assert!(conn.error().unwrap().contains("/etc/stormcert/"), "the missing files are named");
+        // Without one, the loopback default is the one unchecked case.
+        assert_eq!(Config::default().kubernetes_conn().unwrap().trust(), &Trust::Unverified);
+        let off = Config::parse("[kubernetes]\nenabled = false\n").unwrap();
+        assert!(off.kubernetes_conn().is_none());
+    }
+
+    #[test]
+    fn contradictory_kubernetes_credentials_are_refused() {
+        let e = Config::parse("[kubernetes]\ntoken = \"t\"\ntoken_file = \"f\"\n").unwrap_err();
+        assert!(e.contains("token and token_file"), "{e}");
+        let e = Config::parse("[kubernetes]\nca_file = \"ca\"\ninsecure_skip_tls_verify = true\n").unwrap_err();
+        assert!(e.contains("ca_file and insecure_skip_tls_verify"), "{e}");
+        let e = Config::parse("[kubernetes]\nserver = \"http://k:8080\"\nca_file = \"ca\"\n").unwrap_err();
+        assert!(e.contains("only used over https://"), "{e}");
     }
 
     #[test]
