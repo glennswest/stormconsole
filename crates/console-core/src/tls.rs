@@ -180,9 +180,10 @@ mod tests {
     #[test]
     fn a_missing_file_is_named_and_does_not_panic() {
         let files = TlsFiles { ca: Some("/nonexistent/ca.pem".into()), ..Default::default() };
-        let c = Client::new(files);
+        let c = Client::new("stormcluster", files);
         let e = c.error().unwrap();
-        assert!(e.contains("ca_file /nonexistent/ca.pem"), "{e}");
+        // Named with the section the files come from.
+        assert!(e.contains("[stormcluster] ca_file /nonexistent/ca.pem"), "{e}");
     }
 
     #[test]

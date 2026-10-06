@@ -836,9 +836,6 @@ data_dir    = \"/var/lib/stormconsole\"
         assert!(e.contains("listen address"), "{e}");
     }
 
-    /// #47: the node's mutual-TLS shape is accepted and reaches the plugin;
-    /// half a pair, or certificates with a plaintext url, are config errors.
-    #[test]
     /// stormcluster's :9102 is TLS only (#89, stormcluster#5).
     #[test]
     fn stormcluster_tls_files() {
@@ -862,6 +859,8 @@ data_dir    = \"/var/lib/stormconsole\"
         assert!(e.contains("only used over https://"), "{e}");
     }
 
+    /// #47: the node's mutual-TLS shape is accepted and reaches the plugin;
+    /// half a pair, or certificates with a plaintext url, are config errors.
     #[test]
     fn fastetcd_tls_files() {
         let c = Config::parse(
