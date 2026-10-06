@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.27.1] — 2026-10-06
+
 ### 2026-10-06 — A machine outside policy says so (#51)
 - **fix:** isolating a project no longer calls a VM behind the
   hypervisor's NAT (stormvm#16) or on a host bridge isolated: the answer
