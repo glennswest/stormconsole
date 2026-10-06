@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.27.2] — 2026-10-06
+
 ### 2026-10-06 — A network edit that shows (#50)
 - **fix:** the VM settings form's Network value and the pending check read
   the `storm.io/bridge` annotation the save writes (as stormvm reads it:
