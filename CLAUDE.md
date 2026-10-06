@@ -1139,6 +1139,25 @@ saved edit read back as `pod` and never went pending — "nothing happened".
 - So the owner's test1 edit most likely *did* save: the annotation was
   written and nothing read it back
 
+### The apiserver with a token file and a CA (#33)
+stormcert#27 mints the console's ServiceAccount token into a file that is
+renewed in place; stormcos mounts it and the node CA (stormcos#76). The
+console took only an inline `token` and verified nothing for the default
+server.
+- [ ] `console_core::apiserver::Conn`: server, bearer (inline or a file
+      re-read when it changes), a reqwest client trusting only `ca_file`
+      (rebuilt when it changes; unreadable → fail closed, the error said)
+- [ ] `[kubernetes] token_file`, `ca_file`; `token`+`token_file` or
+      `ca_file`+`insecure_skip_tls_verify` → exit 78; the zero-config
+      loopback default without a CA warns at start that it is unverified
+- [ ] Every apiserver caller on the one Conn: k8s plugin (client, authz,
+      cilium/kubelet http stays separate), vm, vmimages, the storage
+      Reviewer, `/api/version`'s release read
+- [ ] The k8s card says a token/CA file problem
+- [ ] Tests; `deploy/verify-kube-tls.sh` (rustkube over TLS with an
+      openssl CA, SA-token file, rotation, wrong CA, missing file);
+      docs, example config, changelog; release; golden; comment stormcos#76
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
