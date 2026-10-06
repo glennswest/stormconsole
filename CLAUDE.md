@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.27.0**
+Current: **0.27.1**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1087,21 +1087,28 @@ docs/SECURITY.md); the console's plain client would lose the etcd page.
 - Found only live: tonic's ALPN is `h2` only (reqwest needed `http2`); one
   level of error chain hid the TLS cause; a shut client port read healthy
 
-### A machine outside policy says so (#51)
+### A machine outside policy says so (#51) ✅ v0.27.1 2026-10-06
 A VM whose node binding is `user` (NAT inside the hypervisor, stormvm#16)
 or a host `bridge` is not a Cilium endpoint: no NetworkPolicy and no
 project isolation reaches it. The console said "isolated" anyway.
-- [ ] One rule (`plugin_kubernetes::network::coverage`): a running machine
-      is covered only when its binding is neither `user` nor `bridge` and,
-      where Cilium's endpoints are watched, it has one; the reason named
-- [ ] VM row: `policy` metric "none applies (NAT|host bridge)", no
+- [x] One rule (`plugin_kubernetes::network::outside_policy`): outside when
+      the binding is `user` or `bridge`, or, where Cilium's endpoints are
+      watched, when there is no endpoint under the machine's `ns/name`
+- [x] VM row: `policy` metric "none applies (NAT|host bridge)", no
       endpoint reference for such a machine
-- [ ] VM page: the Network card says no policy or isolation applies, that
+- [x] VM page: the Network card says no policy or isolation applies, that
       the project is isolated and this machine is outside it, and which
       policies would select it on the pod network
-- [ ] Isolate answer and project badge: "… except N machines …" (VMIs
-      read as the viewer); the exception disappears when stormvm#16 lands
-- [ ] Tests, docs, changelog; live check; release; golden
+- [x] Isolate answer and project card: "… Except N machines — … —", with
+      each one's reason (`outside` on `GET /projects/{p}`)
+- [x] Tests, docs, changelog; live check; release; golden
+- Verified with `sc-build deploy/verify-vm-policy.sh` (0 failed): real
+  fastetcd v1.2.0 + rustkube v0.15.3, KubeVirt and Cilium CRDs, machines'
+  status written as rustkube-node writes it; Chromium on the project and
+  VM pages, no page errors
+- Left: a passt machine with no endpoint is named in the project's
+  exceptions, but its own row/page say nothing (the vm plugin does not
+  see Cilium's endpoints); moot until a node runs passt (stormvm#16)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
