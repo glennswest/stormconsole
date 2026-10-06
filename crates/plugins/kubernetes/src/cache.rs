@@ -301,6 +301,24 @@ impl Store {
         self.synced.write().await.insert(kind, false);
     }
 
+    /// An object the console just got back from a write, put in the cache
+    /// now rather than when its watch event arrives. A page that re-reads
+    /// right after a save otherwise races the watch and can show the old
+    /// value — an edit that looks as if nothing happened (#50). Never
+    /// replaces a newer `resourceVersion` the watch has already delivered.
+    pub async fn observe(&self, kind: &'static str, obj: Value) {
+        let Some(key) = object_key(&obj) else { return };
+        let rv = |o: &Value| o.pointer("/metadata/resourceVersion").and_then(Value::as_str).and_then(|v| v.parse::<u64>().ok());
+        let mut map = self.objects.write().await;
+        let Some(entry) = map.get_mut(kind) else { return };
+        if let (Some(have), Some(new)) = (entry.get(&key).and_then(rv), rv(&obj)) {
+            if have >= new {
+                return;
+            }
+        }
+        entry.insert(key, obj);
+    }
+
     async fn apply(&self, kind: &'static str, event: &str, obj: Value) {
         let Some(key) = object_key(&obj) else { return };
         let mut map = self.objects.write().await;
@@ -392,6 +410,17 @@ pub async fn watch_resource(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_written_object_is_seen_at_once_but_never_over_a_newer_one() {
+        let st = Store::default();
+        st.replace("vm", HashMap::from([("d/a".to_string(), serde_json::json!({
+            "metadata": {"namespace": "d", "name": "a", "resourceVersion": "5"}, "v": 1}))])).await;
+        st.observe("vm", serde_json::json!({"metadata": {"namespace": "d", "name": "a", "resourceVersion": "7"}, "v": 2})).await;
+        assert_eq!(st.object("vm", "d/a").await.unwrap()["v"], 2);
+        st.observe("vm", serde_json::json!({"metadata": {"namespace": "d", "name": "a", "resourceVersion": "6"}, "v": 3})).await;
+        assert_eq!(st.object("vm", "d/a").await.unwrap()["v"], 2, "older than what is cached");
+    }
 
     #[test]
     fn an_object_path_is_derived_from_the_list_path() {

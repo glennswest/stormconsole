@@ -779,7 +779,8 @@ async fn patch_machine(
     let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
     match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
         Ok((status, b)) if status.is_success() => {
-            let _ = b;
+            // Seen at once by the page's re-read, not when the watch catches up.
+            inner.store.observe("vm", b).await;
             Json(json!({"message": done})).into_response()
         }
         Ok((status, b)) => from_apiserver(status, b, ""),
@@ -945,6 +946,7 @@ async fn network_set(
     let want = if want.is_empty() { "pod" } else { want };
     let spec = saved.pointer("/spec/template/spec").cloned().unwrap_or(Value::Null);
     let got = settings::network(&spec, &[saved.pointer("/spec/template/metadata"), saved.get("metadata")]);
+    inner.store.observe("vm", saved.clone()).await;
     if got != want {
         return (
             StatusCode::BAD_GATEWAY,
