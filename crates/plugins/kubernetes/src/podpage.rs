@@ -347,7 +347,7 @@ pub async fn traffic(
     // when its certificate is checked the way the apiserver's is (#33).
     let http = inner.client.as_ref().map(|c| c.conn().http()).unwrap_or_else(|| inner.http.clone());
     let mut req = http.get(&url).timeout(Duration::from_secs(5));
-    if let Some(t) = token {
+    if let Some(t) = &token {
         req = req.bearer_auth(t);
     }
     let text = match req.send().await {
@@ -356,7 +356,7 @@ pub async fn traffic(
             return none(format!(
                 "the kubelet on {node} refused the console's credential ({}): it checks the bearer with the apiserver, and {}",
                 r.status(),
-                if token.is_some() { "this one was not accepted" } else { "the console has none ([kubernetes] token)" }
+                if token.is_some() { "this one was not accepted" } else { "the console has none ([kubernetes] token or token_file)" }
             ))
         }
         Ok(r) => return none(format!("the kubelet on {node} ({host}) answered {}", r.status())),
