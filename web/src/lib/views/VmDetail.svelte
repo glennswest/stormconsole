@@ -595,7 +595,7 @@
                applied. -->
           {#if vm.policy && !vm.policy.applies}
             <div class="policy warn">
-              <p><strong>No network policy applies to this machine.</strong> {vm.policy.sentence}.</p>
+              <p><strong>No network policy applies to this machine.</strong> {vm.policy.sentence.charAt(0).toUpperCase() + vm.policy.sentence.slice(1)}.</p>
               {#if vm.policy.projectIsolated}
                 <p>{ns} is isolated, and this machine is outside that isolation: it reaches, and is reached from, whatever its network allows.</p>
               {/if}
