@@ -1110,6 +1110,20 @@ project isolation reaches it. The console said "isolated" anyway.
   exceptions, but its own row/page say nothing (the vm plugin does not
   see Cilium's endpoints); moot until a node runs passt (stormvm#16)
 
+### A network edit that shows (#50)
+The save writes `storm.io/bridge` on the definition's template; the form's
+value and the pending check read only `spec.networks`/`interfaces`, so a
+saved edit read back as `pod` and never went pending — "nothing happened".
+- [ ] `settings::network` reads what stormvm reads (`network::asked`:
+      `storm.io/bridge.<iface>`, then `storm.io/bridge`, then the network),
+      on the template + object for the definition, the VMI's own for the run
+- [ ] Save: clears a per-interface `storm.io/bridge.<iface>` that would
+      shadow the write; reads the definition back and refuses to call it
+      saved when it does not carry the value; the answer says what was
+      written and that `spec.networks` is left as it was
+- [ ] Tests; `deploy/verify-vm-network-edit.sh` (stopped and running
+      machine, read back); docs, changelog; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
