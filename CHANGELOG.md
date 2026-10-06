@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.28.0] — 2026-10-06
+
 ### 2026-10-06 — The apiserver with a token file and a CA (#33)
 - **feat:** `[kubernetes] token_file`: the console's bearer read from a file
   (stormcert's ServiceAccount token, stormcert#27) and re-read whenever it
