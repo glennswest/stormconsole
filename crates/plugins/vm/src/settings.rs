@@ -179,10 +179,13 @@ pub fn of(machine: Option<&Value>, instance: Option<&Value>) -> Settings {
         Setting::new(
             "network",
             "Network",
-            Value::from(network(&spec)),
+            Value::from(match machine {
+                Some(m) => network(&spec, &[m.pointer("/spec/template/metadata"), m.get("metadata")]),
+                None => network(&spec, &[instance.and_then(|v| v.get("metadata"))]),
+            }),
             when(Applies::OnRestart),
         )
-        .against(Some(Value::from(network(&run_spec))))
+        .against(Some(Value::from(network(&run_spec, &[instance.and_then(|v| v.get("metadata"))]))))
         .noting(
             "`pod` for the cluster network, or the name of a bridge on the node. Changing it \
              moves the guest's address, and nothing here can tell you what the new one will \
@@ -339,17 +342,58 @@ fn bus(domain: &Value) -> String {
         .to_string()
 }
 
-/// Which network the guest is on: the bridge it was pinned to, or the pod
-/// network. `storm.io/bridge` is the override the create form writes.
-fn network(spec: &Value) -> String {
-    spec.pointer("/networks/0/storm.io/bridge")
-        .or_else(|| spec.pointer("/domain/devices/interfaces/0/storm.io~1bridge"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            if spec.pointer("/networks/0").is_some() { "pod".into() } else { String::new() }
-        })
+/// Which network the guest's first interface is on: the bridge it was
+/// pinned to, or `pod`.
+///
+/// Read the way stormvm reads it (`network::asked`): the
+/// `storm.io/bridge.<iface>` annotation, then `storm.io/bridge`, win over
+/// `spec.networks`. The settings form *writes* the annotation, and reading
+/// only `spec.networks` back made a saved edit show as `pod` and never go
+/// pending — an edit that looked as if nothing had happened (#50). `metas`
+/// are the metadata blocks whose annotations apply, most specific first.
+pub fn network(spec: &Value, metas: &[Option<&Value>]) -> String {
+    let asked = crate::network::asked(spec, metas);
+    match asked.first().map(|(_, a)| a) {
+        Some(a) if a.network == "bridge" || a.network == "multus" => a.target.clone(),
+        Some(a) if a.network == "pod" => "pod".into(),
+        // No interface named (KubeVirt adds the default one): the plain
+        // annotation still decides, then the network.
+        _ => metas
+            .iter()
+            .flatten()
+            .find_map(|m| m.pointer("/annotations/storm.io~1bridge").and_then(Value::as_str))
+            .filter(|b| !b.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                if spec.pointer("/networks/0").is_some() { "pod".into() } else { String::new() }
+            }),
+    }
+}
+
+/// The first interface's name, whose per-interface annotation
+/// (`storm.io/bridge.<iface>`) outranks the one the form writes.
+pub fn first_interface(spec: &Value) -> Option<&str> {
+    spec.pointer("/domain/devices/interfaces/0/name").and_then(Value::as_str)
+}
+
+/// What a network save wrote, in the words of the object — so somebody who
+/// then reads `spec.networks` and sees no change knows where to look.
+pub fn network_written(want: &str, running: bool) -> String {
+    let what = if want.is_empty() || want == "pod" {
+        "removed `storm.io/bridge` from the template: the machine is on the pod network \
+         (`spec.networks`)"
+            .to_string()
+    } else {
+        format!(
+            "set `storm.io/bridge: {want}` on the template; `spec.networks` is left as it was, \
+             because the node reads the annotation first"
+        )
+    };
+    if running {
+        format!("network: {what} — in force after a restart")
+    } else {
+        format!("network: {what} — in force when it starts")
+    }
 }
 
 fn hostname(spec: &Value) -> String {
@@ -686,6 +730,35 @@ mod tests {
         // An adapter this platform does not have is refused rather than
         // written and discovered at start.
         assert!(patch("display", "matrox").is_err());
+    }
+
+    /// A saved network edit reads back as what was saved, and a running
+    /// machine says it is pending until it restarts (#50).
+    #[test]
+    fn a_network_edit_reads_back_and_goes_pending() {
+        let mut m = machine(2, "4Gi");
+        m["spec"]["template"]["metadata"] = json!({"annotations": {"storm.io/bridge": "stormbr0"}});
+        let stopped = of(Some(&m), None);
+        assert_eq!(field(&stopped, "network").value, "stormbr0");
+        let running = of(Some(&m), Some(&instance(2, "4Gi")));
+        assert_eq!(field(&running, "network").value, "stormbr0");
+        assert!(running.pending.iter().any(|p| p == "network"), "{:?}", running.pending);
+        // The instance carrying it too — restarted — is no longer pending.
+        let mut i = instance(2, "4Gi");
+        i["metadata"] = json!({"annotations": {"storm.io/bridge": "stormbr0"}});
+        assert!(!of(Some(&m), Some(&i)).pending.iter().any(|p| p == "network"));
+        // A per-interface annotation outranks the plain one, as on the node.
+        m["spec"]["template"]["metadata"]["annotations"]["storm.io/bridge.default"] = json!("br9");
+        m["spec"]["template"]["spec"]["domain"]["devices"]["interfaces"] = json!([{"name": "default"}]);
+        assert_eq!(field(&of(Some(&m), None), "network").value, "br9");
+    }
+
+    #[test]
+    fn a_network_save_says_what_it_wrote() {
+        let s = network_written("stormbr0", true);
+        assert!(s.contains("`storm.io/bridge: stormbr0` on the template") && s.contains("`spec.networks` is left"), "{s}");
+        assert!(s.ends_with("after a restart"));
+        assert!(network_written("pod", false).contains("removed `storm.io/bridge`"));
     }
 
     /// The network is editable, not a referral to the YAML.

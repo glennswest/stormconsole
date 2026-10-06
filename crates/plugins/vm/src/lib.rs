@@ -893,14 +893,23 @@ async fn settings_set(
             .into_response();
     }
     let key = format!("{ns}/{name}");
-    if let Err(r) = definition_spec(&inner, &ns, &name).await {
-        return r;
-    }
-    let body = match settings::patch(&change.field, &change.value) {
+    let spec = match definition_spec(&inner, &ns, &name).await {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let mut body = match settings::patch(&change.field, &change.value) {
         Ok(b) => b,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
     let running = inner.store.object("vmi", &key).await.is_some();
+    if change.field == "network" {
+        // A per-interface `storm.io/bridge.<iface>` outranks the plain key
+        // on the node, so a write beside one would change nothing (#50).
+        if let Some(i) = settings::first_interface(&spec) {
+            body["spec"]["template"]["metadata"]["annotations"][format!("storm.io/bridge.{i}")] = Value::Null;
+        }
+        return network_set(&inner, &viewer, &ns, &name, body, change.value.trim(), running).await;
+    }
     let done = if running {
         format!("{} written — in force after a restart", change.field)
     } else {
@@ -909,6 +918,44 @@ async fn settings_set(
     // As the viewer, so the apiserver's RBAC decides — the same rule the
     // read that showed them the field was subject to.
     patch_machine(&inner, &viewer, &ns, &name, body, done).await
+}
+
+/// A network save, read back (#50).
+///
+/// The edit that "did nothing" on the owner's test1 was never shown to have
+/// saved or failed. So this one is checked: the patched definition the
+/// apiserver returns must read as the network asked for, or the answer is
+/// an error naming what it reads instead — never "written".
+async fn network_set(
+    inner: &Inner,
+    viewer: &Viewer,
+    ns: &str,
+    name: &str,
+    body: Value,
+    want: &str,
+    running: bool,
+) -> Response {
+    let Some(client) = &inner.client else { return no_apiserver() };
+    let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
+    let saved = match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
+        Ok((status, b)) if status.is_success() => b,
+        Ok((status, b)) => return from_apiserver(status, b, ""),
+        Err(e) => return (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
+    };
+    let want = if want.is_empty() { "pod" } else { want };
+    let spec = saved.pointer("/spec/template/spec").cloned().unwrap_or(Value::Null);
+    let got = settings::network(&spec, &[saved.pointer("/spec/template/metadata"), saved.get("metadata")]);
+    if got != want {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": format!(
+                "the apiserver accepted the change, but the definition it returned reads as \
+                 network {got:?}, not {want:?}: nothing was changed that the node will read"
+            )})),
+        )
+            .into_response();
+    }
+    Json(json!({"message": settings::network_written(want, running), "network": got})).into_response()
 }
 
 /// Everything a VM page shows, in one answer: the definition, the running

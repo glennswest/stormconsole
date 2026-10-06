@@ -3,6 +3,19 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-06 — A network edit that shows (#50)
+- **fix:** the VM settings form's Network value and the pending check read
+  the `storm.io/bridge` annotation the save writes (as stormvm reads it:
+  `storm.io/bridge.<iface>`, then `storm.io/bridge`, then `spec.networks`).
+  A saved edit read back as `pod` and never went pending, which looked like
+  "nothing happened".
+- **fix:** a network save clears a per-interface `storm.io/bridge.<iface>`
+  that would shadow it, reads the returned definition back and errors
+  instead of saying "written" when it does not carry the value, and says
+  what it wrote and that `spec.networks` is left as it was.
+- **docs:** architecture's settings section no longer says the network is
+  refused.
+
 ## [v0.27.1] — 2026-10-06
 
 ### 2026-10-06 — A machine outside policy says so (#51)

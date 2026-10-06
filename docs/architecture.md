@@ -805,10 +805,23 @@ refused.
 stopped one everything simply applies. Edits are merge patches against the
 `VirtualMachine`, never the instance: a patch to a running VMI's spec is
 read by nothing and lost when it stops, so a machine with no definition is
-refused rather than half-changed. Two fields are refused on purpose and
-say where to go instead — the network binding moves the guest's address
-and a one-field form cannot say what the new one will be, and the SSH key
-lives in a cloud-init seed the guest reads once at first boot.
+refused rather than half-changed. The SSH key is refused on purpose and
+says where to go instead: it lives in a cloud-init seed the guest reads
+once at first boot.
+
+**The network field (#50)** writes the `storm.io/bridge` annotation on the
+definition's template (cleared for `pod`), and clears a per-interface
+`storm.io/bridge.<iface>` that would outrank it; `spec.networks` is left
+alone, because the node reads the annotation first. The field and the
+pending check read it back the way stormvm does (`network::asked`:
+`storm.io/bridge.<iface>`, then `storm.io/bridge`, then the network) — the
+template's and the object's annotations for the definition, the VMI's own
+for the running machine — so a saved edit shows, and a running machine
+reads `pending: network` until it restarts. The save checks the definition
+the apiserver returns and answers an error naming what it reads instead of
+"written" when it does not carry the value; the answer says what was
+written ("set `storm.io/bridge: stormbr0` on the template; `spec.networks`
+is left as it was") and when it applies.
 
 **Disks.** `POST`/`DELETE …/vms/{ns}/{name}/disks[/{disk}]` add and
 remove a disk — both halves together, since a disk is an entry in
