@@ -1087,6 +1087,22 @@ docs/SECURITY.md); the console's plain client would lose the etcd page.
 - Found only live: tonic's ALPN is `h2` only (reqwest needed `http2`); one
   level of error chain hid the TLS cause; a shut client port read healthy
 
+### A machine outside policy says so (#51)
+A VM whose node binding is `user` (NAT inside the hypervisor, stormvm#16)
+or a host `bridge` is not a Cilium endpoint: no NetworkPolicy and no
+project isolation reaches it. The console said "isolated" anyway.
+- [ ] One rule (`plugin_kubernetes::network::coverage`): a running machine
+      is covered only when its binding is neither `user` nor `bridge` and,
+      where Cilium's endpoints are watched, it has one; the reason named
+- [ ] VM row: `policy` metric "none applies (NAT|host bridge)", no
+      endpoint reference for such a machine
+- [ ] VM page: the Network card says no policy or isolation applies, that
+      the project is isolated and this machine is outside it, and which
+      policies would select it on the pod network
+- [ ] Isolate answer and project badge: "… except N machines …" (VMIs
+      read as the viewer); the exception disappears when stormvm#16 lands
+- [ ] Tests, docs, changelog; live check; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
