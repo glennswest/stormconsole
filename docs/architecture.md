@@ -1099,9 +1099,27 @@ isolation), `POST /projects/{p}/members` and `DELETE …/members/{binding}`
 clears the namespace-access cache so the person let in sees it at once), and
 `POST|DELETE /projects/{p}/isolate` (NetworkPolicies `storm-isolate` — every
 pod in the namespace to every other, nothing else in or out — and, opt-in,
-`storm-isolate-dns` to port 53 in kube-system; enforced by Cilium, and a VM
-is covered only once it is a pod-network endpoint, stormvm#16). A refusal
-from the apiserver stays a 403 with its reason.
+`storm-isolate-dns` to port 53 in kube-system; enforced by Cilium on its
+endpoints). A refusal from the apiserver stays a 403 with its reason.
+
+**Machines outside policy (#51).** A VM the node runs as a NAT inside the
+hypervisor (`storm.io/binding: user` — what a pod-network spec gets today,
+stormvm#16) or as a tap on a host bridge is not a Cilium endpoint, so no
+NetworkPolicy and no isolation reaches it. One rule,
+`network::outside_policy`, decides it from the binding the node reported
+(and, where Cilium's endpoints are watched, from there being no endpoint
+under the machine's `ns/name`). `GET /projects/{p}` carries `outside` — the
+running machines isolation does not reach, read as the viewer — and the
+isolate answer ends "Except N machines — … — behind the hypervisor's NAT,
+which isolation does not reach (stormvm#16)"; the project card lists them
+under the badge. A VM row outside policy carries `policy = none applies
+(NAT|host bridge)` and no endpoint reference, so no policy is drawn as
+selecting it. The VM page's Network card says no policy applies, that the
+project is isolated and this machine is outside it, and which policies
+*would* select it on the pod network (its labels evaluated against the
+namespace's NetworkPolicies and CiliumNetworkPolicies and the clusterwide
+ones, read as the viewer). When stormvm#16 lands and machines become
+endpoints, the exception disappears on its own.
 
 **System namespaces** — `default`, `openshift`, `kube-*`, `openshift-*`,
 and `[kubernetes] system_namespaces` (default `["cilium"]`, the node's

@@ -38,6 +38,7 @@ use crate::Inner;
 pub const API: &str = "/apis/project.openshift.io/v1";
 pub const RBAC: &str = "/apis/rbac.authorization.k8s.io/v1";
 pub const NETPOL: &str = "/apis/networking.k8s.io/v1";
+pub const KUBEVIRT: &str = "/apis/kubevirt.io/v1";
 pub const REQUESTER: &str = "openshift.io/requester";
 pub const DISPLAY: &str = "openshift.io/display-name";
 pub const DESCRIPTION: &str = "openshift.io/description";
@@ -234,6 +235,60 @@ async fn isolation_state(inner: &Inner) -> BTreeMap<String, bool> {
     out
 }
 
+/// The running machines in `ns` that policy does not reach (#51), read as
+/// the viewer: `[{name, why, sentence}]`. Isolation is two NetworkPolicies,
+/// and a machine outside Cilium is outside them, so a project called
+/// isolated has to say which of its machines it is not. Empty when nothing
+/// serves KubeVirt's objects or the viewer may not read them.
+async fn outside_policy(inner: &Inner, ns: &str, token: Option<&str>) -> Vec<Value> {
+    let Some(client) = &inner.client else { return vec![] };
+    let Ok(list) = client.get_as(&format!("{KUBEVIRT}/namespaces/{ns}/virtualmachineinstances"), token).await else {
+        return vec![];
+    };
+    let ceps = inner.store.kind_if_present("cep").await;
+    outside_of(list["items"].as_array().map(Vec::as_slice).unwrap_or_default(), ceps.as_ref())
+}
+
+/// The machines of a VMI list that policy does not reach.
+pub fn outside_of(vmis: &[Value], ceps: Option<&std::collections::HashMap<String, Value>>) -> Vec<Value> {
+    let mut out: Vec<Value> = vmis
+        .iter()
+        .filter_map(|v| {
+            let o = crate::network::outside_policy(v, ceps)?;
+            Some(json!({
+                "name": v.pointer("/metadata/name").and_then(Value::as_str).unwrap_or_default(),
+                "why": o.why,
+                "sentence": o.sentence,
+            }))
+        })
+        .collect();
+    out.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    out
+}
+
+/// "… except vm1 and vm2, which isolation does not reach" — the exception
+/// an isolate answer has to carry while stormvm#16 is open, and which
+/// disappears on its own once machines are pod-network endpoints.
+pub fn exception(outside: &[Value]) -> String {
+    if outside.is_empty() {
+        return String::new();
+    }
+    let names: Vec<&str> = outside.iter().filter_map(|o| o["name"].as_str()).collect();
+    let nat = outside.iter().all(|o| o["why"] == "nat");
+    let what = if outside.len() == 1 { "machine" } else { "machines" };
+    let list = match names.as_slice() {
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [] => String::new(),
+    };
+    format!(
+        " Except {} {what} — {list} — {}, which isolation does not reach{}",
+        outside.len(),
+        if nat { "behind the hypervisor's NAT" } else { "outside the pod network" },
+        if nat { " (stormvm#16)" } else { "" },
+    )
+}
+
 fn with_isolation(mut r: Value, iso: &BTreeMap<String, bool>) -> Value {
     let name = r["name"].as_str().unwrap_or_default().to_string();
     r["isolated"] = json!(iso.contains_key(&name));
@@ -390,6 +445,7 @@ pub(crate) async fn detail(State(inner): State<Arc<Inner>>, viewer: Viewer, Path
     };
     Json(json!({
         "project": with_isolation(row(&object, inner.access.is_system(&name), None), &iso),
+        "outside": outside_policy(&inner, &name, token).await,
         "members": members,
         "membersError": members_error,
         "roles": ROLES,
@@ -483,11 +539,18 @@ pub(crate) async fn isolate(
             Err(e) => return err(StatusCode::BAD_GATEWAY, e.to_string()),
         }
     }
-    Json(json!({"message": format!(
-        "{name} is isolated: its pods and machines reach each other and nothing else{}. \
-         Cilium enforces it; a VM is covered once it is on the pod network (stormvm#16)",
-        if i.dns { ", and may resolve names through the cluster DNS" } else { " — not even DNS" }
-    )}))
+    // Which of its machines this does not cover: said in the answer to the
+    // button that claims the fence, not left to small print (#51).
+    let outside = outside_policy(&inner, &name, token).await;
+    Json(json!({
+        "message": format!(
+            "{name} is isolated: its pods and the machines on the pod network reach each other \
+             and nothing else{}. Cilium enforces it.{}",
+            if i.dns { ", and may resolve names through the cluster DNS" } else { " — not even DNS" },
+            exception(&outside),
+        ),
+        "outside": outside,
+    }))
     .into_response()
 }
 
@@ -515,6 +578,29 @@ pub(crate) async fn unisolate(State(inner): State<Arc<Inner>>, viewer: Viewer, P
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn vmi(name: &str, binding: &str) -> Value {
+        json!({"metadata": {"namespace": "shop", "name": name},
+               "status": {"interfaces": [{"name": "default", "storm.io/binding": binding}]}})
+    }
+
+    /// Isolating a project with machines behind the hypervisor's NAT says
+    /// which ones it does not reach, instead of calling them isolated (#51).
+    #[test]
+    fn isolation_names_the_machines_it_does_not_reach() {
+        let out = outside_of(&[vmi("vm2", "user"), vmi("ok", "passt"), vmi("vm1", "user")], None);
+        let names: Vec<&str> = out.iter().map(|o| o["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["vm1", "vm2"]);
+        assert_eq!(
+            exception(&out),
+            " Except 2 machines — vm1 and vm2 — behind the hypervisor's NAT, which isolation does \
+             not reach (stormvm#16)"
+        );
+        let one = outside_of(&[vmi("lan", "bridge")], None);
+        assert_eq!(exception(&one), " Except 1 machine — lan — outside the pod network, which isolation does not reach");
+        // Once stormvm#16 lands the exception disappears on its own.
+        assert_eq!(exception(&outside_of(&[vmi("ok", "passt")], None)), "");
+    }
 
     #[test]
     fn a_project_row_carries_its_owner() {

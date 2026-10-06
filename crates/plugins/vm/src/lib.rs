@@ -1003,6 +1003,7 @@ async fn detail(
         "running": instance.is_some(),
         "console": caps,
         "settings": settings::of(machine.as_ref(), instance.as_ref()),
+        "policy": policy(&inner, &viewer, &ns, machine.as_ref(), instance.as_ref()).await,
         // The same questions the pod page answers (#69).
         "metadata": facts::metadata(machine.as_ref(), instance.as_ref()),
         "images": images,
@@ -1010,6 +1011,63 @@ async fn detail(
         "yaml": yaml,
     }))
     .into_response()
+}
+
+/// Whether network policy reaches this machine, for the Network card (#51).
+///
+/// `null` when it does — or when nothing is running to say. When it does
+/// not (a NAT inside the hypervisor, stormvm#16, or a host bridge): the
+/// sentence, whether the project is isolated all the same, and which
+/// policies *would* select the machine on the pod network — evaluated
+/// against its labels, read as the viewer, and never presented as applying.
+async fn policy(
+    inner: &Inner,
+    viewer: &Viewer,
+    ns: &str,
+    machine: Option<&Value>,
+    instance: Option<&Value>,
+) -> Value {
+    let Some(vmi) = instance else { return Value::Null };
+    let Some(o) = plugin_kubernetes::network::outside_policy(vmi, None) else { return Value::Null };
+    let Some(client) = &inner.client else {
+        return json!({"applies": false, "why": o.why, "sentence": o.sentence});
+    };
+    let token = viewer.token.as_deref();
+    // The same three kinds the pod's view evaluates; one the apiserver
+    // does not serve, or the viewer may not read, contributes nothing.
+    let mut snap: std::collections::HashMap<&'static str, std::collections::HashMap<String, Value>> =
+        std::collections::HashMap::new();
+    for (kind, path) in [
+        ("netpol", format!("/apis/networking.k8s.io/v1/namespaces/{ns}/networkpolicies")),
+        ("cnp", format!("/apis/cilium.io/v2/namespaces/{ns}/ciliumnetworkpolicies")),
+        ("ccnp", "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies".to_string()),
+    ] {
+        let Ok(list) = client.get_as(&path, token).await else { continue };
+        let items = list["items"].as_array().cloned().unwrap_or_default();
+        let objs = items
+            .into_iter()
+            .filter_map(|v| plugin_kubernetes::cache::object_key(&v).map(|k| (k, v)))
+            .collect();
+        snap.insert(kind, objs);
+    }
+    let isolated = snap
+        .get("netpol")
+        .is_some_and(|m| m.contains_key(&format!("{ns}/{}", plugin_kubernetes::projects::ISOLATE)));
+    let mut labels: std::collections::HashMap<String, String> = vmi
+        .pointer("/metadata/labels")
+        .or_else(|| machine.and_then(|m| m.pointer("/spec/template/metadata/labels")))
+        .and_then(Value::as_object)
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string())).collect())
+        .unwrap_or_default();
+    labels.insert("io.kubernetes.pod.namespace".into(), ns.to_string());
+    let would = plugin_kubernetes::network::selecting_labels(&snap, ns, &labels);
+    json!({
+        "applies": false,
+        "why": o.why,
+        "sentence": o.sentence,
+        "projectIsolated": isolated,
+        "would": would,
+    })
 }
 
 fn bad_gateway(e: String) -> Response {

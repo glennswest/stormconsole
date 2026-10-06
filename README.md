@@ -282,7 +282,8 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   media path is served (v0.19.0) and the console does not offer it (#44); **VM hotplug and
   memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —
   stormvm#41; **VMs on the pod network** (and so isolation covering them) —
-  stormvm#16; **snapshot step, disks, size** — stormvm#45.
+  stormvm#16; until then a NAT'd or bridged machine says no policy applies
+  to it, and an isolated project names the machines it does not reach (#51); **snapshot step, disks, size** — stormvm#45.
 - **Datastore members, keyspace, verbs and traffic on fastetcd** — fastetcd
   serves the v3 JSON gateway since v1.8.0 (fastetcd#28) and etcd's traffic
   counters since v1.7.0 (fastetcd#29), and the plugin reads both in etcd's

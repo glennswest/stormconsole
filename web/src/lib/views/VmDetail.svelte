@@ -589,6 +589,25 @@
               </tbody>
             </table>
           {/if}
+          <!-- Policy is enforced on Cilium endpoints, and a machine behind
+               the hypervisor's NAT or on a host bridge is not one (#51):
+               said here, plainly, rather than listing policies as if they
+               applied. -->
+          {#if vm.policy && !vm.policy.applies}
+            <div class="policy warn">
+              <p><strong>No network policy applies to this machine.</strong> {vm.policy.sentence}.</p>
+              {#if vm.policy.projectIsolated}
+                <p>{ns} is isolated, and this machine is outside that isolation: it reaches, and is reached from, whatever its network allows.</p>
+              {/if}
+              {#if vm.policy.would?.length}
+                <p class="dim">
+                  On the pod network these would select it:
+                  {#each vm.policy.would as id, i (id)}{i ? ', ' : ''}<span class="mono">{id.replace(/^k8s:[a-z]+:/, '')}</span>{/each}.
+                  {#if vm.policy.why === 'nat'}They will apply once stormvm#16 puts it there.{/if}
+                </p>
+              {/if}
+            </div>
+          {/if}
         </div>
 
         <!-- The questions the pod page answers, asked of a machine (#69). -->
@@ -1034,4 +1053,12 @@
   }
   .fb { height: 62vh; background: #000; }
   .sc-back { font-size: var(--sc-t-body); }
+  .policy {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--warn-strong);
+  }
+  .policy p {
+    margin: 0.25rem 0;
+  }
 </style>

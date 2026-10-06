@@ -90,11 +90,22 @@
     <div class="card">
       <h2>Network isolation</h2>
       {#if p.isolated}
-        <p><span class="badge">isolated</span> Pods and machines in {name} reach each other and nothing else{p.dns ? ', plus the cluster DNS' : ''}.</p>
+        <p><span class="badge">isolated</span> Pods and machines on the pod network in {name} reach each other and nothing else{p.dns ? ', plus the cluster DNS' : ''}.</p>
+        {#if data.outside?.length}
+          <!-- The exception, beside the claim it qualifies (#51). -->
+          <p class="warn">
+            Except {data.outside.length} {data.outside.length === 1 ? 'machine' : 'machines'}, which isolation does not reach:
+          </p>
+          <ul class="outside">
+            {#each data.outside as m (m.name)}
+              <li><a href="#/vm/{name}/{m.name}">{m.name}</a> — {m.sentence}</li>
+            {/each}
+          </ul>
+        {/if}
       {:else}
         <p class="dim">Not isolated: traffic in and out is whatever other policies allow.</p>
       {/if}
-      <p class="dim">Two NetworkPolicies (<span class="mono">storm-isolate</span>, and <span class="mono">storm-isolate-dns</span> for DNS), enforced by Cilium. A VM is covered once it is on the pod network (stormvm#16).</p>
+      <p class="dim">Two NetworkPolicies (<span class="mono">storm-isolate</span>, and <span class="mono">storm-isolate-dns</span> for DNS). Cilium enforces them on its endpoints, so a VM behind the hypervisor's NAT (stormvm#16) or on a host bridge is outside them.</p>
       {#if data.write && !p.system}
         <label class="check"><input type="checkbox" bind:checked={dns} /> allow DNS to the cluster resolver</label>
         <div class="row">
@@ -150,6 +161,8 @@
 {/if}
 
 <style>
+  .warn { color: var(--warn-strong); margin-bottom: 0.25rem; }
+  ul.outside { margin: 0 0 0.5rem 1.25rem; padding: 0; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px var(--sc-row-px); margin-bottom: 12px; }
   .cards .card { margin-bottom: 0; }

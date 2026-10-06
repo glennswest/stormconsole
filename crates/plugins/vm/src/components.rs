@@ -238,6 +238,18 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             };
             c.metrics.push(Metric::new("network", value).tone(tone));
         }
+        // Whether network policy reaches this machine at all (#51). A NAT
+        // inside the hypervisor or a host bridge is not a Cilium endpoint,
+        // so no NetworkPolicy and no project isolation applies to it — and a
+        // row pointing at an endpoint, whose policies the renderer would
+        // list as selecting it, describes a fence that is not there.
+        let outside = plugin_kubernetes::network::outside_policy(obj, None);
+        if let Some(o) = &outside {
+            c.metrics.push(match o.why {
+                "nat" => Metric::new("policy", "none applies (NAT)").tone("warn"),
+                _ => Metric::new("policy", "none applies (host bridge)").tone("muted"),
+            });
+        }
         if let Some(n) = node {
             // Where the machine *is*, which is a placement and not
             // something the machine contains — so `belongs_to`, the
@@ -389,7 +401,12 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
         // kubernetes plugin has one. A reference whose target is not in the
         // feed is dropped where it is drawn, which is the only place that
         // can tell.
-        c.relations.push(Relation::belongs_to("endpoint", format!("k8s:cep:{key}")));
+        //
+        // Not for a machine outside the pod network: it has no endpoint, and
+        // one recorded under its name would not be its traffic.
+        if outside.is_none() {
+            c.relations.push(Relation::belongs_to("endpoint", format!("k8s:cep:{key}")));
+        }
         c.actions.push(action(
             "delete",
             "Delete",
@@ -562,6 +579,22 @@ mod tests {
             "storm.io/binding": "bridge"}]));
         assert_eq!(metric(&vm, "ip").unwrap().value, "192.168.8.61, fd00::61");
         assert_eq!(metric(&vm, "network").unwrap().value, "bridge");
+    }
+
+    /// The row of a NAT'd machine says no policy applies and does not
+    /// point at an endpoint whose policies would read as selecting it (#51).
+    #[test]
+    fn a_machine_behind_nat_says_no_policy_applies() {
+        let vm = networked(json!([{"name": "default", "ipAddress": "10.0.2.15", "storm.io/binding": "user"}]));
+        let m = metric(&vm, "policy").unwrap();
+        assert_eq!((m.value.as_str(), m.tone.as_deref()), ("none applies (NAT)", Some("warn")));
+        assert!(!vm.relations.iter().any(|r| r.name == "endpoint"));
+        let vm = networked(json!([{"name": "default", "ipAddress": "192.168.8.61", "storm.io/binding": "bridge"}]));
+        assert_eq!(metric(&vm, "policy").unwrap().value, "none applies (host bridge)");
+        assert!(!vm.relations.iter().any(|r| r.name == "endpoint"));
+        let vm = networked(json!([{"name": "default", "ipAddress": "10.1.0.4", "storm.io/binding": "passt"}]));
+        assert!(metric(&vm, "policy").is_none());
+        assert!(vm.relations.iter().any(|r| r.name == "endpoint"));
     }
 
     #[test]

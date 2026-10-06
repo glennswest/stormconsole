@@ -237,6 +237,12 @@ impl Store {
         self.objects.read().await.get(kind).cloned().unwrap_or_default()
     }
 
+    /// One kind's objects, or `None` when the kind is not (yet) known to be
+    /// served — "no Cilium" and "Cilium, no endpoints" are different answers.
+    pub async fn kind_if_present(&self, kind: &str) -> Option<HashMap<String, Value>> {
+        self.objects.read().await.get(kind).cloned()
+    }
+
     /// One object, or None when the kind is not watched or the key is gone.
     pub async fn object(&self, kind: &str, key: &str) -> Option<Value> {
         self.objects.read().await.get(kind)?.get(key).cloned()

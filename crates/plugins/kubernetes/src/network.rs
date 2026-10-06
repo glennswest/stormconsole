@@ -65,8 +65,6 @@ pub fn identity_labels(cid: &Value) -> String {
 /// own labels would differ from the datapath's on exactly the workloads
 /// where it matters.
 pub fn selecting(snap: &Snapshot, ns: &str, identity: Option<&Value>) -> Vec<String> {
-    let empty = HashMap::new();
-    let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
     let labels: HashMap<String, String> = identity
         .and_then(|c| c.get("security-labels"))
         .and_then(Value::as_object)
@@ -81,7 +79,16 @@ pub fn selecting(snap: &Snapshot, ns: &str, identity: Option<&Value>) -> Vec<Str
                 .collect()
         })
         .unwrap_or_default();
+    selecting_labels(snap, ns, &labels)
+}
 
+/// Which policies select a workload with these labels — for something
+/// Cilium has no identity for, such as a machine outside the pod network
+/// (#51), where the question is which policies *would* apply once it is on
+/// it. Keys without the `k8s:` prefix.
+pub fn selecting_labels(snap: &Snapshot, ns: &str, labels: &HashMap<String, String>) -> Vec<String> {
+    let empty = HashMap::new();
+    let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
     let mut out = Vec::new();
     for (kind, id_prefix) in [("cnp", "k8s:cnp:"), ("ccnp", "k8s:ccnp:"), ("netpol", "k8s:netpol:")]
     {
@@ -93,7 +100,7 @@ pub fn selecting(snap: &Snapshot, ns: &str, identity: Option<&Value>) -> Vec<Str
                     continue;
                 }
             }
-            if selects(obj, &labels) {
+            if selects(obj, labels) {
                 out.push(format!("{id_prefix}{key}"));
             }
         }
@@ -191,6 +198,68 @@ pub fn describe(snap: &Snapshot, key: &str, c: &mut ComponentSummary) {
         }
     }
     c.relations.push(Relation::belongs_to("endpoint", format!("k8s:cep:{key}")));
+}
+
+/// Why a running machine is outside network policy, or `None` when it is
+/// inside it (#51).
+///
+/// Policy — every NetworkPolicy, every CiliumNetworkPolicy, and so a
+/// project's isolation — is enforced by Cilium on its endpoints. A machine
+/// the node runs as a NAT inside the hypervisor (`storm.io/binding: user`,
+/// what a pod-network spec gets today, stormvm#16) or as a tap on a host
+/// bridge is not one: its packets never pass through Cilium, and a page
+/// listing the policies that "select" it is describing a fence that is not
+/// there. So the binding the node reported decides first; and where
+/// Cilium's endpoints are watched (`ceps` is `Some`), a machine with no
+/// endpoint under its `ns/name` is outside too, whatever its binding.
+///
+/// One interface outside is enough: traffic leaves by that one.
+pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Option<Outside> {
+    let ifs = vmi.pointer("/status/interfaces").and_then(Value::as_array);
+    for i in ifs.into_iter().flatten() {
+        let name = i.get("name").and_then(Value::as_str).unwrap_or("?");
+        match i.get("storm.io/binding").and_then(Value::as_str) {
+            Some("user") => {
+                return Some(Outside {
+                    why: "nat",
+                    sentence: format!(
+                        "interface {name} is a NAT inside the hypervisor, not a Cilium endpoint \
+                         (stormvm#16): no network policy and no project isolation reaches it"
+                    ),
+                })
+            }
+            Some("bridge") => {
+                return Some(Outside {
+                    why: "bridge",
+                    sentence: format!(
+                        "interface {name} is on a host bridge, outside the pod network: no network \
+                         policy and no project isolation reaches it"
+                    ),
+                })
+            }
+            _ => {}
+        }
+    }
+    let ns = vmi.pointer("/metadata/namespace").and_then(Value::as_str)?;
+    let name = vmi.pointer("/metadata/name").and_then(Value::as_str)?;
+    if let Some(ceps) = ceps {
+        if !ceps.contains_key(&format!("{ns}/{name}")) {
+            return Some(Outside {
+                why: "no-endpoint",
+                sentence: "Cilium has no endpoint for it, so no network policy and no project \
+                           isolation is applied to its traffic"
+                    .into(),
+            });
+        }
+    }
+    None
+}
+
+/// A machine outside policy: `why` is `nat`, `bridge` or `no-endpoint`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outside {
+    pub why: &'static str,
+    pub sentence: String,
 }
 
 /// Addresses left in a node's pod CIDR.
@@ -337,6 +406,50 @@ mod tests {
         // An empty selector is a default-deny and selects everything.
         let all = json!({"spec": {"endpointSelector": {}}});
         assert!(selects(&all, &HashMap::new()));
+    }
+
+    fn vmi(ifs: Value) -> Value {
+        json!({"metadata": {"namespace": "shop", "name": "vm1"},
+               "status": {"phase": "Running", "interfaces": ifs}})
+    }
+
+    /// The security claim (#51): a NAT'd machine is outside every policy,
+    /// whether or not anything selects its labels.
+    #[test]
+    fn a_machine_behind_the_hypervisors_nat_is_outside_policy() {
+        let o = outside_policy(&vmi(json!([{"name": "default", "storm.io/binding": "user"}])), None).unwrap();
+        assert_eq!(o.why, "nat");
+        assert!(o.sentence.contains("stormvm#16"), "{}", o.sentence);
+        // Even with an endpoint recorded under its name: the binding wins.
+        let ceps = HashMap::from([("shop/vm1".to_string(), json!({}))]);
+        assert_eq!(outside_policy(&vmi(json!([{"name": "default", "storm.io/binding": "user"}])), Some(&ceps)).unwrap().why, "nat");
+        let o = outside_policy(&vmi(json!([{"name": "lan", "storm.io/binding": "bridge"}])), None).unwrap();
+        assert_eq!(o.why, "bridge");
+    }
+
+    #[test]
+    fn a_machine_on_the_pod_network_is_inside_only_with_an_endpoint() {
+        let passt = vmi(json!([{"name": "default", "storm.io/binding": "passt"}]));
+        // Nothing watched to say otherwise: no claim either way is invented.
+        assert!(outside_policy(&passt, None).is_none());
+        let ceps = HashMap::from([("shop/vm1".to_string(), json!({}))]);
+        assert!(outside_policy(&passt, Some(&ceps)).is_none());
+        let none = HashMap::new();
+        assert_eq!(outside_policy(&passt, Some(&none)).unwrap().why, "no-endpoint");
+    }
+
+    #[test]
+    fn policies_that_would_select_a_machine_are_found_from_its_labels() {
+        let sn = snap(vec![
+            ("netpol", "shop/storm-isolate", json!({"spec": {"podSelector": {}}})),
+            ("cnp", "shop/web", json!({"spec": {"endpointSelector": {"matchLabels": {"app": "web"}}}})),
+            ("cnp", "shop/db", json!({"spec": {"endpointSelector": {"matchLabels": {"app": "db"}}}})),
+        ]);
+        let labels = HashMap::from([("app".to_string(), "web".to_string())]);
+        assert_eq!(
+            selecting_labels(&sn, "shop", &labels),
+            vec!["k8s:cnp:shop/web", "k8s:netpol:shop/storm-isolate"]
+        );
     }
 
     #[test]

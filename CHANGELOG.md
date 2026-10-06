@@ -3,6 +3,18 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-06 — A machine outside policy says so (#51)
+- **fix:** isolating a project no longer calls a VM behind the
+  hypervisor's NAT (stormvm#16) or on a host bridge isolated: the answer
+  and the project card name the machines isolation does not reach
+  ("Except 2 machines — vm1 and vm2 — behind the hypervisor's NAT …").
+  `GET /api/plugins/k8s/projects/{p}` carries them as `outside`.
+- **fix:** such a VM's row says `policy = none applies (NAT)` (or host
+  bridge) and no longer points at a Cilium endpoint, so no policy is drawn
+  as selecting it; the VM page says no network policy or isolation applies,
+  whether the project is isolated, and which policies would select it on
+  the pod network.
+
 ## [v0.27.0] — 2026-10-05
 
 ### 2026-10-05 — fastetcd over mutual TLS (#47)
