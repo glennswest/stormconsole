@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(k.kind, "ssh-ed25519");
         assert_eq!(k.comment, "gw@mac");
         assert_eq!(k.line(), ed25519("gw@mac"));
-        assert!(parse("-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blb").unwrap_err().contains("private key"));
+        assert!(parse("-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blb").unwrap_err().contains("private key")); // not a secret: test fixture
         assert!(parse("hello world").unwrap_err().contains("not an SSH public key type"));
         assert!(parse("ssh-ed25519 !!!").unwrap_err().contains("base64"));
         // An rsa line whose body says ed25519: assembled by hand, refused.

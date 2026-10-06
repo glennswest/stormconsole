@@ -4,6 +4,7 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-10-06 — stormcluster over TLS (#89)
+- **chore:** test-fixture credentials marked `not a secret` (inline, or `.github/secret_scanning.yml` for files that cannot hold a comment) — owner
 - **feat:** `[stormcluster] ca_file`, `cert_file`, `key_file`: :9102 is TLS
   only since stormcluster#5. The plugin trusts only the node CA, presents
   the console's client pair, and re-reads both before every poll and every
