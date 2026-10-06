@@ -66,7 +66,9 @@ impl StormclusterPlugin {
                 feed: Arc::new(Feed::new(&base, NAME, &format!("/api/plugins/{NAME}/proxy"))),
                 base,
                 token: token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
-                tls: console_core::tls::Client::new("stormcluster", files),
+                // HTTP/1.1: stormcluster offers h2 in ALPN and drops an h2
+                // client after the handshake (stormcluster#30).
+                tls: console_core::tls::Client::http1("stormcluster", files),
             }),
         }
     }

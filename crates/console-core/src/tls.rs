@@ -56,15 +56,32 @@ struct Built {
 pub struct Client {
     /// The config section the files come from, for every message.
     section: &'static str,
+    /// Offer only HTTP/1.1 (see [`Client::http1`]).
+    http1: bool,
     files: TlsFiles,
     built: RwLock<Built>,
 }
 
 impl Client {
     pub fn new(section: &'static str, files: TlsFiles) -> Self {
+        Self::make(section, files, false)
+    }
+
+    /// The same, offering only HTTP/1.1. For an upstream whose ALPN offers
+    /// `h2` it cannot speak — stormcluster drops an h2 client after the
+    /// handshake (stormcluster#30) — while fastetcd's tonic port offers
+    /// *only* `h2` and needs the default.
+    pub fn http1(section: &'static str, files: TlsFiles) -> Self {
+        Self::make(section, files, true)
+    }
+
+    fn make(section: &'static str, files: TlsFiles, http1: bool) -> Self {
         let c = Self {
             section,
-            built: RwLock::new(Built { client: reqwest::Client::new(), stamp: Vec::new(), error: None }),
+            http1,
+            // Until the files build, a client that trusts no root reaches
+            // nothing over TLS: fail closed, never the system roots.
+            built: RwLock::new(Built { client: closed(http1), stamp: Vec::new(), error: None }),
             files,
         };
         c.rebuild();
@@ -103,7 +120,7 @@ impl Client {
 
     fn rebuild(&self) {
         let stamp = self.files.stamp();
-        let next = match build(self.section, &self.files) {
+        let next = match build_with(self.section, &self.files, self.http1) {
             Ok(client) => Built { client, stamp, error: None },
             // Keep the old client: a renewal caught half-written should not
             // drop a working connection's replacement to nothing. The error
@@ -123,7 +140,21 @@ fn read(section: &str, p: &Path, what: &str) -> Result<Vec<u8>, String> {
 
 /// The client these files describe.
 pub fn build(section: &str, files: &TlsFiles) -> Result<reqwest::Client, String> {
-    let mut b = reqwest::Client::builder().use_rustls_tls();
+    build_with(section, files, false)
+}
+
+fn builder(http1: bool) -> reqwest::ClientBuilder {
+    let b = reqwest::Client::builder().use_rustls_tls();
+    if http1 { b.http1_only() } else { b }
+}
+
+fn closed(http1: bool) -> reqwest::Client {
+    builder(http1).tls_built_in_root_certs(false).build().unwrap_or_default()
+}
+
+/// [`build`], optionally offering only HTTP/1.1.
+pub fn build_with(section: &str, files: &TlsFiles, http1: bool) -> Result<reqwest::Client, String> {
+    let mut b = builder(http1);
     if let Some(ca) = &files.ca {
         let pem = read(section, ca, "ca_file")?;
         let certs = reqwest::Certificate::from_pem_bundle(&pem)

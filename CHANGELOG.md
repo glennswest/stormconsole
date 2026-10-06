@@ -12,6 +12,10 @@
   with an `http://` url, exit 78.
 - **refactor:** fastetcd's file-following TLS client (#47) is
   `console_core::tls`, shared by both plugins.
+- **fix:** the console speaks HTTP/1.1 to stormcluster: its :9102 offers
+  `h2` in ALPN and drops an h2 client after the handshake (filed
+  stormcluster#30). A TLS client whose files have not built yet trusts no
+  root at all, rather than the system's.
 - **fix:** a feed that refuses says why in the upstream's words ("responded
   403 Forbidden: stormcluster's API is served over TLS only (https)…"), and
   a feed that cannot connect says the whole cause, not "client error
