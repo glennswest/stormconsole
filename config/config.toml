@@ -151,8 +151,14 @@ enabled = true
 # cluster). Reads are open; form, join, promote, demote, drain, uncordon,
 # split and resume are admin-only here, and carry stormcluster's
 # token_file bearer when it has one.
-# url = "http://127.0.0.1:9102"
+# url = "http://127.0.0.1:9102"           # https:// by default when ca_file is set
 # token_file = "/etc/stormconsole/stormcluster.token"
+# :9102 is TLS only since stormcluster#5: the node CA and the console's
+# client pair (stormcert-agent client --name stormconsole-client --cn stormconsole),
+# re-read when stormcert renews them.
+# ca_file = "/data/stormcert/ca.crt"
+# cert_file = "/data/stormcert/stormconsole-client.crt"
+# key_file = "/data/stormcert/stormconsole-client.key"
 
 # [stormcentral]
 # Where a stormpump:// image's golden is recorded: the pod page shows its

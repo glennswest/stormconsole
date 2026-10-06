@@ -225,7 +225,11 @@ async fn main() {
                 None
             }
         });
-        plugins.push(Arc::new(plugin_stormcluster::StormclusterPlugin::new(&config.stormcluster_url(), token)));
+        plugins.push(Arc::new(plugin_stormcluster::StormclusterPlugin::with_tls(
+            &config.stormcluster_url(),
+            token,
+            config.stormcluster_tls(),
+        )));
     }
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));

@@ -72,11 +72,19 @@ impl Feed {
                     components: vec![],
                 },
             },
-            Ok(resp) => FeedState {
-                health: Health::Warn,
-                detail: format!("responded {}", resp.status()),
-                components: vec![],
-            },
+            Ok(resp) => {
+                // What the upstream says, not only its status: stormcluster
+                // over plain HTTP answers 403 "served over TLS only (https)",
+                // and over TLS with no client pair 401 "authenticate: …" —
+                // each the fix, in its own words (#89).
+                let status = resp.status();
+                let said = said(resp).await;
+                FeedState {
+                    health: Health::Warn,
+                    detail: if said.is_empty() { format!("responded {status}") } else { format!("responded {status}: {said}") },
+                    components: vec![],
+                }
+            }
             Err(e) => FeedState {
                 health: Health::Error,
                 detail: format!("unreachable: {}", concise(&e)),
@@ -130,9 +138,25 @@ pub fn remap(list: Vec<ComponentSummary>, prefix: &str, proxy_base: &str) -> Vec
         .collect()
 }
 
+/// A refusal's own words: `{"error": …}`, or a short plain-text body.
+async fn said(resp: reqwest::Response) -> String {
+    let text = resp.text().await.unwrap_or_default();
+    let text = match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(v) => v.get("error").and_then(|e| e.as_str()).unwrap_or_default().to_string(),
+        Err(_) => text,
+    };
+    let text = text.trim();
+    if text.is_empty() || text.starts_with('<') || text.len() > 300 {
+        String::new()
+    } else {
+        text.to_string()
+    }
+}
+
 fn concise(e: &reqwest::Error) -> String {
-    use std::error::Error as _;
-    e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+    // The whole cause, as the probe says it: a TLS failure is two levels
+    // below "client error (Connect)" (#33, #89).
+    crate::probe::concise(e)
 }
 
 /// A plugin that is exactly one upstream feed: a name, the daemon it

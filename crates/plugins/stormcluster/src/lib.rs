@@ -41,7 +41,9 @@ struct Inner {
     base: String,
     token: Option<String>,
     feed: Arc<Feed>,
-    client: reqwest::Client,
+    /// :9102 is TLS only (stormcluster#5): the node CA and the console's
+    /// client pair, followed as stormcert renews them (#89).
+    tls: console_core::tls::Client,
 }
 
 pub struct StormclusterPlugin {
@@ -51,13 +53,20 @@ pub struct StormclusterPlugin {
 impl StormclusterPlugin {
     /// `token` is stormcluster's write token, when it has one configured.
     pub fn new(url: &str, token: Option<String>) -> Self {
+        Self::with_tls(url, token, console_core::tls::TlsFiles::default())
+    }
+
+    /// The same, speaking TLS: trust only `files.ca`, present the pair
+    /// (#89). No files is the plain client, for a stormcluster from before
+    /// stormcluster#5.
+    pub fn with_tls(url: &str, token: Option<String>, files: console_core::tls::TlsFiles) -> Self {
         let base = url.trim_end_matches('/').to_string();
         Self {
             inner: Arc::new(Inner {
                 feed: Arc::new(Feed::new(&base, NAME, &format!("/api/plugins/{NAME}/proxy"))),
                 base,
                 token: token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
-                client: reqwest::Client::new(),
+                tls: console_core::tls::Client::new("stormcluster", files),
             }),
         }
     }
@@ -115,16 +124,34 @@ impl ConsolePlugin for StormclusterPlugin {
     }
 
     async fn health(&self) -> Health {
+        // A certificate file that cannot be used is the reason, whatever
+        // the last poll saw.
+        if self.inner.tls.error().is_some() {
+            return Health::Error;
+        }
         self.inner.feed.state().await.health
     }
 
     async fn detail(&self) -> String {
         let s = self.inner.feed.state().await;
-        console_core::upstream::detail("stormcluster", &self.inner.base, &s.detail)
+        let d = match self.inner.tls.error() {
+            Some(e) => format!("{e} · {}", s.detail),
+            None => s.detail,
+        };
+        console_core::upstream::detail("stormcluster", &self.inner.base, &d)
     }
 
     async fn run(&self, shutdown: CancellationToken) {
-        self.inner.feed.run(self.inner.client.clone(), Duration::from_secs(3), shutdown).await;
+        // The feed's own loop holds one client for good; this one picks up
+        // a renewed pair (or one minted after start) before every poll.
+        loop {
+            self.inner.tls.refresh();
+            self.inner.feed.poll(&self.inner.tls.get()).await;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(3)) => {}
+                _ = shutdown.cancelled() => return,
+            }
+        }
     }
 }
 
@@ -167,8 +194,9 @@ async fn proxy(
         let who = viewer.user.clone().unwrap_or_else(|| "admin".into());
         tracing::info!(user = %who, %method, path = %path, query = uri.query().unwrap_or(""), "cluster: acting through stormcluster");
     }
+    inner.tls.refresh();
     let resp = console_core::proxy::forward_as(
-        &inner.client,
+        &inner.tls.get(),
         &inner.base,
         &method,
         &path,

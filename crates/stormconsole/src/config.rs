@@ -440,11 +440,19 @@ pub struct Stormcluster {
     /// stormcluster's `token_file`, when it has one: every write it takes
     /// needs this bearer. The console holds it; the browser never sees it.
     pub token_file: Option<String>,
+    /// :9102 is TLS only since stormcluster#5 (#89): the node CA its
+    /// serving certificate is checked against (only this CA), and the
+    /// console's client pair (`stormcert-agent client --name
+    /// stormconsole-client --cn stormconsole`). Re-read when they change.
+    /// With a CA the default url is `https://127.0.0.1:9102`.
+    pub ca_file: Option<String>,
+    pub cert_file: Option<String>,
+    pub key_file: Option<String>,
 }
 
 impl Default for Stormcluster {
     fn default() -> Self {
-        Self { enabled: true, url: None, token_file: None }
+        Self { enabled: true, url: None, token_file: None, ca_file: None, cert_file: None, key_file: None }
     }
 }
 
@@ -509,6 +517,16 @@ impl Config {
             return Err(format!(
                 "[kubernetes] ca_file is set but server is {:?}: a CA is only used over https://",
                 self.kubernetes_server()
+            ));
+        }
+        let sc = &self.stormcluster;
+        if sc.cert_file.is_some() != sc.key_file.is_some() {
+            return Err("[stormcluster] cert_file and key_file go together: set both, or neither".into());
+        }
+        if (sc.ca_file.is_some() || sc.cert_file.is_some()) && !self.stormcluster_url().starts_with("https://") {
+            return Err(format!(
+                "[stormcluster] ca_file/cert_file are set but url is {:?}: certificates are only used over https://",
+                self.stormcluster_url()
             ));
         }
         let f = &self.fastetcd;
@@ -588,8 +606,23 @@ impl Config {
         self.stormipmi.url.clone().unwrap_or_else(|| "http://127.0.0.1:9097".to_string())
     }
 
+    /// This node's :9102 — over https when a CA is set (stormcluster#5),
+    /// plain for a stormcluster from before it.
     pub fn stormcluster_url(&self) -> String {
-        self.stormcluster.url.clone().unwrap_or_else(|| "http://127.0.0.1:9102".to_string())
+        self.stormcluster.url.clone().unwrap_or_else(|| {
+            let scheme = if self.stormcluster.ca_file.is_some() { "https" } else { "http" };
+            format!("{scheme}://127.0.0.1:9102")
+        })
+    }
+
+    /// The `[stormcluster]` TLS files, for the plugin (#89).
+    pub fn stormcluster_tls(&self) -> console_core::tls::TlsFiles {
+        let f = &self.stormcluster;
+        console_core::tls::TlsFiles {
+            ca: f.ca_file.as_ref().map(Into::into),
+            cert: f.cert_file.as_ref().map(Into::into),
+            key: f.key_file.as_ref().map(Into::into),
+        }
     }
 
     pub fn fastetcd_url(&self) -> String {
@@ -805,6 +838,30 @@ data_dir    = \"/var/lib/stormconsole\"
 
     /// #47: the node's mutual-TLS shape is accepted and reaches the plugin;
     /// half a pair, or certificates with a plaintext url, are config errors.
+    #[test]
+    /// stormcluster's :9102 is TLS only (#89, stormcluster#5).
+    #[test]
+    fn stormcluster_tls_files() {
+        let c = Config::parse(
+            "[stormcluster]\nca_file = \"/data/stormcert/ca.crt\"\n\
+             cert_file = \"/data/stormcert/stormconsole-client.crt\"\nkey_file = \"/data/stormcert/stormconsole-client.key\"\n",
+        )
+        .unwrap();
+        // A CA makes the default https.
+        assert_eq!(c.stormcluster_url(), "https://127.0.0.1:9102");
+        let t = c.stormcluster_tls();
+        assert_eq!(t.ca.as_deref(), Some(std::path::Path::new("/data/stormcert/ca.crt")));
+        assert!(t.cert.is_some() && t.key.is_some());
+        // None: the plain default, for a stormcluster from before #5.
+        let plain = Config::parse("").unwrap();
+        assert_eq!(plain.stormcluster_url(), "http://127.0.0.1:9102");
+        assert!(plain.stormcluster_tls().is_empty());
+        let e = Config::parse("[stormcluster]\ncert_file = \"c\"\n").unwrap_err();
+        assert!(e.contains("[stormcluster] cert_file and key_file go together"), "{e}");
+        let e = Config::parse("[stormcluster]\nurl = \"http://b1:9102\"\nca_file = \"ca\"\n").unwrap_err();
+        assert!(e.contains("only used over https://"), "{e}");
+    }
+
     #[test]
     fn fastetcd_tls_files() {
         let c = Config::parse(

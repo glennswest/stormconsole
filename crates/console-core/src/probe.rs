@@ -86,7 +86,7 @@ impl Probe {
 /// chain is said whole. One level read "client error (Connect)" for every
 /// TLS failure — the cause (`invalid peer certificate: UnknownIssuer`) is
 /// below it (#33, as #47 found for fastetcd).
-fn concise(e: &reqwest::Error) -> String {
+pub(crate) fn concise(e: &reqwest::Error) -> String {
     use std::error::Error as _;
     let mut parts: Vec<String> = Vec::new();
     let mut next = e.source();

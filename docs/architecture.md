@@ -1097,6 +1097,25 @@ refusal (`409 {"refused":[…]}`) keeps its list and also carries it as
 Conflict"; a dry run's steps are given stormcluster's own sentence for each
 (its `Step::describe`, copied until the plan carries one — stormcluster#11).
 
+**Over TLS (#89).** stormcluster's :9102 is TLS only since stormcluster#5:
+plain HTTP answers `/healthz` and refuses everything else with 403, and
+over TLS every path but health needs a client certificate from the node CA
+or stormcluster's bearer. `[stormcluster] ca_file`, `cert_file`, `key_file`
+give the plugin a client that trusts that CA alone and presents the pair
+(`stormcert-agent client --name stormconsole-client --cn stormconsole`) —
+`console_core::tls`, the client the fastetcd plugin used for #47, lifted
+into the core so both follow their files the same way: refreshed before
+every poll and every proxied request, so a renewed or late-minted pair is
+used without a restart, and a file missing or not PEM is the card's error
+naming it. With a CA the default url is `https://127.0.0.1:9102`;
+certificates with an `http://` url, or half a pair, exit 78. A feed that
+refuses says why in the upstream's own words ("responded 403 Forbidden:
+stormcluster's API is served over TLS only (https)…"), and a connection
+that fails says its whole cause (`invalid peer certificate: UnknownIssuer`).
+The writes still go to the HTTP API this plugin proxies, which stormcluster
+replaced with `cluster.storm.io` objects (stormcluster#12) — that move is
+#88.
+
 `#/cluster` (Cluster → Membership): the cluster, then Members, the nodes
 discovered, and Operations with their steps (the running one opened on its
 own). Every action except Resume first asks for the plan (`?dryRun=true`)
@@ -1219,7 +1238,7 @@ things over HTTP, and the plugin reads both:
 
 **Over mutual TLS (#47).** stormcos moves the client port to TLS with a
 stormcert certificate and `--client-cert-auth` (stormcos#81). With `[fastetcd]
-ca_file`, `cert_file`, `key_file` the plugin's client (`fastetcd::tls`)
+ca_file`, `cert_file`, `key_file` the plugin's client (`console_core::tls`, shared with stormcluster since #89)
 trusts that CA alone and presents the pair; it compares the files'
 modification times every poll and rebuilds when one moved, since stormcert
 renews in place. A file missing or not PEM is the store's error, naming

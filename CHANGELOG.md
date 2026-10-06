@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-06 — stormcluster over TLS (#89)
+- **feat:** `[stormcluster] ca_file`, `cert_file`, `key_file`: :9102 is TLS
+  only since stormcluster#5. The plugin trusts only the node CA, presents
+  the console's client pair, and re-reads both before every poll and every
+  proxied request; a bad file is the card's error naming it. With a CA the
+  default url is `https://127.0.0.1:9102`; half a pair, or certificates
+  with an `http://` url, exit 78.
+- **refactor:** fastetcd's file-following TLS client (#47) is
+  `console_core::tls`, shared by both plugins.
+- **fix:** a feed that refuses says why in the upstream's words ("responded
+  403 Forbidden: stormcluster's API is served over TLS only (https)…"), and
+  a feed that cannot connect says the whole cause, not "client error
+  (Connect)".
+
 ## [v0.28.0] — 2026-10-06
 
 ### 2026-10-06 — The apiserver with a token file and a CA (#33)

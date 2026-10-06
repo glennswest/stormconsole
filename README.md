@@ -161,7 +161,8 @@ Full example: [config/config.toml](config/config.toml).
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
 | `[fastetcd] ca_file / cert_file / key_file` | none | mutual TLS on the client port (#47): fastetcd is verified against `ca_file` only (no built-in roots) and the console presents the pair. `cert_file` and `key_file` go together; any of them with a non-`https://` url is a config error (exit 78). Reread when a file changes; a missing or bad file is said on the datastore's card, naming it, and the console runs on. On a node: the stormcert node CA and the `stormconsole-etcd` pair under `/data/stormcert`, `url = "https://127.0.0.1:2379"` |
 | `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |
-| `[stormcluster] enabled / url / token_file` | on / `http://127.0.0.1:9102` / — | stormcluster's `token_file`, held server-side; without it a guarded stormcluster refuses every write with 401 |
+| `[stormcluster] enabled / url / token_file` | on / `http://127.0.0.1:9102` (`https://` when `ca_file` is set) / — | stormcluster's `token_file`, held server-side; without it a guarded stormcluster refuses every write with 401 |
+| `[stormcluster] ca_file / cert_file / key_file` | — | :9102 is TLS only (stormcluster#5): trust only this CA, present the console's client pair; re-read when they change; a bad file is the card's error; half a pair, or certificates with an `http://` url, exit 78 |
 | `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
 
 An upstream that is not there is not an error: its card says which address

@@ -117,7 +117,7 @@ impl FastetcdPlugin {
                 client_url: client_url.trim_end_matches('/').to_string(),
                 metrics_url: metrics_url.trim_end_matches('/').to_string(),
                 serves,
-                http: tls::Client::new(files),
+                http: tls::Client::new("fastetcd", files),
                 state: RwLock::new(Poll {
                     health: Health::Unknown,
                     detail: "not yet polled".into(),
