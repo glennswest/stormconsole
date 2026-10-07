@@ -1152,7 +1152,15 @@ suggested name. **Form a cluster** (seeded here; 1, 3 or 5 masters, from
 the SNOs stormcluster calls available), **Join nodes** (as workers, or as
 masters in pairs) and **Promote workers** (in pairs) are forms; Demote,
 Drain/Uncordon, Serve/Stop storage and Release are on each member's row,
-Dissolve on the cluster. `deploy/verify-cluster.sh` is the live check.
+Dissolve on the cluster. After a write, a **Progress** view opens on the
+operation it starts (#84; the first operation that was not there before):
+every node the request names, and every node a step names, with its status
+(failed > running > pending > done), the step it is at or failed in with
+the error, and its steps; the steps that name no node (the endpoint,
+publishing the record) are "the cluster". It is `web/src/lib/progress.js`
+over stormcluster's `GET /api/v1/operations/{id}`, polled every 3 s, and
+any operation in the list opens it with **Progress**.
+`deploy/verify-cluster.sh` is the live check.
 
 ### Projects (#28)
 

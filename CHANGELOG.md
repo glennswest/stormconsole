@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-07 — Cluster progress, node by node (#84)
+- **feat:** the Cluster page opens a **Progress** view on the operation a
+  form, join, promote, demote, drain, storage change or release starts:
+  every node in it with its status (pending / running / done / failed),
+  the step it is at or failed in with the error, and its steps; the
+  cluster's own steps apart. Any operation opens it from the list. Pure
+  model in `web/src/lib/progress.js`, with `progress.test.mjs`.
+
 ### 2026-10-07 — Every page in a browser (#58)
 - **test:** `deploy/browser/`: a Playwright harness (`lib.cjs`, `run.sh`)
   and a walk per page area — Drives/Pools/Shelves, Machines (power,

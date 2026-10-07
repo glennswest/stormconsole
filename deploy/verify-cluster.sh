@@ -38,6 +38,7 @@ check() { # ok what [detail]
 
 say "build the SPA from this commit, then the console that embeds it"
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
+node web/src/lib/progress.test.mjs
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 

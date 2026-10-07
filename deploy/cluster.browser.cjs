@@ -70,6 +70,14 @@ async function as(browser, user) {
     await page.screenshot({ path: 'form-plan.png' })
     await plan.getByRole('button', { name: 'Write it' }).click()
     check(await until(async () => /wrote ClusterMember b1, Cluster storm/.test(await outcome.innerText())), 'Write it writes the member, then the Cluster', await outcome.innerText().catch(() => ''))
+    // The progress view opens on the operation the write started (#84).
+    const progress = page.locator('section[aria-label="Progress"]')
+    const pnode = (n) => progress.locator('.pnode', { has: page.locator('.ntitle .mono', { hasText: new RegExp(`^${n}$`) }) })
+    check(await until(async () => (await pnode('b1').count()) === 1, 30000), 'the progress view opens on the form, with b1', await progress.innerText().catch(() => ''))
+    check(await until(async () => /^done$/i.test(await pnode('b1').locator('.ntitle .status').innerText()), 60000), "b1's steps run to done, node by node",
+      await progress.innerText().catch(() => ''))
+    check(await until(async () => (await progress.locator('.pnode', { hasText: 'the cluster' }).count()) === 1), "the cluster's own steps apart")
+    await page.screenshot({ path: 'progress-form.png', fullPage: true })
     check(await until(async () => /Cluster object\s+storm/.test(await summary.innerText()), 15000), 'the Cluster object is on the page', await summary.innerText().catch(() => ''))
     check(await until(async () => (await summary.locator('.phase').count()) > 0 && (await summary.locator('.phase').first().innerText()).length > 0, 30000),
       "with stormcluster's phase", await summary.locator('.objst').first().innerText().catch(() => ''))
@@ -87,6 +95,17 @@ async function as(browser, user) {
       check((await steps()).length > 0, 'the join plan', (await steps()).join(' | '))
       await plan.getByRole('button', { name: 'Write it' }).click()
       check(await until(async () => /wrote ClusterMember b2/.test(await outcome.innerText())), 'Write it writes ClusterMember b2', await outcome.innerText().catch(() => ''))
+      check(await until(async () => (await pnode('b2').count()) === 1, 30000), 'the progress view follows the join, with b2', await progress.innerText().catch(() => ''))
+      check(await until(async () => /^failed$/i.test(await pnode('b2').locator('.ntitle .status').innerText()), 90000),
+        'b2 failed, and the view says where', await pnode('b2').innerText().catch(() => ''))
+      const b2p = await pnode('b2').innerText()
+      check(/failed at: issue a join token for b2/.test(b2p) && /19098|stormcert|refused|error/i.test(b2p), 'at the join token, with the error', b2p)
+      await page.screenshot({ path: 'progress-join.png', fullPage: true })
+      // Any operation opens it from the list.
+      await progress.getByRole('button', { name: 'close' }).click()
+      const formOp = page.locator('table.rows tr', { hasText: /form/i, has: page.getByRole('button', { name: 'Progress', exact: true }) }).last()
+      await formOp.getByRole('button', { name: 'Progress', exact: true }).click()
+      check(await until(async () => (await pnode('b1').count()) === 1 && /form-/.test(await progress.innerText())), "Progress on the form's row reopens it", await progress.innerText().catch(() => ''))
       check(await until(async () => (await row('b2').locator('.phase').count()) > 0, 30000), "b2's object status is on its row", await row('b2').first().innerText().catch(() => ''))
       // No stormcert here: the join fails or is blocked, in the object's words.
       const b2said = async () => row('b2').first().innerText()

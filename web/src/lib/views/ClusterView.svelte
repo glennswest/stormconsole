@@ -22,6 +22,7 @@
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CopyButton from '../components/CopyButton.svelte'
+  import { byNode, moving } from '../progress.js'
 
   const BASE = '/api/plugins/cluster'
   const API = `${BASE}/proxy/api/v1`
@@ -41,6 +42,12 @@
   let typed = $state('')
   // Steps of each operation that has been opened, by id.
   let opened = $state({})
+  // The progress view (#84): one operation, node by node. `awaiting` is a
+  // write whose operation has not appeared yet — the ids there were before
+  // it, and when it was made.
+  let progressId = $state('')
+  let progressOp = $state(null)
+  let awaiting = $state(null)
 
   async function load() {
     try {
@@ -54,6 +61,25 @@
       objs = await get(`${BASE}/objects`)
     } catch (e) {
       objs = { installed: false, reason: e.message, clusters: [], members: [] }
+    }
+    // A write's operation: the first operation that was not there before
+    // it. stormcluster starts it on its next pass; if the planner refuses
+    // instead, the object's status says why and nothing appears.
+    if (awaiting && cards) {
+      const fresh = cards.filter((c) => c.kind === 'operation').map(opId).find((id) => !awaiting.before.includes(id))
+      if (fresh) {
+        progressId = fresh
+        awaiting = null
+      } else if (Date.now() - awaiting.since > 90000) {
+        awaiting = null
+      }
+    }
+    if (progressId) {
+      try {
+        progressOp = await get(`${API}/operations/${encodeURIComponent(progressId)}`)
+      } catch (e) {
+        progressOp = { id: progressId, error: e.message, steps: [] }
+      }
     }
     clearTimeout(timer)
     timer = setTimeout(load, 3000)
@@ -126,8 +152,12 @@
     busy = true
     pending = null
     try {
+      const before = ops.map(opId)
       const r = await write()
       done(title, r?.message || 'written')
+      awaiting = { before, since: Date.now(), title }
+      progressId = ''
+      progressOp = null
       form.open = join.open = promote.open = false
       await load()
     } catch (e) {
@@ -181,6 +211,14 @@
       opened[id] = { error: e.message }
     }
   }
+  function showProgress(id) {
+    awaiting = null
+    progressId = id
+    progressOp = null
+    load()
+  }
+  const progressRows = $derived(byNode(progressOp))
+
   function toggleOp(c) {
     const id = opId(c)
     if (opened[id]) delete opened[id]
@@ -284,6 +322,52 @@
         <span>{outcome.message}</span>
       {/if}
       <button class="link" onclick={() => (outcome = null)}>dismiss</button>
+    </section>
+  {/if}
+
+  {#if awaiting}
+    <section class="card progress" aria-label="Progress">
+      <h2>Progress</h2>
+      <p class="dim">{awaiting.title}: written. Waiting for stormcluster to start the operation — if the planner refuses it instead, the object's status below says why.</p>
+    </section>
+  {:else if progressId}
+    <section class="card progress" aria-label="Progress">
+      <div class="phead">
+        <h2>Progress</h2>
+        <span class="mono">{progressId}</span>
+        {#if progressOp?.state}<span class="phase ph-{progressOp.state}">{progressOp.state}</span>{/if}
+        {#if moving(progressOp)}<span class="dim">following it</span>{/if}
+        <button class="link" onclick={() => { progressId = ''; progressOp = null }}>close</button>
+      </div>
+      {#if progressOp?.error && !progressOp?.steps?.length}<p class="bad">{progressOp.error}</p>{/if}
+      <div class="nodes">
+        {#each progressRows as n (n.label)}
+          <div class="pnode st-{n.status}">
+            <div class="ntitle">
+              <span class="mono strong">{n.label}</span>
+              <span class="status">{n.status}</span>
+              <span class="dim">{n.done}/{n.total}</span>
+            </div>
+            {#if n.current}
+              <div class="now">{n.status === 'failed' ? 'failed at' : n.status === 'running' ? 'now' : 'next'}: {n.current.description}</div>
+              {#if n.current.error}<div class="bad">{n.current.error}</div>{/if}
+            {:else if !n.total}
+              <div class="dim">no step of its own yet</div>
+            {/if}
+            <ol class="steps">
+              {#each n.steps as s (s.index)}
+                <li class="st-{s.status}"><span class="status">{s.status}</span> {s.description}{#if s.note}<span class="dim"> — {s.note}</span>{/if}</li>
+              {/each}
+            </ol>
+          </div>
+        {/each}
+      </div>
+      {#if progressOp?.warnings?.length}
+        <ul class="warnings">{#each progressOp.warnings as w}<li>{w}</li>{/each}</ul>
+      {/if}
+      {#if progressOp?.state === 'failed'}
+        <p class="dim">stormcluster resumes a failed operation by itself, after a pause that grows from 30 s; the object's status says when.</p>
+      {/if}
     </section>
   {/if}
 
@@ -512,7 +596,10 @@
             <td><span class="dot {o.health}" aria-hidden="true"></span> <span class="strong">{o.label}</span> <div class="dim mono">{id}</div></td>
             <td class="mono">{metric(o, 'steps')}{#if metric(o, 'warnings')} <span class="warn">· {metric(o, 'warnings')} warning(s)</span>{/if}</td>
             <td class:bad={o.health === 'error'}>{o.detail}</td>
-            <td class="acts"><button onclick={() => toggleOp(o)}>{opened[id] ? 'Hide steps' : 'Steps'}</button></td>
+            <td class="acts">
+              <button onclick={() => showProgress(id)}>Progress</button>
+              <button onclick={() => toggleOp(o)}>{opened[id] ? 'Hide steps' : 'Steps'}</button>
+            </td>
           </tr>
           {#if opened[id]}
             <tr class="opsteps">
@@ -598,4 +685,20 @@
   .ph-joining, .ph-forming, .ph-promoting, .ph-demoting, .ph-draining, .ph-uncordoning, .ph-leaving, .ph-updating, .ph-dissolving, .ph-releasing { color: var(--warn-strong); border-color: var(--warn); }
   .op { flex-basis: 100%; }
   .blockers { color: var(--error); }
+  .progress .phead { display: flex; gap: 10px; align-items: baseline; }
+  .progress .phead h2 { margin: 0; }
+  .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+  .pnode { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; box-shadow: inset 3px 0 var(--text-faint); }
+  .pnode.st-done { box-shadow: inset 3px 0 var(--ok); }
+  .pnode.st-running { box-shadow: inset 3px 0 var(--warn); }
+  .pnode.st-failed { box-shadow: inset 3px 0 var(--error); }
+  .pnode .ntitle { display: flex; gap: 8px; align-items: baseline; }
+  .pnode .ntitle .status, .steps .status { font-family: var(--mono); font-size: var(--sc-t-eyebrow); text-transform: uppercase; color: var(--text-faint); }
+  .pnode.st-done .ntitle .status { color: var(--ok); }
+  .pnode.st-running .ntitle .status { color: var(--warn-strong); }
+  .pnode.st-failed .ntitle .status { color: var(--error); }
+  .pnode .now { font-size: var(--sc-t-body); margin: 4px 0; }
+  .pnode .steps { font-size: var(--sc-t-meta); margin: 4px 0 0; }
+  .ph-running { color: var(--warn-strong); border-color: var(--warn); }
+  .ph-done { color: var(--ok); border-color: var(--ok); }
 </style>
