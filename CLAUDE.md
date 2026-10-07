@@ -485,8 +485,7 @@ or the `storm.io/bridge[.<iface>]` annotation, which wins (stormvm
   the kubelet writes it. NAT (asked pod) → `ip=10.155.0.15` warn,
   `network=NAT, not pod`, sentence naming stormvm#16; bridged → v4+v6,
   reachable on stormbr0; quiet → "no address yet"; stopped → stopped.
-  The page's rendering was not viewed in a browser (no browser here); the
-  bundle built and the API answers what it renders
+  The page is walked in Chromium since #58 (`deploy/browser/vm.cjs` net)
 
 ### VM Backup tab: snapshots (#25) ✅ v0.15.0 2026-09-25
 The objects are KubeVirt's `snapshot.kubevirt.io/v1beta1`
@@ -606,7 +605,7 @@ and ClusterRoles `admin`/`edit`/`view`. Reserved: `default`, `openshift`,
   Cluster section, no Node services. Delete default 403, alice-work 200 →
   Terminating
 - Filed **rustkube#102** (a claim's phase is not defaulted)
-- Not viewed in a browser (there is none here)
+- Walked in Chromium since #58 (`deploy/browser/`)
 
 ### Machines page, served by stormipmi (#31) ✅ v0.18.0 2026-09-25
 stormipmi v0.4.0 (stormipmi#12) serves the Machines API on :9097:
@@ -640,7 +639,7 @@ from `api.tokenFile`; admin-only is the console's to enforce.
   adopt 201 with no password in the API. SOL through the console: both
   viewers got the replay and live output; admin's typing echoed, ops'
   dropped. An audit line per act
-- Not viewed in a browser (there is none here)
+- Walked in Chromium since #58 (`deploy/browser/`)
 
 ### Images are the registry's, Volumes are what is attached (#19) ✅ v0.19.0 2026-09-25
 Owner's scope: a UI point of view only — goldens stay engine volumes. The
@@ -679,7 +678,7 @@ percent, fault, golden).
   the split is missing
 - Found: a v18 engine answers 401 to reads without its token →
   `[stormblock] token_file`; filed **stormcos#94** to wire it on nodes
-- Not viewed in a browser (there is none here)
+- Walked in Chromium since #58 (`deploy/browser/`)
 
 ### Drives at rack scale (#32) ✅ v0.20.0 2026-09-26
 Target: 160 drives a node, ~1,600 a rack. Data today: stormdrive's feed
@@ -714,7 +713,7 @@ drive (stormblock#136), array members their device path and state
   storm-3's proxy reached storm-3 only; this node's through the local
   proxy; an unknown node 404. A node killed → 1,440 drives, 9 nodes.
   Feed 1.2 MB in 38 ms (3.2 s before the id fix)
-- Not viewed in a browser (there is none here)
+- Walked in Chromium since #58 (`deploy/browser/`)
 
 ### Docs from the code (#21) ✅ v0.20.1 2026-09-26
 Pattern: stormbootx b1347d9. Facts gathered from the code (config.rs,
@@ -869,7 +868,7 @@ serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
   where committed is partial, may-promise per drive's ratio; model 24 ms;
   storm-9 killed → named. `drivemap.test.mjs` PASS; 284 Rust tests; the
   `--locked` musl release build
-- Not viewed in a browser (there is none here)
+- Walked in Chromium since #58 (`deploy/browser/`)
 - Volumes on *another* node's drives are not read (this node's engine only)
 
 ### Create: "+ New project…" can be named, and nothing breaks (#56)
@@ -1263,20 +1262,25 @@ proxy with none and got 401.
   file warned at start
 - Shipped in golden-stormconsole-89fa6be3c1aa (stormcos#324)
 
-### Every page in a browser (#58)
+### Every page in a browser (#58) ✅ 2026-10-07
 Eight pages were checked only through their APIs ("not viewed in a
 browser"); #56 showed Chromium runs on dev through sc-build and that a
 browser finds what an API check cannot.
-- [ ] `deploy/browser/`: `lib.cjs` (launch, sign in, fail on any page or
+- [x] `deploy/browser/`: `lib.cjs` (launch, sign in, fail on any page or
       console error), `run.sh` (Playwright once per run), one walk per area
-- [ ] Each rig builds the SPA from the commit and ends with its walk:
+- [x] Each rig builds the SPA from the commit and ends with its walk:
       drives + pools (`verify-drives.sh`), machines incl. power, release and
       SOL (`verify-machines.sh`), images catalog / volumes / unattached
       (`verify-images.sh`), projects: selector, members, isolation
       (`verify-projects.sh`), VM network / keys / backup / lifecycle rows
       (`verify-vm-{net,keys,snapshots,lifecycle}.sh`)
-- [ ] Fix whatever they find; drop "not viewed in a browser" from the docs
-- [ ] Release; golden
+- [x] Fix whatever they find; drop "not viewed in a browser" from the docs
+- [x] Golden: none needed — tests and docs only, nothing in the binary changed
+- Verified: all eight rigs on fresh build VMs (`SC_BUILD_VM=1`; dev.g8.lo
+  is retired), every walk 0 failed, no page errors. The walks found no page
+  bug; what they caught was in the checks (CSS upper-cases headings, so
+  matching is case-blind; bare-1 is deleted by its own rig) and on the
+  fresh VM (no kubectl, no Python websockets — the rig brings its own)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

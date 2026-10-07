@@ -3,6 +3,17 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-07 — Every page in a browser (#58)
+- **test:** `deploy/browser/`: a Playwright harness (`lib.cjs`, `run.sh`)
+  and a walk per page area — Drives/Pools/Shelves, Machines (power,
+  release, intent, SOL), Images/Volumes/Unattached, Projects (picker, new
+  project, members, isolation, a viewer refused) and the VM pages (Network,
+  SSH keys, Backup, the list's Restart). Each `verify-*.sh` rig builds the
+  SPA from the commit and ends with its walk, failing on any page or
+  console error. All eight pass; they found no page bugs.
+- **test:** the rigs run on a fresh build VM: `verify-machines.sh` brings
+  its own `kubectl` and Python `websockets`.
+
 ## [v0.32.0] — 2026-10-07
 
 ### 2026-10-07 — stormstorage's api_token on the proxy (#53)
