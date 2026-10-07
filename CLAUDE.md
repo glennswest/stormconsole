@@ -1183,6 +1183,28 @@ pinned at 61777dd for #63's write flows (#88 moves it to the objects).
 - [x] `deploy/verify-cluster-tls.sh` against stormcluster 55b69da: 0 failed
 - [x] Release; golden; close — golden-stormconsole-743d467dee9c (stormcos#324)
 
+### Cluster page on cluster.storm.io objects (#88)
+stormcluster#12: the lifecycle API is `cluster.storm.io/v1alpha1` `Cluster`
+and `ClusterMember` (cluster-scoped, `status` subresource, finalizer
+`cluster.storm.io/split`), reconciled by the seed (on an SNO, by itself on
+its own apiserver). :9102 is read-only plus `POST /api/v1/plan` →
+`{plan, descriptions[]}` / `409 {refused[]}`. A release always wipes (#14;
+`keepData` is refused); a failed operation resumes by itself (no Resume).
+Read from stormcluster 139c712 (docs/api.md, reconcile.rs, feed.rs).
+- [ ] Plugin watches both kinds through the apiserver connection (optional
+      CRDs, "not installed" named); `GET /objects`
+- [ ] Writes as the viewer through the apiserver, no admin gate (RBAC):
+      form (members first, then the `Cluster`), join, role, drain,
+      storage, release (delete member), dissolve (delete cluster)
+- [ ] `POST /plan` → stormcluster's dry run, `descriptions[]` on the steps;
+      the proxy is read-only plus plan; the copied `describe` goes
+- [ ] Page: previews every change with the plan; objects' status — phase,
+      message, blockers as the refusal list, operation step/error,
+      suggested names; no Resume, no keep-data
+- [ ] `verify-cluster.sh` on objects: three stormclusters at main with TLS,
+      a real rustkube they reconcile against, stand-in node API; Chromium
+- [ ] Docs, changelog; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
