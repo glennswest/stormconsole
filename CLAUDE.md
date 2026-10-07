@@ -1261,6 +1261,7 @@ proxy with none and got 401.
   DELETE stopped by the storage guard, not sent with it; without it, or
   with the browser sending the token, stormstorage's 401; an unreadable
   file warned at start
+- Shipped in golden-stormconsole-89fa6be3c1aa (stormcos#324)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
