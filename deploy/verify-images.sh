@@ -32,6 +32,7 @@ API=http://$MGMT/api/v1
 REG=http://127.0.0.1:15100
 
 say "build the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="$PWD/${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 [ -x "$BIN" ] || BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
@@ -171,6 +172,10 @@ print([(s["label"], [i["label"] for i in s["items"]]) for s in secs if s["label"
 printf '  a delete of the attached claim, through the console: '
 curl -s -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:19104/api/plugins/sb/proxy/api/v1/volumes/$CID"; echo " (the engine's own guard)"
 
+say "2b. the pages in a browser (#58)"
+RC=0
+deploy/browser/run.sh "$W" images.cjs "http://127.0.0.1:19104" || RC=1
+
 ########################################################################
 say "3. forge's real engine, read-only, through a console only (the fallback)"
 if curl -sf -m 8 -o /dev/null "$FORGE/api/v1/volumes"; then
@@ -193,3 +198,4 @@ fi
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c*.log | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200 | head -10 || true
 say "done"
+exit $RC
