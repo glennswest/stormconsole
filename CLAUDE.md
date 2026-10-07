@@ -1214,6 +1214,11 @@ Read from stormcluster 139c712 (docs/api.md, reconcile.rs, feed.rs).
   the page became the cluster; Join b2 → its row shows Joining, then Failed
   at the enrollment (no stormcert) with the error; Release b2 behind the
   typed name → deleting; no page errors
+- Shipped in golden-stormconsole-325df3f882a1 (stormcos#324), with #39's
+  comment fix; the first golden attempt failed `--locked` (#106): the lock
+  lacked the plugin's new dependencies, and the version bump's sed had
+  rewritten tungstenite 0.29.0 → 0.30.0 — bump only the workspace's own
+  `[[package]]` entries
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
