@@ -1,39 +1,44 @@
 <script>
-  // Cluster (#63): what the cluster is made of, from stormcluster's feed —
-  // the cluster (or this node as a single-node cluster), its members and
-  // their roles, the nodes discovered that are not members, and the last
-  // operations with their steps.
+  // Cluster (#63, #88): what the cluster is made of, from stormcluster's
+  // feed — the cluster (or this node as a single-node cluster), its members
+  // and their roles, the nodes discovered that are not members, and the
+  // last operations with their steps.
   //
-  // Every change is an administrator's, and the plugin enforces it; the page
-  // only decides whether to offer the buttons. Before anything runs the page
-  // asks stormcluster for the plan (`?dryRun=true`) and shows its steps and
-  // warnings — Split and Demote are not undone by pressing the button again.
-  // A refusal is shown as stormcluster's reasons, every one of them.
+  // A change is a cluster.storm.io object (stormcluster#12): a `Cluster`
+  // forms the cluster seeded on this node, a `ClusterMember` per node joins,
+  // promotes, demotes, drains or serves storage, and deleting one releases
+  // the node (its data erased) or dissolves the cluster. The plugin writes
+  // them as the viewer, so the apiserver's RBAC decides. Before anything is
+  // written the page asks stormcluster for the plan and shows its steps in
+  // stormcluster's own words; a refusal is every reason it gave.
   //
-  // Two operations need input a body-less button cannot carry: forming a
-  // cluster (a name, its masters, its workers) and joining nodes as masters
-  // or promoting workers, which go in pairs so the control plane stays odd.
-  // Those are forms that build the body of `POST /api/v1/operations`.
+  // What stormcluster made of each object is its status: the phase, the
+  // blockers (refusals are status, planned again on every pass), and the
+  // operation's step or error. A failed operation resumes by itself, so
+  // there is no Resume here.
   import { onDestroy } from 'svelte'
-  import { get } from '../api.js'
+  import { get, postJson, call } from '../api.js'
   import { noteActivity } from '../stores.svelte.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CopyButton from '../components/CopyButton.svelte'
 
-  const PROXY = '/api/plugins/cluster/proxy'
-  const API = `${PROXY}/api/v1`
+  const BASE = '/api/plugins/cluster'
+  const API = `${BASE}/proxy/api/v1`
 
   let cards = $state(null)
-  let me = $state({ admin: false, why: '' })
+  let objs = $state({ installed: true, reason: '', clusters: [], members: [] })
+  let me = $state({ write: false, why: '' })
+  let self = $state('')
   let error = $state('')
   let timer = null
 
-  // The answer of the last thing done: a message, or stormcluster's reasons.
+  // The answer of the last thing done: a message, or the reasons.
   let outcome = $state(null)
   let busy = $state(false)
-  // An open plan, waiting for Run or Cancel.
+  // An open plan, waiting for Write or Cancel.
   let pending = $state(null)
+  let typed = $state('')
   // Steps of each operation that has been opened, by id.
   let opened = $state({})
 
@@ -42,27 +47,24 @@
       cards = await get(`${API}/components`)
       error = ''
       for (const id of Object.keys(opened)) readOp(id)
-      const running = cards.find(isRunning)
-      if (running && !opened[opId(running)]) readOp(opId(running))
     } catch (e) {
       error = `stormcluster did not answer: ${e.message}. It runs on every node at :9102; is it running on this one, or is [stormcluster] url pointing somewhere else?`
+    }
+    try {
+      objs = await get(`${BASE}/objects`)
+    } catch (e) {
+      objs = { installed: false, reason: e.message, clusters: [], members: [] }
     }
     clearTimeout(timer)
     timer = setTimeout(load, 3000)
   }
   load()
-  get('/api/plugins/cluster/me').then((d) => (me = d)).catch(() => {})
+  get(`${BASE}/me`).then((d) => (me = d)).catch(() => {})
+  get(`${API}/self`).then((d) => (self = d.node || '')).catch(() => {})
   onDestroy(() => clearTimeout(timer))
 
   const metric = (c, label) => c?.metrics?.find((m) => m.label === label)?.value ?? ''
   const opId = (c) => c.id.replace(/^op:/, '')
-  // Running is the one operation with steps left that has not failed; a
-  // finished one with warnings is warn too, but all its steps are done.
-  function isRunning(c) {
-    if (c.kind !== 'operation' || c.health !== 'warn') return false
-    const [done, total] = String(metric(c, 'steps')).split('/').map(Number)
-    return done < total
-  }
 
   const system = $derived(cards?.find((c) => c.id === 'system'))
   const members = $derived((cards || []).filter((c) => c.kind === 'member'))
@@ -71,38 +73,47 @@
   const inCluster = $derived(members.length > 0)
   const masters = $derived(members.filter((m) => metric(m, 'role') === 'master'))
   const workers = $derived(members.filter((m) => metric(m, 'role') === 'worker'))
-  // Peers that a form or a join can take: those whose own button is live.
-  const available = $derived(peers.filter((p) => p.actions?.some((a) => a.enabled)))
-  const runningOp = $derived(ops.some(isRunning))
+  // The nodes a form or a join can take: SNOs stormcluster calls available
+  // (not stale, stormcluster running there, not a laptop), and not this one.
+  const available = $derived(peers.filter((p) => p.detail === 'single-node cluster, available' && p.label !== self))
+  const cluster = $derived(objs.clusters[0] || null)
+  const memberObj = (node) => objs.members.find((o) => o.name === node)
+  // Objects for nodes that are not members yet: joins in progress, or
+  // blocked, and what the form wrote before its Cluster formed.
+  const requested = $derived(objs.members.filter((o) => !members.some((m) => m.label === o.name)))
+  const busyCluster = $derived(!!cluster && !['Ready', 'Paused'].includes(cluster.status?.phase || 'Ready'))
 
-  // --- talking to stormcluster ----------------------------------------
-  async function send(path, body) {
-    const opts = { method: 'POST' }
-    if (body) {
-      opts.headers = { 'Content-Type': 'application/json' }
-      opts.body = JSON.stringify(body)
-    }
-    const r = await fetch(`${PROXY}${path}`, opts)
-    const data = await r.json().catch(() => ({}))
-    return { ok: r.ok, status: r.status, data }
+  // --- the plan, then the write ------------------------------------------
+  function done(title, message) {
+    outcome = { title, message }
+    noteActivity({ reason: title, message, source: 'Cluster' })
   }
-  const withQuery = (path, q) => `${path}${path.includes('?') ? '&' : '?'}${q}`
-
   function refused(title, data, status) {
     pending = null
-    const reasons = data.refused?.length ? data.refused : [data.error || `stormcluster answered ${status}`]
-    outcome = { title, reasons, coordinator: data.coordinator, bad: true }
+    const reasons = data?.refused?.length ? data.refused : [data?.error || `answered ${status}`]
+    outcome = { title, reasons, coordinator: data?.coordinator, bad: true }
     noteActivity({ reason: title, message: reasons.join('; '), source: 'Cluster', warning: true })
   }
 
-  /// Ask for the plan of `path` (and `body`), and open it for confirmation.
-  async function preview(title, path, body, extra = null) {
+  /// Ask stormcluster for the plan of `request`, and open it. `write` is
+  /// what the confirm does; `word`, when set, must be typed first.
+  async function preview(title, request, write, { word = '', warning = '' } = {}) {
     busy = true
     outcome = null
+    typed = ''
     try {
-      const { ok, status, data } = await send(withQuery(path, 'dryRun=true'), body)
-      if (!ok) return refused(title, data, status)
-      pending = { title, path, body, plan: data.plan || { steps: [], warnings: [] }, coordinator: data.coordinator, extra }
+      if (!request) {
+        pending = { title, plan: null, write, word, warning }
+        return
+      }
+      const r = await fetch(`${BASE}/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) return refused(title, data, r.status)
+      pending = { title, plan: data.plan || { steps: [], warnings: [] }, coordinator: data.coordinator, write, word, warning }
     } catch (e) {
       refused(title, { error: e.message }, 0)
     } finally {
@@ -110,19 +121,14 @@
     }
   }
 
-  async function run(title, path, body) {
+  async function confirmPending() {
+    const { title, write } = pending
     busy = true
-    outcome = null
     pending = null
     try {
-      const { ok, status, data } = await send(path, body)
-      if (!ok) return refused(title, data, status)
-      const msg = data.id ? `started ${data.id}${data.coordinator ? ` on ${data.coordinator}` : ''}` : 'done'
-      outcome = { title, message: msg }
-      // The form that asked for it has done its job.
+      const r = await write()
+      done(title, r?.message || 'written')
       form.open = join.open = promote.open = false
-      noteActivity({ reason: title, message: msg, source: 'Cluster' })
-      if (data.id) opened[data.id] = data
       await load()
     } catch (e) {
       refused(title, { error: e.message }, 0)
@@ -131,24 +137,42 @@
     }
   }
 
-  function act(card, a) {
-    const title = `${a.label}: ${card.label}`
-    // Resume continues an operation whose plan is already on the page.
-    if (a.id === 'resume') return run(title, a.path)
-    preview(title, a.path, null, a.id === 'split' ? { keepData: true, base: a.path } : null)
+  const patchMember = (node, change) =>
+    postJson(`${BASE}/members/${encodeURIComponent(node)}`, change, 'PATCH')
+
+  async function patchAll(nodes, change) {
+    const said = []
+    for (const n of nodes) said.push((await patchMember(n, change)).message)
+    return { message: said.join(' · ') }
   }
 
-  // Split keeps the node's data unless told otherwise; the plan differs, so
-  // choosing asks for it again.
-  const splitPath = (base, keep) => (keep ? base : withQuery(base, 'keepData=false'))
-  function setKeepData(keep) {
-    const { title, extra } = pending
-    preview(title, splitPath(extra.base, keep), null, { keepData: keep, base: extra.base })
+  // --- a member's own changes -------------------------------------------
+  function demote(m) {
+    preview(`Demote ${m.label}`, { op: 'demote', node: m.label }, () => patchMember(m.label, { role: 'worker' }))
   }
-  function confirmPending() {
-    const { title, path, body, extra } = pending
-    run(title, extra?.base ? splitPath(extra.base, extra.keepData) : path, body)
+  function drain(m, on) {
+    const t = `${on ? 'Drain' : 'Uncordon'} ${m.label}`
+    preview(t, { op: on ? 'drain' : 'uncordon', node: m.label }, () => patchMember(m.label, { drain: on }))
   }
+  function storage(m, on) {
+    const t = `${on ? 'Serve storage from' : 'Stop serving storage from'} ${m.label}`
+    preview(t, { op: 'storage', node: m.label, storage: on }, () => patchMember(m.label, { storage: on }))
+  }
+  function release(node) {
+    preview(`Release ${node}`, { op: 'split', node }, () => call('DELETE', `${BASE}/members/${encodeURIComponent(node)}`), {
+      word: node,
+      warning: `${node} is drained, its data is erased, and it becomes a new single-node cluster. This is not undone.`,
+    })
+  }
+  function dissolve() {
+    const name = cluster.name
+    preview(`Dissolve ${name}`, null, () => call('DELETE', `${BASE}/clusters/${encodeURIComponent(name)}`), {
+      word: name,
+      warning: `Every member is released — workers first, the seed last — each drained, its data erased, a new single-node cluster. This is not undone.`,
+    })
+  }
+  const drained = (m) => (memberObj(m.label)?.status?.drained ?? /drained|cordoned/i.test(m.detail)) === true
+  const serving = (m) => !!memberObj(m.label)?.spec?.storage
 
   async function readOp(id) {
     try {
@@ -164,10 +188,9 @@
   }
 
   // --- Form a cluster ---------------------------------------------------
-  // masters[0] is the seed: its CA and fastetcd become the cluster's.
+  // Seeded on this node: a Cluster on its apiserver forms there.
   let form = $state({ open: false, name: '', masters: [], workers: [] })
   function openForm() {
-    const self = (system?.label || '').replace(/ \(SNO\)$/, '')
     form = { open: true, name: 'storm', masters: self ? [self] : [], workers: [] }
   }
   function toggle(list, node) {
@@ -176,6 +199,7 @@
     else list.push(node)
   }
   function pickMaster(node) {
+    if (node === self) return
     toggle(form.masters, node)
     form.workers = form.workers.filter((w) => w !== node)
   }
@@ -184,14 +208,14 @@
     form.masters = form.masters.filter((m) => m !== node)
   }
   const formWhy = $derived(
-    !form.name.trim() ? 'name the cluster'
+    !self ? 'waiting for stormcluster to say which node this is'
+    : !form.name.trim() ? 'name the cluster'
     : ![1, 3, 5].includes(form.masters.length) ? `${form.masters.length} master(s): the control plane must be 1, 3 or 5`
     : ''
   )
   function submitForm() {
-    preview(`Form ${form.name}`, '/api/v1/operations', {
-      op: 'form', name: form.name.trim(), masters: [...form.masters], workers: [...form.workers],
-    })
+    const body = { name: form.name.trim(), masters: [...form.masters], workers: [...form.workers] }
+    preview(`Form ${body.name}`, { op: 'form', ...body }, () => postJson(`${BASE}/form`, body))
   }
 
   // --- Join, and promote in pairs ---------------------------------------
@@ -210,24 +234,44 @@
     : ''
   )
   function submitJoin() {
-    preview(`Join ${join.nodes.join(', ')} as ${join.role}s`, '/api/v1/operations', {
-      op: 'join', nodes: [...join.nodes], role: join.role,
-    })
+    const body = { nodes: [...join.nodes], role: join.role }
+    preview(`Join ${body.nodes.join(', ')} as ${body.role}s`, { op: 'join', ...body }, () => postJson(`${BASE}/members`, body))
   }
   function submitPromote() {
-    preview(`Promote ${promote.nodes.join(', ')}`, '/api/v1/operations', { op: 'promote', nodes: [...promote.nodes] })
+    const nodes = [...promote.nodes]
+    preview(`Promote ${nodes.join(', ')}`, { op: 'promote', nodes }, () => patchAll(nodes, { role: 'master' }))
   }
 
-  const peerName = (p) => p.label
   const hardware = (c) => ['cores', 'memory', 'drives'].map((k) => metric(c, k) && `${metric(c, k)} ${k === 'memory' ? '' : k}`.trim()).filter(Boolean).join(' · ')
   const when = (t) => (t ? new Date(t).toLocaleString() : '')
 </script>
 
+{#snippet objstatus(o)}
+  {#if o}
+    {@const st = o.status || {}}
+    <div class="objst">
+      <span class="phase ph-{(st.phase || 'Pending').toLowerCase()}">{o.deleting ? 'Releasing' : st.phase || 'Pending'}</span>
+      {#if st.message}<span class="dim">{st.message}</span>{/if}
+      {#if st.operation}
+        <div class="op">
+          <span class="mono">{st.operation.id}</span> · {st.operation.state}{#if st.operation.step} · {st.operation.step}{/if}
+          {#if st.operation.error}<div class="bad">{st.operation.error}</div>{/if}
+        </div>
+      {/if}
+      {#if st.blockers?.length}
+        <ul class="reasons blockers">{#each st.blockers as b}<li>{b}</li>{/each}</ul>
+      {/if}
+      {#if st.suggestedName}<span class="dim">suggested name {st.suggestedName}</span>{/if}
+    </div>
+  {/if}
+{/snippet}
+
 <div class="sc-page">
   <PageHeader crumbs={[{ label: 'Cluster' }, { label: 'Membership' }]} title={system?.label || 'Cluster'} count={cards ? members.length || null : null} />
 
-  {#if !me.admin && cards}<p class="dim">{me.why}</p>{/if}
+  {#if !me.write && cards}<p class="dim">{me.why}</p>{/if}
   {#if error}<p class="error">{error}</p>{/if}
+  {#if !objs.installed}<p class="warn">{objs.reason}</p>{/if}
 
   {#if outcome}
     <section class="outcome" class:bad={outcome.bad} role="status">
@@ -247,23 +291,26 @@
     <div class="scrim" role="presentation" onclick={() => (pending = null)}></div>
     <div class="dialog" role="dialog" aria-modal="true" aria-label="The plan">
       <h2>{pending.title}</h2>
-      <p class="dim">
-        Nothing has run yet. This is the plan stormcluster made{pending.coordinator ? ` on ${pending.coordinator}, which coordinates it` : ''}:
-      </p>
-      {#if pending.extra && 'keepData' in pending.extra}
-        <div class="keep">
-          <label><input type="radio" name="keep" checked={pending.extra.keepData} disabled={busy} onchange={() => setKeepData(true)} /> keep its data</label>
-          <label><input type="radio" name="keep" checked={!pending.extra.keepData} disabled={busy} onchange={() => setKeepData(false)} /> wipe its data</label>
-        </div>
+      {#if pending.plan}
+        <p class="dim">
+          Nothing is written yet. This is the plan stormcluster made{pending.coordinator ? ` on ${pending.coordinator}, which coordinates it` : ''}:
+        </p>
+        <ol class="steps">
+          {#each pending.plan.steps as s}<li>{s.description}</li>{/each}
+        </ol>
+        {#if pending.plan.names && Object.keys(pending.plan.names).length}
+          <p class="dim">Suggested names (nothing is renamed): {Object.entries(pending.plan.names).map(([n, s]) => `${n} → ${s}`).join(', ')}</p>
+        {/if}
+        {#if pending.plan.warnings?.length}
+          <ul class="warnings">{#each pending.plan.warnings as w}<li>{w}</li>{/each}</ul>
+        {/if}
       {/if}
-      <ol class="steps">
-        {#each pending.plan.steps as s}<li>{s.description}</li>{/each}
-      </ol>
-      {#if pending.plan.warnings?.length}
-        <ul class="warnings">{#each pending.plan.warnings as w}<li>{w}</li>{/each}</ul>
+      {#if pending.warning}<p class="bad">{pending.warning}</p>{/if}
+      {#if pending.word}
+        <label class="field">Type <span class="mono">{pending.word}</span> to confirm <input bind:value={typed} aria-label="Confirm by typing {pending.word}" /></label>
       {/if}
       <div class="dbar">
-        <button class="sc-primary" disabled={busy} onclick={confirmPending}>Run {pending.plan.steps.length} step{pending.plan.steps.length === 1 ? '' : 's'}</button>
+        <button class="sc-primary" class:danger={!!pending.word} disabled={busy || (pending.word && typed !== pending.word)} onclick={confirmPending}>Write it</button>
         <button disabled={busy} onclick={() => (pending = null)}>Cancel</button>
       </div>
     </div>
@@ -279,13 +326,17 @@
       <div class="metrics">
         {#each system.metrics || [] as m}<span><span class="dim">{m.label}</span> <span class="mono">{m.value}</span></span>{/each}
       </div>
-      {#if me.admin}
+      {#if cluster}
+        <div><span class="dim">Cluster object</span> <span class="mono">{cluster.name}</span> {@render objstatus(cluster)}</div>
+      {/if}
+      {#if me.write && objs.installed}
         <div class="forms">
-          {#if !inCluster}
-            <button disabled={busy || runningOp || !available.length} onclick={openForm}>Form a cluster…</button>
+          {#if !inCluster && !cluster}
+            <button disabled={busy || !available.length || !self} onclick={openForm}>Form a cluster…</button>
           {:else}
-            <button disabled={busy || runningOp || !available.length} onclick={() => (join = { open: true, role: 'worker', nodes: [] })}>Join nodes…</button>
-            <button disabled={busy || runningOp || !workers.length} onclick={() => (promote = { open: true, nodes: [] })}>Promote workers…</button>
+            <button disabled={busy || busyCluster || !available.length} onclick={() => (join = { open: true, role: 'worker', nodes: [] })}>Join nodes…</button>
+            <button disabled={busy || busyCluster || !workers.length} onclick={() => (promote = { open: true, nodes: [] })}>Promote workers…</button>
+            {#if cluster && !cluster.deleting}<button class="danger" disabled={busy} onclick={dissolve}>Dissolve…</button>{/if}
           {/if}
         </div>
       {/if}
@@ -295,16 +346,22 @@
   {#if form.open}
     <section class="card">
       <h2>Form a cluster</h2>
-      <p class="dim">The first master is the seed: its CA, fastetcd and data become the cluster's. The control plane is 1, 3 or 5 masters.</p>
+      <p class="dim">Seeded on {self}, the node this console runs on: its CA, fastetcd and data become the cluster's. The control plane is 1, 3 or 5 masters.</p>
       <label class="field">Name <input bind:value={form.name} aria-label="Cluster name" /></label>
       <table class="pick">
         <thead><tr><th>Node</th><th>Master</th><th>Worker</th><th></th></tr></thead>
         <tbody>
+          <tr>
+            <td class="mono">{self} <span class="tagchip">seed</span></td>
+            <td><input type="checkbox" aria-label="{self} as master" checked disabled /></td>
+            <td></td>
+            <td></td>
+          </tr>
           {#each available as p (p.id)}
             <tr>
-              <td class="mono">{peerName(p)}{#if form.masters[0] === peerName(p)} <span class="tagchip">seed</span>{/if}</td>
-              <td><input type="checkbox" aria-label="{peerName(p)} as master" checked={form.masters.includes(peerName(p))} onchange={() => pickMaster(peerName(p))} /></td>
-              <td><input type="checkbox" aria-label="{peerName(p)} as worker" checked={form.workers.includes(peerName(p))} onchange={() => pickWorker(peerName(p))} /></td>
+              <td class="mono">{p.label}{#if metric(p, 'suggested name')} <span class="dim">({metric(p, 'suggested name')})</span>{/if}</td>
+              <td><input type="checkbox" aria-label="{p.label} as master" checked={form.masters.includes(p.label)} onchange={() => pickMaster(p.label)} /></td>
+              <td><input type="checkbox" aria-label="{p.label} as worker" checked={form.workers.includes(p.label)} onchange={() => pickWorker(p.label)} /></td>
               <td class="dim">{hardware(p)}</td>
             </tr>
           {/each}
@@ -329,8 +386,8 @@
         <tbody>
           {#each available as p (p.id)}
             <tr>
-              <td><input type="checkbox" aria-label="Join {peerName(p)}" checked={join.nodes.includes(peerName(p))} onchange={() => toggle(join.nodes, peerName(p))} /></td>
-              <td class="mono">{peerName(p)}</td>
+              <td><input type="checkbox" aria-label="Join {p.label}" checked={join.nodes.includes(p.label)} onchange={() => toggle(join.nodes, p.label)} /></td>
+              <td class="mono">{p.label}</td>
               <td class="dim">{hardware(p)}</td>
             </tr>
           {/each}
@@ -367,31 +424,55 @@
     </section>
   {/if}
 
-  {#snippet actions(c)}
-    {#if me.admin}
-      {#each c.actions || [] as a (a.id)}
-        <button class:danger={a.danger} disabled={busy || !a.enabled} onclick={() => act(c, a)}>{a.label}</button>
-      {/each}
-    {/if}
-  {/snippet}
-
   {#if inCluster}
     <h3>Members</h3>
     <table class="rows">
       <thead><tr><th>Node</th><th>Role</th><th>State</th><th>Address</th><th>Hardware</th><th></th></tr></thead>
       <tbody>
         {#each members as m (m.id)}
+          {@const o = memberObj(m.label)}
           <tr class="health-{m.health}">
             <td>
               <span class="dot {m.health}" aria-hidden="true"></span>
               <span class="mono strong">{m.label}</span>
               {#if metric(m, 'CA')}<span class="tagchip">{metric(m, 'CA')}</span>{/if}
+              {#if serving(m)}<span class="tagchip">storage</span>{/if}
             </td>
             <td>{metric(m, 'role')}</td>
-            <td>{m.detail}{#if m.health === 'error'} <span class="bad">· not heard from</span>{/if}</td>
+            <td>
+              {m.detail}{#if m.health === 'error'} <span class="bad">· not heard from</span>{/if}
+              {@render objstatus(o)}
+            </td>
             <td class="mono">{metric(m, 'address')}{#if metric(m, 'address')}<CopyButton value={metric(m, 'address')} label="Copy address" />{/if}</td>
             <td class="dim">{hardware(m)}</td>
-            <td class="acts">{@render actions(m)}</td>
+            <td class="acts">
+              {#if me.write && o && !o.deleting}
+                {#if metric(m, 'role') === 'master'}<button disabled={busy} onclick={() => demote(m)}>Demote</button>{/if}
+                {#if drained(m)}<button disabled={busy} onclick={() => drain(m, false)}>Uncordon</button>
+                {:else}<button disabled={busy} onclick={() => drain(m, true)}>Drain</button>{/if}
+                <button disabled={busy} onclick={() => storage(m, !serving(m))}>{serving(m) ? 'Stop storage' : 'Serve storage'}</button>
+                <button class="danger" disabled={busy} onclick={() => release(m.label)}>Release</button>
+              {/if}
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {/if}
+
+  {#if requested.length}
+    <h3>Asked for, not members yet</h3>
+    <table class="rows">
+      <thead><tr><th>Node</th><th>Asked</th><th>What stormcluster made of it</th><th></th></tr></thead>
+      <tbody>
+        {#each requested as o (o.name)}
+          <tr>
+            <td class="mono strong">{o.name}</td>
+            <td>{o.spec?.role}{o.spec?.storage ? ', storage' : ''}</td>
+            <td>{@render objstatus(o)}</td>
+            <td class="acts">
+              {#if me.write && !o.deleting}<button class="danger" disabled={busy} onclick={() => release(o.name)}>Withdraw</button>{/if}
+            </td>
           </tr>
         {/each}
       </tbody>
@@ -402,16 +483,15 @@
     <h3>{inCluster ? 'Other nodes discovered' : 'Nodes discovered'}</h3>
     {#if peers.length}
       <table class="rows">
-        <thead><tr><th>Node</th><th>What it is</th><th>Address</th><th>Release</th><th>Hardware</th><th></th></tr></thead>
+        <thead><tr><th>Node</th><th>What it is</th><th>Address</th><th>Release</th><th>Hardware</th></tr></thead>
         <tbody>
           {#each peers as p (p.id)}
             <tr class="health-{p.health}">
-              <td><span class="dot {p.health}" aria-hidden="true"></span> <span class="mono strong">{p.label}</span></td>
-              <td>{p.detail}{#if p.health === 'error'} <span class="bad">· stale</span>{/if}</td>
+              <td><span class="dot {p.health}" aria-hidden="true"></span> <span class="mono strong">{p.label}</span>{#if p.label === self} <span class="tagchip">this node</span>{/if}</td>
+              <td>{p.detail}{#if p.health === 'error'} <span class="bad">· stale</span>{/if}{#if metric(p, 'suggested name')} <span class="dim">· would be {metric(p, 'suggested name')}</span>{/if}</td>
               <td class="mono">{metric(p, 'address')}</td>
               <td class="mono">{metric(p, 'release')}{metric(p, 'edition') ? ` · ${metric(p, 'edition')}` : ''}</td>
               <td class="dim">{hardware(p)}</td>
-              <td class="acts">{@render actions(p)}</td>
             </tr>
           {/each}
         </tbody>
@@ -432,10 +512,7 @@
             <td><span class="dot {o.health}" aria-hidden="true"></span> <span class="strong">{o.label}</span> <div class="dim mono">{id}</div></td>
             <td class="mono">{metric(o, 'steps')}{#if metric(o, 'warnings')} <span class="warn">· {metric(o, 'warnings')} warning(s)</span>{/if}</td>
             <td class:bad={o.health === 'error'}>{o.detail}</td>
-            <td class="acts">
-              <button onclick={() => toggleOp(o)}>{opened[id] ? 'Hide steps' : 'Steps'}</button>
-              {@render actions(o)}
-            </td>
+            <td class="acts"><button onclick={() => toggleOp(o)}>{opened[id] ? 'Hide steps' : 'Steps'}</button></td>
           </tr>
           {#if opened[id]}
             <tr class="opsteps">
@@ -514,4 +591,11 @@
   .pick input[type='checkbox'] { width: auto; }
   .dbar { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
   tr.opsteps td { background: var(--bg); }
+  .objst { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin-top: 4px; font-size: var(--sc-t-meta); }
+  .phase { font-family: var(--mono); font-size: var(--sc-t-eyebrow); text-transform: uppercase; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 5px; color: var(--text-dim); }
+  .ph-ready { color: var(--ok); border-color: var(--ok); }
+  .ph-blocked, .ph-failed { color: var(--error); border-color: var(--error); }
+  .ph-joining, .ph-forming, .ph-promoting, .ph-demoting, .ph-draining, .ph-uncordoning, .ph-leaving, .ph-updating, .ph-dissolving, .ph-releasing { color: var(--warn-strong); border-color: var(--warn); }
+  .op { flex-basis: 100%; }
+  .blockers { color: var(--error); }
 </style>
