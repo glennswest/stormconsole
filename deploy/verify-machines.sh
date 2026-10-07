@@ -26,7 +26,8 @@ IPMI=http://127.0.0.1:19097/api/v1
 P=19103
 TAG=SIMBOARD0001
 
-say "build the console"
+say "build the SPA from this commit, then the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="$(pwd)/${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 [ -x "$BIN" ] || BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
@@ -208,6 +209,11 @@ asyncio.run(main())
 PY
 python3 "$W/ws.py" "ws://127.0.0.1:$P/api/plugins/ipmi/console/$HOST_NS/$HOST_NAME" "$W/jar.ops" "$W/jar.admin"
 
+say "8. the page in a browser (#58)"
+RC=0
+deploy/browser/run.sh "$W" machines.cjs "http://127.0.0.1:$P" TAG="$TAG" || RC=1
+
 say "console logs (warnings, errors, and the audit line for each act)"
 grep -hiE "warn|error|acting through" "$W"/c.log | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200 | head -20 || true
 say "done"
+exit $RC

@@ -45,6 +45,13 @@ exports.walk = (name, fn) => {
           if (/the server responded with a status of 4\d\d/.test(m.text())) return
           errors.push(`${who} console: ${m.text().split('\n')[0]}`)
         })
+        // confirm() is accepted; prompt() is answered with `page.answer`
+        // when a walk sets one (a typed confirm), and dismissed otherwise.
+        page.answer = undefined
+        page.on('dialog', (d) => {
+          if (d.type() === 'prompt') return page.answer === undefined ? d.dismiss() : d.accept(page.answer)
+          return d.accept()
+        })
         if (user) {
           const r = await ctx.request.post(`${BASE}/api/v1/auth/login`, { data: { username: user, password } })
           t.check(r.ok(), `signed in as ${user}`, `${r.status()}`)
