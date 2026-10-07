@@ -90,7 +90,7 @@ async function as(browser, user) {
       check(await until(async () => (await row('b2').locator('.phase').count()) > 0, 30000), "b2's object status is on its row", await row('b2').first().innerText().catch(() => ''))
       // No stormcert here: the join fails or is blocked, in the object's words.
       const b2said = async () => row('b2').first().innerText()
-      await until(async () => /Failed|Blocked|Ready|Joining/.test(await b2said()), 60000)
+      await until(async () => /failed|blocked|ready|joining/i.test(await b2said()), 60000)
       console.log(`    b2: ${(await b2said()).replace(/\s+/g, ' ')}`)
       await page.screenshot({ path: 'joined.png', fullPage: true })
 
@@ -106,11 +106,11 @@ async function as(browser, user) {
       await plan.locator('input[aria-label="Confirm by typing b2"]').fill('b2')
       await write.click()
       check(await until(async () => /ClusterMember b2 deleted/.test(await outcome.innerText())), 'released', await outcome.innerText().catch(() => ''))
-      check(await until(async () => (await row('b2').count()) === 0 || /Releasing|Leaving/.test(await b2said()), 30000), 'b2 is going', await b2said().catch(() => 'gone'))
+      check(await until(async () => (await row('b2').count()) === 0 || /releasing|leaving/i.test(await b2said()), 30000), 'b2 is going', await b2said().catch(() => 'gone'))
     } else {
       // Whatever stopped it is on the page, in stormcluster's words.
       const said = await summary.locator('.objst').first().innerText().catch(() => '')
-      check(/Failed|Blocked/.test(said) && said.length > 10, 'the form did not finish here, and the Cluster object says why', said)
+      check(/failed|blocked/i.test(said) && said.length > 10, 'the form did not finish here, and the Cluster object says why', said)
     }
 
     console.log('\n--- 5. alice: shown the plan, refused by the apiserver')
