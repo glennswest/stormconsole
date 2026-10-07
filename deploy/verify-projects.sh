@@ -23,6 +23,7 @@ API=https://127.0.0.1:$PORT
 P=19102
 
 say "build the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -284,6 +285,10 @@ for s in secs:
     if s["label"] in ("Home", "Cluster", "Compute"):
         print("   ", s["label"], s.get("kind"), [i["label"] for i in s["items"]])'
 
+say "7b. the pages in a browser (#58)"
+RC=0
+deploy/browser/run.sh "$W" projects.cjs "http://127.0.0.1:$P" || RC=1
+
 say "8. delete"
 as alice
 printf 'delete default: '; c DELETE /api/plugins/k8s/projects/default
@@ -294,3 +299,4 @@ printf 'apiserver: '; kget /api/v1/namespaces/alice-work | python3 -c 'import js
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c.log | grep -v 'plaintext password' | head -20 || true
 say "done"
+exit $RC
