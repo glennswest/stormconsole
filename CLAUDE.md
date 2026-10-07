@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.31.0**
+Current: **0.32.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1241,19 +1241,26 @@ at boot (`stormcert-agent sa-token` into tier-0) and points a file at it.
   too → exit 78. No restarts
 - Shipped in golden-stormconsole-a413c4a70737 (stormcos#324)
 
-### stormstorage's api_token on the proxy (#53)
+### stormstorage's api_token on the proxy (#53) ✅ v0.32.0 2026-10-07
 stormstorage#6: with `[api] api_token` set, every write but the placement
 dry run and self-registration needs `Authorization: Bearer <token>`; the
 feed's actions (Publish/Republish, Assemble, Move, Delete) went through the
 proxy with none and got 401.
-- [ ] `FeedPlugin::bearer`: a feed upstream's token, added server-side by
+- [x] `FeedPlugin::bearer`: a feed upstream's token, added server-side by
       its proxy (the browser's own is never forwarded); for stormstorage,
       `[stormstorage] token_file`, read at start like stormblock's (#30)
-- [ ] Destructive storage (a stormstorage DELETE) keeps #82's rule: the
+- [x] Destructive storage (a stormstorage DELETE) keeps #82's rule: the
       viewer's bearer — so a tokened stormstorage refuses it until it takes
-      a user's bearer (filed on stormstorage)
-- [ ] Tests; `deploy/verify-storage-token.sh` against a real stormstorage
+      a user's bearer (stormstorage#58)
+- [x] Tests; `deploy/verify-storage-token.sh` against a real stormstorage
       with a token; docs, example config, changelog; release; golden
+- Verified with `sc-build deploy/verify-storage-token.sh` (0 failed): a
+  real stormstorage at ec5ac39 with `[api] api_token`; with `token_file`,
+  Publish and Move through the proxy answer as stormstorage does to the
+  token (404 for no such volume), the token never in the console's log; a
+  DELETE stopped by the storage guard, not sent with it; without it, or
+  with the browser sending the token, stormstorage's 401; an unreadable
+  file warned at start
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
