@@ -1241,6 +1241,20 @@ at boot (`stormcert-agent sa-token` into tier-0) and points a file at it.
   too → exit 78. No restarts
 - Shipped in golden-stormconsole-a413c4a70737 (stormcos#324)
 
+### stormstorage's api_token on the proxy (#53)
+stormstorage#6: with `[api] api_token` set, every write but the placement
+dry run and self-registration needs `Authorization: Bearer <token>`; the
+feed's actions (Publish/Republish, Assemble, Move, Delete) went through the
+proxy with none and got 401.
+- [ ] `FeedPlugin::bearer`: a feed upstream's token, added server-side by
+      its proxy (the browser's own is never forwarded); for stormstorage,
+      `[stormstorage] token_file`, read at start like stormblock's (#30)
+- [ ] Destructive storage (a stormstorage DELETE) keeps #82's rule: the
+      viewer's bearer — so a tokened stormstorage refuses it until it takes
+      a user's bearer (filed on stormstorage)
+- [ ] Tests; `deploy/verify-storage-token.sh` against a real stormstorage
+      with a token; docs, example config, changelog; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
