@@ -1263,6 +1263,21 @@ proxy with none and got 401.
   file warned at start
 - Shipped in golden-stormconsole-89fa6be3c1aa (stormcos#324)
 
+### Every page in a browser (#58)
+Eight pages were checked only through their APIs ("not viewed in a
+browser"); #56 showed Chromium runs on dev through sc-build and that a
+browser finds what an API check cannot.
+- [ ] `deploy/browser/`: `lib.cjs` (launch, sign in, fail on any page or
+      console error), `run.sh` (Playwright once per run), one walk per area
+- [ ] Each rig builds the SPA from the commit and ends with its walk:
+      drives + pools (`verify-drives.sh`), machines incl. power, release and
+      SOL (`verify-machines.sh`), images catalog / volumes / unattached
+      (`verify-images.sh`), projects: selector, members, isolation
+      (`verify-projects.sh`), VM network / keys / backup / lifecycle rows
+      (`verify-vm-{net,keys,snapshots,lifecycle}.sh`)
+- [ ] Fix whatever they find; drop "not viewed in a browser" from the docs
+- [ ] Release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
