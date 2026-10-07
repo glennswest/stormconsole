@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.31.0] — 2026-10-07
+
 ### 2026-10-07 — The console's own bearer from a per-node file (#102)
 - **feat:** `[api] auth_token_file`: the console's bearer read from a file
   (a per-node token stormcos mints at boot, stormcos#200) and re-read when
