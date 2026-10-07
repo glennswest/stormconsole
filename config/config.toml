@@ -148,9 +148,9 @@ enabled = true
 enabled = true
 # The Cluster page: members, discovered peers and operations, from the
 # stormcluster that runs on every node (any node's answers for the whole
-# cluster). Reads are open; form, join, promote, demote, drain, uncordon,
-# split and resume are admin-only here, and carry stormcluster's
-# token_file bearer when it has one.
+# cluster). Changes are cluster.storm.io objects written through the
+# apiserver as the viewer ([kubernetes]), previewed with stormcluster's
+# dry run first.
 # url = "http://127.0.0.1:9102"           # https:// by default when ca_file is set
 # token_file = "/etc/stormconsole/stormcluster.token"
 # :9102 is TLS only since stormcluster#5: the node CA and the console's

@@ -3,6 +3,24 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-07 — The Cluster page on cluster.storm.io objects (#88)
+- **BREAKING:** the Cluster page writes `Cluster`/`ClusterMember` objects
+  (stormcluster#12) through the apiserver **as the viewer**, not
+  stormcluster's removed HTTP writes; the admin-only gate is the
+  apiserver's RBAC on `cluster.storm.io`. New plugin routes: `GET
+  /objects`, `POST /plan`, `POST /form`, `POST /members`, `PATCH|DELETE
+  /members/{node}`, `DELETE /clusters/{name}`. The proxy forwards only
+  stormcluster's reads (other methods 405).
+- **feat:** every change is previewed with stormcluster's dry run (`POST
+  /api/v1/plan`) in its own words (`descriptions[]`; the copied
+  `Step::describe` is gone, settling stormcluster#11); each node shows its
+  object's phase, message, blockers, operation step and error and suggested
+  name; Serve/Stop storage, Release (data erased, typed confirm) and
+  Dissolve. Resume and keep-data are gone (stormcluster resumes by itself;
+  a release always erases, stormcluster#14).
+- **test:** `deploy/verify-cluster.sh` runs stormcluster's main over TLS
+  reconciling a real rustkube.
+
 ## [v0.29.0] — 2026-10-06
 
 ### 2026-10-06 — stormcluster over TLS (#89)

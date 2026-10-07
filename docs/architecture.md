@@ -1081,21 +1081,37 @@ stormview feed comes in as `cluster:system` (the cluster: name, masters,
 workers, seed; or "<node> (SNO)"), `cluster:member:<node>` (role, state,
 address, hardware, the cluster CA on the seed), `cluster:peer:<node>`
 (discovered and not a member: release, edition, hardware, or "beacon only")
-and `cluster:op:<id>` (the last five operations), every action a body-less
-POST routed through the plugin's proxy.
+and `cluster:op:<id>` (the last five operations). The feed is the
+read-only view: it carries no actions (stormcluster#12).
 
-`/api/plugins/cluster/proxy/*` forwards only stormcluster's operator API
-(`api/v1/{health,self,peers,cluster,etcd,components,operations,members}`;
-`api/v1/record` is between stormclusters and is not the browser's to name;
-`..` refused). Reads are open; **every write is `admin` only**, carries
-stormcluster's bearer (`[stormcluster] token_file`) added server-side, and
-leaves an audit line naming the user. A write's answer is reshaped so any
-page can read it: a request forwarded to its coordinator
-(`{"coordinator","response"}`) is unwrapped with `coordinator` kept; a
-refusal (`409 {"refused":[…]}`) keeps its list and also carries it as
-`error`, so a generic row button says the reasons rather than "409
-Conflict"; a dry run's steps are given stormcluster's own sentence for each
-(its `Step::describe`, copied until the plan carries one — stormcluster#11).
+**Changes are objects (#88).** stormcluster's lifecycle API is
+`cluster.storm.io/v1alpha1` `Cluster` and `ClusterMember` (cluster-scoped,
+a `status` subresource, finalizer `cluster.storm.io/split`), reconciled by
+the seed — on an SNO, by itself, on its own apiserver. The plugin watches
+both kinds through the apiserver connection (optional CRDs; "not served
+yet" is said, since stormcluster installs them itself) and writes them **as
+the viewer**, so the apiserver's RBAC on `cluster.storm.io` decides — no
+role check in the plugin. Routes (`plugins/stormcluster/src/objects.rs`):
+`GET /objects`; `POST /form` (`{name, masters, workers, storage, forge}`:
+a `ClusterMember` per node, then the `Cluster` last, because the members
+already there join in the same operation; the cluster is seeded on this
+node — stormcluster's `self` — so it must be one of the masters); `POST
+/members` (join: one member each); `PATCH /members/{node}` (`role`,
+`drain`, `storage`: promote, demote, drain, uncordon, serve storage);
+`DELETE /members/{node}` (release: drained, its data erased, a new SNO —
+there is no keeping it, stormcluster#14); `DELETE /clusters/{name}`
+(dissolve). A form that fails part-way names what it already wrote.
+Refusals are status (`blockers[]`, phase `Blocked`), planned again on every
+pass, and a failed operation resumes by itself — so there is no Resume.
+
+`POST /plan` is stormcluster's dry run (`POST /api/v1/plan`, the request
+in stormcluster's own shape): `{plan, descriptions[]}`, each step given its
+description — stormcluster's own sentence, so the copied `Step::describe`
+is gone (stormcluster#11) — or `409 {refused[]}` with the reasons also as
+`error`, and a coordinator's answer unwrapped with `coordinator` kept.
+`/api/plugins/cluster/proxy/*` forwards only stormcluster's reads
+(`api/v1/{health,self,peers,cluster,etcd,components,operations}`); any
+other method is 405, `api/v1/record` (between stormclusters) 404.
 
 **Over TLS (#89).** stormcluster's :9102 is TLS only since stormcluster#5:
 plain HTTP answers `/healthz` and refuses everything else with 403, and
@@ -1112,23 +1128,20 @@ certificates with an `http://` url, or half a pair, exit 78. A feed that
 refuses says why in the upstream's own words ("responded 403 Forbidden:
 stormcluster's API is served over TLS only (https)…"), and a connection
 that fails says its whole cause (`invalid peer certificate: UnknownIssuer`).
-The writes still go to the HTTP API this plugin proxies, which stormcluster
-replaced with `cluster.storm.io` objects (stormcluster#12) — that move is
-#88.
 
-`#/cluster` (Cluster → Membership): the cluster, then Members, the nodes
-discovered, and Operations with their steps (the running one opened on its
-own). Every action except Resume first asks for the plan (`?dryRun=true`)
-and shows its steps and warnings in a dialog; nothing runs until Run.
-Split asks keep or wipe the node's data, and re-plans on the choice. A
-refusal is shown as stormcluster's reasons, every one. Two operations need
-a body a button cannot carry, so they are forms that build `POST
-/api/v1/operations`: **Form a cluster** (a name, its masters — 1, 3 or 5,
-the first the seed — and workers, from the SNO peers) and **Join nodes**
-(as workers, or as masters in pairs so the control plane stays odd), with
-**Promote workers** in pairs beside it. `/api/plugins/cluster/me` tells the
-page whether to offer the buttons. `deploy/verify-cluster.sh` is the live
-check.
+`#/cluster` (Cluster → Membership): the cluster (and its `Cluster`
+object's status), then Members, the nodes asked for that are not members
+yet, the nodes discovered, and Operations with their steps. Every change
+first asks for the plan and shows stormcluster's steps, suggested names and
+warnings in a dialog; nothing is written until **Write it**. A release or a
+dissolve also says the data is erased and needs the node's (or cluster's)
+name typed. Each row carries its object's status: the phase, the message,
+the blockers as a refusal list, the operation's id, step and error, and a
+suggested name. **Form a cluster** (seeded here; 1, 3 or 5 masters, from
+the SNOs stormcluster calls available), **Join nodes** (as workers, or as
+masters in pairs) and **Promote workers** (in pairs) are forms; Demote,
+Drain/Uncordon, Serve/Stop storage and Release are on each member's row,
+Dissolve on the cluster. `deploy/verify-cluster.sh` is the live check.
 
 ### Projects (#28)
 
