@@ -87,6 +87,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-cluster.sh` | the Cluster page — three real stormclusters (b1–b3) on loopback addresses and a private multicast group, stand-ins for the node lifecycle API and fastetcd's gateway; the proxy with curl, then form, join, resume, a refusal, promote in pairs, split, drain in Chromium as an admin and an operator |
+| `verify-cluster-tls.sh` | the Cluster plugin over TLS (#89): a real stormcluster from main with an openssl node CA — the pair, the CA alone (its 401), plain http (its 403), a stranger CA, a pair minted late, exit 78s |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
 | `verify-etcd-tls.sh` | the datastore over mutual TLS (#47) — fastetcd built from its tag with `--client-cert-auth`, an openssl node CA and pairs (ECDSA and RSA, PKCS#8, as stormcert writes them); stormcos's shape healthy with members and the keyspace, each misconfiguration an error with its cause, a pair minted late and renewed picked up without a restart, the two config errors |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |

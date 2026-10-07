@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.28.0**
+Current: **0.29.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1168,19 +1168,20 @@ server.
 - RBAC for `kube-system/stormconsole` and the mounts: stormcos#76; the
   resource list it needs: #78
 
-### stormcluster over TLS (#89)
+### stormcluster over TLS (#89) ✅ v0.29.0 2026-10-06
 stormcluster#5: :9102 is TLS only; plain answers /healthz, everything else
 needs a node-CA client certificate or the bearer. No stormcluster has both
 TLS and the HTTP writes (#12 landed first), so `verify-cluster.sh` stays
 pinned at 61777dd for #63's write flows (#88 moves it to the objects).
-- [x] `console_core::tls` (fastetcd's #47 client, section-named messages)
+- [x] `console_core::tls` (fastetcd's #47 client, section-named messages,
+      an HTTP/1.1-only variant, fail-closed before its files build)
 - [x] `[stormcluster] ca_file/cert_file/key_file`; https default with a CA;
       78 on half a pair or http; refreshed before every poll and proxy call
 - [x] Feed says the upstream's refusal and the whole connect cause
-- [ ] `deploy/verify-cluster-tls.sh` against stormcluster main (TLS): pair
-      → feed + proxied reads; no pair → its 401 words; plain → its 403
-      words; stranger CA; pair minted late; exit 78s
-- [ ] Release; golden; close
+- [x] Found live: stormcluster offers h2 in ALPN and drops an h2 client
+      (filed stormcluster#30); the console speaks HTTP/1.1 to it
+- [x] `deploy/verify-cluster-tls.sh` against stormcluster 55b69da: 0 failed
+- [x] Release; golden; close
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
