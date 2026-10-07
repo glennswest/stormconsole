@@ -8,9 +8,14 @@
 //! and never has a second thing to authenticate to:
 //!
 //! ```text
-//! browser ⇄ /api/plugins/vm/console/{ns}/{name}/serial ⇄ stormvm :9095 /api/v1/vms/{id}/console/serial
-//! browser ⇄ /api/plugins/vm/console/{ns}/{name}/vnc    ⇄ stormvm :9095 /api/v1/vms/{id}/console/vnc
+//! browser ⇄ /api/plugins/vm/console/{ns}/{name}/serial ⇄ stormvm :9095 /api/v1/vms/{ns}/{name}/console/serial
+//! browser ⇄ /api/plugins/vm/console/{ns}/{name}/vnc    ⇄ stormvm :9095 /api/v1/vms/{ns}/{name}/console/vnc
 //! ```
+//!
+//! stormvm addresses a machine by namespace and name, never by an id. Before
+//! each attach the console mints a one-use token at `POST
+//! /api/v1/vms/{ns}/{name}/console/{serial|vnc}/token` and presents it as
+//! `?token=` (see [`mint`]).
 //!
 //! Frames pass through untouched in both directions: the serial door
 //! carries bytes, the framebuffer door carries RFB, and neither is

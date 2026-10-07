@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-07 — stormvm's door paths in the docs (#39)
+- **docs:** `vm/src/console.rs` named stormvm's doors
+  `/api/v1/vms/{id}/console/…`; stormvm addresses a machine by
+  `{ns}/{name}`, as the code always did, and the token mint at
+  `…/console/{door}/token` is now named beside them.
+
 ## [v0.30.0] — 2026-10-07
 
 ### 2026-10-07 — The Cluster page on cluster.storm.io objects (#88)
