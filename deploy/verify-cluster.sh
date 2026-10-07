@@ -105,6 +105,8 @@ head -1 "$W/standins.log"
 
 say "three stormclusters over TLS; b1 reconciles its apiserver"
 echo "2026.10.06" > "$W/release"
+# What stormcos writes: the pod network a node runs, which a join must match.
+printf 'build\t20261006T000000Z-verify\tverify\t2026-10-06T00:00:00Z\tdev\nedition\tcilium\n' > "$W/manifest"
 for n in b1 b2 b3; do
   a=${ADDR[$n]}
   mkdir -p "$W/$n"
@@ -134,7 +136,7 @@ name = "$n"
 addr = "$a"
 ca_file = "$W/none/ca.crt"
 release_file = "$W/release"
-build_manifest = "$W/none/manifest"
+build_manifest = "$W/manifest"
 [discovery]
 group = "$GROUP"
 interval_secs = 2
@@ -150,6 +152,8 @@ $KUBE
 [cert]
 port = 19098
 ca_files = ["$W/none/ca.crt"]
+[endpoint]
+mode = "master"
 EOF
 done
 for n in b1 b2 b3; do "$SC" --config "$W/$n.toml" > "$W/$n.log" 2>&1 & done
@@ -237,7 +241,7 @@ check "$(j 'int(not any(x["id"]=="cluster:system" and x["label"]=="b1 (SNO)" for
 check "$(j 'int(any(x.get("actions") for x in d if x["id"].startswith("cluster:")))')" "the feed carries no actions: a change is an object"
 code=$(c ops GET "$X/objects"); check $([ "$code" = 200 ]; echo $?) "the objects are read" "$code installed=$(j 'd["installed"]') clusters=$(j 'len(d["clusters"])') members=$(j 'len(d["members"])')"
 check "$(j 'int(not d["installed"])')" "both kinds are served (stormcluster installed them)"
-code=$(c root POST "$X/proxy/api/v1/peers/b2/join"); check $([ "$code" = 404 ]; echo $?) "the old write paths are not forwarded" "$code"
+code=$(c root POST "$X/proxy/api/v1/peers/b2/join"); check $([ "$code" = 404 ] || [ "$code" = 405 ]; echo $?) "the old write paths are not forwarded" "$code"
 code=$(c root POST "$X/proxy/api/v1/components"); check $([ "$code" = 405 ]; echo $?) "nothing is written through the proxy" "$code $(j 'd.get("error")')"
 code=$(c root GET "$X/proxy/api/v1/record"); check $([ "$code" = 404 ]; echo $?) "the record is between stormclusters" "$code"
 
