@@ -22,6 +22,9 @@ name = "stormconsole"
 bind = "0.0.0.0:9094"
 # auth_token = "s3cret"              # machine credential (Bearer); signing in
 #                                    # with it (any name) is an admin session
+# auth_token_file = "/etc/stormcert/stormconsole-api.token"
+#                                    # the same, from a per-node file, re-read when
+#                                    # it changes; missing = closed, not open
 # [[api.users]]                      # any user or token being set turns auth on
 # name = "admin"
 # password_hash = "$argon2id$v=19$…" # printf %s 'pw' | stormconsole --hash-password

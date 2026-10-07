@@ -86,6 +86,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
+| `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
 | `verify-cluster.sh` | the Cluster page on objects (#88) — three real stormclusters from main over TLS on loopback addresses and a private multicast group, b1 reconciling a real rustkube (TLS, anonymous off), stand-ins for the node lifecycle API and fastetcd's gateway; plans and refusals in stormcluster's words, RBAC as the viewer, then form, join, a failed step on the object, release in Chromium as root and alice |
 | `verify-cluster-tls.sh` | the Cluster plugin over TLS (#89): a real stormcluster from main with an openssl node CA — the pair, the CA alone (its 401), plain http (its 403), a stranger CA, a pair minted late, exit 78s |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
@@ -146,6 +147,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[general] theme` | — | default palette; a viewer's pick wins |
 | `[api] bind` | `0.0.0.0:9094` | |
 | `[api] auth_token` | — | a machine credential (`Authorization: Bearer`); signing in with it is an admin session |
+| `[api] auth_token_file` | — | the same credential from a file — a per-node token stormcos mints at boot (stormcos#200) — re-read when it changes; **while it is missing or empty the console is closed** (everything but the open list 401, the reason logged once); not with `auth_token` (exit 78) |
 | `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
 | `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | without `ca_file` the local default is unverified (warned at start, said on the card); a configured server is verified against the system roots unless set |
 | `[kubernetes] token_file` | — | the console's bearer from a file (stormcert's ServiceAccount token), re-read when it changes; not with `token` |
@@ -184,7 +186,7 @@ did not answer.
 
 ## Authentication and roles
 
-Off until `[api] auth_token` or a user is configured — then every request
+Off until `[api] auth_token`, `[api] auth_token_file` or a user is configured — then every request
 not on the open list (`/healthz`, `/readyz`, `/api/version`, `/api/summary`,
 `/api/v1/auth/*`, static assets) needs a session or the bearer. With it
 off, everybody who reaches the port is an administrator, and the console

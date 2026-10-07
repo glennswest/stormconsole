@@ -17,6 +17,89 @@ use serde_json::json;
 
 use crate::server::AppState;
 
+/// The console's own bearer (`[api] auth_token`, or `auth_token_file`,
+/// #102).
+///
+/// stormcos cannot put a token in the console's config: the config lives
+/// in a service golden that is the same bytes on every node and published
+/// on forge, so it would be one secret shared everywhere and readable by
+/// anyone who can read the golden (stormcos#200). It mints one per node at
+/// boot instead, into a file, and re-mints it as it ages. So the file is
+/// re-read whenever its modification time moves — a `stat` per check — and
+/// while it is **missing or empty the console is closed**, not open: a
+/// node whose mint is late must not come up with authentication off. The
+/// state is logged once each time it changes, never per request.
+pub struct ConsoleToken {
+    inline: Option<String>,
+    file: Option<std::path::PathBuf>,
+    read: Mutex<TokenRead>,
+}
+
+#[derive(Default)]
+struct TokenRead {
+    stamp: Option<std::time::SystemTime>,
+    value: Option<String>,
+    /// Why there is no token, as last logged.
+    said: Option<String>,
+    read_once: bool,
+}
+
+impl ConsoleToken {
+    pub fn new(inline: Option<String>, file: Option<String>) -> Self {
+        let t = Self {
+            inline: inline.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            file: file.map(Into::into),
+            read: Mutex::new(TokenRead::default()),
+        };
+        let _ = t.current();
+        t
+    }
+
+    /// Is there a bearer to check against at all — configured, whether or
+    /// not its file is there yet?
+    pub fn configured(&self) -> bool {
+        self.inline.is_some() || self.file.is_some()
+    }
+
+    /// The bearer as of now; `None` while the file is missing or empty.
+    pub fn current(&self) -> Option<String> {
+        if let Some(t) = &self.inline {
+            return Some(t.clone());
+        }
+        let path = self.file.as_ref()?;
+        let stamp = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let mut r = self.read.lock().unwrap_or_else(|e| e.into_inner());
+        if !r.read_once || r.stamp != stamp {
+            r.read_once = true;
+            r.stamp = stamp;
+            let (value, why) = match std::fs::read_to_string(path) {
+                Ok(s) if !s.trim().is_empty() => (Some(s.trim().to_string()), None),
+                Ok(_) => (None, Some(format!("[api] auth_token_file {} is empty", path.display()))),
+                Err(e) => (None, Some(format!("[api] auth_token_file {}: {e}", path.display()))),
+            };
+            match (&why, &r.said, r.value.is_some(), value.is_some()) {
+                (Some(w), said, _, _) if said.as_deref() != Some(w) => tracing::warn!(
+                    "{w}: the console is closed — every request but health and sign-in is refused until it is there"
+                ),
+                (None, _, false, true) => {
+                    tracing::info!(file = %path.display(), "auth_token_file read: the console's bearer is set")
+                }
+                (None, _, true, true) => tracing::info!(file = %path.display(), "auth_token_file changed: the new bearer is in use"),
+                _ => {}
+            }
+            r.said = why;
+            r.value = value;
+        }
+        r.value.clone()
+    }
+
+    /// Does `given` match the bearer? Constant time; never true while there
+    /// is none.
+    pub fn matches(&self, given: &str) -> bool {
+        self.current().is_some_and(|t| constant_time_eq(given, &t))
+    }
+}
+
 const SESSION_COOKIE: &str = "stormconsole_session";
 const SESSION_TTL: Duration = Duration::from_secs(24 * 3600);
 
@@ -92,8 +175,8 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
     // A machine on the bearer token acts as the console itself: it is the
     // console's own credential, not a person's, so it carries no
     // kubernetes identity of its own.
-    if let (Some(given), Some(token)) = (bearer(req), state.config.api.auth_token.as_deref()) {
-        if constant_time_eq(&given, token) {
+    if let Some(given) = bearer(req) {
+        if state.token.matches(&given) {
             // The console's own credential, not a person's. It is how the
             // console talks to itself, so it gets the role that lets it
             // finish the job and no identity of its own upstream.
@@ -142,8 +225,8 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     if open {
         return next.run(req).await;
     }
-    if let (Some(given), Some(token)) = (bearer(&req), state.config.api.auth_token.as_deref()) {
-        if constant_time_eq(&given, token) {
+    if let Some(given) = bearer(&req) {
+        if state.token.matches(&given) {
             return storage_gate(&state, &who, req, next).await;
         }
     }
@@ -315,8 +398,7 @@ pub const TOKEN_USER: &str = "token";
 
 pub async fn login(State(state): State<AppState>, Json(body): Json<LoginBody>) -> Response {
     let as_user = state.config.api.users.iter().any(|u| u.name == body.username && verify(u, &body.password));
-    let as_token = !as_user
-        && state.config.api.auth_token.as_deref().is_some_and(|t| constant_time_eq(t, &body.password));
+    let as_token = !as_user && state.token.matches(&body.password);
     if !as_user && !as_token {
         return (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid credentials"})))
             .into_response();
@@ -355,6 +437,41 @@ pub async fn session(State(state): State<AppState>, req: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tokdir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("sc-authtok-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d.join("token")
+    }
+
+    /// stormcos#200: missing means closed, minted means open to that bearer,
+    /// re-minted means the new one and not the old — with no restart.
+    #[test]
+    fn the_token_file_is_closed_until_it_is_there_and_follows_its_renewals() {
+        let p = tokdir("follow");
+        let t = ConsoleToken::new(None, Some(p.display().to_string()));
+        assert!(t.configured(), "a file configured is authentication on");
+        assert_eq!(t.current(), None);
+        assert!(!t.matches(""), "no token: nothing matches, not even empty");
+        std::fs::write(&p, "first\n").unwrap();
+        assert!(t.matches("first"));
+        std::fs::write(&p, "second\n").unwrap();
+        let later = std::time::SystemTime::now() + Duration::from_secs(5);
+        std::fs::File::options().write(true).open(&p).unwrap().set_modified(later).unwrap();
+        assert!(t.matches("second") && !t.matches("first"));
+        std::fs::write(&p, "  \n").unwrap();
+        let later = later + Duration::from_secs(5);
+        std::fs::File::options().write(true).open(&p).unwrap().set_modified(later).unwrap();
+        assert!(!t.matches("second") && !t.matches(""), "an empty file is closed too");
+    }
+
+    #[test]
+    fn an_inline_token_is_used_as_it_is() {
+        let t = ConsoleToken::new(Some(" tok \n".into()), None);
+        assert!(t.configured() && t.matches("tok") && !t.matches("tok2"));
+        assert!(!ConsoleToken::new(None, None).configured());
+    }
 
     fn req(method: Method, path: &str) -> Request {
         Request::builder().method(method).uri(path).body(axum::body::Body::empty()).unwrap()

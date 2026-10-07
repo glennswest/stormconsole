@@ -100,7 +100,7 @@ async fn main() {
     }
     if !config.auth_required() {
         tracing::warn!(
-            "no users and no auth_token configured: every request is an \
+            "no users, no auth_token and no auth_token_file configured: every request is an \
              authenticated administrator. Anyone who can reach this port can \
              open a serial console, delete a volume, or destroy a machine."
         );
@@ -272,6 +272,7 @@ async fn main() {
 
     let state = server::AppState {
         auth_required: config.auth_required(),
+        token: Arc::new(auth::ConsoleToken::new(config.api.auth_token.clone(), config.api.auth_token_file.clone())),
         sessions: Arc::new(auth::Sessions::new()),
         registry,
         config: config.clone(),

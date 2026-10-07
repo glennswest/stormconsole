@@ -1338,7 +1338,10 @@ create, rather than showing nothing.
 
 - **Auth** — stormd-compatible: `[[api.users]]` (argon2 `password_hash`,
   roles, SSH keys, an optional `kube_token`) + an optional `auth_token`
-  bearer; HttpOnly in-memory sessions (24 h); everything except `/healthz`,
+  bearer, or `auth_token_file` (#102: a per-node token stormcos mints, since
+  one in the golden would be shared by every node; re-read when its mtime
+  moves; while it is missing or empty authentication stays on and nothing
+  matches, so a node whose mint is late is closed, not open); HttpOnly in-memory sessions (24 h); everything except `/healthz`,
   `/readyz`, `/api/version`, `/api/summary`, the auth endpoints and static
   assets requires a session or bearer; comparisons in constant time. The
   write gate is one check by method (§Who may do what).

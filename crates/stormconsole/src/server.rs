@@ -23,6 +23,8 @@ pub struct AppState {
     pub registry: Arc<Registry>,
     pub sessions: Arc<auth::Sessions>,
     pub auth_required: bool,
+    /// The console's own bearer, inline or from its file (#102).
+    pub token: Arc<auth::ConsoleToken>,
     /// The apiserver connection every caller shares (#33).
     pub kube: Option<Arc<console_core::apiserver::Conn>>,
 }

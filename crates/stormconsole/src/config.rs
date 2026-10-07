@@ -76,6 +76,11 @@ pub struct Api {
     pub bind: String,
     /// Machine credential: Authorization: Bearer <token>.
     pub auth_token: Option<String>,
+    /// The same credential from a file (#102), re-read when it changes —
+    /// a per-node token stormcos mints at boot, since one in the golden
+    /// would be shared by every node. While it is missing the console is
+    /// closed. Not with `auth_token`.
+    pub auth_token_file: Option<String>,
     /// Named users for the login screen. Any user or the token being set
     /// turns authentication on, stormd-style.
     #[serde(default)]
@@ -84,7 +89,7 @@ pub struct Api {
 
 impl Default for Api {
     fn default() -> Self {
-        Self { bind: default_bind(), auth_token: None, users: Vec::new() }
+        Self { bind: default_bind(), auth_token: None, auth_token_file: None, users: Vec::new() }
     }
 }
 
@@ -504,6 +509,9 @@ impl Config {
         let bind = self.bind();
         bind.parse::<std::net::SocketAddr>()
             .map_err(|e| format!("listen address {bind:?} is not host:port: {e}"))?;
+        if self.api.auth_token.is_some() && self.api.auth_token_file.is_some() {
+            return Err("[api] auth_token and auth_token_file are both set: use one".into());
+        }
         let k = &self.kubernetes;
         if k.token.is_some() && k.token_file.is_some() {
             return Err("[kubernetes] token and token_file are both set: use one".into());
@@ -667,7 +675,9 @@ impl Config {
 
     /// Auth is on the moment any credential is configured.
     pub fn auth_required(&self) -> bool {
-        !self.api.users.is_empty() || self.api.auth_token.is_some()
+        // A token file configured is authentication on, whether or not the
+        // file is there yet: missing is closed, never open (#102).
+        !self.api.users.is_empty() || self.api.auth_token.is_some() || self.api.auth_token_file.is_some()
     }
 
     /// A named user's SSH public keys.
@@ -834,6 +844,15 @@ data_dir    = \"/var/lib/stormconsole\"
     fn bad_listen_address_is_a_config_error() {
         let e = Config::parse("listen_addr = \"9094\"\n").unwrap_err();
         assert!(e.contains("listen address"), "{e}");
+    }
+
+    /// #102: a per-node token file turns authentication on by itself.
+    #[test]
+    fn an_auth_token_file_is_authentication_on() {
+        let c = Config::parse("[api]\nauth_token_file = \"/etc/stormcert/stormconsole-api.token\"\n").unwrap();
+        assert!(c.auth_required());
+        let e = Config::parse("[api]\nauth_token = \"t\"\nauth_token_file = \"f\"\n").unwrap_err();
+        assert!(e.contains("auth_token and auth_token_file"), "{e}");
     }
 
     /// stormcluster's :9102 is TLS only (#89, stormcluster#5).

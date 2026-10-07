@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-07 — The console's own bearer from a per-node file (#102)
+- **feat:** `[api] auth_token_file`: the console's bearer read from a file
+  (a per-node token stormcos mints at boot, stormcos#200) and re-read when
+  it changes. While the file is missing or empty the console is **closed**
+  — every route but health, the version, the summary and sign-in is 401,
+  and the reason is logged once each time it changes. Not with
+  `auth_token` (exit 78).
+
 ### 2026-10-07 — stormvm's door paths in the docs (#39)
 - **docs:** `vm/src/console.rs` named stormvm's doors
   `/api/v1/vms/{id}/console/…`; stormvm addresses a machine by
