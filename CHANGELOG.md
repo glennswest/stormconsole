@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-07 — stormstorage's api_token on the proxy (#53)
+- **feat:** `[stormstorage] token_file`: stormstorage's `[api] api_token`
+  (stormstorage#6), read at start and added by the proxy to the feed's
+  actions — publish, assemble, move — which a tokened stormstorage
+  answered 401. The browser's own `Authorization` is never forwarded.
+  A delete keeps #82's rule (the viewer's bearer, never this token).
+- **feat:** `FeedPlugin::bearer`, so any feed upstream can carry its own
+  token the same way.
+
 ## [v0.31.0] — 2026-10-07
 
 ### 2026-10-07 — The console's own bearer from a per-node file (#102)

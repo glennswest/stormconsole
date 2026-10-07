@@ -87,6 +87,7 @@ enabled = true
 [stormstorage]
 enabled = true
 # url = "http://127.0.0.1:9093"      # its stormview feed
+# token_file = "/etc/stormconsole/stormstorage.token"   # its [api] api_token, for the feed's actions
 
 [stormblock]
 enabled = true

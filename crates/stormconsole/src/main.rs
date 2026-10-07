@@ -178,7 +178,16 @@ async fn main() {
         )));
     }
     if config.stormstorage.enabled {
-        plugins.push(Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url())));
+        // stormstorage's write token (#53), held server-side like the
+        // engine's: every action on its feed is a write.
+        let token = config.stormstorage.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!(file = f, "stormstorage token_file unreadable, its writes will be refused: {e}");
+                None
+            }
+        });
+        plugins.push(Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url(), token)));
     }
     if config.stormblock.enabled {
         // A guarded engine answers every read with 401 without its token;

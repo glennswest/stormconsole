@@ -174,6 +174,10 @@ pub struct FeedPlugin {
     items: Vec<(String, String)>,
     feed: Arc<Feed>,
     client: reqwest::Client,
+    /// The upstream's own token, added by the proxy to what it forwards
+    /// (#53). The browser's `Authorization` is never passed on: the
+    /// console decides who acts upstream, not the page.
+    bearer: Option<String>,
 }
 
 impl FeedPlugin {
@@ -195,7 +199,17 @@ impl FeedPlugin {
             items: vec![(item.to_string(), format!("#/grid?id=plugin:{name}"))],
             feed,
             client: reqwest::Client::new(),
+            bearer: None,
         }
+    }
+
+    /// The upstream's write token — stormstorage's `[api] api_token`, say
+    /// (#53). Its feed and reads stay open upstream, so only the proxy
+    /// carries it. Destructive storage still goes with the viewer's own
+    /// bearer instead (#82, [`crate::storage::upstream_bearer`]).
+    pub fn bearer(mut self, token: Option<String>) -> Self {
+        self.bearer = token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+        self
     }
 
     /// This upstream's section is one people come to diagnose in rather
@@ -235,7 +249,10 @@ impl ConsolePlugin for FeedPlugin {
     }
 
     fn routes(&self) -> axum::Router {
-        axum::Router::new().nest("/proxy", crate::proxy::router(self.client.clone(), self.feed.base.clone()))
+        axum::Router::new().nest(
+            "/proxy",
+            crate::proxy::router_as(self.client.clone(), self.feed.base.clone(), self.bearer.clone()),
+        )
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
@@ -260,6 +277,45 @@ impl ConsolePlugin for FeedPlugin {
 mod tests {
     use super::*;
     use stormview::{Action, Relation};
+
+    async fn serve(router: axum::Router) -> String {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(l, router).await.unwrap() });
+        format!("http://{addr}")
+    }
+
+    /// #53: an action through a feed plugin's proxy carries the upstream's
+    /// token, and never the browser's own `Authorization`.
+    #[tokio::test]
+    async fn the_proxy_adds_the_upstreams_token_and_drops_the_browsers() {
+        use axum::http::HeaderMap;
+        let upstream = serve(axum::Router::new().route(
+            "/api/v1/volumes/{name}/export",
+            axum::routing::post(|h: HeaderMap| async move {
+                h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("none").to_string()
+            }),
+        ))
+        .await;
+        let said = |plugin: FeedPlugin| async move {
+            let console = serve(axum::Router::new().nest("/api/plugins/storage", plugin.routes())).await;
+            reqwest::Client::new()
+                .post(format!("{console}/api/plugins/storage/proxy/api/v1/volumes/v1/export"))
+                .header("authorization", "Bearer from-the-browser")
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap()
+        };
+        let with = FeedPlugin::new("storage", "stormstorage", "Storage", 40, "Pools", &upstream).bearer(Some(" tok\n".into()));
+        assert_eq!(said(with).await, "Bearer tok");
+        let without = FeedPlugin::new("storage", "stormstorage", "Storage", 40, "Pools", &upstream);
+        assert_eq!(said(without).await, "none", "the browser's bearer is never passed on");
+        let blank = FeedPlugin::new("storage", "stormstorage", "Storage", 40, "Pools", &upstream).bearer(Some("  ".into()));
+        assert_eq!(said(blank).await, "none", "a blank token file is no token");
+    }
 
     #[test]
     fn remap_prefixes_ids_and_targets_and_proxies_actions() {

@@ -735,6 +735,17 @@ detail from the upstream's own `system` card. stormstorage is a plain
 (`DrivesPlugin`, every 5 s): this node's feed as `drive:…` and every other
 node's as `drive:@<host>:…` with its own proxy — §Drives at rack scale.
 
+**A feed upstream's token (#53).** `FeedPlugin::bearer` gives a feed's
+proxy the upstream's own write token, added server-side to everything it
+forwards; the browser's `Authorization` is never passed on. stormstorage
+takes no write without its `[api] api_token` once one is set
+(stormstorage#6) — publish, assemble, move, delete — while its feed and
+reads stay open, so `[stormstorage] token_file` (read at start, like
+stormblock's) is what makes its feed's actions work. Destructive storage
+(a stormstorage DELETE) keeps #82's rule instead: it goes with the
+viewer's bearer, never this token, so a tokened stormstorage refuses it
+until it takes a user's bearer (stormstorage#58).
+
 ### vm (KubeVirt objects, not a daemon)
 
 stormvm's `docs/kube.md` settles where a VM lives: *"stormvm is libraries,

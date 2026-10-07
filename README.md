@@ -87,6 +87,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge) |
 | `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
+| `verify-storage-token.sh` | stormstorage's write token through the proxy (#53): a real stormstorage with `[api] api_token` — with `token_file` the feed's actions pass its check, without it (or with the browser sending the token) 401, an unreadable file warned, a DELETE left to the storage guard |
 | `verify-cluster.sh` | the Cluster page on objects (#88) — three real stormclusters from main over TLS on loopback addresses and a private multicast group, b1 reconciling a real rustkube (TLS, anonymous off), stand-ins for the node lifecycle API and fastetcd's gateway; plans and refusals in stormcluster's words, RBAC as the viewer, then form, join, a failed step on the object, release in Chromium as root and alice |
 | `verify-cluster-tls.sh` | the Cluster plugin over TLS (#89): a real stormcluster from main with an openssl node CA — the pair, the CA alone (its 401), plain http (its 403), a stranger CA, a pair minted late, exit 78s |
 | `verify-etcd.sh` | the datastore — a real etcd and a real fastetcd |
@@ -157,6 +158,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[logs] enabled / mcast_group / db_path / ring_cap / retain_hours / dedup` | on / `239.255.42.1:5514` / `<data_dir>/logs.redb` / 200000 / 168 / true | |
 | `[stormdrive] enabled / url / nodes` | on / `http://127.0.0.1:9092` / {} | `nodes` = `host = "url"`, beside the fleet-discovered ones |
 | `[stormstorage] enabled / url` | on / `http://127.0.0.1:9093` | |
+| `[stormstorage] token_file` | — | stormstorage's `[api] api_token` (stormstorage#6), read at start and added by the proxy to the feed's actions; without it a tokened stormstorage answers them 401. A delete still goes with the viewer's bearer (#82) |
 | `[stormblock] enabled / url / token_file` | on / `http://127.0.0.1:9090` / — | the engine's `<data_dir>/api_token`; a v18 engine answers 401 to reads without it. On a node stormcos sets `/run/stormblock/engine/api_token` |
 | `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | |
 | `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |

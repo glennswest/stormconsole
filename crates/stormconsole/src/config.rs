@@ -304,11 +304,15 @@ pub struct Stormstorage {
     pub enabled: bool,
     /// The storage control plane, e.g. "http://127.0.0.1:9093".
     pub url: Option<String>,
+    /// A file holding stormstorage's `[api] api_token`, when it has one
+    /// (#53): every write it takes needs it. Read at start; the console
+    /// adds it to the actions it proxies, and the browser never sees it.
+    pub token_file: Option<String>,
 }
 
 impl Default for Stormstorage {
     fn default() -> Self {
-        Self { enabled: true, url: None }
+        Self { enabled: true, url: None, token_file: None }
     }
 }
 
