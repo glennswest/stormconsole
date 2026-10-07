@@ -31,6 +31,8 @@ P=19106
 ROOT=$PWD
 
 say "build the console"
+# The SPA from this commit, so the browser walk sees the pages being shipped.
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="$ROOT/${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 [ -x "$BIN" ] || BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
@@ -351,6 +353,9 @@ print(f"  model with usage and placement over 1,600 drives: {m['ms']} ms · {m['
 sys.exit(1 if fails else 0)
 PY
 python3 "$W/check29.py" "$W" || FAILS=$((FAILS + 1))
+
+say "4b. the pages in a browser (#58)"
+deploy/browser/run.sh "$W" drives.cjs "$C" || FAILS=$((FAILS + 1))
 
 say "5. a node goes away"
 
