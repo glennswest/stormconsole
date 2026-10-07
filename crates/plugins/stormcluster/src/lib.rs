@@ -1,25 +1,28 @@
-//! The stormcluster plugin: the Cluster page (#63).
+//! The stormcluster plugin: the Cluster page (#63, #88).
 //!
 //! stormcluster (stormcluster#1) runs on every node at :9102 and serves the
 //! cluster as a stormview feed: `system` (the cluster, or this node as a
 //! single-node cluster), `member:<node>`, `peer:<node>` (discovered, not a
-//! member) and `op:<id>` (the last five operations). Every card carries its
-//! actions as body-less POSTs, so the feed is folded in like stormdrive's.
-//! This plugin adds what a feed cannot:
+//! member) and `op:<id>` (the last five operations). That feed is the
+//! read-only view, folded in like stormdrive's.
 //!
-//! - **Who may act.** Reads are open; every write — form, join, promote,
-//!   demote, drain, uncordon, split, resume — is `admin` only. Splitting a
-//!   node out of the cluster or demoting a master is not an operator's
-//!   everyday mistake to be allowed to make.
-//! - **stormcluster's write token** (`token_file`), held here and added
-//!   server-side; the browser never sees it or the node's address.
-//! - **Answers a page can read.** A request sent to a node that does not
-//!   coordinate it comes back as `{"coordinator", "response"}`; a refusal is
-//!   `409 {"refused": [...]}`; a dry run's plan is bare step objects. The
-//!   proxy unwraps the first (naming the coordinator), carries the reasons
-//!   of the second as `error` too (so any row button says them, not
-//!   "409 Conflict"), and gives each planned step the sentence stormcluster
-//!   itself would print for it.
+//! **Changes are objects** (#88, stormcluster#12): `cluster.storm.io`
+//! `Cluster` and `ClusterMember`, written through the apiserver as the
+//! viewer and reconciled by stormcluster — see [`objects`]. This plugin
+//! watches both kinds and adds what neither the feed nor the objects give:
+//!
+//! - **A plan before anything is written.** stormcluster's dry run (`POST
+//!   /api/v1/plan`) answers with the steps and a sentence for each, or the
+//!   reasons it is refused; the page shows it and writes only on confirm. A
+//!   release (deleting a member) erases the node and cannot be taken back.
+//! - **Who may act is the apiserver's answer.** Every write carries the
+//!   viewer's bearer, so RBAC on `cluster.storm.io` decides.
+//! - **The proxy is read-only**, plus the dry run: stormcluster has no other
+//!   writes, and `/api/v1/record` is between stormclusters.
+//! - **:9102 over TLS** (#89) with the node CA and the console's client
+//!   pair, and stormcluster's bearer added server-side for reads.
+
+pub mod objects;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,11 +30,12 @@ use std::time::Duration;
 use async_trait::async_trait;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
+use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get};
+use axum::routing::{any, delete, get, patch, post};
 use axum::{Json, Router};
 use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, NavSection, Viewer};
+use plugin_kubernetes::{Client, KubeStore};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -44,6 +48,10 @@ struct Inner {
     /// :9102 is TLS only (stormcluster#5): the node CA and the console's
     /// client pair, followed as stormcert renews them (#89).
     tls: console_core::tls::Client,
+    /// The apiserver the objects live on — this node's, which on an SNO is
+    /// the one stormcluster reconciles and in a cluster is the cluster's.
+    kube: Option<Client>,
+    store: Arc<KubeStore>,
 }
 
 pub struct StormclusterPlugin {
@@ -51,7 +59,7 @@ pub struct StormclusterPlugin {
 }
 
 impl StormclusterPlugin {
-    /// `token` is stormcluster's write token, when it has one configured.
+    /// `token` is stormcluster's bearer, when it has one configured.
     pub fn new(url: &str, token: Option<String>) -> Self {
         Self::with_tls(url, token, console_core::tls::TlsFiles::default())
     }
@@ -69,27 +77,32 @@ impl StormclusterPlugin {
                 // HTTP/1.1: stormcluster offers h2 in ALPN and drops an h2
                 // client after the handshake (stormcluster#30).
                 tls: console_core::tls::Client::http1("stormcluster", files),
+                kube: None,
+                store: Arc::new(KubeStore::with_kinds(objects::RESOURCES.len())),
             }),
         }
     }
+
+    /// The apiserver connection the objects are written and watched through
+    /// (#88). Called right after construction, before anything shares it.
+    pub fn with_kube(mut self, conn: Option<Arc<console_core::apiserver::Conn>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.kube = conn.map(Client::new);
+        }
+        self
+    }
 }
 
-/// May this viewer do this to the cluster? Reads, yes; anything else only
-/// as an administrator.
-pub fn allowed(method: &Method, viewer: &Viewer) -> bool {
-    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) || viewer.has_role("admin")
-}
-
-/// The only upstream paths the proxy forwards: the operator's API.
-/// `/api/v1/record` is between stormclusters — publishing or forgetting the
-/// cluster record by hand would make a node believe it is somewhere it is
-/// not — so the browser does not get to name it.
+/// The only upstream paths the proxy forwards: stormcluster's reads.
+/// `/api/v1/record` is between stormclusters, and there are no other
+/// writes on :9102 any more (stormcluster#12) — the dry run has its own
+/// route, [`plan`].
 pub fn forwardable(path: &str) -> bool {
     let p = path.trim_start_matches('/');
     if p.split('/').any(|seg| seg == ".." || seg == ".") {
         return false;
     }
-    const SERVED: [&str; 8] = [
+    const SERVED: [&str; 7] = [
         "api/v1/health",
         "api/v1/self",
         "api/v1/peers",
@@ -97,7 +110,6 @@ pub fn forwardable(path: &str) -> bool {
         "api/v1/etcd",
         "api/v1/components",
         "api/v1/operations",
-        "api/v1/members",
     ];
     SERVED.iter().any(|s| p == *s || p.starts_with(&format!("{s}/")))
 }
@@ -117,6 +129,12 @@ impl ConsolePlugin for StormclusterPlugin {
     fn routes(&self) -> Router {
         Router::new()
             .route("/me", get(me))
+            .route("/objects", get(objects_list))
+            .route("/plan", post(plan))
+            .route("/form", post(form))
+            .route("/members", post(join))
+            .route("/members/{node}", patch(change).delete(release))
+            .route("/clusters/{name}", delete(dissolve))
             .route("/proxy/{*path}", any(proxy))
             .with_state(self.inner.clone())
     }
@@ -144,6 +162,12 @@ impl ConsolePlugin for StormclusterPlugin {
     }
 
     async fn run(&self, shutdown: CancellationToken) {
+        if let Some(client) = self.inner.kube.clone() {
+            for spec in objects::RESOURCES {
+                let (store, client, token) = (self.inner.store.clone(), client.clone(), shutdown.clone());
+                tokio::spawn(async move { plugin_kubernetes::watch(client, spec, store, token).await });
+            }
+        }
         // The feed's own loop holds one client for good; this one picks up
         // a renewed pair (or one minted after start) before every poll.
         loop {
@@ -157,21 +181,228 @@ impl ConsolePlugin for StormclusterPlugin {
     }
 }
 
-/// Whether to offer the buttons at all. The proxy enforces it either way.
-async fn me(viewer: Viewer) -> Response {
-    let admin = viewer.has_role("admin");
+fn err(code: StatusCode, e: impl Into<String>) -> Response {
+    (code, Json(json!({"error": e.into()}))).into_response()
+}
+
+/// Whether to offer the buttons. The apiserver decides either way; this
+/// only spares a reader the sight of buttons that will be refused.
+async fn me(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    let write = viewer.may_write() && inner.kube.is_some();
     Json(json!({
-        "admin": admin,
-        "why": if admin { "" } else {
-            "forming, joining, promoting, demoting, draining and splitting are for administrators"
+        "write": write,
+        // Kept for a page from before #88.
+        "admin": write,
+        "why": if inner.kube.is_none() {
+            "the console has no apiserver to write cluster.storm.io objects to ([kubernetes])"
+        } else if write {
+            ""
+        } else {
+            "changing what the cluster is made of needs the operator role here, and the apiserver's leave on cluster.storm.io"
         },
     }))
     .into_response()
 }
 
-async fn proxy(
+/// Both kinds as the page reads them, or why there are none.
+async fn objects_list(State(inner): State<Arc<Inner>>) -> Response {
+    if inner.kube.is_none() {
+        return Json(json!({"installed": false, "reason": "no apiserver is configured ([kubernetes])", "clusters": [], "members": []}))
+            .into_response();
+    }
+    let absent = inner.store.is_absent("scluster").await || inner.store.is_absent("smember").await;
+    let mut clusters: Vec<Value> = inner.store.kind("scluster").await.values().map(objects::summary).collect();
+    let mut members: Vec<Value> = inner.store.kind("smember").await.values().map(objects::summary).collect();
+    let by_name = |a: &Value, b: &Value| a["name"].as_str().cmp(&b["name"].as_str());
+    clusters.sort_by(by_name);
+    members.sort_by(by_name);
+    Json(json!({
+        "installed": !absent,
+        "reason": if absent {
+            "the apiserver does not serve cluster.storm.io yet: stormcluster installs its CRDs on the apiserver it reconciles (kube.install_crds), or they ship in stormcluster's deploy/crd.yaml"
+        } else { "" },
+        "clusters": clusters,
+        "members": members,
+    }))
+    .into_response()
+}
+
+/// stormcluster's dry run: what a request would do, or why it is refused.
+/// Never starts anything, so any reader may ask.
+async fn plan(State(inner): State<Arc<Inner>>, Json(req): Json<Value>) -> Response {
+    let (status, v) = ask_plan(&inner, &req).await;
+    (status, Json(v)).into_response()
+}
+
+async fn ask_plan(inner: &Inner, req: &Value) -> (StatusCode, Value) {
+    inner.tls.refresh();
+    let mut r = inner.tls.get().post(format!("{}/api/v1/plan", inner.base)).json(req).timeout(Duration::from_secs(30));
+    if let Some(t) = &inner.token {
+        r = r.bearer_auth(t);
+    }
+    match r.send().await {
+        Ok(resp) => {
+            let code = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            let ok = resp.status().is_success();
+            let v: Value = resp.json().await.unwrap_or_else(|_| json!({}));
+            let v = objects::plan_answer(ok, v);
+            (if ok || code == StatusCode::CONFLICT { code } else { StatusCode::BAD_GATEWAY }, v)
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, json!({"error": format!("stormcluster could not be asked for a plan: {e}")})),
+    }
+}
+
+/// The apiserver said no: its status and its words.
+fn from_apiserver(status: reqwest::StatusCode, body: &Value, what: &str) -> Response {
+    let code = match status.as_u16() {
+        401 => StatusCode::UNAUTHORIZED,
+        403 => StatusCode::FORBIDDEN,
+        404 => StatusCode::NOT_FOUND,
+        409 => StatusCode::CONFLICT,
+        400 | 422 => StatusCode::BAD_REQUEST,
+        _ => StatusCode::BAD_GATEWAY,
+    };
+    let said = body.get("message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("apiserver returned {}", status.as_u16()));
+    err(code, format!("{what}: {said}"))
+}
+
+/// Create objects in order, as the viewer. The first refusal stops it and
+/// names what was already written, since a half-written form is a state
+/// somebody has to see.
+async fn create_all(inner: &Inner, viewer: &Viewer, objs: &[Value]) -> Result<Vec<String>, Response> {
+    let Some(kube) = &inner.kube else { return Err(err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver")) };
+    let mut made = Vec::new();
+    for o in objs {
+        let kind = o["kind"].as_str().unwrap_or("");
+        let name = o.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
+        let plural = if kind == "Cluster" { "clusters" } else { "clustermembers" };
+        match kube.post_json_as(&format!("{}/{plural}", objects::API), o, viewer.token.as_deref()).await {
+            Ok((s, _)) if s.is_success() => made.push(format!("{kind} {name}")),
+            Ok((s, b)) => {
+                let mut what = format!("{kind} {name}");
+                if !made.is_empty() {
+                    what = format!("{what} (already written: {})", made.join(", "));
+                }
+                return Err(from_apiserver(s, &b, &what));
+            }
+            Err(e) => return Err(err(StatusCode::BAD_GATEWAY, format!("{kind} {name}: {e}"))),
+        }
+    }
+    Ok(made)
+}
+
+fn audit(viewer: &Viewer, what: &str) {
+    let who = viewer.user.clone().unwrap_or_else(|| "anonymous".into());
+    tracing::info!(user = %who, "cluster: {what}");
+}
+
+/// The node whose apiserver this is: stormcluster's `self`.
+async fn self_node(inner: &Inner) -> Option<String> {
+    inner.tls.refresh();
+    let mut r = inner.tls.get().get(format!("{}/api/v1/self", inner.base)).timeout(Duration::from_secs(5));
+    if let Some(t) = &inner.token {
+        r = r.bearer_auth(t);
+    }
+    let v: Value = r.send().await.ok()?.json().await.ok()?;
+    v.get("node").and_then(Value::as_str).map(str::to_string)
+}
+
+/// Form a cluster seeded on this node: the members, then the `Cluster`.
+async fn form(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(f): Json<objects::Form>) -> Response {
+    let Some(seed) = self_node(&inner).await else {
+        return err(StatusCode::BAD_GATEWAY, "stormcluster did not say which node this is (GET /api/v1/self)");
+    };
+    let objs = match objects::form_objects(&f, &seed) {
+        Ok(o) => o,
+        Err(e) => return err(StatusCode::BAD_REQUEST, e),
+    };
+    match create_all(&inner, &viewer, &objs).await {
+        Ok(made) => {
+            audit(&viewer, &format!("form {} seeded on {seed}: {}", f.name.trim(), made.join(", ")));
+            Json(json!({"message": format!(
+                "wrote {}: stormcluster forms {} seeded on {seed} — its progress is the Cluster's status",
+                made.join(", "), f.name.trim()
+            )}))
+            .into_response()
+        }
+        Err(r) => r,
+    }
+}
+
+/// Join nodes: one `ClusterMember` each.
+async fn join(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(j): Json<objects::Join>) -> Response {
+    let objs = match objects::join_objects(&j) {
+        Ok(o) => o,
+        Err(e) => return err(StatusCode::BAD_REQUEST, e),
+    };
+    match create_all(&inner, &viewer, &objs).await {
+        Ok(made) => {
+            audit(&viewer, &format!("join as {}: {}", j.role, made.join(", ")));
+            Json(json!({"message": format!("wrote {}: stormcluster joins them as {}s", made.join(", "), j.role)})).into_response()
+        }
+        Err(r) => r,
+    }
+}
+
+/// Promote, demote, drain, uncordon, storage: a merge patch of the spec.
+async fn change(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
+    Path(node): Path<String>,
+    Json(c): Json<objects::Change>,
+) -> Response {
+    let Some(kube) = &inner.kube else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
+    let body = match objects::change_patch(&c) {
+        Ok(b) => b,
+        Err(e) => return err(StatusCode::BAD_REQUEST, e),
+    };
+    let path = format!("{}/clustermembers/{node}", objects::API);
+    match kube.patch_merge(&path, &body, viewer.token.as_deref()).await {
+        Ok((s, o)) if s.is_success() => {
+            inner.store.observe("smember", o).await;
+            audit(&viewer, &format!("ClusterMember {node} spec {}", body["spec"]));
+            Json(json!({"message": format!("ClusterMember {node}: spec {} written; stormcluster acts on it", body["spec"])}))
+                .into_response()
+        }
+        Ok((s, b)) => from_apiserver(s, &b, &format!("ClusterMember {node}")),
+        Err(e) => err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+/// Release a node: delete its `ClusterMember`. stormcluster drains it,
+/// erases its data and makes it a new SNO; the finalizer keeps the object
+/// until that is done.
+async fn release(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(node): Path<String>) -> Response {
+    delete_object(&inner, &viewer, "clustermembers", "ClusterMember", &node, &format!(
+        "ClusterMember {node} deleted: stormcluster releases {node} — drained, its data erased, a new SNO"
+    ))
+    .await
+}
+
+/// Dissolve the cluster: delete its `Cluster`. Every member goes back to
+/// SNO, workers first, the seed last.
+async fn dissolve(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
+    delete_object(&inner, &viewer, "clusters", "Cluster", &name, &format!(
+        "Cluster {name} deleted: stormcluster releases every member, workers first and the seed last"
+    ))
+    .await
+}
+
+async fn delete_object(inner: &Inner, viewer: &Viewer, plural: &str, kind: &str, name: &str, done: &str) -> Response {
+    let Some(kube) = &inner.kube else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
+    match kube.delete(&format!("{}/{plural}/{name}", objects::API), viewer.token.as_deref()).await {
+        Ok(s) if s.is_success() => {
+            audit(viewer, &format!("{kind} {name} deleted"));
+            Json(json!({"message": done})).into_response()
+        }
+        Ok(s) => from_apiserver(s, &Value::Null, &format!("{kind} {name}")),
+        Err(e) => err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+/// stormcluster's reads, with its bearer and over its TLS.
+async fn proxy(
+    State(inner): State<Arc<Inner>>,
     Path(path): Path<String>,
     method: Method,
     uri: Uri,
@@ -179,25 +410,16 @@ async fn proxy(
     body: Bytes,
 ) -> Response {
     if !forwardable(&path) {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("{path} is not served here")}))).into_response();
+        return err(StatusCode::NOT_FOUND, format!("{path} is not served here"));
     }
-    if !allowed(&method, &viewer) {
-        let who = viewer.user.clone().unwrap_or_else(|| "this viewer".into());
-        return (
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": format!(
-                "{who} is not an administrator: changing what the cluster is made of needs the admin role"
-            )})),
-        )
-            .into_response();
-    }
-    let write = !matches!(method, Method::GET | Method::HEAD | Method::OPTIONS);
-    if write {
-        let who = viewer.user.clone().unwrap_or_else(|| "admin".into());
-        tracing::info!(user = %who, %method, path = %path, query = uri.query().unwrap_or(""), "cluster: acting through stormcluster");
+    if !matches!(method, Method::GET | Method::HEAD) {
+        return err(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "stormcluster takes no writes over :9102: a change is a cluster.storm.io object (stormcluster#12)",
+        );
     }
     inner.tls.refresh();
-    let resp = console_core::proxy::forward_as(
+    console_core::proxy::forward_as(
         &inner.tls.get(),
         &inner.base,
         &method,
@@ -207,119 +429,7 @@ async fn proxy(
         body,
         inner.token.as_deref(),
     )
-    .await;
-    if !write {
-        return resp;
-    }
-    // A write's answer is small JSON; make it one a page can read.
-    let status = resp.status();
-    let bytes = match axum::body::to_bytes(resp.into_body(), 4 << 20).await {
-        Ok(b) => b,
-        Err(e) => return (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("stormcluster's answer: {e}")}))).into_response(),
-    };
-    match serde_json::from_slice::<Value>(&bytes) {
-        Ok(v) => (status, Json(normalise(status, v))).into_response(),
-        Err(_) if status == StatusCode::UNAUTHORIZED => (
-            status,
-            Json(json!({"error": "stormcluster wants a bearer token: set [stormcluster] token_file to its token_file"})),
-        )
-            .into_response(),
-        Err(_) => (status, [(header::CONTENT_TYPE, "text/plain")], bytes).into_response(),
-    }
-}
-
-/// One answer from stormcluster, shaped for the page (see the module doc).
-pub fn normalise(status: StatusCode, v: Value) -> Value {
-    // Forwarded to the coordinator: the coordinator's answer is the answer.
-    let mut v = match v {
-        Value::Object(mut o) if o.contains_key("coordinator") && o.contains_key("response") => {
-            let coordinator = o.remove("coordinator").unwrap_or(Value::Null);
-            match o.remove("response").unwrap_or(Value::Null) {
-                Value::Object(mut inner) => {
-                    inner.insert("coordinator".into(), coordinator);
-                    Value::Object(inner)
-                }
-                Value::Null => json!({"coordinator": coordinator}),
-                other => json!({"coordinator": coordinator, "response": other}),
-            }
-        }
-        other => other,
-    };
-    let Some(o) = v.as_object_mut() else { return v };
-    if let Some(reasons) = o.get("refused").and_then(Value::as_array) {
-        if !o.contains_key("error") {
-            let said: Vec<&str> = reasons.iter().filter_map(Value::as_str).collect();
-            let mut e = format!("refused: {}", said.join("; "));
-            if let Some(c) = o.get("coordinator").and_then(Value::as_str) {
-                e.push_str(&format!(" (by {c}, which coordinates this)"));
-            }
-            o.insert("error".into(), Value::String(e));
-        }
-    }
-    if let Some(Value::Array(steps)) = o.get_mut("plan").and_then(|p| p.get_mut("steps")) {
-        for s in steps.iter_mut() {
-            if let Value::Object(so) = s {
-                if !so.contains_key("description") {
-                    let d = describe(&Value::Object(so.clone()));
-                    so.insert("description".into(), Value::String(d));
-                }
-            }
-        }
-    }
-    // A failure stormcluster put in no words of its own.
-    if !status.is_success() && !o.contains_key("error") {
-        o.insert("error".into(), Value::String(format!("stormcluster answered {status}")));
-    }
-    v
-}
-
-/// What a planned step does, in stormcluster's own words (its
-/// `Step::describe`, stormcluster 61777dd). A step this console does not
-/// know is named with its fields, never dropped.
-pub fn describe(step: &Value) -> String {
-    let f = |k: &str| step.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
-    let node = f("node");
-    match step.get("step").and_then(Value::as_str).unwrap_or("") {
-        "checkJoinable" => format!("check {node} is a joinable SNO"),
-        "seed" => format!("seed cluster {} on {node}", f("name")),
-        "ensureEndpoint" => "ensure the API endpoint fronts the masters".into(),
-        "enroll" => format!("issue a join token for {node}"),
-        "etcdAddLearner" => format!("add {node} to fastetcd as a learner"),
-        "nodeJoin" => format!("join {node} as {}", f("role")),
-        "nodePromote" => format!("start the control plane on {node}"),
-        "waitEtcdStarted" => format!("wait for {node}'s fastetcd to catch up"),
-        "etcdPromote" => format!("promote {node} to a fastetcd voter"),
-        "waitNodeReady" => format!("wait for Node {node} to be Ready"),
-        "cordon" => format!("cordon {node}"),
-        "uncordon" => format!("uncordon {node}"),
-        "evict" => format!("evict the pods on {node}"),
-        "etcdMoveLeaderOff" => format!("move fastetcd leadership off {node}"),
-        "etcdRemove" => format!("remove {node} from fastetcd"),
-        "nodeDemote" => format!("stop the control plane on {node}"),
-        "revokeCerts" => format!("revoke {node}'s certificates"),
-        "deleteNode" => format!("delete Node {node}"),
-        "nodeLeave" => {
-            let keep = step.get("keep_data").or_else(|| step.get("keepData")).and_then(Value::as_bool).unwrap_or(true);
-            format!("revert {node} to SNO ({})", if keep { "keeping its data" } else { "wiping its data" })
-        }
-        "recordMember" => format!("record {node} as {}, {}", f("role"), f("state")),
-        "removeMember" => format!("remove {node} from the record"),
-        "forget" => format!("tell {node} it left the cluster"),
-        "publish" => "publish the cluster record to every member".into(),
-        other => {
-            let mut parts: Vec<String> = step
-                .as_object()
-                .map(|o| {
-                    o.iter()
-                        .filter(|(k, _)| k.as_str() != "step")
-                        .map(|(k, v)| format!("{k} {}", v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default();
-            parts.insert(0, if other.is_empty() { "a step".to_string() } else { other.to_string() });
-            parts.join(" · ")
-        }
-    }
+    .await
 }
 
 #[cfg(test)]

@@ -225,11 +225,11 @@ async fn main() {
                 None
             }
         });
-        plugins.push(Arc::new(plugin_stormcluster::StormclusterPlugin::with_tls(
-            &config.stormcluster_url(),
-            token,
-            config.stormcluster_tls(),
-        )));
+        // The objects are written and watched through the apiserver (#88).
+        plugins.push(Arc::new(
+            plugin_stormcluster::StormclusterPlugin::with_tls(&config.stormcluster_url(), token, config.stormcluster_tls())
+                .with_kube(kube.clone()),
+        ));
     }
     if config.sbregistry.enabled {
         plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));

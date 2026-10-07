@@ -1,6 +1,6 @@
 [package]
 name = "plugin-stormcluster"
-description = "stormconsole stormcluster plugin — the Cluster page: members, peers, roles, and forming, joining, promoting, demoting, draining and splitting"
+description = "stormconsole stormcluster plugin — the Cluster page: members, peers, roles, and the cluster.storm.io objects that form, join, promote, demote, drain and release"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,8 @@ repository.workspace = true
 
 [dependencies]
 console-core.workspace = true
+plugin-kubernetes.workspace = true
+serde.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 axum.workspace = true
