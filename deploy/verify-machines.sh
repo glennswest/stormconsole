@@ -41,6 +41,13 @@ curl -sfL "https://github.com/glennswest/rustkube/releases/download/$RUSTKUBE_VE
 export FASTETCD=$(find "$W" -maxdepth 3 -type f -name fastetcd -perm -u+x | head -1)
 export KUBE_APISERVER=$(find "$W" -maxdepth 3 -type f -name kube-apiserver -perm -u+x | head -1)
 "$STORMIPMI" --version 2>/dev/null || true
+# A fresh build VM has no kubectl; stormipmi's smoke rig and this script
+# use it, so fetch the static binary into the run's own dir.
+if ! command -v kubectl >/dev/null; then
+  mkdir -p "$W/bin"
+  curl -sfL "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl" -o "$W/bin/kubectl" && chmod +x "$W/bin/kubectl"
+  export PATH="$W/bin:$PATH"
+fi
 command -v ipmi_sim kubectl
 
 say "stormipmi's rig up"
