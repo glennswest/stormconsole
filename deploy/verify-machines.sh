@@ -207,7 +207,10 @@ async def main():
         print(f"  {n}: replay {r} chars, live output {t}, admin's typing echoed {ea}, ops' typing echoed {eo}")
 asyncio.run(main())
 PY
-python3 "$W/ws.py" "ws://127.0.0.1:$P/api/plugins/ipmi/console/$HOST_NS/$HOST_NAME" "$W/jar.ops" "$W/jar.admin"
+# A fresh build VM has no websockets module: a venv in the run's own dir.
+PY=python3
+python3 -c 'import websockets' 2>/dev/null || { python3 -m venv "$W/py" && "$W/py/bin/pip" -q install websockets && PY="$W/py/bin/python3"; }
+"$PY" "$W/ws.py" "ws://127.0.0.1:$P/api/plugins/ipmi/console/$HOST_NS/$HOST_NAME" "$W/jar.ops" "$W/jar.admin"
 
 say "8. the page in a browser (#58)"
 RC=0
