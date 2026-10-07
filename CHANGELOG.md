@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.30.0] — 2026-10-07
+
 ### 2026-10-07 — The Cluster page on cluster.storm.io objects (#88)
 - **BREAKING:** the Cluster page writes `Cluster`/`ClusterMember` objects
   (stormcluster#12) through the apiserver **as the viewer**, not
