@@ -10,7 +10,7 @@ design, code, or docs.** The orchestrator is rustkube + rustkube-node only.
 
 ## Version
 
-Current: **0.30.0**
+Current: **0.31.0**
 
 Version locations:
 - `Cargo.toml` (workspace.package.version)
@@ -1220,19 +1220,25 @@ Read from stormcluster 139c712 (docs/api.md, reconcile.rs, feed.rs).
   rewritten tungstenite 0.29.0 → 0.30.0 — bump only the workspace's own
   `[[package]]` entries
 
-### The console's own bearer from a per-node file (#102)
+### The console's own bearer from a per-node file (#102) ✅ v0.31.0 2026-10-07
 stormcos#200 (P1): the console ships with no `[api] auth_token` and no
 users, so :9094 is open as admin. A token in the golden would be one secret
 shared by every node and readable on forge, so stormcos mints one per node
 at boot (`stormcert-agent sa-token` into tier-0) and points a file at it.
-- [ ] `[api] auth_token_file`: the bearer from a file, re-read when its
+- [x] `[api] auth_token_file`: the bearer from a file, re-read when its
       mtime moves; with it set, auth is on even while the file is missing
       — closed (401 on every non-open route), the reason logged once per
       change, open the moment it appears; not with `auth_token` (78)
-- [ ] One source for the bearer: viewer, middleware, login
-- [ ] Tests; `deploy/verify-auth.sh` (or a new one): missing → closed,
+- [x] One source for the bearer: viewer, middleware, login
+- [x] Tests; `deploy/verify-auth.sh` (or a new one): missing → closed,
       minted → bearer and login work, rotated → old refused, new works,
       no restart; 78; docs, example config, changelog; release; golden
+- Verified with `sc-build deploy/verify-auth-file.sh` (0 failed): no
+  file → health only, feed/write/empty bearer/sign-in 401, the reason
+  logged naming the file, no "open" warning; minted → bearer 200, a
+  session opened with it is the token's and writes past the gate; re-minted
+  → new 200, old 401 and cannot sign in; removed → 401; with `auth_token`
+  too → exit 78. No restarts
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
