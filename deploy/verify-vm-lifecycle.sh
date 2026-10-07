@@ -77,6 +77,7 @@ press() { # method path → prints "<code> <body>"
 }
 
 say "build the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -205,6 +206,10 @@ check "still there after both refusals" '[ "$(instance_code bare-1)" = 200 ]'
 printf '  stop: '; press POST /api/plugins/vm/instances/default/bare-1/stop
 check "deleted" '[ "$(instance_code bare-1)" = 404 ]'
 
+say "8. the list in a browser (#58): a failed machine again"
+instance web-1 "$FAILED"
+settle vm:machine:default/web-1 Failed
+deploy/browser/run.sh "$W" vm.cjs "$CON" MODE=lifecycle || FAILS=$((FAILS + 1))
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c.log | grep -v 'no users and no auth_token\|plaintext password' | head -20 || true
 say "done: $FAILS failed"

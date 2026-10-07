@@ -33,6 +33,7 @@ k() { # method, path, [json body], [content type]
 }
 
 say "build the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -146,6 +147,11 @@ for i in d["interfaces"]:
 '
 done
 
+say "the pages in a browser (#58)"
+RC=0
+deploy/browser/run.sh "$W" vm.cjs "http://127.0.0.1:19096" MODE=net || RC=1
+
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c.log | grep -v 'no users and no auth_token' | head -20 || true
 say "done"
+exit $RC

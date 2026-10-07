@@ -68,6 +68,7 @@ print(base64.b64decode(d["userdata"]).decode() if "userdata" in d else (o.get("s
 }
 
 say "build the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -197,6 +198,11 @@ c POST /api/plugins/vm/vms/web/old/keys
 echo "accessCredentials:"; creds web old
 printf 'again: '; c POST /api/plugins/vm/vms/web/old/keys
 
+say "8b. the pages in a browser (#58)"
+RC=0
+ssh-keygen -q -t ed25519 -N '' -C browser@verify -f "$W/browser" >/dev/null
+deploy/browser/run.sh "$W" vm.cjs "http://127.0.0.1:$P" MODE=keys KEY="$(cat "$W/browser.pub")" || RC=1
+
 say "9. the write gate"
 login reader
 printf 'reader lists: '; c GET /api/plugins/vm/keys | cut -c1-120
@@ -206,3 +212,4 @@ printf 'reader deletes one: '; c DELETE /api/plugins/vm/keys/laptop
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c.log | head -20 || true
 say "done"
+exit $RC

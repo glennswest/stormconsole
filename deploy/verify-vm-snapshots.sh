@@ -88,6 +88,7 @@ EOF
 }
 
 say "build the console"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -173,6 +174,10 @@ node_status virtualmachinesnapshots "$AUTO" '{"phase":"Failed","readyToUse":fals
 sleep 2
 tab 19098 web-1
 
+say "4b. the Backup tab in a browser (#58)"
+RC=0
+deploy/browser/run.sh "$W" vm.cjs "http://127.0.0.1:19098" MODE=snapshots || RC=1
+
 ########################################################################
 say "5. restore: refused while running, made once stopped"
 printf 'running: '; c 19098 POST /api/plugins/vm/vms/default/web-1/snapshots/pre-upgrade/restore
@@ -233,3 +238,4 @@ printf 'operator takes a snapshot: '; c 19099 POST /api/plugins/vm/vms/default/i
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c*.log | grep -v 'no users and no auth_token\|plaintext password' | head -20 || true
 say "done"
+exit $RC
