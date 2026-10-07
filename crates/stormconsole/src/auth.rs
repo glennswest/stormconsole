@@ -55,12 +55,6 @@ impl ConsoleToken {
         t
     }
 
-    /// Is there a bearer to check against at all — configured, whether or
-    /// not its file is there yet?
-    pub fn configured(&self) -> bool {
-        self.inline.is_some() || self.file.is_some()
-    }
-
     /// The bearer as of now; `None` while the file is missing or empty.
     pub fn current(&self) -> Option<String> {
         if let Some(t) = &self.inline {
@@ -451,7 +445,6 @@ mod tests {
     fn the_token_file_is_closed_until_it_is_there_and_follows_its_renewals() {
         let p = tokdir("follow");
         let t = ConsoleToken::new(None, Some(p.display().to_string()));
-        assert!(t.configured(), "a file configured is authentication on");
         assert_eq!(t.current(), None);
         assert!(!t.matches(""), "no token: nothing matches, not even empty");
         std::fs::write(&p, "first\n").unwrap();
@@ -469,8 +462,8 @@ mod tests {
     #[test]
     fn an_inline_token_is_used_as_it_is() {
         let t = ConsoleToken::new(Some(" tok \n".into()), None);
-        assert!(t.configured() && t.matches("tok") && !t.matches("tok2"));
-        assert!(!ConsoleToken::new(None, None).configured());
+        assert!(t.matches("tok") && !t.matches("tok2"));
+        assert!(!ConsoleToken::new(None, None).matches(""));
     }
 
     fn req(method: Method, path: &str) -> Request {

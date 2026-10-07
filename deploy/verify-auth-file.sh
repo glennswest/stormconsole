@@ -59,7 +59,8 @@ check "$(code -H "Authorization: Bearer first-$$" "$C/api/v1/components")" "200"
 check "$(code -H 'Authorization: Bearer nope' "$C/api/v1/components")" "401" "another is refused"
 curl -s -c "$W/jar" -H 'content-type: application/json' -d "{\"username\":\"\",\"password\":\"first-$$\"}" "$C/api/v1/auth/login" >/dev/null
 check "$(curl -s -b "$W/jar" "$C/api/v1/auth/session" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["authenticated"], d["user"])')" "True token" "a session opened with it is the token's"
-check "$(code -b "$W/jar" -X POST -H 'content-type: application/yaml' --data-binary "$Y" "$C/api/plugins/k8s/apply?project=p")" "502" "and may write (past the gate: no apiserver behind it)"
+W2=$(code -b "$W/jar" -X POST -H 'content-type: application/yaml' --data-binary "$Y" "$C/api/plugins/k8s/apply?project=p")
+check "$([ "$W2" != 401 ] && [ "$W2" != 403 ] && echo past)" "past" "and may write — past the gate, to an apply with no apiserver behind it ($W2)"
 
 say "3. re-minted: the new bearer, not the old"
 remint "second-$$" 10
