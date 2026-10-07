@@ -1239,6 +1239,7 @@ at boot (`stormcert-agent sa-token` into tier-0) and points a file at it.
   session opened with it is the token's and writes past the gate; re-minted
   → new 200, old 401 and cannot sign in; removed → 401; with `auth_token`
   too → exit 78. No restarts
+- Shipped in golden-stormconsole-a413c4a70737 (stormcos#324)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
