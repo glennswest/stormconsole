@@ -1181,7 +1181,7 @@ pinned at 61777dd for #63's write flows (#88 moves it to the objects).
 - [x] Found live: stormcluster offers h2 in ALPN and drops an h2 client
       (filed stormcluster#30); the console speaks HTTP/1.1 to it
 - [x] `deploy/verify-cluster-tls.sh` against stormcluster 55b69da: 0 failed
-- [x] Release; golden; close
+- [x] Release; golden; close — golden-stormconsole-743d467dee9c (stormcos#324)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
