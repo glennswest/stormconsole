@@ -8,7 +8,7 @@ walk('machines', async (t) => {
   const page = await t.page('admin')
   const row = () => page.locator('table tr', { hasText: TAG })
   t.check(await t.open(page, '#/machines', new RegExp(TAG)), `the page lists ${TAG}`, (await t.text(page)).slice(0, 200))
-  t.check(/Default image/.test(await t.text(page)), 'with the default image')
+  t.check(/Default image/i.test(await t.text(page)), 'with the default image')
   await t.shot(page, 'machines')
 
   // Power: soft off, then on — each confirmed, each read back.

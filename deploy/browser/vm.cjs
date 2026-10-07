@@ -31,7 +31,7 @@ walk(`vm: ${MODE}`, async (t) => {
     t.check(await t.open(page, '#/account/keys', /Saved keys/), 'Account → SSH keys opens')
     const saved = () => page.locator('.card', { hasText: 'Saved keys' }).innerText()
     t.check(/laptop/.test(await saved()), 'the saved keys are listed', await saved())
-    t.check(/From the console's configuration/.test(await t.text(page)), "and the configuration's key, apart")
+    t.check(/From the console's configuration/i.test(await t.text(page)), "and the configuration's key, apart")
     await page.locator('input[aria-label="Key name"]').fill('browser')
     await page.locator('textarea[aria-label="Public key"]').fill(process.env.KEY)
     await page.getByRole('button', { name: 'Save', exact: true }).click()

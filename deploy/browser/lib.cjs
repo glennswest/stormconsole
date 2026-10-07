@@ -42,7 +42,9 @@ exports.walk = (name, fn) => {
         page.on('pageerror', (e) => errors.push(`${who} pageerror: ${e.message.split('\n')[0]}`))
         page.on('console', (m) => {
           if (m.type() !== 'error') return
-          if (/the server responded with a status of 4\d\d/.test(m.text())) return
+          // 501 too: an upstream saying a thing is not served yet (stormipmi's
+          // boot intent) is an answer the page shows, not a failure.
+          if (/the server responded with a status of (4\d\d|501)/.test(m.text())) return
           errors.push(`${who} console: ${m.text().split('\n')[0]}`)
         })
         // confirm() is accepted; prompt() is answered with `page.answer`
@@ -60,6 +62,9 @@ exports.walk = (name, fn) => {
       },
       /// Open `hash`, wait until the main area has text matching `re`.
       async open(page, hash, re, ms = 15000) {
+        // Case-blind: headings are upper-cased by CSS, and innerText says
+        // what is rendered.
+        re = new RegExp(re.source, re.flags.includes('i') ? re.flags : re.flags + 'i')
         await page.goto(`${BASE}/${hash}`)
         const ok = await t.until(async () => re.test(await page.locator('main').innerText()), ms)
         return ok
