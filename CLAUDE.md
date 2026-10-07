@@ -1282,6 +1282,23 @@ browser finds what an API check cannot.
   matching is case-blind; bare-1 is deleted by its own rig) and on the
   fresh VM (no kubectl, no Python websockets — the rig brings its own)
 
+### Cluster progress, node by node (#84)
+Owner on stormcluster#1: "a cluster progress screen as they reconfigure".
+stormcluster's `GET /api/v1/operations/{id}` gives `request` (op + its
+nodes) and `steps[{step: {step, node?, …}, description, status, error,
+note, startedAt, finishedAt}]` — grouping by node needs nothing new
+upstream (read from stormcluster cd478e0, exec.rs/plan.rs).
+- [ ] `web/src/lib/progress.js` (pure): every node the request names or a
+      step names, in order, with its steps, status (pending / running /
+      done / failed) and current step; node-less steps as "the cluster";
+      a node test
+- [ ] Cluster page: after a write, the progress view opens on the
+      operation it starts (the first new `op:` card); any operation opens it
+      from the list; polled while running; closes on demand
+- [ ] `verify-cluster.sh`'s browser walk: Form → b1's steps done; Join →
+      b2 failed at the join token with its error; tests, docs, changelog;
+      release; golden (stormcentral#521 permitting)
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
