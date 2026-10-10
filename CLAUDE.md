@@ -1298,6 +1298,8 @@ upstream (read from stormcluster cd478e0, exec.rs/plan.rs).
 - [ ] `verify-cluster.sh`'s browser walk: Form → b1's steps done; Join →
       b2 failed at the join token with its error; tests, docs, changelog;
       release; golden (stormcentral#521 permitting)
+- Built in 24cead2 (2026-10-07); the rig was not run then (stormcentral#521,
+  closed since). 2026-10-10: running `sc-build deploy/verify-cluster.sh`
 
 ### A flowsdn plugin (#83)
 flowsdn#297: the agent serves a read-only HTTP/1.1 listener on the node's
