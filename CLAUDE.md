@@ -1526,6 +1526,23 @@ shrinks its file: only `compact()` returns space.
   576 MiB for 200k (stormcos#537); 64 MiB holds ~23k. Unit tests 36/36,
   clippy clean
 
+### A service not started here is off, not failed (#60)
+C2NR0Q2 showed `plugin:ipmi` red: nothing on :9097. stormcos starts
+stormipmi only on single-node clusters (`start stormipmi roles=sno`,
+#269), and fastetcd/apiserver only on `sno,master`: a node may carry a
+service and, by design, not run it. The tell: nothing listens on the
+service's port **and** nothing on the stormd that would supervise it
+(stormipmi 9197, fastetcd 9081, the console's port layout).
+- [ ] `console_core::upstream::not_started(url, stormd_port)`: loopback
+      only; the port refuses and its stormd refuses → not started. A refusal
+      with its stormd up, a timeout or an HTTP error stays an error
+- [ ] stormipmi and fastetcd: Idle, "not started on this node", the role
+      it runs on and how to start it; an error only when started and silent
+- [ ] Tests (listeners on random ports: none, service only, stormd only);
+      docs, changelog; a live check; release; golden
+- [ ] The apiserver on a worker is a different fault (the console should
+      read the cluster's endpoint there): filed apart
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
