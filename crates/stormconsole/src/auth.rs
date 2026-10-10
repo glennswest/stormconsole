@@ -449,11 +449,17 @@ pub async fn logout(State(state): State<AppState>, req: Request) -> Response {
 }
 
 pub async fn session(State(state): State<AppState>, req: Request) -> Response {
-    let user = cookie_session(&req).and_then(|id| state.sessions.user_of(&id));
+    // A client certificate is signed in too (#127): the SPA skips its login
+    // screen for a browser that presented one a rule names.
+    let user = cookie_session(&req)
+        .and_then(|id| state.sessions.user_of(&id))
+        .or_else(|| cert_viewer(&req).and_then(|v| v.user));
+    let roles = viewer(&state, &req).roles;
     Json(json!({
         "required": state.auth_required,
         "authenticated": !state.auth_required || user.is_some(),
         "user": user,
+        "roles": roles,
         "container": state.config.general.name,
         "theme": state.config.general.theme,
     }))
