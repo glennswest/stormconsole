@@ -1475,6 +1475,32 @@ health. Pattern: stormcluster#5 (one port, plain answers health only).
   `/run/stormblock/forge`, set the keys and stormcentral's rule; probes and
   the router move to https
 
+### The log ring within its volume, and back from an I/O error (#128)
+Seen on the Dell (12.06): `logs.redb` filled the console's 64 MiB data
+volume (ENOSPC), and redb then refuses every transaction ("Previous I/O
+error … close and re-open") until the database is reopened, which the
+plugin never did — every filtered read and insert failed, and the kept
+volume made every boot start full. redb reuses freed pages but never
+shrinks its file: only `compact()` returns space.
+- [ ] Bound by the filesystem: every 128 inserts and on the 60 s sweep,
+      `statvfs` the ring's directory; under `[logs] keep_free_percent`
+      (default 20) free, drop the oldest entries in proportion and
+      `compact()`, so the file shrinks. Same at open, for a volume a
+      previous boot left full
+- [ ] On an I/O error (ENOSPC, "Previous I/O error"): drop the handle,
+      reopen (redb repairs), shed half and compact; a file that will not
+      open is replaced with a new ring. Once per 5 s at most, said once per
+      recovery; the operation is retried once
+- [ ] The card says it: recoveries, entries shed, free space, the last
+      recovery's cause
+- [ ] Tests (shedding with an injected free-space reading, reopen after
+      the handle is dropped, a corrupt file replaced); `deploy/verify-logs-full.sh`
+      — a real console on a small tmpfs in an unprivileged user+mount
+      namespace (no root): a flood stays under the floor, a filler file
+      forces ENOSPC → recovered, filtered reads work throughout, a boot on
+      a full volume opens; bytes per entry measured → the data_size to ask
+      stormcos for; docs, changelog; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
