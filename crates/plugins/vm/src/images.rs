@@ -129,11 +129,15 @@ struct CatalogItem {
     distro: String,
     #[serde(default, deserialize_with = "nullable")]
     version: String,
+    // Read off the wire for the shape (and Debug), not used yet.
+    #[allow(dead_code)]
     #[serde(default, deserialize_with = "nullable")]
     arch: String,
     /// The golden name this would produce, which is what a VM spec asks for.
+    #[allow(dead_code)]
     #[serde(default, deserialize_with = "nullable")]
     golden: String,
+    #[allow(dead_code)]
     #[serde(default, deserialize_with = "nullable")]
     provisioning: String,
 }
@@ -202,6 +206,7 @@ struct ImageStatus {
     /// differ by a byte are two goldens with one pretty name.
     #[serde(default, deserialize_with = "nullable")]
     golden: String,
+    #[allow(dead_code)]
     #[serde(default, deserialize_with = "nullable")]
     arch: String,
 }

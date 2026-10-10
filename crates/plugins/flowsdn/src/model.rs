@@ -218,7 +218,7 @@ impl Pool {
 }
 
 /// One row of `/v1/health/modules`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Module {
     pub id: String,
     pub level: String,
