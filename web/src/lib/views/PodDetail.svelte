@@ -19,10 +19,11 @@
   import EventBox from '../components/EventBox.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import PodLogs from './PodLogs.svelte'
+  import PodStats from './PodStats.svelte'
 
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
-  const TABS = ['Overview', 'Network', 'Logs', 'Events', 'YAML']
+  const TABS = ['Overview', 'Stats', 'Network', 'Logs', 'Events', 'YAML']
   let tab = $state(TABS.includes(route.current.query.get('tab')) ? route.current.query.get('tab') : 'Overview')
   const logContainer = route.current.query.get('container') || ''
 
@@ -122,6 +123,37 @@
     return r.length ? r[r.length - 1] : null
   }
   const perSec = (v) => (v === null ? '—' : `${formatBytes(v)}/s`)
+
+  // ---- events: kubectl describe's table, followed every 5 s on its tab
+  let events = $state(null)
+  let eventsTimer = null
+  async function readEvents() {
+    try {
+      events = await get(`${base}/events`)
+    } catch (e) {
+      events = { available: false, reason: e.message, items: [] }
+    }
+  }
+  $effect(() => {
+    if (tab === 'Events') {
+      if (!eventsTimer) {
+        readEvents()
+        eventsTimer = setInterval(readEvents, 5000)
+      }
+    } else if (eventsTimer) {
+      clearInterval(eventsTimer)
+      eventsTimer = null
+    }
+  })
+  onDestroy(() => eventsTimer && clearInterval(eventsTimer))
+
+  // ---- probes and resources, as describe prints them
+  const PROBES = ['startup', 'liveness', 'readiness']
+  const probeRows = $derived(
+    (pod?.containers || []).flatMap((c) => PROBES.filter((k) => c.probes?.[k]).map((k) => ({ c, kind: k, p: c.probes[k] }))),
+  )
+  const probeTone = (r) => ({ passing: 'ok', passed: 'ok', failing: 'warn' })[r] || ''
+  const resLine = (r) => Object.entries(r || {}).map(([k, v]) => `${k} ${v}`).join(', ')
 
   // ---- small helpers
   const kv = (o) => Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b))
@@ -248,7 +280,7 @@
         <div class="table-wrap">
           <table class="containers">
             <thead>
-              <tr><th>Name</th><th>State</th><th>Restarts</th><th>Last termination</th><th>Image</th><th>Ports</th><th></th></tr>
+              <tr><th>Name</th><th>State</th><th title="ready / started">Ready</th><th>Restarts</th><th>Last termination</th><th>Requests</th><th>Limits</th><th>Image</th><th>Ports</th><th></th></tr>
             </thead>
             <tbody>
               {#each pod.containers as c (c.role + c.name)}
@@ -259,6 +291,10 @@
                     {#if c.state?.since}<span class="dim" title={c.state.since}> · {ago(c.state.since)} ago</span>{/if}
                     {#if c.state?.message}<div class="why">{c.state.message}</div>{/if}
                   </td>
+                  <td>
+                    <span class:ok={c.ready} class:warn={c.reported && !c.ready && c.role === 'container'}>{c.reported ? (c.ready ? '✓ ready' : '· not ready') : '—'}</span>
+                    {#if c.started !== null && c.started !== undefined}<div class="dim">{c.started ? 'started' : 'not started'}</div>{/if}
+                  </td>
                   <td class:warn={c.restartCount > 0}>{c.restartCount}</td>
                   <td>
                     {#if c.lastState}
@@ -267,6 +303,8 @@
                       <span class="dim">not reported ({gapFor('last termination')?.issue || 'rustkube-node#130'}){#if c.runs?.length}{' '}— <a href={`#/pod/${ns}/${name}?tab=Logs&container=${encodeURIComponent(c.name)}`} onclick={() => (tab = 'Logs')}>{c.runs.length} kept {c.runs.length === 1 ? 'run' : 'runs'}</a>{/if}</span>
                     {:else}—{/if}
                   </td>
+                  <td class="mono">{resLine(c.resources?.requests) || '—'}</td>
+                  <td class="mono">{resLine(c.resources?.limits) || '—'}</td>
                   <td class="mono img">{c.image}</td>
                   <td class="mono">{#each c.ports as p}<div>{p.containerPort}/{p.protocol}{#if p.name} ({p.name}){/if}{#if p.hostPort} → host {p.hostPort}{/if}</div>{:else}—{/each}</td>
                   <td><button class="link" onclick={() => (tab = 'Logs')}>Logs</button></td>
@@ -275,6 +313,74 @@
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section class="card wide">
+        <h2>Probes</h2>
+        {#if !probeRows.length}
+          <p class="none">No container declares a startup, liveness or readiness probe.</p>
+        {:else}
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Container</th><th>Probe</th><th>Check</th><th>Timing</th><th>Last seen</th><th>Last failure</th></tr></thead>
+              <tbody>
+                {#each probeRows as r (r.c.name + r.kind)}
+                  <tr>
+                    <td class="mono">{r.c.name}</td>
+                    <td>{r.kind}</td>
+                    <td class="mono">{r.p.type} {r.p.target}</td>
+                    <td class="mono dim">delay={r.p.initialDelaySeconds}s timeout={r.p.timeoutSeconds}s period={r.p.periodSeconds}s #success={r.p.successThreshold} #failure={r.p.failureThreshold}</td>
+                    <td class={probeTone(r.p.result)} title={r.p.resultWhy}>{r.p.result || '—'}</td>
+                    <td>
+                      {#if r.p.lastFailure}
+                        <span class="dim" title={r.p.lastFailure.time}>{ago(r.p.lastFailure.time)} ago{#if r.p.lastFailure.count > 1} ×{r.p.lastFailure.count}{/if}</span>
+                        <div class="why">{r.p.lastFailure.message}</div>
+                      {:else}<span class="dim">none recorded</span>{/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <p class="dim">A failure is the kubelet's Unhealthy event for that container; a pass is its ready and started flags.</p>
+        {/if}
+      </section>
+
+      <section class="card wide">
+        <h2>Volumes</h2>
+        {#if !pod.volumes?.length}
+          <p class="none">This pod declares no volumes.</p>
+        {:else}
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Type</th><th>Source</th><th>Mounted at</th><th>Claim</th></tr></thead>
+              <tbody>
+                {#each pod.volumes as v (v.name)}
+                  <tr>
+                    <td class="mono">{v.name}</td>
+                    <td>{v.kind}</td>
+                    <td>{v.source || '—'}</td>
+                    <td class="mono">
+                      {#each v.mounts as m}<div>{m.container}: {m.mountPath}{#if m.subPath} (sub {m.subPath}){/if}{#if m.readOnly} <span class="dim">ro</span>{/if}</div>{:else}<span class="dim">not mounted</span>{/each}
+                    </td>
+                    <td>
+                      {#if v.claim && !v.claim.found}<span class="warn">claim {v.claim.name} not found</span>
+                      {:else if v.claim}
+                        <a href={`#/grid?id=k8s:pvc:${encodeURIComponent(ns)}/${encodeURIComponent(v.claim.name)}`}>{v.claim.name}</a>
+                        <span class:ok={v.claim.phase === 'Bound'} class:warn={v.claim.phase !== 'Bound'}>{v.claim.phase || '—'}</span>
+                        <div class="dim">
+                          {v.claim.capacity || v.claim.requested || '—'}{#if v.claim.storageClass} · {v.claim.storageClass}{/if}{#if v.claim.accessModes?.length} · {v.claim.accessModes.join(', ')}{/if}
+                          {#if v.claim.volumeName} · PV {v.claim.volumeName}{#if v.claim.pv?.driver} ({v.claim.pv.driver}){/if}{#if v.claim.pv?.reclaimPolicy}, {v.claim.pv.reclaimPolicy}{/if}{/if}
+                        </div>
+                      {:else}—{/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <p class="dim">Used space per volume: on the Stats tab, when the node reports it.</p>
+        {/if}
       </section>
 
       <section class="card wide">
@@ -480,11 +586,40 @@
           {:else}<span class="dim">No container declares a port.</span>{/each}
         </p>
       </section>
+    {:else if tab === 'Stats'}
+      <PodStats {base} containers={pod.containers} />
     {:else if tab === 'Logs'}
       <PodLogs {ns} {name} containers={pod.containers} keep={pod.keptRuns} initial={logContainer} />
     {:else if tab === 'Events'}
-      <section class="card events-card">
-        <EventBox id={`k8s:pod:${ns}/${name}`} />
+      <section class="card">
+        <h2>Events <span class="dim">— followed every 5 s</span></h2>
+        {#if !events}
+          <p class="none">Reading…</p>
+        {:else if !events.available}
+          <p class="none">{events.reason}</p>
+        {:else if !events.items.length}
+          <p class="none">Nothing has been recorded about this pod.</p>
+        {:else}
+          <div class="table-wrap">
+            <table class="events">
+              <thead><tr><th>Type</th><th>Reason</th><th>Container</th><th>Count</th><th>First seen</th><th>Last seen</th><th>From</th><th>Message</th></tr></thead>
+              <tbody>
+                {#each events.items as e, i (i)}
+                  <tr class:warnrow={e.type === 'Warning'}>
+                    <td>{e.type}</td>
+                    <td><strong>{e.reason}</strong></td>
+                    <td class="mono">{e.container || '—'}</td>
+                    <td class="num">{e.count}</td>
+                    <td class="dim" title={e.first}>{e.first ? `${ago(e.first)} ago` : '—'}</td>
+                    <td class="dim" title={e.time}>{e.time ? `${ago(e.time)} ago` : '—'}</td>
+                    <td class="dim">{e.source || '—'}</td>
+                    <td>{e.message}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
       </section>
     {:else}
       <YamlPanel {yaml} label="Pod {name} in {ns}" savePath={`/api/plugins/k8s/object/pod/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`} />
@@ -538,5 +673,7 @@
   button.link { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; }
   button.danger { color: var(--error, #f85149); }
   .events-card { margin-top: 12px; }
+  tr.warnrow td { background: var(--warn-bg); }
+  tr.warnrow td:first-child { color: var(--warn-strong); font-weight: 600; }
   .info { cursor: help; color: var(--text-faint); font-size: var(--sc-t-meta); }
 </style>
