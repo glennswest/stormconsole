@@ -109,9 +109,13 @@ import math, sys
 n, b = int(sys.argv[1]), int(sys.argv[2])
 per = b / max(n, 1)
 at_cap = per * 200_000
-vol = at_cap / 0.8
+# The ring keeps its file under half of what it may use (redb doubles the
+# file), and may use what is left with 20% free: the volume is file / 0.4.
+vol = at_cap / 0.4
+held = 64 * 2**20 * 0.4 / per
 print(f"  {n} entries in {b / 2**20:.1f} MiB: {per:.0f} bytes an entry")
-print(f"  at ring_cap 200000: {at_cap / 2**20:.0f} MiB; with 20% free: a {math.ceil(vol / 2**20 / 64) * 64} MiB data volume")
+print(f"  at ring_cap 200000: {at_cap / 2**20:.0f} MiB of file; under half of 80%: a {math.ceil(vol / 2**20 / 64) * 64} MiB data volume")
+print(f"  a 64 MiB volume holds about {held:,.0f} entries")
 PY
 check "$([ "$N" -gt 20000 ] && echo most)" "most" "most of the 30,000 lines arrived ($N)"
 kill "$CPID"; wait "$CPID" 2>/dev/null || true
