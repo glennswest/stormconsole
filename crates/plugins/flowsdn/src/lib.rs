@@ -126,7 +126,7 @@ impl Snapshot {
                     Health::Unknown,
                     format!(
                         "{sentence}. A cilium-edition node has none, and a flowsdn node from before \
-                         golden-flowsdn-eda35249a55e serves no loopback port"
+                         flowsdn eda35249a55e serves no loopback port"
                     ),
                 ),
             };

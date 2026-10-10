@@ -273,7 +273,7 @@ cpu() { echo "$S" | q "[p[\"cpu\"] for c in d[\"series\"][\"containers\"] if c[\
 echo "  app $(cpu app) cores, agent $(cpu agent) cores"
 check 'python3 -c "import sys; sys.exit(0 if 0.2 < $(cpu app) < 0.3 else 1)"' "app's CPU is its counter's rate, 0.25 core"
 check 'python3 -c "import sys; sys.exit(0 if 0.03 < $(cpu agent) < 0.07 else 1)"' "agent's 0.05 core"
-check 'echo "$S" | has "d[\"series\"][\"containers\"][0][\"points\"][-1][\"workingSet\"] == 48 << 20"' "app's working set, 48 MiB"
+check 'echo "$S" | has "[c for c in d[\"series\"][\"containers\"] if c[\"name\"] == \"app\"][0][\"points\"][-1][\"workingSet\"] == 48 << 20"' "app's working set, 48 MiB"
 check 'echo "$S" | has "40000 < [p[\"rxBps\"] for p in d[\"series\"][\"interfaces\"][0][\"points\"] if p[\"rxBps\"] is not None][-1] < 60000"' "eth0 received ~50 kB/s"
 check 'echo "$S" | has "d[\"series\"][\"interfaces\"][0][\"totals\"][\"rxErrors\"] == 2"' "eth0's errors counted"
 check 'echo "$S" | has "any(\"rustkube-node#242\" in m for m in d[\"missing\"]) and not any(m.startswith(\"network\") for m in d[\"missing\"])"' "what the node does not report is named (rustkube-node#242)"
