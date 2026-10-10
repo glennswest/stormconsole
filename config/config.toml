@@ -25,6 +25,15 @@ bind = "0.0.0.0:9094"
 # auth_token_file = "/etc/stormcert/stormconsole-api.token"
 #                                    # the same, from a per-node file, re-read when
 #                                    # it changes; missing = closed, not open
+# tls_cert_file = "/data/stormcert/stormconsole.crt"   # :9094 over TLS (a stormcert
+# tls_key_file = "/data/stormcert/stormconsole.key"    # serving pair, re-read when
+#                                    # renewed); plain HTTP then answers health only
+# client_ca_file = "/run/stormblock/forge/ca.crt"     # forge's CA: its client
+#                                    # certificates are credentials (needs TLS)
+# client_crl_file = "/run/stormblock/forge/ca.crl"    # its revocation list, if any
+# [[api.client_roles]]               # a verified certificate's role, by subject
+# cn = "stormcentral"                # cn, or o = "…" (exactly one)
+# role = "viewer"                    # viewer | operator | admin
 # [[api.users]]                      # any user or token being set turns auth on
 # name = "admin"
 # password_hash = "$argon2id$v=19$…" # printf %s 'pw' | stormconsole --hash-password

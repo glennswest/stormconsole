@@ -107,6 +107,36 @@ pub fn router(state: AppState) -> Router {
     app.route("/", get(spa))
         .route("/{*path}", get(spa))
         .layer(middleware::from_fn_with_state(state, auth::middleware))
+        .layer(middleware::from_fn(transport_gate))
+}
+
+/// Plain HTTP on a port that serves TLS (#48): the owner's rule is that
+/// nothing answers in the clear but health. So health answers; a GET or
+/// HEAD is sent to the same place over https, which is what a person who
+/// typed `http://` wanted; anything else is refused, saying why, rather
+/// than redirected — a redirected POST is a request repeated somewhere its
+/// sender did not choose.
+async fn transport_gate(req: Request, next: middleware::Next) -> Response {
+    use axum::extract::ConnectInfo;
+    let plain_on_tls = req
+        .extensions()
+        .get::<ConnectInfo<crate::listen::Peer>>()
+        .is_some_and(|ConnectInfo(p)| p.tls_on && !p.tls);
+    if !plain_on_tls || matches!(req.uri().path(), "/healthz" | "/readyz") {
+        return next.run(req).await;
+    }
+    if matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD) {
+        if let Some(host) = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()) {
+            let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/");
+            let to = format!("https://{host}{path}");
+            return (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, to)]).into_response();
+        }
+    }
+    (
+        StatusCode::FORBIDDEN,
+        Json(json!({"error": "this port speaks TLS: use https:// (plain HTTP answers /healthz and /readyz only)"})),
+    )
+        .into_response()
 }
 
 /// The feed as this viewer may see it. The filter runs here, before the

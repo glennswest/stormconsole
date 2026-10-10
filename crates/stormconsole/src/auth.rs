@@ -182,7 +182,19 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
             };
         }
     }
+    if let Some(v) = cert_viewer(req) {
+        return v;
+    }
     Viewer::anonymous()
+}
+
+/// A client certificate that verified against `[api] client_ca_file` and
+/// that a `[[api.client_roles]]` rule gives a role (#127): a machine, named
+/// `cert:<CN>`, with that role and no kubernetes identity of its own.
+fn cert_viewer(req: &Request) -> Option<Viewer> {
+    let axum::extract::ConnectInfo(peer) = req.extensions().get::<axum::extract::ConnectInfo<crate::listen::Peer>>()?;
+    let (cn, role) = peer.cert_role()?;
+    Some(Viewer { user: Some(format!("cert:{cn}")), token: None, roles: vec![role.to_string()], ssh_keys: vec![] })
 }
 
 fn cookie_session(req: &Request) -> Option<String> {
@@ -232,7 +244,27 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             return storage_gate(&state, &who, req, next).await;
         }
     }
-    (StatusCode::UNAUTHORIZED, Json(json!({"error": "authentication required"}))).into_response()
+    // A client certificate as a role (#127). A viewer reads; a write is
+    // refused the way a reader's session is.
+    if cert_viewer(&req).is_some() {
+        if let Some(refusal) = refuse_read_only(&who, &req) {
+            return refusal;
+        }
+        return storage_gate(&state, &who, req, next).await;
+    }
+    // Say why a certificate did not count: a caller holding one should not
+    // have to guess between the wrong CA, an expired one and no rule.
+    let why = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<crate::listen::Peer>>()
+        .and_then(|axum::extract::ConnectInfo(p)| p.cert.clone())
+        .map(|c| match (c.refused, c.role) {
+            (Some(r), _) => format!("authentication required: the client certificate (CN {}) is not accepted: {r}", c.cn),
+            (None, None) => format!("authentication required: no [[api.client_roles]] rule names the client certificate (CN {})", c.cn),
+            (None, Some(_)) => "authentication required".to_string(),
+        })
+        .unwrap_or_else(|| "authentication required".to_string());
+    (StatusCode::UNAUTHORIZED, Json(json!({"error": why}))).into_response()
 }
 
 /// Destructive storage — format, sanitize, wipe, partition, RAID sets,

@@ -4,6 +4,7 @@
 
 mod auth;
 mod config;
+mod listen;
 mod server;
 
 use std::sync::Arc;
@@ -308,12 +309,20 @@ async fn main() {
     };
 
     let bind = config.bind();
-    let listener = match tokio::net::TcpListener::bind(bind).await {
+    let tcp = match tokio::net::TcpListener::bind(bind).await {
         Ok(l) => l,
         Err(e) => fatal(&format!("cannot listen on {bind}: {e}"), 1),
     };
-    info!(bind, "stormconsole serving");
-    let served = axum::serve(listener, server::router(state))
+    // TLS on :9094 when a serving pair is configured (#48), with client
+    // certificates from `client_ca_file` as credentials (#127).
+    let tls = config.serve_tls().map(|t| Arc::new(listen::Tls::new(t)));
+    let listener = match listen::listen(tcp, tls.clone()) {
+        Ok(l) => l,
+        Err(e) => fatal(&format!("cannot listen on {bind}: {e}"), 1),
+    };
+    info!(bind, tls = tls.is_some(), client_ca = config.api.client_ca_file.is_some(), "stormconsole serving");
+    let app = server::router(state).into_make_service_with_connect_info::<listen::Peer>();
+    let served = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             let _ = tokio::signal::ctrl_c().await;
             shutdown.cancel();

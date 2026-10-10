@@ -89,11 +89,46 @@ pub struct Api {
     /// turns authentication on, stormd-style.
     #[serde(default)]
     pub users: Vec<User>,
+    /// :9094 over TLS (#48): a stormcert serving pair, both or neither,
+    /// re-read when stormcert renews it. With it, plain HTTP on the same
+    /// port answers health only.
+    pub tls_cert_file: Option<String>,
+    pub tls_key_file: Option<String>,
+    /// A CA whose client certificates are credentials (#127): forge's, on a
+    /// node `/run/stormblock/forge/ca.crt`. Re-read when it changes; while
+    /// it is missing no certificate is accepted. Needs TLS.
+    pub client_ca_file: Option<String>,
+    /// That CA's revocation list (stormcert#61), when there is one.
+    pub client_crl_file: Option<String>,
+    /// Which verified certificate is which role: by subject CN or O.
+    #[serde(default)]
+    pub client_roles: Vec<ClientRole>,
+}
+
+/// One rule mapping a verified client certificate to a console role
+/// (#127). Exactly one of `cn` or `o`; the first rule that matches wins,
+/// and a certificate no rule matches is nobody.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientRole {
+    pub cn: Option<String>,
+    pub o: Option<String>,
+    pub role: String,
 }
 
 impl Default for Api {
     fn default() -> Self {
-        Self { bind: default_bind(), auth_token: None, auth_token_file: None, users: Vec::new() }
+        Self {
+            bind: default_bind(),
+            auth_token: None,
+            auth_token_file: None,
+            users: Vec::new(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+            client_crl_file: None,
+            client_roles: Vec::new(),
+        }
     }
 }
 
@@ -562,6 +597,31 @@ impl Config {
         if self.api.auth_token.is_some() && self.api.auth_token_file.is_some() {
             return Err("[api] auth_token and auth_token_file are both set: use one".into());
         }
+        let a = &self.api;
+        if a.tls_cert_file.is_some() != a.tls_key_file.is_some() {
+            return Err("[api] tls_cert_file and tls_key_file go together: set both, or neither".into());
+        }
+        let certs = a.client_ca_file.is_some() || a.client_crl_file.is_some() || !a.client_roles.is_empty();
+        if certs && a.tls_cert_file.is_none() {
+            return Err("[api] client_ca_file, client_crl_file and client_roles need TLS: \
+                        a client certificate is only presented to tls_cert_file/tls_key_file"
+                .into());
+        }
+        if !a.client_roles.is_empty() && a.client_ca_file.is_none() {
+            return Err("[api] client_roles is set without client_ca_file: no certificate could match".into());
+        }
+        for (i, r) in a.client_roles.iter().enumerate() {
+            if r.cn.is_some() == r.o.is_some() {
+                return Err(format!("[[api.client_roles]] #{}: give exactly one of cn or o", i + 1));
+            }
+            if !matches!(r.role.as_str(), "viewer" | "operator" | "admin") {
+                return Err(format!(
+                    "[[api.client_roles]] #{}: role {:?} is not viewer, operator or admin",
+                    i + 1,
+                    r.role
+                ));
+            }
+        }
         let k = &self.kubernetes;
         if k.token.is_some() && k.token_file.is_some() {
             return Err("[kubernetes] token and token_file are both set: use one".into());
@@ -668,6 +728,18 @@ impl Config {
         self.flowsdn.release_manifest.clone().unwrap_or_else(|| "/etc/stormcos/release/manifest.json".to_string())
     }
 
+    /// The listener's TLS files, when :9094 serves TLS (#48, #127).
+    pub fn serve_tls(&self) -> Option<crate::listen::TlsConfig> {
+        let a = &self.api;
+        Some(crate::listen::TlsConfig {
+            cert: a.tls_cert_file.as_ref()?.into(),
+            key: a.tls_key_file.as_ref()?.into(),
+            client_ca: a.client_ca_file.as_ref().map(Into::into),
+            client_crl: a.client_crl_file.as_ref().map(Into::into),
+            roles: a.client_roles.clone(),
+        })
+    }
+
     pub fn health_summary_file(&self) -> String {
         self.health.summary_file.clone().unwrap_or_else(|| "/run/stormpump/health.json".to_string())
     }
@@ -743,7 +815,12 @@ impl Config {
     pub fn auth_required(&self) -> bool {
         // A token file configured is authentication on, whether or not the
         // file is there yet: missing is closed, never open (#102).
-        !self.api.users.is_empty() || self.api.auth_token.is_some() || self.api.auth_token_file.is_some()
+        // So is a client CA: a certificate is a credential, and with one
+        // configured nothing is left open to whoever has none (#127).
+        !self.api.users.is_empty()
+            || self.api.auth_token.is_some()
+            || self.api.auth_token_file.is_some()
+            || self.api.client_ca_file.is_some()
     }
 
     /// A named user's SSH public keys.
@@ -841,6 +918,39 @@ data_dir    = \"/var/lib/stormconsole\"
         for p in [9201, 9202, 8180, 8545] {
             assert!(c.fleet.stormd_ports.contains(&p), "{p} missing from the default stormd ports");
         }
+    }
+
+    /// TLS on :9094 and client certificates as roles (#48, #127).
+    #[test]
+    fn tls_and_client_roles_are_read_and_checked() {
+        let c = Config::parse(
+            "[api]\ntls_cert_file = \"/c.crt\"\ntls_key_file = \"/c.key\"\nclient_ca_file = \"/forge.crt\"\n\
+             [[api.client_roles]]\ncn = \"stormcentral\"\nrole = \"viewer\"\n\
+             [[api.client_roles]]\no = \"ops\"\nrole = \"admin\"\n",
+        )
+        .unwrap();
+        let t = c.serve_tls().unwrap();
+        assert_eq!(t.cert, std::path::PathBuf::from("/c.crt"));
+        assert_eq!(t.client_ca.as_deref(), Some(std::path::Path::new("/forge.crt")));
+        assert_eq!(t.roles.len(), 2);
+        // A client CA is a credential: authentication is on.
+        assert!(c.auth_required());
+        assert!(Config::parse("").unwrap().serve_tls().is_none());
+
+        let refused = |toml: &str, says: &str| {
+            let e = Config::parse(toml).unwrap_err().to_string();
+            assert!(e.contains(says), "{e}");
+        };
+        refused("[api]\ntls_cert_file = \"/c.crt\"\n", "tls_cert_file and tls_key_file go together");
+        refused("[api]\nclient_ca_file = \"/forge.crt\"\n", "need TLS");
+        refused(
+            "[api]\ntls_cert_file = \"/c\"\ntls_key_file = \"/k\"\n[[api.client_roles]]\ncn = \"x\"\nrole = \"viewer\"\n",
+            "without client_ca_file",
+        );
+        let base = "[api]\ntls_cert_file = \"/c\"\ntls_key_file = \"/k\"\nclient_ca_file = \"/f\"\n";
+        refused(&format!("{base}[[api.client_roles]]\nrole = \"viewer\"\n"), "exactly one of cn or o");
+        refused(&format!("{base}[[api.client_roles]]\ncn = \"a\"\no = \"b\"\nrole = \"viewer\"\n"), "exactly one of cn or o");
+        refused(&format!("{base}[[api.client_roles]]\ncn = \"a\"\nrole = \"root\"\n"), "is not viewer, operator or admin");
     }
 
     /// stormcert's token file and the node CA (#33).
