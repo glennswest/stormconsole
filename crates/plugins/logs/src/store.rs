@@ -371,6 +371,8 @@ fn strip_leading_timestamp(msg: &str) -> &str {
 }
 
 impl Store {
+    /// With the default floor and `statvfs`; the plugin passes its own.
+    #[cfg(test)]
     pub fn open(path: &str, cap: u64, retain_ms: u64, dedup: bool) -> Result<Self> {
         Self::open_with(path, cap, retain_ms, dedup, DEFAULT_KEEP_FREE, Box::new(statvfs))
     }
@@ -569,7 +571,7 @@ impl Store {
         let (room, due) = {
             let mut n = self.since_prune.lock().unwrap_or_else(|e| e.into_inner());
             *n += 1;
-            let room = *n % ROOM_EVERY == 0;
+            let room = (*n).is_multiple_of(ROOM_EVERY);
             let due = *n >= 4096;
             if due {
                 *n = 0;

@@ -89,7 +89,7 @@ pub async fn run(
             Err(e) => {
                 let mut seen = failures.lock().unwrap();
                 *seen += 1;
-                if *seen == 1 || *seen % 10_000 == 0 {
+                if *seen == 1 || (*seen).is_multiple_of(10_000) {
                     warn!(error = %e, failures = *seen, "store insert failed");
                 }
             }
