@@ -3,6 +3,25 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-10 — The log ring within its disk, and back from an I/O error (#128)
+- **fix:** the fleet log ring keeps `[logs] keep_free_percent` (20) of its
+  filesystem free (`statvfs`) and its file under half of what it may use
+  (redb doubles its file): the oldest entries go and the file is
+  compacted, every 128 lines, on every sweep and at open — so a volume a
+  previous run left full is made room on before the first line.
+- **fix:** an I/O error no longer poisons the ring for the rest of the run:
+  the handle is closed and the file reopened (redb repairs it), half the
+  ring shed and compacted; on a disk with no room for even a delete, or a
+  file that will not open, the ring starts over. The collector card shows
+  `reopened`, `shed for space`, `disk free`, and Error while closed.
+- **perf:** the collector stores whatever is waiting on its socket (up to
+  512 lines) in one durable transaction off the async workers — it was an
+  fsync per line, which kept 1,085 of 30,000 lines on a real disk; now
+  29,743.
+- **test:** `deploy/verify-logs-full.sh` — a real console's ring on an
+  8 MiB tmpfs in an unprivileged namespace: flood, ENOSPC, restart full,
+  bytes per entry. Filed stormcos#537 (576 MiB for the default ring).
+
 ### 2026-10-10 — :9094 over TLS, and forge-CA client certificates as roles (#48, #127)
 - **feat:** `[api] tls_cert_file`/`tls_key_file`: the console serves TLS on
   :9094 from a stormcert pair, re-read when it is renewed. Plain HTTP on the

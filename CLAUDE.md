@@ -1475,31 +1475,46 @@ health. Pattern: stormcluster#5 (one port, plain answers health only).
   `/run/stormblock/forge`, set the keys and stormcentral's rule; probes and
   the router move to https
 
-### The log ring within its volume, and back from an I/O error (#128)
+### The log ring within its volume, and back from an I/O error (#128) ✅ 2026-10-10
 Seen on the Dell (12.06): `logs.redb` filled the console's 64 MiB data
 volume (ENOSPC), and redb then refuses every transaction ("Previous I/O
 error … close and re-open") until the database is reopened, which the
 plugin never did — every filtered read and insert failed, and the kept
 volume made every boot start full. redb reuses freed pages but never
 shrinks its file: only `compact()` returns space.
-- [ ] Bound by the filesystem: every 128 inserts and on the 60 s sweep,
+- [x] Bound by the filesystem: every 128 inserts and on the 60 s sweep,
       `statvfs` the ring's directory; under `[logs] keep_free_percent`
       (default 20) free, drop the oldest entries in proportion and
       `compact()`, so the file shrinks. Same at open, for a volume a
       previous boot left full
-- [ ] On an I/O error (ENOSPC, "Previous I/O error"): drop the handle,
+- [x] On an I/O error (ENOSPC, "Previous I/O error"): drop the handle,
       reopen (redb repairs), shed half and compact; a file that will not
       open is replaced with a new ring. Once per 5 s at most, said once per
       recovery; the operation is retried once
-- [ ] The card says it: recoveries, entries shed, free space, the last
+- [x] The card says it: recoveries, entries shed, free space, the last
       recovery's cause
-- [ ] Tests (shedding with an injected free-space reading, reopen after
+- [x] Tests (shedding with an injected free-space reading, reopen after
       the handle is dropped, a corrupt file replaced); `deploy/verify-logs-full.sh`
       — a real console on a small tmpfs in an unprivileged user+mount
       namespace (no root): a flood stays under the floor, a filler file
       forces ENOSPC → recovered, filtered reads work throughout, a boot on
       a full volume opens; bytes per entry measured → the data_size to ask
       stormcos for; docs, changelog; release; golden
+- Found by the rig and fixed on the way: redb grows its file by doubling
+  (so the bound is half the budget, not the free space alone); on a full
+  disk a copy-on-write delete fails (so recovery starts a new ring); and
+  every insert was an fdatasync (redb's `Eventual`) — the collector now
+  batches what is waiting on its socket into one durable transaction
+- Verified with `sc-build deploy/verify-logs-full.sh` (0 failed, 778d2ee):
+  8 MiB tmpfs in an unprivileged user+mount namespace. A: 60,000 distinct
+  lines (~20 MiB) → most used 41%, 56,153 shed, every filtered read
+  answered, the flood's last lines kept. B: a filler takes the disk →
+  ENOSPC, reopened (a new ring when it could not shed), reads never
+  "Previous I/O error", one failure line for 6,000 sent, lines again once
+  the filler went, no restart. C: restart on a 100% volume serves and takes
+  lines. D: 29,743 of 30,000 lines on a real disk, ~1,150 bytes an entry →
+  576 MiB for 200k (stormcos#537); 64 MiB holds ~23k. Unit tests 36/36,
+  clippy clean
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

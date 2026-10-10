@@ -686,6 +686,36 @@ that keeps arriving keeps its place) or when the ring exceeds `ring_cap`
 distinct entries. A timer sweeps as well as inserts, so a quiet fleet
 still expires what it left behind.
 
+**A third bound: the disk** (#128). On a node the ring lives on the
+console's 64 MiB data volume, and 200,000 entries filled it; redb then
+refused every transaction ("Previous I/O error … close and re-open") until
+a restart, and the kept volume made every boot start full. Now:
+
+- The ring's budget is what it may occupy while `keep_free_percent` (20)
+  of its filesystem stays free (`statvfs`). redb grows its file by
+  *doubling*, so a file past half its budget would fail its next growth
+  however much the disk shows free. Every 128 lines, on every sweep and at
+  open, a file past half its budget or a disk under its floor loses its
+  oldest entries and is **compacted** back under a third of the budget —
+  redb reuses freed pages, but only `compact` returns them to the
+  filesystem. After a shed that could not reach the floor (something else
+  filled the disk), it waits 10 s rather than emptying the ring.
+- An I/O error closes the handle and reopens the file (redb repairs it),
+  sheds half and compacts. redb is copy-on-write, so on a disk with no
+  room even a delete fails: then, or when the file will not open at all,
+  the ring starts over. At most once every 5 s; the operation is retried
+  once; the collector card says `reopened`, `shed for space` and
+  `disk free`, and Error with the cause while the ring is closed.
+- **Batches.** The collector stores whatever datagrams are waiting on its
+  socket, up to 512, in one durable transaction, off the async workers. A
+  commit per line was an `fdatasync` per line (redb's `Eventual` syncs on
+  Linux), which held a real disk to a few hundred lines a second and
+  dropped the rest; non-durable commits balloon the file, because redb
+  frees pages only at a durable commit.
+- Measured (`deploy/verify-logs-full.sh`): about 1,150 bytes of file an
+  entry, so the default 200,000-entry ring wants a 576 MiB data volume; a
+  64 MiB one holds about 23,000 (stormcos#537).
+
 Ordering is receive order, not the wire timestamp — emitters disagree
 about clocks — and a repeat re-inserts at a fresh sequence number, which
 keeps sequence order and last-seen order identical. That is what lets
