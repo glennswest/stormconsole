@@ -1382,6 +1382,40 @@ healthd.rs, README § API health). The console's unit binds neither
   (stormcos#525); until then a node shows each stormd's view, without PID
   1's own probes, and no history
 
+### Pod page at kubectl-describe parity, with stats over time (#124)
+Owner 2026-10-08: "events for itself, and all the stats … upstream
+guidance" (describe + top; pod-lifecycle; debug-pods). Most of describe is
+here since #69 (conditions, per-container state/lastState/restarts, images
+and goldens, owners, labels/annotations, per-container logs with current/
+previous/kept runs). Read from rustkube-node 7bfe4d2: `/stats/summary`
+serves per container `cpu.usageCoreNanoSeconds` and
+`memory.workingSetBytes`, and per pod `network` (bytes, packets, errors,
+drops per interface). No per-container rss/page faults/rootfs/logs, no pod
+volume[] or ephemeral-storage: filed **rustkube-node#242**, read when
+present. The kubelet writes Unhealthy/Killing/BackOff/Started events, and
+`ready`/`started` per container.
+- [ ] Stats sampler (`kubernetes/src/stats.rs`): every 15 s each node's
+      kubelet `/stats/summary` (console credential, the apiserver conn's
+      client), one ring per pod (1 h); `GET /pods/{ns}/{name}/stats` as the
+      viewer's pod — CPU cores (rate), memory, every reported field, network
+      rates; what the node does not report named (rustkube-node#242)
+- [ ] Probes per container: configured (startup/liveness/readiness: type,
+      target, delay, period, timeout, thresholds, k8s defaults) and last
+      observed (ready/started + the latest `Unhealthy` event for that
+      container and probe)
+- [ ] Volumes: each `spec.volumes` with its type and source, where it is
+      mounted (container, path, ro), a claim's phase, size, class and bound
+      PV; used bytes when the kubelet reports them
+- [ ] Events: first and last seen, count, source, container (fieldPath);
+      the Events tab a full table refreshed every 5 s
+- [ ] UI: Containers card adds Ready, Started, requests/limits; Probes and
+      Volumes cards; a **Stats** tab — charts over 15 m / 1 h with current
+      values per container (CPU, memory) and per interface (rx/tx bytes,
+      packets, errors, drops)
+- [ ] Tests; docs, changelog; `deploy/verify-pod-page.sh` extended (stand-in
+      kubelet serving /stats/summary in rustkube-node's shape, Unhealthy
+      events, probes, volumes, claims) + Chromium; release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
