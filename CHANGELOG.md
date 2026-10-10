@@ -3,6 +3,30 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-10 — The pod page at kubectl-describe parity, with stats over time (#124)
+- **feat:** stats over time: the kubernetes plugin reads every node's
+  kubelet `/stats/summary` every 15 s and keeps an hour per pod;
+  `GET /api/plugins/k8s/pods/{ns}/{name}/stats?window=` gives CPU in
+  cores, memory (working set, and usage/RSS/page faults when reported),
+  and per interface bytes and packets per second with errors and drops.
+  The pod page's **Stats** tab charts them over 15 minutes or an hour,
+  with current values, a hover readout and a data table, plus storage
+  (ephemeral, rootfs, logs, volumes) when the node reports it.
+- **feat:** probes per container, as configured (type, target, timing,
+  defaults filled in) and as last seen (passing / failing from the
+  container's flags and its newest `Unhealthy` event, with the count).
+- **feat:** volumes: type, source, where each is mounted, a claim's phase,
+  size, class and bound PV.
+- **feat:** the containers table shows ready/started and requests/limits;
+  the Events tab is `kubectl describe`'s table (type, reason, container,
+  count, first and last seen, source), followed every 5 s
+  (`GET …/events`); events carry `first` and `fieldPath`.
+- **test:** `deploy/verify-pod-page.sh` — the stand-in kubelet serves
+  `/stats/summary` in rustkube-node's shape; probes, volumes, events and
+  stats checked through the API and in Chromium.
+- **chore:** filed rustkube-node#242 (the Summary API fields the node does
+  not serve yet).
+
 ### 2026-10-10 — Node API health and stall alerts (#123)
 - **feat:** `crates/plugins/apihealth` (name `health`, stormcos#458):
   every API on this node from PID 1's summary `/run/stormpump/health.json`

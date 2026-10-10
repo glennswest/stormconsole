@@ -585,6 +585,39 @@ is a thin typed layer over the standard REST paths.
     packets, errors and drops families are read when exported (#131). A
     host-network pod has no counters of its own, and says so. The page
     polls every 5 s and draws rates between reads.
+  - **Stats over time** (#124, `stats.rs`): `kubectl top` and the rest of
+    the kubelet's Summary API. A sampler reads every Node's kubelet
+    `GET /stats/summary` every 15 s (metrics-server's resolution) with the
+    console's own credential through the apiserver connection's client,
+    and keeps an hour per pod in memory as numbers (at most 5,000 pods;
+    a pod not seen for the hour is dropped; a restart starts the record
+    over and the page says when sampling began). `GET …/stats?window=`
+    (60–3600 s, default 900) gives per-container CPU in cores (the
+    kubelet's `usageNanoCores` when it sends one, else the rate of
+    `usageCoreNanoSeconds`), working set, usage, RSS and page faults; per
+    interface rx/tx bytes and packets per second and errors and drops per
+    interval; a counter that went backwards has no rate there. The newest
+    answer's volume, ephemeral-storage, rootfs and logs fields are shown
+    as they are. rustkube-node serves a container's CPU and working set
+    and the pod's network (7bfe4d2); the rest is rustkube-node#242, named
+    on the page and read when present. A refused or silent kubelet is said
+    per node.
+  - **Probes** (#124): each container's startup, liveness and readiness
+    probe as configured (type, target, delay, timeout, period, thresholds,
+    Kubernetes' defaults filled in, `kubectl describe`'s line as fields),
+    and **as last seen**: the kubelet records a failure as an `Unhealthy`
+    (or `Killing`) event with the container in its field path and a pass
+    only as `ready`/`started`, so a probe is *failing* when its newest
+    failure is from this run and the flag it drives is unset, *passing*
+    when the flag is set (readiness, startup) or no failure is from this
+    run (liveness). The newest failure is shown with its count.
+  - **Volumes** (#124): every `spec.volumes` entry with its type and
+    source, where each container mounts it (path, read-only, subPath), and
+    a claim's phase, size, class, access modes and bound PV (driver,
+    reclaim policy) from the cache.
+  - **Events** (#124): `GET …/events`, every event about the pod newest
+    first with type, reason, count, first and last seen, source and the
+    container its field path names; the Events tab follows it every 5 s.
   A terminal waits on the kubelet answering exec (rustkube-node#56; the
   apiserver proxies it, rustkube#42). A node's page links to that node's
   fleet logs.
@@ -1543,6 +1576,7 @@ filed on its owner. The console says so on the page where the gap shows.
 |------|-------|------------------|
 | rustkube | [#101](https://github.com/glennswest/rustkube/issues/101) `stringData` not folded into `data`; [#102](https://github.com/glennswest/rustkube/issues/102) a claim's phase not defaulted | readers taking `data` alone; worked around here |
 | rustkube-node | #56 exec, attach, portForward | a pod terminal |
+| rustkube-node | [#242](https://github.com/glennswest/rustkube-node/issues/242) `/stats/summary`: a container's rss, page faults, usageNanoCores, rootfs and logs; a pod's cpu, memory, `volume[]` and ephemeral-storage | the pod page's Stats tab |
 | rustkube-node | [#130](https://github.com/glennswest/rustkube-node/issues/130) lastState, terminated reason, a digest for `stormpump://`, when the image was resolved, OCI build info; [#131](https://github.com/glennswest/rustkube-node/issues/131) packets/errors/drops, network-status (MTU, gateway, routes, CNI), runs before the previous one | the pod page's gaps |
 | rustkube | [#108](https://github.com/glennswest/rustkube/issues/108) `nodes/{name}/proxy` | counters through the apiserver instead of dialling each kubelet |
 | stormvm | #48 per-VM metrics | a VM's traffic counters |
