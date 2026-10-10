@@ -241,7 +241,9 @@ import json
 for a in json.load(open('$W/health.json'))['apis']:
     if a.get('container') == 'standin':
         print('  (merged:', a['state'], 'age', a.get('file_age_secs'), 'stale', a.get('stale'), ')')"
-feed $B
+# Stale ~4 s after the freeze (3 x its 1 s interval), then the console's 5 s
+# read and the feed's 2 s refresh: up to ~12 s, so wait for it.
+for _ in $(seq 1 25); do feed $B; [ "$(row health:api:standin/standin/things | cut -d'|' -f1)" = error ] && break; sleep 1; done
 check "$(row health:api:standin/standin/things | cut -d'|' -f1)" "error" "stalled, because its stormd went quiet"
 check "$(row health:api:standin/standin/things | cut -d'|' -f3 | grep -c '(its stormd last said healthy)$')" "1" "saying what it last said"
 kill -CONT $STORMD_PID
