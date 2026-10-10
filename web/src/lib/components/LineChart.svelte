@@ -72,7 +72,8 @@
   }
 
   const ticks = $derived([0, 0.5, 1].map((f) => f * max))
-  const clock = (t) => new Date(t).toTimeString().slice(0, 5)
+  // The tooltip's format, to the minute: one clock on the whole chart.
+  const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   const xticks = $derived([from, from + (to - from) / 2, to])
 
   let hover = $state(null)
@@ -103,7 +104,7 @@
     <p class="single">now <span class="now">{last(series[0]) === null ? '—' : format(last(series[0]))}</span></p>
   {/if}
   <div class="plot" bind:clientWidth={width}>
-    <svg {width} {height} role="img" aria-label={label} onpointermove={move} onpointerleave={() => (hover = null)}>
+    <svg viewBox="0 0 {width} {height}" {height} role="img" aria-label={label} onpointermove={move} onpointerleave={() => (hover = null)}>
       {#each ticks as tv}
         <line class="grid" x1={PAD.l} x2={PAD.l + plotW} y1={y(tv)} y2={y(tv)} />
         <text class="axis" x={PAD.l - 6} y={y(tv) + 3} text-anchor="end">{format(tv)}</text>
@@ -148,15 +149,15 @@
 </figure>
 
 <style>
-  .chart { margin: 0; display: grid; gap: 4px; }
+  .chart { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
   .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--sc-t-meta); color: var(--text-dim); }
   .legend li { display: inline-flex; align-items: center; gap: 6px; }
   .key { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
   .now, .single { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
   .single { margin: 0; font-size: var(--sc-t-meta); font-weight: 400; color: var(--text-dim); }
   .single .now { font-weight: 600; }
-  .plot { position: relative; }
-  svg { display: block; touch-action: none; }
+  .plot { position: relative; min-width: 0; overflow: hidden; }
+  svg { display: block; width: 100%; touch-action: none; }
   .grid { stroke: var(--sc-hairline, var(--border)); stroke-width: 1; }
   .axis { fill: var(--text-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
   .cross { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 2 2; }
