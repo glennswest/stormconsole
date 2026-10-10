@@ -36,6 +36,9 @@ pub struct Feed {
     /// "/api/plugins/drive/proxy".
     pub proxy_base: String,
     state: RwLock<FeedState>,
+    /// A service stormcos starts only on some nodes (#60): its stormd's
+    /// port, and what to say when it is not started here.
+    not_started: Option<(u16, String)>,
 }
 
 impl Feed {
@@ -45,7 +48,17 @@ impl Feed {
             prefix: prefix.to_string(),
             proxy_base: proxy_base.trim_end_matches('/').to_string(),
             state: RwLock::new(FeedState::default()),
+            not_started: None,
         }
+    }
+
+    /// The upstream is a service a node may carry and, by design, not run
+    /// (#60). When nothing listens on its port or on its stormd (`stormd_port`),
+    /// the feed is Idle with `sentence` — the role it runs on and how to start
+    /// it — rather than an error. Started and silent is still an error.
+    pub fn not_started_when(mut self, stormd_port: u16, sentence: &str) -> Self {
+        self.not_started = Some((stormd_port, sentence.to_string()));
+        self
     }
 
     pub async fn state(&self) -> FeedState {
@@ -85,10 +98,15 @@ impl Feed {
                     components: vec![],
                 }
             }
-            Err(e) => FeedState {
-                health: Health::Error,
-                detail: format!("unreachable: {}", concise(&e)),
-                components: vec![],
+            Err(e) => match &self.not_started {
+                Some((port, sentence)) if crate::upstream::not_started(&self.base, *port).await => {
+                    FeedState { health: Health::Idle, detail: sentence.clone(), components: vec![] }
+                }
+                _ => FeedState {
+                    health: Health::Error,
+                    detail: format!("unreachable: {}", concise(&e)),
+                    components: vec![],
+                },
             },
         };
         *self.state.write().await = observed;
@@ -276,6 +294,34 @@ impl ConsolePlugin for FeedPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    }
+
+    /// #60: a service a node does not run is Idle with its sentence; one
+    /// whose stormd is up but which does not answer is still an error.
+    #[tokio::test]
+    async fn a_service_not_started_here_is_idle_not_an_error() {
+        let (svc, stormd) = (free_port(), free_port());
+        let client = reqwest::Client::new();
+        let feed = Feed::new(&format!("http://127.0.0.1:{svc}"), "ipmi", "/api/plugins/ipmi/proxy")
+            .not_started_when(stormd, "not started on this node (opt-in)");
+        feed.poll(&client).await;
+        let s = feed.state().await;
+        assert_eq!((s.health, s.detail.as_str()), (Health::Idle, "not started on this node (opt-in)"));
+
+        let _sd = tokio::net::TcpListener::bind(("127.0.0.1", stormd)).await.unwrap();
+        feed.poll(&client).await;
+        let s = feed.state().await;
+        assert_eq!(s.health, Health::Error);
+        assert!(s.detail.starts_with("unreachable"), "{}", s.detail);
+
+        // A feed that says nothing about it is an error as before.
+        let plain = Feed::new(&format!("http://127.0.0.1:{}", free_port()), "x", "/p");
+        plain.poll(&client).await;
+        assert_eq!(plain.state().await.health, Health::Error);
+    }
     use stormview::{Action, Relation};
 
     async fn serve(router: axum::Router) -> String {

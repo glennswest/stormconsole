@@ -241,6 +241,11 @@ async fn poll(inner: &Inner) {
         Ok(s) => (Some(s), String::new()),
         Err(e) => (None, e),
     };
+    // Neither port answers: not started here at all (a worker carries the
+    // datastore and does not run it), or started and silent (#60).
+    let off = alive.is_none()
+        && metrics.is_none()
+        && console_core::upstream::not_started(&inner.client_url, STORMD_PORT).await;
     let gw = inner.gw();
     let (status, gateway_err) = match gw.status().await {
         Ok(s) => (Some(s), None),
@@ -297,12 +302,27 @@ async fn poll(inner: &Inner) {
         objects,
         rates,
     };
-    let (health, detail, components) = build(&seen, inner.serves.as_deref());
+    let (mut health, mut detail, mut components) = build(&seen, inner.serves.as_deref());
+    if off {
+        (health, detail) = (Health::Idle, NOT_STARTED.to_string());
+        for c in &mut components {
+            c.health = Health::Idle;
+            c.detail = NOT_STARTED.to_string();
+        }
+    }
     st.gateway = seen.status.is_some();
     st.health = health;
     st.detail = detail;
     st.components = components;
 }
+
+/// fastetcd's stormd on a node (the console's port layout).
+const STORMD_PORT: u16 = 9081;
+
+/// What a node that does not run the datastore says, instead of an error.
+pub const NOT_STARTED: &str = "not started on this node: the datastore runs on the control plane \
+     (stormcos starts fastetcd with roles=sno,master), and nothing listens on its port or on its \
+     stormd (:9081) here";
 
 async fn health(inner: &Inner) -> Result<bool, String> {
     let resp = inner

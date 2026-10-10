@@ -69,9 +69,68 @@ pub fn detail(what: &str, url: &str, rest: &str) -> String {
     }
 }
 
+/// Is a service on this node simply **not started** (#60)?
+///
+/// stormcos carries services on every node and starts some only by role —
+/// stormipmi on a single-node cluster (`roles=sno`), the datastore on the
+/// control plane (`roles=sno,master`) — so a node that does not run one is
+/// as designed, not broken. The tell is that nothing listens on the
+/// service's port **and** nothing on the stormd that would supervise it.
+/// Anything else — a refusal while its stormd is up, a timeout, an answer
+/// that is an error — is a started service that is not answering, which is
+/// a fault. Only a loopback URL can be judged: another machine's ports are
+/// not this node's to read.
+pub async fn not_started(url: &str, stormd_port: u16) -> bool {
+    if !is_loopback(url) {
+        return false;
+    }
+    let (host, port) = host_port(url);
+    let port = match port.and_then(|p| p.parse::<u16>().ok()) {
+        Some(p) => p,
+        None if url.starts_with("https://") => 443,
+        None => 80,
+    };
+    let host = if host == "localhost" { "127.0.0.1" } else { host };
+    refused(host, port).await && refused(host, stormd_port).await
+}
+
+/// Nothing listens there: the connection is refused, not slow.
+async fn refused(host: &str, port: u16) -> bool {
+    let dial = tokio::net::TcpStream::connect((host, port));
+    matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), dial).await,
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::ConnectionRefused
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A port nothing listens on: bound, then dropped.
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    }
+
+    #[tokio::test]
+    async fn not_started_is_nothing_on_the_port_and_nothing_supervising_it() {
+        let (svc, stormd) = (free_port(), free_port());
+        let url = format!("http://127.0.0.1:{svc}");
+        assert!(not_started(&url, stormd).await, "neither listens: not started");
+
+        // Its stormd is up, the service is not: started and silent, a fault.
+        let sd = tokio::net::TcpListener::bind(("127.0.0.1", stormd)).await.unwrap();
+        assert!(!not_started(&url, stormd).await);
+        drop(sd);
+
+        // The service listens: whatever it answers is its own story.
+        let l = tokio::net::TcpListener::bind(("127.0.0.1", svc)).await.unwrap();
+        assert!(!not_started(&url, stormd).await);
+        drop(l);
+
+        // Another machine is never judged from here.
+        assert!(!not_started(&format!("http://192.0.2.1:{svc}"), stormd).await);
+    }
 
     #[test]
     fn host_and_port_come_out_of_any_base_url() {

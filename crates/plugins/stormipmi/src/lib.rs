@@ -38,6 +38,14 @@ use tokio_util::sync::CancellationToken;
 
 pub const NAME: &str = "ipmi";
 
+/// stormipmi's stormd on a node (the console's port layout: :9097 + 100).
+const STORMD_PORT: u16 = 9197;
+
+/// What a node that does not run stormipmi says, instead of an error (#60).
+pub const NOT_STARTED: &str = "not started on this node (opt-in): stormcos starts stormipmi on a \
+     single-node cluster (start stormipmi roles=sno); a node that should manage machines gets \
+     `start stormipmi` in a boot.d file";
+
 struct Inner {
     base: String,
     token: Option<String>,
@@ -55,7 +63,9 @@ impl StormipmiPlugin {
         let base = url.trim_end_matches('/').to_string();
         Self {
             inner: Arc::new(Inner {
-                feed: Arc::new(Feed::new(&base, NAME, &format!("/api/plugins/{NAME}/proxy"))),
+                feed: Arc::new(
+                    Feed::new(&base, NAME, &format!("/api/plugins/{NAME}/proxy")).not_started_when(STORMD_PORT, NOT_STARTED),
+                ),
                 base,
                 token: token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
                 client: reqwest::Client::new(),

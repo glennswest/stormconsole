@@ -13,7 +13,7 @@
   // stormipmi answers only once it has read the change back.
   import { onDestroy } from 'svelte'
   import { get, call, postJson, wsUrl, ansiToHtml } from '../api.js'
-  import { noteActivity } from '../stores.svelte.js'
+  import { noteActivity, feed } from '../stores.svelte.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CopyButton from '../components/CopyButton.svelte'
@@ -29,6 +29,10 @@
   let testOnly = $state(false)
   let search = $state('')
   let timer = null
+  // stormipmi is opt-in (#60): a node that does not run it says so on the
+  // plugin's card, Idle, and the page says the same instead of an error.
+  const card = $derived(feed.components.find((c) => c.id === 'plugin:ipmi'))
+  const notStarted = $derived(card?.health === 'idle' && /not started/.test(card?.detail || ''))
 
   async function load() {
     try {
@@ -187,7 +191,9 @@
     {#if !me.admin}<span class="dim">{me.why}</span>{/if}
   </div>
 
-  {#if error}<p class="error">{error}</p>{/if}
+  {#if notStarted}
+    <EmptyState icon="node" title="stormipmi is not started on this node" hint={card.detail} />
+  {:else if error}<p class="error">{error}</p>{/if}
   {#if saved}<p class="saved">{saved}</p>{/if}
   {#if fleet?.forge?.error}
     <p class="warn">The forge did not say what each machine boots: {fleet.forge.error}</p>
