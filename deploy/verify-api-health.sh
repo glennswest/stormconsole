@@ -235,6 +235,12 @@ check "$(curl -sf $B/api/plugins/health/snapshot | py 'import json,sys; d=json.l
 say "B: the container's stormd stops — PID 1 calls its file stale"
 kill -STOP $STORMD_PID
 sleep 9
+echo "  (stormd $STORMD_PID: $(ps -o stat= -p $STORMD_PID); now $(date +%s), state file $(stat -c %Y "$W/health.d/standin.json"))"
+py "
+import json
+for a in json.load(open('$W/health.json'))['apis']:
+    if a.get('container') == 'standin':
+        print('  (merged:', a['state'], 'age', a.get('file_age_secs'), 'stale', a.get('stale'), ')')"
 feed $B
 check "$(row health:api:standin/standin/things | cut -d'|' -f1)" "error" "stalled, because its stormd went quiet"
 check "$(row health:api:standin/standin/things | cut -d'|' -f3 | grep -c '(its stormd last said healthy)$')" "1" "saying what it last said"
