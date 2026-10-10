@@ -32,9 +32,12 @@ export const ICONS = {
   // A key: SSH keys (#26).
   key: 'M14.5 4a5.5 5.5 0 1 1-4.2 9.1L4 19.4V21h3v-2h2v-2h2l1.2-1.2A5.5 5.5 0 0 1 14.5 4z M16.5 8.5h.01',
   vm: 'M3 4h18v12H3zM8 20h8M12 16v4M8 8h8M8 12h5',
+  // A pulse: API health (#123).
+  health: 'M3 12h4l3-8 4 16 3-8h4',
 }
 
 const RULES = [
+  [/health/i, 'health'],
   [/events/i, 'events'],
   [/virtual machine|^vms?$|hypervisor/i, 'vm'],
   [/log/i, 'logs'],

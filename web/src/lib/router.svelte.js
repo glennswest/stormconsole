@@ -10,6 +10,8 @@ const routes = [
   { pattern: '#/drives', name: 'drives' },
   { pattern: '#/vms', name: 'vmlist' },
   { pattern: '#/nodes', name: 'nodes' },
+  // Every API on this node, its state and latency (#123).
+  { pattern: '#/health', name: 'health' },
   // The datastore's keyspace; the prefix and an opened key travel in the
   // query because both are full of '/'.
   { pattern: '#/etcd/keys', name: 'etcdkeys' },

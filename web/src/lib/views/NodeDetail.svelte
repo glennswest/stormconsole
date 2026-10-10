@@ -34,6 +34,9 @@
     )
   )
   const isLocal = $derived(component?.id === 'fleet:node:local')
+  // This node's API health (#123): PID 1's summary is read on the node,
+  // so only the node's own console has it.
+  const apiHealth = $derived(feed.components.find((c) => c.id === 'health:node'))
 
   async function load() {
     busy = true
@@ -98,6 +101,14 @@
           <dd class="mono">{component?.metrics?.find((m) => m.label === 'events')?.value ?? '—'}</dd>
           <dt>Services</dt>
           <dd class="mono">{data.services.length}</dd>
+          <dt>API health</dt>
+          <dd>
+            {#if isLocal && apiHealth}
+              <a href="#/health"><StatusPill health={apiHealth.health} label="" /> {apiHealth.detail}</a>
+            {:else}
+              <span class="dim">on that node's own console</span>
+            {/if}
+          </dd>
         </dl>
       </div>
       <div class="card wide">
@@ -228,6 +239,7 @@
     color: var(--warn-strong);
   }
   .detail { color: var(--text-dim); }
+  .dim { color: var(--text-dim); font-size: var(--sc-t-meta); }
   .n { text-align: right; }
   .acts { text-align: right; white-space: nowrap; }
   .w-port { width: 70px; }

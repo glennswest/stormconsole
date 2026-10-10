@@ -5,6 +5,7 @@
   import Sidebar from './lib/components/Sidebar.svelte'
   import CreateDialog from './lib/components/CreateDialog.svelte'
   import EventDock from './lib/components/EventDock.svelte'
+  import AlertBar from './lib/components/AlertBar.svelte'
   import Overview from './lib/views/Overview.svelte'
   import GridView from './lib/views/GridView.svelte'
   import LogsView from './lib/views/LogsView.svelte'
@@ -23,6 +24,7 @@
   import MachinesView from './lib/views/MachinesView.svelte'
   import ClusterView from './lib/views/ClusterView.svelte'
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
+  import HealthView from './lib/views/HealthView.svelte'
   import ImagesView from './lib/views/ImagesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
@@ -50,6 +52,7 @@
     machines: MachinesView,
     cluster: ClusterView,
     flowsdn: FlowsdnView,
+    health: HealthView,
     images: ImagesView,
     attachclaim: AttachClaim,
   }
@@ -71,6 +74,7 @@
     <TopBar />
     <Sidebar />
     <main id="main">
+      <AlertBar />
       {#key route.current.name + Object.values(route.current.params).join('/') + route.current.query.toString()}
         <View />
       {/key}
