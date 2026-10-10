@@ -89,7 +89,69 @@ pub async fn detail(
         }
     }
     d["keptRuns"] = json!(crate::logruns::KEEP);
+
+    // What the probes were last seen doing, from this pod's events (#124).
+    let events = pod_events(&inner, &ns, &name).await;
+    if let (Ok(evs), Some(cs)) = (&events, d["containers"].as_array_mut()) {
+        pod::observe_probes(cs, evs);
+    }
     Json(d).into_response()
+}
+
+/// This pod's events, as the apiserver has them. Listed with the console's
+/// credential and filtered here: the viewer's sight of the namespace was
+/// settled by [`the_pod`].
+async fn pod_events(inner: &Inner, ns: &str, name: &str) -> Result<Vec<Value>, String> {
+    let client = inner.client.as_ref().ok_or("no apiserver is configured")?;
+    let list = client.get(&crate::objevents::list_path(ns)).await.map_err(|e| e.to_string())?;
+    Ok(list
+        .get("items")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|e| crate::objevents::about(e, "Pod", ns, name))
+        .cloned()
+        .collect())
+}
+
+/// The container a field path names: `spec.containers{app}` → `app`.
+pub fn container_in(field_path: &str) -> &str {
+    field_path
+        .split_once('{')
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(c, _)| c)
+        .unwrap_or("")
+}
+
+/// `GET /pods/{ns}/{name}/events` — every event about this pod, newest
+/// first, with first and last seen, count, source and the container
+/// (`kubectl describe`'s Events table).
+pub async fn events(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    if let Err(r) = the_pod(&inner, &viewer, &ns, &name).await {
+        return r;
+    }
+    match pod_events(&inner, &ns, &name).await {
+        Ok(evs) => {
+            let mut rows: Vec<Value> = evs
+                .iter()
+                .map(|e| {
+                    let ev = crate::objevents::event(e);
+                    let container = container_in(&ev.field_path).to_string();
+                    let mut v = json!(ev);
+                    v["container"] = json!(container);
+                    v
+                })
+                .collect();
+            rows.sort_by(|a, b| b["time"].as_str().unwrap_or("").cmp(a["time"].as_str().unwrap_or("")));
+            Json(json!({"available": true, "items": rows, "at": chrono::Utc::now().to_rfc3339()})).into_response()
+        }
+        Err(e) => Json(json!({"available": false, "reason": format!("the apiserver did not answer for events: {e}"), "items": []}))
+            .into_response(),
+    }
 }
 
 /// The component a `stormpump://` image names: `stormpump://cilium` and
@@ -315,6 +377,33 @@ pub async fn run_text(
     }
 }
 
+#[derive(Deserialize)]
+pub struct StatsQuery {
+    /// Seconds back from now; 15 minutes unless asked, an hour at most.
+    window: Option<i64>,
+}
+
+/// `GET /pods/{ns}/{name}/stats` — this pod's samples over the window, as
+/// rates, from what the console scraped of its node's kubelet (#124).
+pub async fn stats(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+    Query(q): Query<StatsQuery>,
+) -> Response {
+    let pod = match the_pod(&inner, &viewer, &ns, &name).await {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let node = pod.pointer("/spec/nodeName").and_then(Value::as_str).unwrap_or("");
+    let host_network = pod.pointer("/spec/hostNetwork").and_then(Value::as_bool) == Some(true);
+    let window = q.window.unwrap_or(900).clamp(60, crate::stats::WINDOW_SECS);
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut v = inner.stats.view(&format!("{ns}/{name}"), node, host_network, window, now).await;
+    v["now"] = json!(now);
+    Json(v).into_response()
+}
+
 /// `GET /pods/{ns}/{name}/traffic` — this pod's counters from its node's
 /// kubelet, with the time they were read so the page can make rates.
 pub async fn traffic(
@@ -388,6 +477,13 @@ mod tests {
         assert_eq!(golden_component("stormpump://cilium"), "cilium");
         assert_eq!(golden_component("stormpump://cilium:1.16"), "cilium");
         assert_eq!(golden_component("stormpump://stormd/agent"), "stormd");
+    }
+
+    #[test]
+    fn a_field_path_names_its_container() {
+        assert_eq!(container_in("spec.containers{app}"), "app");
+        assert_eq!(container_in("spec.initContainers{setup}"), "setup");
+        assert_eq!(container_in(""), "");
     }
 
     #[test]

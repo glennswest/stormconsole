@@ -20,6 +20,7 @@ pub mod objevents;
 pub mod pod;
 mod podpage;
 pub mod projects;
+pub mod stats;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -77,6 +78,8 @@ struct Inner {
     access: Arc<authz::NamespaceAccess>,
     /// The last runs of every container, kept by the console (#69).
     runs: Arc<logruns::LogRuns>,
+    /// Every pod's stats over the last hour, from each node's kubelet (#124).
+    stats: Arc<stats::Stats>,
     /// Where a `stormpump://` golden's provenance is read (#69).
     stormcentral: Option<podpage::Stormcentral>,
 }
@@ -122,6 +125,7 @@ impl KubernetesPlugin {
                 http: http.clone(),
                 access: authz::NamespaceAccess::new(conn, store),
                 runs: Arc::new(logruns::LogRuns::default()),
+                stats: Arc::new(stats::Stats::new()),
                 stormcentral: None,
             }),
         }
@@ -188,6 +192,8 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/pods/{ns}/{name}", get(podpage::detail))
             .route("/pods/{ns}/{name}/log", get(podpage::log))
             .route("/pods/{ns}/{name}/traffic", get(podpage::traffic))
+            .route("/pods/{ns}/{name}/stats", get(podpage::stats))
+            .route("/pods/{ns}/{name}/events", get(podpage::events))
             .route("/pods/{ns}/{name}/runs/{container}/{run}", get(podpage::run_text))
             .route("/events", get(events))
             .route("/namespaces/{ns}", get(namespace_detail))
@@ -349,6 +355,13 @@ impl ConsolePlugin for KubernetesPlugin {
             let client = client.clone();
             let token = shutdown.clone();
             tokio::spawn(async move { logruns::run(runs, store, client, token).await });
+        }
+        {
+            let stats = self.inner.stats.clone();
+            let store = self.inner.store.clone();
+            let client = client.clone();
+            let token = shutdown.clone();
+            tokio::spawn(async move { stats::run(stats, store, client, token).await });
         }
         for spec in RESOURCES {
             let store = self.inner.store.clone();

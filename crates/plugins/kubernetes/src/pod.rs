@@ -181,6 +181,7 @@ pub fn containers(pod: &Value) -> Vec<Value> {
                 "command": c.get("command").cloned().unwrap_or(Value::Null),
                 "args": c.get("args").cloned().unwrap_or(Value::Null),
                 "resources": c.get("resources").cloned().unwrap_or(json!({})),
+                "probes": probes_of(c),
                 "ready": st.and_then(|v| v.get("ready")).and_then(Value::as_bool).unwrap_or(false),
                 "started": st.and_then(|v| v.get("started")).cloned().unwrap_or(Value::Null),
                 "restartCount": st.and_then(|v| v.get("restartCount")).and_then(Value::as_i64).unwrap_or(0),
@@ -427,6 +428,208 @@ pub fn metadata(pod: &Value) -> Value {
     })
 }
 
+/// The probes a container declares (#124), as configured, with
+/// Kubernetes' defaults filled in and said so — the line `kubectl
+/// describe` prints (`http-get http://:8080/healthz delay=0s timeout=1s
+/// period=10s #success=1 #failure=3`) as fields.
+pub fn probe_config(p: &Value) -> Value {
+    let n = |k: &str, d: i64| p.get(k).and_then(Value::as_i64).unwrap_or(d);
+    let port = |v: Option<&Value>| match v {
+        Some(Value::Number(n)) => n.to_string(),
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let (kind, target) = if let Some(h) = p.get("httpGet") {
+        let scheme = h.get("scheme").and_then(Value::as_str).unwrap_or("HTTP").to_lowercase();
+        let host = h.get("host").and_then(Value::as_str).unwrap_or("");
+        let path = h.get("path").and_then(Value::as_str).unwrap_or("/");
+        ("http-get", format!("{scheme}://{host}:{}{path}", port(h.get("port"))))
+    } else if let Some(t) = p.get("tcpSocket") {
+        let host = t.get("host").and_then(Value::as_str).unwrap_or("");
+        ("tcp-socket", format!("{host}:{}", port(t.get("port"))))
+    } else if let Some(e) = p.get("exec") {
+        let cmd: Vec<&str> = e.get("command").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+        ("exec", format!("[{}]", cmd.join(" ")))
+    } else if let Some(g) = p.get("grpc") {
+        let svc = g.get("service").and_then(Value::as_str).unwrap_or("");
+        ("grpc", format!(":{}{}", port(g.get("port")), if svc.is_empty() { String::new() } else { format!(" {svc}") }))
+    } else {
+        ("unknown", String::new())
+    };
+    json!({
+        "type": kind,
+        "target": target,
+        "initialDelaySeconds": n("initialDelaySeconds", 0),
+        "periodSeconds": n("periodSeconds", 10),
+        "timeoutSeconds": n("timeoutSeconds", 1),
+        "successThreshold": n("successThreshold", 1),
+        "failureThreshold": n("failureThreshold", 3),
+    })
+}
+
+/// Each container's startup, liveness and readiness probes, as configured.
+pub fn probes_of(container: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    for (key, name) in [("startupProbe", "startup"), ("livenessProbe", "liveness"), ("readinessProbe", "readiness")] {
+        if let Some(p) = container.get(key) {
+            out.insert(name.into(), probe_config(p));
+        }
+    }
+    Value::Object(out)
+}
+
+/// Which probe an event is about, from the kubelet's wording
+/// (`Liveness probe failed: …`, `Container app failed liveness probe, will
+/// be restarted`).
+fn probe_named(message: &str) -> Option<&'static str> {
+    let m = message.to_ascii_lowercase();
+    ["startup", "liveness", "readiness"].into_iter().find(|p| m.contains(&format!("{p} probe")))
+}
+
+/// What the probes were last seen doing (#124). The kubelet records a
+/// failure as an `Unhealthy` event against the pod, the container in its
+/// field path, and a pass only as the container's `started` and `ready`
+/// flags: so a probe is *failing* when its newest failure is newer than the
+/// container's current run's start and the flag it drives is not set,
+/// *passing* when the flag is set, and otherwise what the flag says.
+pub fn observe_probes(containers: &mut [Value], events: &[Value]) {
+    for c in containers.iter_mut() {
+        let name = c["name"].as_str().unwrap_or("").to_string();
+        let started_at = c.pointer("/state/startedAt").and_then(Value::as_str).unwrap_or("").to_string();
+        let running = c.pointer("/state/kind").and_then(Value::as_str) == Some("running");
+        let ready = c["ready"].as_bool().unwrap_or(false);
+        let started = c["started"].as_bool();
+        let Some(probes) = c.get_mut("probes").and_then(Value::as_object_mut) else { continue };
+        for (which, p) in probes.iter_mut() {
+            // The newest failure of this probe for this container.
+            let last = events
+                .iter()
+                .filter(|e| crate::objevents::about_container(e, &name))
+                .filter(|e| {
+                    let reason = e.get("reason").and_then(Value::as_str).unwrap_or("");
+                    let msg = e.get("message").and_then(Value::as_str).unwrap_or("");
+                    (reason == "Unhealthy" || reason == "Killing") && probe_named(msg) == Some(which.as_str())
+                })
+                .map(crate::objevents::event)
+                .max_by(|a, b| a.time.cmp(&b.time));
+            let failing_now = last.as_ref().is_some_and(|e| started_at.is_empty() || e.time.as_str() >= started_at.as_str());
+            let (result, why) = match which.as_str() {
+                "readiness" if ready => ("passing", "the container is ready"),
+                "readiness" if failing_now => ("failing", "not ready, and its newest failure is in this run"),
+                "readiness" => ("not passing", "the container is not ready"),
+                "startup" if started == Some(true) => ("passed", "the container has started"),
+                "startup" if failing_now => ("failing", "not started, and its newest failure is in this run"),
+                "startup" => ("not yet", "the container has not started"),
+                _ if !running => ("not running", "the container is not running"),
+                _ if failing_now => ("failing", "its newest failure is in this run"),
+                _ => ("passing", "no failure since this run started"),
+            };
+            p["result"] = json!(result);
+            p["resultWhy"] = json!(why);
+            p["lastFailure"] = match last {
+                Some(e) => json!({"time": e.time, "message": e.message, "count": e.count, "reason": e.reason}),
+                None => Value::Null,
+            };
+        }
+    }
+}
+
+/// The volume source's kind and a line saying what it is.
+fn volume_source(v: &Value) -> (String, String, Option<String>) {
+    let g = |o: &Value, k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let Some(obj) = v.as_object() else { return ("unknown".into(), String::new(), None) };
+    let Some((kind, src)) = obj.iter().find(|(k, _)| k.as_str() != "name") else {
+        return ("unknown".into(), String::new(), None);
+    };
+    let (line, claim) = match kind.as_str() {
+        "persistentVolumeClaim" => (format!("claim {}", g(src, "claimName")), Some(g(src, "claimName"))),
+        "configMap" => (format!("ConfigMap {}", g(src, "name")), None),
+        "secret" => (format!("Secret {}", g(src, "secretName")), None),
+        "emptyDir" => {
+            let medium = g(src, "medium");
+            let limit = src.get("sizeLimit").map(|l| l.as_str().map(String::from).unwrap_or_else(|| l.to_string()));
+            let mut l = if medium.is_empty() { "on the node's disk".to_string() } else { format!("medium {medium}") };
+            if let Some(x) = limit {
+                l.push_str(&format!(", limit {x}"));
+            }
+            (l, None)
+        }
+        "hostPath" => (format!("{} on the node", g(src, "path")), None),
+        "projected" => {
+            let parts: Vec<String> = src
+                .get("sources")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|x| x.as_object().and_then(|o| o.keys().next().cloned()))
+                .collect();
+            (parts.join(", "), None)
+        }
+        "csi" => (format!("CSI driver {}", g(src, "driver")), None),
+        "downwardAPI" => ("the pod's own fields".into(), None),
+        _ => (String::new(), None),
+    };
+    (kind.clone(), line, claim)
+}
+
+/// Every volume, where each is mounted, and a claim's state (#124): what
+/// `kubectl describe pod` lists under Volumes and Mounts, with the claim
+/// and its bound volume read from the cache.
+pub fn volumes(snap: &Snapshot, ns: &str, pod: &Value) -> Vec<Value> {
+    let mut mounts: HashMap<String, Vec<Value>> = HashMap::new();
+    for ptr in ["/spec/initContainers", "/spec/containers"] {
+        for c in pod.pointer(ptr).and_then(Value::as_array).into_iter().flatten() {
+            for m in c.get("volumeMounts").and_then(Value::as_array).into_iter().flatten() {
+                mounts.entry(s(m, "/name").to_string()).or_default().push(json!({
+                    "container": s(c, "/name"),
+                    "mountPath": s(m, "/mountPath"),
+                    "readOnly": m.get("readOnly").and_then(Value::as_bool).unwrap_or(false),
+                    "subPath": m.get("subPath").cloned().unwrap_or(Value::Null),
+                }));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for v in pod.pointer("/spec/volumes").and_then(Value::as_array).into_iter().flatten() {
+        let name = s(v, "/name").to_string();
+        let (kind, line, claim_name) = volume_source(v);
+        let claim = claim_name.filter(|c| !c.is_empty()).map(|c| {
+            match snap.get("pvc").and_then(|m| m.get(&format!("{ns}/{c}"))) {
+                None => json!({"name": c, "found": false}),
+                Some(pvc) => {
+                    let pv_name = s(pvc, "/spec/volumeName").to_string();
+                    let pv = snap.get("pv").and_then(|m| m.get(&pv_name));
+                    json!({
+                        "name": c,
+                        "found": true,
+                        "phase": s(pvc, "/status/phase"),
+                        "requested": pvc.pointer("/spec/resources/requests/storage").cloned().unwrap_or(Value::Null),
+                        "capacity": pvc.pointer("/status/capacity/storage").cloned().unwrap_or(Value::Null),
+                        "storageClass": pvc.pointer("/spec/storageClassName").cloned().unwrap_or(Value::Null),
+                        "accessModes": pvc.pointer("/spec/accessModes").cloned().unwrap_or(json!([])),
+                        "volumeName": pv_name,
+                        "pv": pv.map(|pv| json!({
+                            "phase": s(pv, "/status/phase"),
+                            "capacity": pv.pointer("/spec/capacity/storage").cloned().unwrap_or(Value::Null),
+                            "reclaimPolicy": pv.pointer("/spec/persistentVolumeReclaimPolicy").cloned().unwrap_or(Value::Null),
+                            "driver": pv.pointer("/spec/csi/driver").cloned().unwrap_or(Value::Null),
+                            "handle": pv.pointer("/spec/csi/volumeHandle").cloned().unwrap_or(Value::Null),
+                        })),
+                    })
+                }
+            }
+        });
+        out.push(json!({
+            "name": name,
+            "kind": kind,
+            "source": line,
+            "mounts": mounts.remove(&name).unwrap_or_default(),
+            "claim": claim,
+        }));
+    }
+    out
+}
+
 /// The page's answer, less what needs the network to fill in.
 pub fn detail(snap: &Snapshot, ns: &str, pod: &Value) -> Value {
     let name = s(pod, "/metadata/name");
@@ -454,6 +657,7 @@ pub fn detail(snap: &Snapshot, ns: &str, pod: &Value) -> Value {
             "cilium": cilium(snap, &key),
             "interfaces": network_status(pod),
         },
+        "volumes": volumes(snap, ns, pod),
         "gaps": gaps(pod, &containers),
     })
 }
@@ -745,5 +949,97 @@ container_memory_working_set_bytes{container="app",id="abc",namespace="shop",pod
         assert_eq!(owner_href("Deployment", "shop", "web").unwrap(), "#/grid?id=k8s:deploy:shop/web");
         assert_eq!(owner_href("VirtualMachineInstance", "shop", "vm1").unwrap(), "#/vm/shop/vm1");
         assert!(owner_href("ReplicaSet", "shop", "web-abc").is_none());
+    }
+
+    #[test]
+    fn probes_read_as_describe_prints_them_with_defaults() {
+        let c = json!({"name": "app",
+            "livenessProbe": {"httpGet": {"path": "/healthz", "port": 8080}, "periodSeconds": 5},
+            "readinessProbe": {"tcpSocket": {"port": "http"}, "initialDelaySeconds": 3, "failureThreshold": 1},
+            "startupProbe": {"exec": {"command": ["cat", "/tmp/ready"]}, "timeoutSeconds": 2}});
+        let p = probes_of(&c);
+        assert_eq!(p["liveness"]["type"], "http-get");
+        assert_eq!(p["liveness"]["target"], "http://:8080/healthz");
+        assert_eq!((p["liveness"]["periodSeconds"].as_i64(), p["liveness"]["timeoutSeconds"].as_i64()), (Some(5), Some(1)));
+        assert_eq!(p["liveness"]["failureThreshold"], 3);
+        assert_eq!(p["readiness"]["target"], ":http");
+        assert_eq!(p["readiness"]["initialDelaySeconds"], 3);
+        assert_eq!(p["startup"]["target"], "[cat /tmp/ready]");
+        assert_eq!(probe_config(&json!({"grpc": {"port": 9000, "service": "health"}}))["target"], ":9000 health");
+        assert_eq!(probes_of(&json!({"name": "x"})), json!({}));
+    }
+
+    fn ev(reason: &str, container: &str, msg: &str, last: &str, count: i64) -> Value {
+        json!({"type": "Warning", "reason": reason, "message": msg, "count": count,
+               "firstTimestamp": "2026-10-02T09:00:00Z", "lastTimestamp": last,
+               "involvedObject": {"kind": "Pod", "name": "web-1", "namespace": "shop",
+                                  "fieldPath": format!("spec.containers{{{container}}}")}})
+    }
+
+    #[test]
+    fn probes_are_observed_from_the_flags_and_the_newest_failure() {
+        let mut pod = crashing_pod();
+        pod["spec"]["containers"][0]["livenessProbe"] = json!({"httpGet": {"path": "/healthz", "port": 8080}});
+        pod["spec"]["containers"][0]["readinessProbe"] = json!({"httpGet": {"path": "/ready", "port": 8080}});
+        pod["spec"]["containers"][1]["livenessProbe"] = json!({"tcpSocket": {"port": 9876}});
+        pod["spec"]["containers"][1]["readinessProbe"] = json!({"tcpSocket": {"port": 9876}});
+        // app runs again, failing readiness in this run; agent failed its
+        // liveness probe, but before this run started.
+        pod["status"]["containerStatuses"][0]["state"] = json!({"running": {"startedAt": "2026-10-02T11:00:00Z"}});
+        let events = vec![
+            ev("Unhealthy", "app", "Readiness probe failed: HTTP probe failed with statuscode: 503", "2026-10-02T11:05:00Z", 12),
+            ev("Unhealthy", "app", "Readiness probe failed: connection refused", "2026-10-02T10:00:00Z", 4),
+            ev("Unhealthy", "agent", "Liveness probe failed: dial tcp :9876: connect: connection refused", "2026-10-02T09:59:00Z", 3),
+            ev("BackOff", "app", "Back-off restarting failed container", "2026-10-02T11:06:00Z", 7),
+        ];
+        let mut cs = containers(&pod);
+        observe_probes(&mut cs, &events);
+        let app = cs.iter().find(|c| c["name"] == "app").unwrap();
+        assert_eq!(app["probes"]["readiness"]["result"], "failing");
+        assert_eq!(app["probes"]["readiness"]["lastFailure"]["count"], 12);
+        assert!(app["probes"]["readiness"]["lastFailure"]["message"].as_str().unwrap().contains("503"));
+        assert_eq!(app["probes"]["liveness"]["result"], "passing");
+        assert_eq!(app["probes"]["liveness"]["lastFailure"], Value::Null);
+        let agent = cs.iter().find(|c| c["name"] == "agent").unwrap();
+        assert_eq!(agent["probes"]["liveness"]["result"], "passing");
+        assert_eq!(agent["probes"]["liveness"]["lastFailure"]["count"], 3);
+        assert_eq!(agent["probes"]["readiness"]["result"], "passing");
+    }
+
+    #[test]
+    fn volumes_say_where_they_are_mounted_and_what_a_claim_is_bound_to() {
+        let mut pod = crashing_pod();
+        pod["spec"]["volumes"] = json!([
+            {"name": "data", "persistentVolumeClaim": {"claimName": "web-data"}},
+            {"name": "cfg", "configMap": {"name": "web-cfg"}},
+            {"name": "scratch", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}},
+            {"name": "token", "projected": {"sources": [{"serviceAccountToken": {}}, {"configMap": {"name": "kube-root-ca.crt"}}]}},
+            {"name": "gone", "persistentVolumeClaim": {"claimName": "nope"}}
+        ]);
+        pod["spec"]["containers"][0]["volumeMounts"] = json!([
+            {"name": "data", "mountPath": "/var/lib/web"}, {"name": "cfg", "mountPath": "/etc/web", "readOnly": true}]);
+        pod["spec"]["initContainers"][0]["volumeMounts"] = json!([{"name": "data", "mountPath": "/data"}]);
+        let mut snap = snap_with("pvc", vec![("shop/web-data", json!({
+            "spec": {"volumeName": "pvc-123", "storageClassName": "stormblock", "accessModes": ["ReadWriteOnce"],
+                     "resources": {"requests": {"storage": "10Gi"}}},
+            "status": {"phase": "Bound", "capacity": {"storage": "10Gi"}}}))]);
+        snap.insert("pv", [("pvc-123".to_string(), json!({
+            "spec": {"capacity": {"storage": "10Gi"}, "persistentVolumeReclaimPolicy": "Delete",
+                     "csi": {"driver": "stormblock.storm.io", "volumeHandle": "shop-web-data"}},
+            "status": {"phase": "Bound"}}))].into_iter().collect());
+        let v = volumes(&snap, "shop", &pod);
+        assert_eq!(v.len(), 5);
+        assert_eq!((v[0]["kind"].as_str(), v[0]["source"].as_str()), (Some("persistentVolumeClaim"), Some("claim web-data")));
+        let mounts: Vec<(&str, &str)> = v[0]["mounts"].as_array().unwrap().iter()
+            .map(|m| (m["container"].as_str().unwrap(), m["mountPath"].as_str().unwrap())).collect();
+        assert_eq!(mounts, vec![("init", "/data"), ("app", "/var/lib/web")]);
+        assert_eq!(v[0]["claim"]["phase"], "Bound");
+        assert_eq!(v[0]["claim"]["storageClass"], "stormblock");
+        assert_eq!(v[0]["claim"]["pv"]["driver"], "stormblock.storm.io");
+        assert_eq!(v[1]["mounts"][0]["readOnly"], true);
+        assert_eq!(v[2]["source"], "medium Memory, limit 64Mi");
+        assert_eq!(v[3]["source"], "serviceAccountToken, configMap");
+        assert_eq!(v[4]["claim"], json!({"name": "nope", "found": false}));
+        assert_eq!(v[3]["claim"], Value::Null);
     }
 }

@@ -44,6 +44,14 @@ pub struct Event {
     /// most of the diagnosis in a crash loop.
     #[serde(default = "one")]
     pub count: i64,
+    /// When it first happened, for a source that collapses repeats: with
+    /// `count` and `time`, how long a crash loop has been going (#124).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub first: String,
+    /// The part of the object it is about: a container's field path
+    /// (`spec.containers{app}`), when the source gave one.
+    #[serde(default, rename = "fieldPath", skip_serializing_if = "String::is_empty")]
+    pub field_path: String,
 }
 
 fn one() -> i64 {
@@ -114,6 +122,8 @@ mod tests {
             message: String::new(),
             source: String::new(),
             count: 1,
+            first: String::new(),
+            field_path: String::new(),
         }
     }
 

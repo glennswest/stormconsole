@@ -90,6 +90,13 @@ pub fn event(e: &Value) -> Event {
             }
         },
         count: e.pointer("/count").and_then(Value::as_i64).unwrap_or(1),
+        first: e
+            .pointer("/firstTimestamp")
+            .and_then(Value::as_str)
+            .or_else(|| e.pointer("/eventTime").and_then(Value::as_str))
+            .unwrap_or("")
+            .to_string(),
+        field_path: g("/involvedObject/fieldPath"),
     }
 }
 
