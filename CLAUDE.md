@@ -1332,7 +1332,7 @@ only, so each node's console shows its own agent. No Hubble (flowsdn#293).
       changelog; `deploy/verify-flowsdn.sh` (stand-in agent in the agent's
       shapes and transport, a real console, Chromium); release; golden
 
-### Node health: each API's state and latency, alert on a stall (#123)
+### Node health: each API's state and latency, alert on a stall (#123) ✅ 2026-10-10
 stormcos#458: stormd (#49) probes each process's declared APIs; PID 1
 (stormpump#127) probes its own units' and merges every container's stormd
 state file (stormd#52) into `/run/stormpump/health.json` — `{updated,
@@ -1346,21 +1346,41 @@ error`). stormd also serves `GET /api/v1/health/apis` → `{items}`. Read
 from stormd b30c7b9 (apihealth.rs) and stormpump 272470b (apihealth.rs,
 healthd.rs, README § API health). The console's unit binds neither
 `/run/stormpump` nor system-data yet: stormcos's to do (filed).
-- [ ] `crates/plugins/apihealth` (name `health`): every 5 s, the summary
+- [x] `crates/plugins/apihealth` (name `health`): every 5 s, the summary
       file; when it is unreadable, each local stormd's
       `/api/v1/health/apis` (the fleet ports), saying which source; a
       summary not rewritten for 30 s is said stale. History: the last
       changes per API from `history_dir`
-- [ ] Feed: the node (worst), one row per API (state, last/p50/p99 against
+- [x] Feed: the node (worst), one row per API (state, last/p50/p99 against
       budget, since, error); stalled/down are errors naming service, probe
       and how long
-- [ ] Routes `/snapshot`, `/history?process=&api=`
-- [ ] `#/health` page (Compute → API health) and the local node page's
+- [x] Routes `/snapshot`, `/history?process=&api=`
+- [x] `#/health` page (Compute → API health) and the local node page's
       section; an alert bar on every page for each stalled/down API
-- [ ] Config `[health] enabled/summary_file/history_dir`; tests; docs,
+- [x] Config `[health] enabled/summary_file/history_dir`; tests; docs,
       changelog; `deploy/verify-api-health.sh` (a real stormd probing a
       stand-in that stalls, a summary file, a real console, Chromium);
       release; golden
+- Verified with `sc-build deploy/verify-api-health.sh` (0 failed, 71201ab):
+  a real stormd (b30c7b9) probing a stand-in service every second (2 s
+  timeout, p99 200 ms) and writing its state file; a console with no
+  summary bound in reads the stormd — healthy, then STALLED "for Ns — no
+  answer within 2 s" (node row in error, the alert bar on the overview and
+  the nodes page, its link opening the API with its changes), slow with
+  last/p50/p99 against the budget, DOWN "HTTP 500", healthy again; a 401
+  stormd named; history narrowed and newest first, "not mounted" said. A
+  console on PID 1's summary (a stand-in merge in stormpump's shape over the
+  real state file): the engine's own probe stalled first, the container's
+  stormd merged; the stormd frozen → its entry stalled with what it last
+  said; the merge stopped → "summary has not been rewritten". Chromium: no
+  page errors, no bar once healthy. Unit tests 13/13; clippy clean on the
+  crate
+- Found on the way: main did not compile (flowsdn `Module` derived
+  `Default` over `Health`, from #83) — fixed in 00f842e; workspace clippy
+  debt and no clippy gate → #133
+- Left: the console's unit binds neither `/run/stormpump` nor `/system-data`
+  (stormcos#525); until then a node shows each stormd's view, without PID
+  1's own probes, and no history
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
