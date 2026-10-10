@@ -3,6 +3,18 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-10 — A service a node does not run is off, not failed (#60)
+- **fix:** stormipmi (opt-in: stormcos starts it with `roles=sno`) and
+  fastetcd (`roles=sno,master`) are **Idle**, "not started on this node",
+  with the role and how to start it, when nothing listens on their port or
+  on their stormd (:9197, :9081) — not an error. Started and silent stays
+  an error. The Machines page says the same instead of "did not answer".
+- **feat:** `console_core::upstream::not_started` and
+  `Feed::not_started_when`, for any other role-limited service.
+- **test:** `deploy/verify-not-started.sh` — a real console on a node
+  running neither, then a silent stormd, then a stormipmi; the page in
+  Chromium. Filed #147 (the apiserver on a worker).
+
 ### 2026-10-10 — The log ring within its disk, and back from an I/O error (#128)
 - **fix:** the fleet log ring keeps `[logs] keep_free_percent` (20) of its
   filesystem free (`statvfs`) and its file under half of what it may use

@@ -184,8 +184,13 @@ Full example: [config/config.toml](config/config.toml).
 | `[health] enabled / summary_file / history_dir` | on / `/run/stormpump/health.json` / `/system-data/history/api` | PID 1's API health summary, read every 5 s and said stale when not rewritten for 30 s; when it cannot be read, each stormd at `[fleet] stormd_host` on `stormd_ports` is asked instead (which misses PID 1's own probes, the engine's first). On a node both need stormcos to bind them into the console's unit (stormcos#525) |
 | `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
 
-An upstream that is not there is not an error: its card says which address
-did not answer.
+An upstream that does not answer is an error on its card, naming the address
+— except a service this node carries and, by design, does not run (#60):
+stormipmi (stormcos starts it with `roles=sno`) and fastetcd (`roles=sno,master`).
+When nothing listens on its port **and** nothing on the stormd that would
+supervise it (:9197, :9081), its card is **Idle**, "not started on this node",
+with the role it runs on and how to start it; the Machines page says the same.
+Started and silent (its stormd up, the service not answering) stays an error.
 
 ## Ports, health, metrics
 

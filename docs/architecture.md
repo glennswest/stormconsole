@@ -1504,6 +1504,16 @@ create, rather than showing nothing.
 
 ## Cross-cutting services (console-core + binary)
 
+- **Not started is not failed** (#60) — `upstream::not_started(url,
+  stormd_port)`: a loopback service whose port refuses *and* whose stormd's
+  port refuses was never started on this node, which stormcos does by role
+  (stormipmi `roles=sno`, fastetcd `roles=sno,master`). `Feed::not_started_when`
+  turns that into Idle with a sentence (the ipmi plugin); the fastetcd plugin
+  does the same when neither its client nor its metrics port answers. A
+  refusal with the stormd up, a timeout or an HTTP error stays an error. The
+  apiserver on a worker is not this: there the console should read the
+  cluster's endpoint (#147).
+
 - **Auth** — stormd-compatible: `[[api.users]]` (argon2 `password_hash`,
   roles, SSH keys, an optional `kube_token`) + an optional `auth_token`
   bearer, or `auth_token_file` (#102: a per-node token stormcos mints, since
