@@ -1282,24 +1282,32 @@ browser finds what an API check cannot.
   matching is case-blind; bare-1 is deleted by its own rig) and on the
   fresh VM (no kubectl, no Python websockets — the rig brings its own)
 
-### Cluster progress, node by node (#84)
+### Cluster progress, node by node (#84) ✅ 2026-10-10
 Owner on stormcluster#1: "a cluster progress screen as they reconfigure".
 stormcluster's `GET /api/v1/operations/{id}` gives `request` (op + its
 nodes) and `steps[{step: {step, node?, …}, description, status, error,
 note, startedAt, finishedAt}]` — grouping by node needs nothing new
 upstream (read from stormcluster cd478e0, exec.rs/plan.rs).
-- [ ] `web/src/lib/progress.js` (pure): every node the request names or a
+- [x] `web/src/lib/progress.js` (pure): every node the request names or a
       step names, in order, with its steps, status (pending / running /
       done / failed) and current step; node-less steps as "the cluster";
       a node test
-- [ ] Cluster page: after a write, the progress view opens on the
+- [x] Cluster page: after a write, the progress view opens on the
       operation it starts (the first new `op:` card); any operation opens it
       from the list; polled while running; closes on demand
-- [ ] `verify-cluster.sh`'s browser walk: Form → b1's steps done; Join →
+- [x] `verify-cluster.sh`'s browser walk: Form → b1's steps done; Join →
       b2 failed at the join token with its error; tests, docs, changelog;
       release; golden (stormcentral#521 permitting)
 - Built in 24cead2 (2026-10-07); the rig was not run then (stormcentral#521,
-  closed since). 2026-10-10: running `sc-build deploy/verify-cluster.sh`
+  closed since).
+- Verified 2026-10-10 with `sc-build deploy/verify-cluster.sh` (0 failed,
+  f58a5d3): progress.test.mjs ok; three stormclusters at 139c712, b1
+  reconciling a real rustkube. Chromium: Write it on Form → the progress
+  view opens with b1, its steps run to done, the cluster's own steps apart;
+  Join b2 → the view follows it, b2 FAILED 2/6 "failed at: issue a join
+  token for b2" with stormcluster's error; closed and reopened from the
+  form's row; no page errors. The screenshots found a long error running
+  over the next card — fixed (f58a5d3) and seen fixed
 
 ### A flowsdn plugin (#83)
 flowsdn#297: the agent serves a read-only HTTP/1.1 listener on the node's
