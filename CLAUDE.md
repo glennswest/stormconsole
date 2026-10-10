@@ -1332,6 +1332,36 @@ only, so each node's console shows its own agent. No Hubble (flowsdn#293).
       changelog; `deploy/verify-flowsdn.sh` (stand-in agent in the agent's
       shapes and transport, a real console, Chromium); release; golden
 
+### Node health: each API's state and latency, alert on a stall (#123)
+stormcos#458: stormd (#49) probes each process's declared APIs; PID 1
+(stormpump#127) probes its own units' and merges every container's stormd
+state file (stormd#52) into `/run/stormpump/health.json` — `{updated,
+worst, apis:[{source stormpump|stormd, container?, process, api, url,
+state healthy|slow|stalled|down|unknown, since, running, last_ms, p50_ms,
+p99_ms, budget_p50_ms, budget_p99_ms, last_error, last_check, checks,
+interval_secs?, file_age_secs?, stale?, reported_state?}]}`, rewritten every
+5 s. Each change is a line in `/system-data/history/api/<process>.jsonl`
+(`ts, process, api, url, from, to, from_secs, latency_ms, p50_ms, p99_ms,
+error`). stormd also serves `GET /api/v1/health/apis` → `{items}`. Read
+from stormd b30c7b9 (apihealth.rs) and stormpump 272470b (apihealth.rs,
+healthd.rs, README § API health). The console's unit binds neither
+`/run/stormpump` nor system-data yet: stormcos's to do (filed).
+- [ ] `crates/plugins/apihealth` (name `health`): every 5 s, the summary
+      file; when it is unreadable, each local stormd's
+      `/api/v1/health/apis` (the fleet ports), saying which source; a
+      summary not rewritten for 30 s is said stale. History: the last
+      changes per API from `history_dir`
+- [ ] Feed: the node (worst), one row per API (state, last/p50/p99 against
+      budget, since, error); stalled/down are errors naming service, probe
+      and how long
+- [ ] Routes `/snapshot`, `/history?process=&api=`
+- [ ] `#/health` page (Compute → API health) and the local node page's
+      section; an alert bar on every page for each stalled/down API
+- [ ] Config `[health] enabled/summary_file/history_dir`; tests; docs,
+      changelog; `deploy/verify-api-health.sh` (a real stormd probing a
+      stand-in that stalls, a summary file, a real console, Chromium);
+      release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
