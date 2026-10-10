@@ -35,6 +35,14 @@
   const notStarted = $derived(card?.health === 'idle' && /not started/.test(card?.detail || ''))
 
   async function load() {
+    // Not asked while it is not started here, nor before the feed has said
+    // whether it is: a request to a service that is not there is a 502 in
+    // the browser for nothing.
+    if (!feed.loaded || notStarted) {
+      clearTimeout(timer)
+      timer = setTimeout(load, 2000)
+      return
+    }
     try {
       fleet = await get(`${API}/machines${testOnly ? '?test=true' : ''}`)
       error = ''
@@ -49,7 +57,9 @@
     load()
   })
   $effect(() => {
-    get(`${API}/releases`).then((d) => (releases = d.releases || [])).catch(() => {})
+    if (feed.loaded && !notStarted) get(`${API}/releases`).then((d) => (releases = d.releases || [])).catch(() => {})
+  })
+  $effect(() => {
     get('/api/plugins/ipmi/me').then((d) => (me = d)).catch(() => {})
   })
   onDestroy(() => {
