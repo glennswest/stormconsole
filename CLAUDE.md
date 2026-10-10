@@ -1299,6 +1299,39 @@ upstream (read from stormcluster cd478e0, exec.rs/plan.rs).
       b2 failed at the join token with its error; tests, docs, changelog;
       release; golden (stormcentral#521 permitting)
 
+### A flowsdn plugin (#83)
+flowsdn#297: the agent serves a read-only HTTP/1.1 listener on the node's
+loopback, `http://127.0.0.1:9878` (both edition manifests; in golden
+eda35249a55e and later): `GET /v1/endpoint[/{id}[/healthz]]`, `/v1/ipam`,
+`/v1/healthz`, `/v1/health/modules`, `/v1/config`, `GET|POST
+/v1/statedb/query` (health table only); Kubernetes mode adds `/v1/ip`,
+`/v1/identity`, `/v1/service`, `/v1/node/routes` (404 otherwise). One
+request per connection, `Connection: close`, 2 s budget; writes 403. IPAM
+counts are decimal strings. Endpoint rows carry `status.pod` (namespace,
+pod_name, node_name, workloads, containers), `status.pod-networks`,
+`status.identity` once allocated (#291). Shapes: flowsdn docs/agent-api.md
+and `crates/flowsdn-agent/src/{api,health_api}.rs` (read 8fa0cc8). Loopback
+only, so each node's console shows its own agent. No Hubble (flowsdn#293).
+- [ ] `crates/plugins/flowsdn` (name `flowsdn`): poll every 5 s into a cache
+      that keeps the last good answer per route when the agent is down;
+      edition from `/etc/stormcos/release/manifest.json` (`edition`/`network`,
+      else its components) — a cilium node says "not this edition" and has
+      no nav item
+- [ ] Feed: the agent (health from healthz + modules; a module "not
+      implemented" is idle, not a warning), one row per endpoint led by
+      ns/pod with node + namespace as `belongs_to` (columns), state, IPv4,
+      IPv6, identity; one per IPAM pool (u128 counts, warn under 10% free)
+- [ ] Access: endpoints and services in namespaces the viewer may not see
+      are withheld (feed and routes), as the vm plugin does
+- [ ] Routes: `/snapshot`, `/endpoint/{id}` (live, + healthz), `/state/{table}`
+      (allowlist: health)
+- [ ] `#/flowsdn`: Endpoints (node/namespace filters, ✓/· marks), IPAM,
+      Health (per module), Config, Services, Routes, State, Flows (says
+      flowsdn#293)
+- [ ] Config `[flowsdn] enabled/url/release_manifest`; tests; docs,
+      changelog; `deploy/verify-flowsdn.sh` (stand-in agent in the agent's
+      shapes and transport, a real console, Chromium); release; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
