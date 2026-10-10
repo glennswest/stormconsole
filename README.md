@@ -32,6 +32,7 @@ create forms and a slice of the component feed every page is drawn from.
 | fastetcd (`etcd`) | fastetcd `/health` (:2379) and `/metrics` (:2381) | Datastore: revision, size vs quota, alarms, leader; members and keyspace when the v3 JSON gateway is served (etcd; fastetcd v1.8.0+) | compact, defragment, disarm, snapshot (admin) |
 | stormipmi (`ipmi`) | stormipmi (:9097) Machines API | Hardware → Machines: by service tag, BMC, power, the release each boots, default image, adopt, SOL console | power, set release/default, test mark, adopt (admin) |
 | stormcluster (`cluster`) | stormcluster (:9102, TLS) feed, reads and dry run on this node — any node's answers for the cluster; the `cluster.storm.io` `Cluster`/`ClusterMember` objects through the apiserver | Cluster → Membership: the cluster (or this SNO), members with role, state, the cluster CA and each object's phase, blockers and operation, discovered nodes, the last operations and their steps | form, join (as workers, or masters in pairs), promote (in pairs), demote, drain, uncordon, serve storage, release (data erased), dissolve — each previewed as stormcluster's plan, then written as objects **as the viewer**, so RBAC decides |
+| flowsdn (`flowsdn`) | this node's flowsdn agent, its read-only loopback listener (`http-listen`, :9878, flowsdn#297); the release manifest for the edition | Networking → Pod network (flowsdn): endpoints led by pod, with node and namespace filters, addresses, identity, interface, owner, one opened live with its link health; IPAM pools (exact past 2^53); the agent's health and modules; its config; the Services it programs; direct node routes; the health table; a cilium node says "not this edition" and has no page | — (the listener is read-only) |
 
 **Claims.** A PersistentVolumeClaim of the built-in `stormblock` class
 (provisioner `stormblock.storm.io`, binding `WaitForFirstConsumer`) is
@@ -87,6 +88,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only; Images, Volumes and Unattached in Chromium |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes; the map, a picked drive, Pools and Shelves in Chromium |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge); power, release, boot intent and the SOL console in Chromium, as admin and as ops |
+| `verify-flowsdn.sh` | the flowsdn plugin (#83) — a stand-in agent in flowsdn's shapes and transport (one request per connection, writes 403, Kubernetes routes only in Kubernetes mode; the real agent needs root for BPF); consoles on a flowsdn node, a standalone agent, a cilium node and a missing agent; an endpoint going down, the agent stopping (last good kept) and coming back; every tab in Chromium |
 | `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
 | `verify-storage-token.sh` | stormstorage's write token through the proxy (#53): a real stormstorage with `[api] api_token` — with `token_file` the feed's actions pass its check, without it (or with the browser sending the token) 401, an unreadable file warned, a DELETE left to the storage guard |
 | `verify-cluster.sh` | the Cluster page on objects (#88) — three real stormclusters from main over TLS on loopback addresses and a private multicast group, b1 reconciling a real rustkube (TLS, anonymous off), stand-ins for the node lifecycle API and fastetcd's gateway; plans and refusals in stormcluster's words, RBAC as the viewer, then form, join, a failed step on the object, release in Chromium as root and alice |
@@ -169,6 +171,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |
 | `[stormcluster] enabled / url / token_file` | on / `http://127.0.0.1:9102` (`https://` when `ca_file` is set) / — | stormcluster's `token_file`, held server-side and sent with the reads and the dry run (a client pair does the same job) |
 | `[stormcluster] ca_file / cert_file / key_file` | — | :9102 is TLS only (stormcluster#5): trust only this CA, present the console's client pair; re-read when they change; a bad file is the card's error; half a pair, or certificates with an `http://` url, exit 78 |
+| `[flowsdn] enabled / url / release_manifest` | on / `http://127.0.0.1:9878` / `/etc/stormcos/release/manifest.json` | the agent's `http-listen` (loopback only, so each node's console reads its own); the manifest names the edition — `edition`/`network`, else a `-flowsdn` release version, else its components — and a cilium node asks no agent |
 | `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
 
 An upstream that is not there is not an error: its card says which address
@@ -287,6 +290,11 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 - **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
   with no API (stormcos#38); the console offers none.
 - **Scale a workload, cordon/uncordon and drain a node** — not built (#36).
+- **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293);
+  the page's Flows tab says so. **Another node's flowsdn agent** — its API
+  is loopback only, so each node's console shows its own. Endpoint and
+  Service scoping by namespace is unit-tested and not yet run live against
+  RBAC (the rig has no apiserver).
 - **Cilium flows, Hubble, agent metrics** — the image ships them
   (stormpump#11, closed); the console does not read them yet (#4).
 - **VM metrics over time** — cadvisor is not wired (#14; per-VM stats

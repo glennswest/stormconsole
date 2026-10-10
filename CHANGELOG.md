@@ -3,6 +3,28 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-10 — A flowsdn plugin (#83)
+- **feat:** `crates/plugins/flowsdn`: this node's pod network on the
+  flowsdn edition, from the agent's read-only loopback listener
+  (`http://127.0.0.1:9878`, flowsdn#297), polled every 5 s with the last
+  good answer kept per route while the agent is away. Feed: the agent
+  (health from its API, Kubernetes view and modules; "not implemented" is
+  idle, not a warning), one row per endpoint led by `namespace/pod` with
+  node and namespace as placement columns and the identity as a metric,
+  one per IPAM pool (exact u128 counts). Endpoints and Services in
+  namespaces the viewer may not see are withheld.
+- **feat:** `#/flowsdn` (Networking → Pod network (flowsdn)): Endpoints
+  with node/namespace filters and ✓/· marks, one opened live with its link
+  health and identity labels; IPAM; Health per module; Config; Services;
+  node Routes; the health table; Flows says they wait on flowsdn#293.
+- **feat:** the edition from `/etc/stormcos/release/manifest.json`: a
+  cilium node asks no agent, offers no page and says "not this edition".
+- **feat:** config `[flowsdn] enabled / url / release_manifest`.
+- **test:** `deploy/verify-flowsdn.sh` — a stand-in agent in flowsdn's
+  shapes and transport, four consoles (Kubernetes mode, standalone,
+  cilium, no agent), an endpoint going down, the agent stopping and
+  coming back; every tab in Chromium.
+
 ### 2026-10-07 — Cluster progress, node by node (#84)
 - **feat:** the Cluster page opens a **Progress** view on the operation a
   form, join, promote, demote, drain, storage change or release starts:

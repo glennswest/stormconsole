@@ -1083,6 +1083,50 @@ boot intent (stormipmi's 501 shown as it says it), test marks, the default
 image, and new hosts to adopt with their BMC. `deploy/verify-machines.sh` is
 the live check on stormipmi's own rig.
 
+### The pod network on flowsdn (#83)
+
+`crates/plugins/flowsdn` (name `flowsdn`, spec flowsdn#297) reads **this
+node's** flowsdn agent at `[flowsdn] url` — default `http://127.0.0.1:9878`,
+the agent's `http-listen`, which flowsdn binds only on loopback and serves
+read-only (every write 403; one request per connection, `Connection:
+close`, a 2 s budget — the client is HTTP/1.1 with no pool and a 3 s
+timeout). Shapes: flowsdn `docs/agent-api.md`, `crates/flowsdn-agent/src/
+{api,health_api}.rs`. Another node's agent is not reachable, so each node's
+console shows its own; the page says so.
+
+- **Edition first.** `[flowsdn] release_manifest`
+  (`/etc/stormcos/release/manifest.json`) names it: an `edition`/`network`
+  field, else a `<n>-flowsdn` release version, else a `flowsdn` (or
+  cilium) component. A cilium node asks no agent, has no nav item, and its
+  one row says "not this edition". An unreadable manifest plus silence is
+  Unknown with that sentence (a cilium node is silent too); a flowsdn node
+  with no answer is an Error.
+- **Polled every 5 s** (`run`), `/v1/healthz` first (it answers only once
+  the agent has restored state), then modules, endpoints, IPAM, config, and
+  in Kubernetes mode Services, node routes and identities (404 there means
+  "not served", not an error). A route that fails keeps its **last good
+  answer**; the agent row then says it stopped answering and how long ago.
+- **Feed** (`model.rs`, pure): the agent (health = the API's state, a
+  Stopped module, the Kubernetes view's state, a Degraded module — but a
+  module Degraded with "not implemented" is Idle: flowsdn saying a
+  controller does not exist yet), one `flowsdn:ep:<id>` per endpoint
+  labelled `namespace/pod` with `belongs_to` namespace and node (so the
+  table gives them columns) and `has_one` pod, the numeric identity a
+  metric; one `flowsdn:pool:<pool>:<family>` per IPAM pool, counts kept as
+  the agent's decimal strings and compared as u128 (warn under 10 % free,
+  error at 0).
+- **Access**: endpoint rows and Services in a namespace the viewer may not
+  see are withheld from the feed and every route (`NamespaceAccess`, as the
+  vm plugin), an endpoint answering 404 like one that is not there.
+- **Routes**: `GET /snapshot` (everything, scoped), `GET /endpoint/{id}`
+  (live from the agent, numeric or a percent-encoded CNI attachment id,
+  with `/healthz` and the identity's labels), `GET /state/{table}` (only
+  `STATE_TABLES` — `health` — posted to `/v1/statedb/query`; no free-text
+  query).
+- **Page** `#/flowsdn`: Endpoints (search, node and namespace filters, ✓/·
+  marks, one opened live), IPAM, Health, Config, Services, Routes, State,
+  Flows — which says flowsdn has no Hubble observer yet (flowsdn#293).
+
 ### Cluster membership, from stormcluster (#63)
 
 `crates/plugins/stormcluster` (name `cluster`) reads stormcluster
@@ -1439,6 +1483,7 @@ stormconsole/
       fastetcd/              # the datastore: /metrics + etcd's v3 gateway
       stormipmi/             # bare metal: the Machines API and SOL
       stormcluster/          # cluster membership: form, join, promote, split
+      flowsdn/               # this node's pod network on the flowsdn edition
   web/                       # Svelte 5 SPA (stormview npm); web/dist committed, embedded
   config/                    # config.toml (example), stormd.toml (Containerfile)
   deploy/                    # verify-*.sh — live checks run with sc-build
@@ -1464,6 +1509,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
+| flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
 | stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
