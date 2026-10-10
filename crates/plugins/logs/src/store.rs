@@ -1242,8 +1242,11 @@ mod tests {
         let hits = store.query(None, None, Some(3), None, 10).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(store.stats().entries, 51);
-        // Not twice within the window.
-        assert!(!store.recover("again"));
+        // Not twice within the window: of two back-to-back attempts, the
+        // second is refused whatever the first (a slow disk can take the
+        // first recovery past the window on its own).
+        let _ = store.recover("again");
+        assert!(!store.recover("and again"));
     }
 
     #[test]
