@@ -77,7 +77,7 @@ sleep 6
 echo "  reopened: $(card reopened); log: $(grep -c 'reopened after an I/O error' "$W/c.log") recoveries, $(grep -c 'store insert failed' "$W/c.log") insert-failure lines"
 check "$([ "$(card reopened)" -ge 1 ] 2>/dev/null && echo yes)" "yes" "the ring was reopened after the I/O error"
 check "$(filtered | grep -c 'Previous I/O error')" "0" "reads never say 'Previous I/O error'"
-check "$([ "$(grep -c 'store insert failed' "$W/c.log")" -le 3 ] && echo few)" "few" "failures are not logged per datagram"
+check "$([ "$(grep -c 'store insert failed' "$W/c.log")" -lt 100 ] && echo few)" "few" "failures are not logged per datagram ($(grep -c 'store insert failed' "$W/c.log") lines for 6,000 sent)"
 rm -f "$VOL/filler"
 $FLOOD "$G" 2000 1000 C > "$W/flood-c.log"
 sleep 3

@@ -29,27 +29,35 @@
 //! `last_seen` order the same, which is what lets pruning stop at the
 //! first live entry instead of scanning the whole ring.
 //!
-//! Durability is `Eventual`: this is a bounded ring of ephemeral fleet
-//! chatter, not a ledger, and fsyncing every datagram would make the
-//! collector the slowest thing on the node.
+//! Durability: an insert commits without syncing (`Durability::None`), and
+//! every [`DURABLE_EVERY`] inserts or [`DURABLE_EVERY_MS`] one commit is
+//! durable. This is a bounded ring of fleet chatter, not a ledger; redb's
+//! `Eventual` is an `fdatasync` per commit on Linux, which held the
+//! collector to a few dozen lines a second on a real disk (#128) — and
+//! redb reuses freed pages only after a durable commit, so one is made
+//! often enough that pruning keeps the file from growing.
 //!
 //! **Bounded by the disk it is on, too** (#128). On a node the ring lives
 //! on the console's own data volume, 64 MiB, and 200,000 entries did not
-//! fit: the volume filled, and being kept, every boot started full. So
-//! every [`ROOM_EVERY`] inserts and on every sweep the filesystem is asked
-//! (`statvfs`) how much is free; under `keep_free` of it, the oldest entries
-//! go in proportion to what is missing and the database is compacted —
-//! redb reuses freed pages but only `compact` gives them back to the
-//! filesystem. The same happens at open, for a volume a previous run left
-//! full.
+//! fit: the volume filled, and being kept, every boot started full. The
+//! ring's *budget* is what it may occupy while `keep_free` of the
+//! filesystem stays free (`statvfs`). redb grows its file by **doubling**
+//! (below one 4 GiB region), so a file past half its budget would fail its
+//! next growth however much is free: every [`ROOM_EVERY`] inserts and on
+//! every sweep, a file past half its budget, or a disk under its floor,
+//! loses its oldest entries and is compacted back to under a third of the
+//! budget — redb reuses freed pages, but only `compact` gives them back to
+//! the filesystem. The same happens at open, for a volume a previous run
+//! left full.
 //!
 //! **One I/O error is not the end of it** (#128). After a failed write
 //! redb refuses every later transaction ("Previous I/O error … close and
 //! re-open the database"), and a ring that never reopened stayed broken
 //! for the rest of the run. Now an I/O error closes the handle and reopens
-//! the file — redb repairs it — sheds half the ring and compacts; a file
-//! that will not open at all is replaced by a new ring, because this is
-//! chatter, not a ledger. The operation that hit the error is tried once
+//! the file — redb repairs it — sheds half the ring and compacts. redb is
+//! copy-on-write, so on a disk with no room even a delete fails: a ring
+//! that cannot shed, or will not open at all, is replaced by a new one,
+//! because this is chatter, not a ledger. The operation that hit the error is tried once
 //! more. At most once every [`RECOVER_EVERY_MS`], said once per recovery.
 
 use std::path::{Path, PathBuf};
@@ -87,6 +95,10 @@ pub const RECOVER_EVERY_MS: u64 = 5_000;
 /// After a shed that could not reach the floor, wait this long before the
 /// next one, unless an open or a sweep asks.
 const ROOM_EVERY_MS: u64 = 10_000;
+/// One insert in this many commits durably…
+pub const DURABLE_EVERY: u64 = 256;
+/// …and at least one this often.
+pub const DURABLE_EVERY_MS: u64 = 1_000;
 
 #[derive(Debug)]
 pub struct Error(String);
@@ -233,6 +245,8 @@ pub struct Store {
     dedup: bool,
     /// Insert counter, so a busy ring prunes without waiting for the timer.
     since_prune: Mutex<u64>,
+    /// Inserts since, and when, the last durable commit.
+    durable: Mutex<(u64, u64)>,
     /// The fraction of the filesystem kept free.
     keep_free: f64,
     /// How free space is measured: `statvfs`, or a test's stand-in.
@@ -415,6 +429,7 @@ impl Store {
             retain_ms,
             dedup,
             since_prune: Mutex::new(0),
+            durable: Mutex::new((0, 0)),
             keep_free: keep_free.clamp(0.0, 0.9),
             space,
             care: Mutex::new(Care::default()),
@@ -491,20 +506,36 @@ impl Store {
                 Database::create(&self.path).map_err(Error::from)
             }
         };
+        let broken = |e: &dyn std::fmt::Display| {
+            let why = format!("{path}: {e} (after: {cause})");
+            warn!(error = %why, "the log ring could not be reopened; trying again in a few seconds");
+            self.care.lock().unwrap_or_else(|e| e.into_inner()).broken = Some(why);
+            false
+        };
         let mut db = match opened.and_then(|db| create_tables(&db).map(|_| db)) {
             Ok(db) => db,
+            Err(e) => return broken(&e),
+        };
+        // Shed half and give the space back. On a disk with no room redb
+        // cannot even delete (copy-on-write), and the handle is poisoned
+        // again: then the ring starts over.
+        let entries = count(&db).unwrap_or(0);
+        let shed = match self
+            .prune_in(&db, now, Some(entries / 2))
+            .and_then(|n| db.compact().map(|_| n).map_err(Error::from))
+        {
+            Ok(n) => n,
             Err(e) => {
-                let why = format!("{path}: {e} (after: {cause})");
-                warn!(error = %why, "the log ring could not be reopened; trying again in a few seconds");
-                self.care.lock().unwrap_or_else(|e| e.into_inner()).broken = Some(why);
-                return false;
+                warn!(path, error = %e, "the reopened log ring could not make room: starting a new one");
+                drop(db);
+                let _ = std::fs::remove_file(&self.path);
+                db = match Database::create(&self.path).map_err(Error::from).and_then(|db| create_tables(&db).map(|_| db)) {
+                    Ok(db) => db,
+                    Err(e) => return broken(&e),
+                };
+                entries
             }
         };
-        let entries = count(&db).unwrap_or(0);
-        let shed = self.prune_in(&db, now, Some(entries / 2)).unwrap_or(0);
-        if let Err(e) = db.compact() {
-            warn!(error = %e, "compacting the reopened log ring failed");
-        }
         *g = Some(db);
         drop(g);
         let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
@@ -524,22 +555,28 @@ impl Store {
         let now = now_ms();
         let dir = self.path.parent().unwrap_or(Path::new("."));
         let Some(sp) = (self.space)(dir) else { return Ok(0) };
+        let file = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0).max(1);
+        let floor = (sp.total as f64 * self.keep_free) as u64;
+        // What the ring may occupy: its file and what is free, less the
+        // floor. Its next growth doubles the file, so it must stay under
+        // half of that.
+        let budget = (sp.avail + file).saturating_sub(floor);
+        let low = sp.avail < floor;
+        let big = file > budget / 2;
         {
             let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
             c.free_percent = (sp.total > 0).then(|| sp.avail as f64 * 100.0 / sp.total as f64);
-            let floor = (sp.total as f64 * self.keep_free) as u64;
-            if sp.avail >= floor || (!force && c.futile && now.saturating_sub(c.last_room) < ROOM_EVERY_MS) {
+            if !(low || big) || (!force && c.futile && now.saturating_sub(c.last_room) < ROOM_EVERY_MS) {
                 return Ok(0);
             }
             c.last_room = now;
         }
-        let floor = (sp.total as f64 * self.keep_free) as u64;
-        let need = floor.saturating_sub(sp.avail);
-        let file = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0).max(1);
-        // The share of the file that is missing, and a tenth more so this
-        // does not run again at the next look. At most nine tenths: what
+        // Down to a third of the budget, so the doubling after that still
+        // fits with room to spare. At least a tenth goes, so this does not
+        // run again at the next look; at most nine tenths, because what
         // filled the disk may not be the ring at all.
-        let share = (need as f64 / file as f64 + 0.1).min(0.9);
+        let target = budget / 3;
+        let share = (1.0 - target as f64 / file as f64).clamp(0.1, 0.9);
         let entries = self.with(count)?;
         let n = (entries as f64 * share).ceil() as u64;
         let shed = self.with(|db| self.prune_in(db, now, Some(n)))?;
@@ -586,10 +623,23 @@ impl Store {
         Ok(out)
     }
 
+    /// Whether this insert's commit is the durable one.
+    fn durable_due(&self) -> bool {
+        let now = now_ms();
+        let mut d = self.durable.lock().unwrap_or_else(|e| e.into_inner());
+        d.0 += 1;
+        if d.0 >= DURABLE_EVERY || now.saturating_sub(d.1) >= DURABLE_EVERY_MS {
+            *d = (0, now);
+            true
+        } else {
+            false
+        }
+    }
+
     fn insert_in(&self, db: &Database, e: &LogEvent, now_ms: u64) -> Result<Insert> {
         let key = dedup_key(&e.host, &e.app, e.severity, &e.msg);
         let mut tx = db.begin_write()?;
-        tx.set_durability(Durability::Eventual);
+        tx.set_durability(if self.durable_due() { Durability::Immediate } else { Durability::None });
         let out;
         {
             let mut events = tx.open_table(EVENTS)?;
@@ -694,8 +744,9 @@ impl Store {
 
     /// The bounds, plus `shed` more of the oldest when space is wanted.
     fn prune_in(&self, db: &Database, now_ms: u64, shed: Option<u64>) -> Result<u64> {
+        // Durable, so the pages it frees are reused.
         let mut tx = db.begin_write()?;
-        tx.set_durability(Durability::Eventual);
+        tx.set_durability(Durability::Immediate);
         let mut removed = 0u64;
         {
             let mut events = tx.open_table(EVENTS)?;
@@ -1104,15 +1155,24 @@ mod tests {
         assert_eq!(s.stats().suppressed, 0);
     }
 
-    /// A store whose filesystem reports `avail` of 1000 units free.
-    fn on_disk(avail: std::sync::Arc<std::sync::atomic::AtomicU64>) -> (Store, tempfile::TempDir) {
+    const MIB: u64 = 1 << 20;
+
+    /// A store whose filesystem reports `total` bytes with `avail` free.
+    fn on_disk_of(
+        total: std::sync::Arc<std::sync::atomic::AtomicU64>,
+        avail: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) -> (Store, tempfile::TempDir) {
+        use std::sync::atomic::Ordering::SeqCst;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("ring.redb");
-        let space: SpaceFn = Box::new(move |_| {
-            Some(Space { total: 1000, avail: avail.load(std::sync::atomic::Ordering::SeqCst) })
-        });
+        let space: SpaceFn = Box::new(move |_| Some(Space { total: total.load(SeqCst), avail: avail.load(SeqCst) }));
         let store = Store::open_with(path.to_str().unwrap(), 1_000_000, 0, true, 0.2, space).unwrap();
         (store, dir)
+    }
+
+    /// A 1 GiB filesystem with `avail` free.
+    fn on_disk(avail: std::sync::Arc<std::sync::atomic::AtomicU64>) -> (Store, tempfile::TempDir) {
+        on_disk_of(std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1024 * MIB)), avail)
     }
 
     fn fill(store: &Store, n: usize) {
@@ -1124,7 +1184,7 @@ mod tests {
     #[test]
     fn under_the_floor_the_oldest_go_and_the_file_shrinks() {
         use std::sync::atomic::{AtomicU64, Ordering};
-        let avail = std::sync::Arc::new(AtomicU64::new(900));
+        let avail = std::sync::Arc::new(AtomicU64::new(900 * MIB));
         let (store, dir) = on_disk(avail.clone());
         fill(&store, 2000);
         let size = |d: &tempfile::TempDir| std::fs::metadata(d.path().join("ring.redb")).unwrap().len();
@@ -1132,9 +1192,9 @@ mod tests {
         // Plenty free: nothing goes.
         assert_eq!(store.make_room(true).unwrap(), 0);
         assert_eq!(store.stats().entries, 2000);
-        assert_eq!(store.care().free_percent, Some(90.0));
+        assert!((store.care().free_percent.unwrap() - 87.9).abs() < 0.1);
         // 15% free against a 20% floor: some of the oldest go, and only them.
-        avail.store(150, Ordering::SeqCst);
+        avail.store(150 * MIB, Ordering::SeqCst);
         let shed = store.make_room(true).unwrap();
         assert!(shed > 0 && shed < 2000, "{shed}");
         assert_eq!(store.stats().entries, 2000 - shed);
@@ -1146,10 +1206,30 @@ mod tests {
         assert_eq!(store.make_room(false).unwrap(), 0);
     }
 
+    /// redb doubles its file: one past half of what the ring may occupy is
+    /// shrunk while the disk still looks half empty.
+    #[test]
+    fn a_file_past_half_its_budget_is_shrunk_before_it_doubles() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let total = std::sync::Arc::new(AtomicU64::new(1024 * MIB));
+        let avail = std::sync::Arc::new(AtomicU64::new(900 * MIB));
+        let (store, dir) = on_disk_of(total.clone(), avail.clone());
+        fill(&store, 2000);
+        let file = std::fs::metadata(dir.path().join("ring.redb")).unwrap().len();
+        // A disk twice the file, half of it free: above the 20% floor, but
+        // the ring's budget is 1.6 files and the file is over half of it.
+        total.store(2 * file, Ordering::SeqCst);
+        avail.store(file, Ordering::SeqCst);
+        let shed = store.make_room(true).unwrap();
+        assert!(shed > 500 && shed < 1500, "{shed}");
+        let after = std::fs::metadata(dir.path().join("ring.redb")).unwrap().len();
+        assert!(after < file, "{file} → {after}");
+    }
+
     #[test]
     fn a_closed_handle_is_reopened_and_the_insert_goes_through() {
         use std::sync::atomic::AtomicU64;
-        let (store, _dir) = on_disk(std::sync::Arc::new(AtomicU64::new(900)));
+        let (store, _dir) = on_disk(std::sync::Arc::new(AtomicU64::new(900 * MIB)));
         fill(&store, 100);
         // What a poisoned handle comes to once dropped: nothing to use.
         *store.db.write().unwrap() = None;
