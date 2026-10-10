@@ -688,7 +688,9 @@
   .progress .phead { display: flex; gap: 10px; align-items: baseline; }
   .progress .phead h2 { margin: 0; }
   .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
-  .pnode { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; box-shadow: inset 3px 0 var(--text-faint); }
+  /* min-width and the wrap: an error is often one long URL, which a grid
+     item would otherwise widen itself to and run over its neighbour. */
+  .pnode { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; box-shadow: inset 3px 0 var(--text-faint); min-width: 0; overflow-wrap: anywhere; }
   .pnode.st-done { box-shadow: inset 3px 0 var(--ok); }
   .pnode.st-running { box-shadow: inset 3px 0 var(--warn); }
   .pnode.st-failed { box-shadow: inset 3px 0 var(--error); }
