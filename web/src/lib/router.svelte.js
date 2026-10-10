@@ -21,6 +21,8 @@ const routes = [
   { pattern: '#/machines', name: 'machines' },
   // What the cluster is made of, from stormcluster (#63).
   { pattern: '#/cluster', name: 'cluster' },
+  // This node's pod network on the flowsdn edition (#83).
+  { pattern: '#/flowsdn', name: 'flowsdn' },
   // The registry's catalog: goldens, blanks and media are images (#19).
   { pattern: '#/images', name: 'images' },
   { pattern: '#/attach/:ns/:name', name: 'attachclaim' },

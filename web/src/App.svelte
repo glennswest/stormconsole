@@ -22,6 +22,7 @@
   import ProjectsView from './lib/views/ProjectsView.svelte'
   import MachinesView from './lib/views/MachinesView.svelte'
   import ClusterView from './lib/views/ClusterView.svelte'
+  import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import ImagesView from './lib/views/ImagesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
@@ -48,6 +49,7 @@
     projects: ProjectsView,
     machines: MachinesView,
     cluster: ClusterView,
+    flowsdn: FlowsdnView,
     images: ImagesView,
     attachclaim: AttachClaim,
   }
