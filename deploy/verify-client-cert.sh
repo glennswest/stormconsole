@@ -91,7 +91,8 @@ for _ in $(seq 60); do curl -sf -o /dev/null "$H/healthz" && break; sleep 0.5; d
 
 say "1. plain HTTP on the TLS port: health only"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$H/healthz")" "200" "/healthz answers in the clear"
-check "$(curl -s -o /dev/null -w '%{http_code}' "$H/readyz")" "200" "so does /readyz"
+RZ=$(curl -s -o /dev/null -w '%{http_code}' "$H/readyz")
+check "$(case $RZ in 200|503) echo answered;; *) echo "$RZ";; esac)" "answered" "so does /readyz — its own answer ($RZ: no apiserver here), not a redirect"
 check "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$H/api/plugins/logs/events?last=5")" \
   "308 https://127.0.0.1:$P/api/plugins/logs/events?last=5" "a GET is sent to https, path and query kept"
 check "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer node-$$" "$H/api/v1/components")" "308" "even with the token: nothing but health in the clear"
@@ -125,7 +126,7 @@ has "$R" "is not accepted" "saying it is not accepted"
 if [ -f "$W/expired.crt" ]; then
   R=$(as expired -w ' %{http_code}' "$S/api/plugins/logs/events?last=5")
   has "$R" " 401$" "an expired forge certificate: 401"
-  has "$R" "Expired" "saying it expired"
+  has "$R" "certificate expired" "saying it expired"
 fi
 R=$(as nobody -w ' %{http_code}' "$S/api/plugins/logs/events?last=5")
 has "$R" " 401$" "a forge certificate no rule names: 401"
