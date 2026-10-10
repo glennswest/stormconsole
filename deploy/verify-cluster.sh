@@ -276,6 +276,9 @@ set +e
 (cd "$W/pw" && CONSOLE="http://127.0.0.1:$P" node cluster.browser.cjs)
 RC=$?
 set -e
+# The walk's screenshots (the plan, the progress view, the formed cluster),
+# for SC_BUILD_OUT=shots.tgz.
+(cd "$W/pw" && ls ./*.png >/dev/null 2>&1 && tar czf "$OLDPWD/shots.tgz" ./*.png) || true
 [ $RC = 0 ] || FAILED=$((FAILED + 1))
 
 say "5. what the apiserver holds, and what stormcluster made of it"
