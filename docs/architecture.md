@@ -1127,6 +1127,48 @@ console shows its own; the page says so.
   marks, one opened live), IPAM, Health, Config, Services, Routes, State,
   Flows — which says flowsdn has no Hubble observer yet (flowsdn#293).
 
+### API health on this node (#123)
+
+stormcos#458: every service declares a cheap *real* read with a p50/p99
+budget and a timeout, and the OS probes it — stormd for what it supervises
+(stormd#49), PID 1 for the units it starts itself, the storage engine first
+(stormpump#127). States: `healthy`, `slow`, `stalled` (no answer within the
+timeout), `down` (refused, or a status ≥ 400), `unknown` before the first
+probe. `crates/plugins/apihealth` (name `health`) shows them:
+
+- **Source.** Every 5 s, PID 1's summary `[health] summary_file`
+  (`/run/stormpump/health.json`: `{updated, worst, apis}`, each entry
+  stormd's fields plus `source`, `running`, and for a container's stormd
+  `container`, `file_age_secs`, `stale`, `reported_state`). Its age is its
+  modification time; past 30 s the node row is an error saying the summary
+  stopped (PID 1 rewrites it every 5 s). When the file cannot be read, each
+  stormd at `[fleet] stormd_host` on `stormd_ports` is asked for `GET
+  /api/v1/health/apis`; a 404 is "predates #49", a 401 "wants credentials",
+  and the page says this misses PID 1's own probes. Parsed leniently:
+  a field the writer leaves out is absent, not a failure.
+- **Feed.** `health:node` (the worst API, counts per state, the source) and
+  one `health:api:<container|pid1>/<process>/<api>` per API (`kind: api`):
+  healthy ok, slow warn, stalled/down error, a PID 1 unit known not to run
+  idle (its state is the last seen, not a live stall). The detail is the
+  alert sentence — `00-stormblock API volumes STALLED for 6m 12s — no answer
+  within 10 s` — so it reads alone. Metrics: state, for, last, p50/p99
+  (warn over budget), budget, container.
+- **Alert bar.** `AlertBar.svelte`, above every view, is the feed's
+  `health:api:` rows in error (or the node row when the summary itself is
+  stale): live with the feed's push, not dismissable, the first linking to
+  the API.
+- **History** is read on demand: `GET /api/plugins/health/history?process=&
+  api=&limit=` tails each `<history_dir>/<process>.jsonl` (256 KiB), the
+  line format stormd and PID 1 share (`ts, process, api, url, from, to,
+  from_secs, latency_ms, p50_ms, p99_ms, error`), newest first. No
+  directory is an answer ("not mounted into the console"), not an error.
+- **Page** `#/health` (Compute → API health): the sentence, the source,
+  counts, a table worst first, `?api=<key>` opening one API's probe and
+  changes. The local node's page carries the node row.
+- **Mounts.** On a node the console's unit binds neither `/run/stormpump`
+  nor `/system-data` yet: stormcos#525. `deploy/verify-api-health.sh` is
+  the live check.
+
 ### Cluster membership, from stormcluster (#63)
 
 `crates/plugins/stormcluster` (name `cluster`) reads stormcluster
@@ -1484,6 +1526,7 @@ stormconsole/
       stormipmi/             # bare metal: the Machines API and SOL
       stormcluster/          # cluster membership: form, join, promote, split
       flowsdn/               # this node's pod network on the flowsdn edition
+      apihealth/             # every API on this node: state, latency, stall alerts, history
   web/                       # Svelte 5 SPA (stormview npm); web/dist committed, embedded
   config/                    # config.toml (example), stormd.toml (Containerfile)
   deploy/                    # verify-*.sh — live checks run with sc-build
@@ -1510,6 +1553,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
+| stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
 | stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #44 VM disk import (unblocked, stormblock-registry#5 shipped in v0.19.0); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 

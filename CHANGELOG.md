@@ -3,6 +3,29 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-10 — Node API health and stall alerts (#123)
+- **feat:** `crates/plugins/apihealth` (name `health`, stormcos#458):
+  every API on this node from PID 1's summary `/run/stormpump/health.json`
+  (stormpump#127 — its own probes and every container's stormd), read
+  every 5 s and said stale after 30 s without a rewrite; when it cannot be
+  read, each local stormd's `/api/v1/health/apis` (stormd#49), saying what
+  that misses. Feed: the node (worst API) and one row per API — state, for
+  how long, last/p50/p99 against its budget, its error; stalled and down
+  are errors whose detail names the service, the probe and how long.
+- **feat:** an **alert bar on every page** for each stalled or down API,
+  from the live feed, linking to it.
+- **feat:** `#/health` (Compute → API health): the APIs worst first, a
+  picked API's probe and its kept changes from
+  `/system-data/history/api/*.jsonl` (`GET /api/plugins/health/history`);
+  the local node's page shows the node's API health.
+- **feat:** config `[health] enabled / summary_file / history_dir`.
+- **test:** `deploy/verify-api-health.sh` — a real stormd probing a
+  stand-in that answers, goes slow, stalls and fails; PID 1's merge as a
+  stand-in over the real stormd's state file; the alert bar and the page
+  in Chromium.
+- **chore:** filed stormcos#525 (bind `/run/stormpump` and `/system-data`
+  into the console's unit).
+
 ### 2026-10-10 — A flowsdn plugin (#83)
 - **feat:** `crates/plugins/flowsdn`: this node's pod network on the
   flowsdn edition, from the agent's read-only loopback listener
