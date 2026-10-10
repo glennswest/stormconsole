@@ -174,6 +174,16 @@ enabled = true
 # url = "http://127.0.0.1:9878"
 # release_manifest = "/etc/stormcos/release/manifest.json"
 
+[health]
+enabled = true
+# This node's API health (stormcos#458): every declared API's state
+# (healthy, slow, stalled, down) and latency, from PID 1's summary, with an
+# alert on every page for one stalled or down. When the summary cannot be
+# read, each stormd on the fleet ports is asked for /api/v1/health/apis
+# instead (that misses PID 1's own probes). The history is the kept changes.
+# summary_file = "/run/stormpump/health.json"
+# history_dir = "/system-data/history/api"
+
 # [stormcentral]
 # Where a stormpump:// image's golden is recorded: the pod page shows its
 # build (built at, by, commit, build id) beside the image. Off unless a url

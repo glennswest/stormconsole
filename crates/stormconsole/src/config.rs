@@ -49,6 +49,8 @@ pub struct Config {
     #[serde(default)]
     pub flowsdn: Flowsdn,
     #[serde(default)]
+    pub health: ApiHealth,
+    #[serde(default)]
     pub stormcentral: Stormcentral,
 }
 
@@ -441,6 +443,26 @@ impl Default for Flowsdn {
     }
 }
 
+/// This node's API health (#123, stormcos#458): PID 1's summary of every
+/// declared API (stormpump#127), each stormd asked when it cannot be read
+/// (stormd#49), and the kept changes in system-data.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApiHealth {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// Unset means `/run/stormpump/health.json`.
+    pub summary_file: Option<String>,
+    /// Unset means `/system-data/history/api`.
+    pub history_dir: Option<String>,
+}
+
+impl Default for ApiHealth {
+    fn default() -> Self {
+        Self { enabled: true, summary_file: None, history_dir: None }
+    }
+}
+
 /// The Machines page (#31): stormipmi's Machines API, wherever the one
 /// stormipmi runs — a bastion, usually, not every node.
 #[derive(Debug, Clone, Deserialize)]
@@ -646,6 +668,14 @@ impl Config {
         self.flowsdn.release_manifest.clone().unwrap_or_else(|| "/etc/stormcos/release/manifest.json".to_string())
     }
 
+    pub fn health_summary_file(&self) -> String {
+        self.health.summary_file.clone().unwrap_or_else(|| "/run/stormpump/health.json".to_string())
+    }
+
+    pub fn health_history_dir(&self) -> String {
+        self.health.history_dir.clone().unwrap_or_else(|| "/system-data/history/api".to_string())
+    }
+
     pub fn stormipmi_url(&self) -> String {
         self.stormipmi.url.clone().unwrap_or_else(|| "http://127.0.0.1:9097".to_string())
     }
@@ -800,6 +830,9 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
         assert_eq!(c.flowsdn_url(), "http://127.0.0.1:9878");
         assert_eq!(c.flowsdn_release_manifest(), "/etc/stormcos/release/manifest.json");
+        assert!(c.health.enabled);
+        assert_eq!(c.health_summary_file(), "/run/stormpump/health.json");
+        assert_eq!(c.health_history_dir(), "/system-data/history/api");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
         assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");
         assert_eq!(c.stormcluster_url(), "http://127.0.0.1:9102");

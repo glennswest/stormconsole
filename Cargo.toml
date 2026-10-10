@@ -16,6 +16,7 @@ members = [
     "crates/plugins/stormipmi",
     "crates/plugins/stormcluster",
     "crates/plugins/flowsdn",
+    "crates/plugins/apihealth",
 ]
 
 [workspace.package]
@@ -39,6 +40,7 @@ plugin-fastetcd = { path = "crates/plugins/fastetcd" }
 plugin-stormipmi = { path = "crates/plugins/stormipmi" }
 plugin-stormcluster = { path = "crates/plugins/stormcluster" }
 plugin-flowsdn = { path = "crates/plugins/flowsdn" }
+plugin-apihealth = { path = "crates/plugins/apihealth" }
 
 stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
 tokio = { version = "1", features = ["full"] }

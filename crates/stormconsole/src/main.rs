@@ -280,6 +280,16 @@ async fn main() {
             namespace_access.clone(),
         )));
     }
+    // Every API on this node and an alert when one stalls (#123): PID 1's
+    // summary, or each stormd on the fleet's ports when it is not bound in.
+    if config.health.enabled {
+        plugins.push(Arc::new(plugin_apihealth::ApiHealthPlugin::new(
+            &config.health_summary_file(),
+            &config.health_history_dir(),
+            &config.fleet.stormd_host,
+            config.fleet.stormd_ports.clone(),
+        )));
+    }
 
     // Destructive storage is asked of the apiserver as the viewer (#82);
     // with kubernetes off there is nobody to ask, and nobody may.

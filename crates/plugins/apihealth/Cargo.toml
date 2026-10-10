@@ -1,0 +1,22 @@
+[package]
+name = "plugin-apihealth"
+description = "stormconsole API health plugin — every API on this node, its state and latency, from PID 1's health summary (stormpump#127) or each stormd (stormd#49), with stall alerts and the kept history"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
