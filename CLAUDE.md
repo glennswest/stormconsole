@@ -1432,33 +1432,48 @@ present. The kubelet writes Unhealthy/Killing/BackOff/Started events, and
 - Left: what the node does not serve yet (rustkube-node#242) is named on
   the Stats tab; mirror pods show whatever the kubelet reports for them
 
-### :9094 over TLS, and forge-CA client certificates as roles (#127, #48)
+### :9094 over TLS, and forge-CA client certificates as roles (#127, #48) ✅ 2026-10-10
 #127 re-scoped (master 2026-10-09, after the owner's CSR enrolment
 decision): no token list; stormcentral reads node logs with **its forge-CA
 client certificate**, mapped to a role. A client certificate needs TLS,
 which :9094 does not serve — #48, under the owner's rule (2026-09-25):
 every node API is TLS with a stormcert certificate, nothing anonymous but
 health. Pattern: stormcluster#5 (one port, plain answers health only).
-- [ ] `[api] tls_cert_file` + `tls_key_file` (both or neither, 78): :9094
+- [x] `[api] tls_cert_file` + `tls_key_file` (both or neither, 78): :9094
       serves TLS, the pair re-read when stormcert renews it. Plain HTTP on
       the same port (first byte sniffed) answers `/healthz` and `/readyz`;
       a GET elsewhere is a 308 to https, anything else 403
-- [ ] `[api] client_ca_file` (forge's CA, `/run/stormblock/forge/ca.crt`;
+- [x] `[api] client_ca_file` (forge's CA, `/run/stormblock/forge/ca.crt`;
       re-read, missing → off, said once), optional `client_crl_file`
       (stormcert#61), `[[api.client_roles]]` `{cn | o, role = viewer |
       operator | admin}`; 78 without TLS or with a bad rule
-- [ ] The handshake takes any certificate (the key is still proven); the
+- [x] The handshake takes any certificate (the key is still proven); the
       chain is verified against the CA afterwards, so a certificate from
       another CA, an expired one or none is anonymous → 401, not a failed
       handshake. A verified, mapped one is `cert:<CN>` with its role; the
       viewer role is refused writes like any reader. The per-node
       `auth_token_file` still admits as admin
-- [ ] Tests (subject parsing, role rules, config); `deploy/verify-client-cert.sh`
+- [x] Tests (subject parsing, role rules, config); `deploy/verify-client-cert.sh`
       (openssl forge CA + stranger CA, expired cert, node serving pair, a
       real console with logs: viewer reads `/api/plugins/logs/events`, is
       refused a write; stranger/expired/none 401; token admin; plain port
       health only, redirect; rotation of the serving pair); docs, changelog,
       SECURITY row for stormcos; release; golden
+- Verified with `sc-build deploy/verify-client-cert.sh` (0 failed, 11c3c65):
+  openssl node, forge and stranger CAs, a real console. Plain HTTP:
+  `/healthz` 200, `/readyz` its own answer, a GET 308 to https with path
+  and query (even with the token), a POST 403 saying why. TLS: the pair
+  verifies against the node CA, the handshake names forge's CA, nothing
+  presented → 401. stormcentral's forge certificate: logs and summary 200,
+  session `cert:stormcentral` viewer, a write 403 as a reader's. O=ops:
+  a write passes the gate. Another CA's (same subject), an expired and an
+  unmapped certificate: 401 each, saying which. The token: reads and
+  writes. forge's CA removed → 401, logged naming the file; restored →
+  200. The serving pair renewed → the new serial presented, no restart.
+  Half a pair, a CA without TLS, a rule with cn and o → exit 78
+- Left for stormcos (#200): mint the console's serving pair, bind
+  `/run/stormblock/forge`, set the keys and stormcentral's rule; probes and
+  the router move to https
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
