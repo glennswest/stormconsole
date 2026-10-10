@@ -115,6 +115,12 @@
   the step it is at or failed in with the error, and its steps; the
   cluster's own steps apart. Any operation opens it from the list. Pure
   model in `web/src/lib/progress.js`, with `progress.test.mjs`.
+- **fix (2026-10-10):** a progress card wraps a long error (a URL) rather
+  than running over the next card — found in the verification screenshots.
+- **test (2026-10-10):** `verify-cluster.sh` run against three real
+  stormclusters (Form → b1 done; Join → b2 failed at its join token, with
+  the error; reopened from the list) and packs the walk's screenshots for
+  `SC_BUILD_OUT=shots.tgz`.
 
 ### 2026-10-07 — Every page in a browser (#58)
 - **test:** `deploy/browser/`: a Playwright harness (`lib.cjs`, `run.sh`)
