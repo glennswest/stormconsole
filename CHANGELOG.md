@@ -3,6 +3,23 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-10 — :9094 over TLS, and forge-CA client certificates as roles (#48, #127)
+- **feat:** `[api] tls_cert_file`/`tls_key_file`: the console serves TLS on
+  :9094 from a stormcert pair, re-read when it is renewed. Plain HTTP on the
+  same port answers `/healthz` and `/readyz` only — a GET elsewhere is a
+  308 to https, anything else a 403 saying why (stormcos's rule: nothing
+  in the clear but health).
+- **feat:** `[api] client_ca_file`, `client_crl_file`, `[[api.client_roles]]`:
+  a client certificate from forge's CA is a credential, mapped by its
+  subject's CN or O to `viewer`, `operator` or `admin` (stormcentral reads
+  node logs with its enrolled certificate, stormcos#200). Another CA's, an
+  expired, an unmapped or no certificate is a 401 that says which. The
+  per-node `auth_token_file` still admits as admin.
+- **feat:** `/api/v1/auth/session` counts a certificate as signed in and
+  reports the caller's roles.
+- **test:** `deploy/verify-client-cert.sh` — openssl CAs, a real console,
+  every case above plus the CA and the serving pair changing under it.
+
 ### 2026-10-10 — The pod page at kubectl-describe parity, with stats over time (#124)
 - **feat:** stats over time: the kubernetes plugin reads every node's
   kubelet `/stats/summary` every 15 s and keeps an hour per pod;

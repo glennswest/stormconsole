@@ -91,6 +91,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge); power, release, boot intent and the SOL console in Chromium, as admin and as ops |
 | `verify-flowsdn.sh` | the flowsdn plugin (#83) — a stand-in agent in flowsdn's shapes and transport (one request per connection, writes 403, Kubernetes routes only in Kubernetes mode; the real agent needs root for BPF); consoles on a flowsdn node, a standalone agent, a cilium node and a missing agent; an endpoint going down, the agent stopping (last good kept) and coming back; every tab in Chromium |
 | `verify-api-health.sh` | node API health (#123) — a real stormd (STORMD_REF) probing a stand-in service made to answer, go slow, stall and fail; PID 1's merge as a stand-in in stormpump's shape over the real stormd's state file; a console asking the stormd and one reading the summary; a container's stormd frozen (stale), the summary stopping; the alert bar and the page in Chromium |
+| `verify-client-cert.sh` | TLS on :9094 and forge-CA client certificates (#48, #127): openssl node, forge and stranger CAs; plain HTTP health only (308 for a GET, 403 for a POST); a viewer certificate reads the logs and is refused a write; an operator's write passes; another CA's, an expired, an unmapped and no certificate each 401 saying why; the token still admin; the CA removed and restored and the serving pair renewed with no restart; contradictions exit 78 |
 | `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
 | `verify-storage-token.sh` | stormstorage's write token through the proxy (#53): a real stormstorage with `[api] api_token` — with `token_file` the feed's actions pass its check, without it (or with the browser sending the token) 401, an unreadable file warned, a DELETE left to the storage guard |
 | `verify-cluster.sh` | the Cluster page on objects (#88) — three real stormclusters from main over TLS on loopback addresses and a private multicast group, b1 reconciling a real rustkube (TLS, anonymous off), stand-ins for the node lifecycle API and fastetcd's gateway; plans and refusals in stormcluster's words, RBAC as the viewer, then form, join, a failed step on the object, release in Chromium as root and alice |
@@ -153,6 +154,10 @@ Full example: [config/config.toml](config/config.toml).
 | `[general] theme` | — | default palette; a viewer's pick wins |
 | `[api] bind` | `0.0.0.0:9094` | |
 | `[api] auth_token` | — | a machine credential (`Authorization: Bearer`); signing in with it is an admin session |
+| `[api] tls_cert_file` / `tls_key_file` | — | :9094 over **TLS** (#48): a stormcert serving pair (both or neither, exit 78), re-read when it is renewed. Plain HTTP on the same port then answers `/healthz` and `/readyz` only: a GET elsewhere is a 308 to https, anything else 403 |
+| `[api] client_ca_file` | — | client certificates as credentials (#127): forge's CA (on a node `/run/stormblock/forge/ca.crt`), re-read when it changes; missing = no certificate accepted, said once. Needs TLS (78). Turns authentication on |
+| `[api] client_crl_file` | — | that CA's revocation list (stormcert#61), when there is one |
+| `[[api.client_roles]]` `cn` \| `o`, `role` | — | a verified certificate's role by its subject CN or an O (exactly one), first match wins: `viewer` \| `operator` \| `admin`. A certificate no rule names is nobody |
 | `[api] auth_token_file` | — | the same credential from a file — a per-node token stormcos mints at boot (stormcos#200) — re-read when it changes; **while it is missing or empty the console is closed** (everything but the open list 401, the reason logged once); not with `auth_token` (exit 78) |
 | `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
 | `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | without `ca_file` the local default is unverified (warned at start, said on the card); a configured server is verified against the system roots unless set |
@@ -195,9 +200,9 @@ did not answer.
 
 ## Authentication and roles
 
-Off until `[api] auth_token`, `[api] auth_token_file` or a user is configured — then every request
+Off until `[api] auth_token`, `[api] auth_token_file`, `[api] client_ca_file` or a user is configured — then every request
 not on the open list (`/healthz`, `/readyz`, `/api/version`, `/api/summary`,
-`/api/v1/auth/*`, static assets) needs a session or the bearer. With it
+`/api/v1/auth/*`, static assets) needs a session, the bearer or a client certificate a rule names. With it
 off, everybody who reaches the port is an administrator, and the console
 warns about that on every start.
 
@@ -205,6 +210,13 @@ warns about that on every start.
   `stormconsole_session` (HttpOnly, SameSite=Strict, 24 h, in memory — a
   restart signs everyone out). Tokens and passwords are compared in
   constant time.
+- **TLS and client certificates** (#48, #127): with `tls_cert_file`/`tls_key_file` :9094
+  serves TLS, and plain HTTP on that port answers health only. With `client_ca_file` the
+  handshake asks for a certificate and takes any (its key is still proven); the chain is
+  checked against the CA afterwards, so another CA's, an expired one or none is a **401 that
+  says why**, not a failed handshake. A verified certificate a `[[api.client_roles]]` rule
+  names is `cert:<CN>` with that role — stormcentral reads node logs as a `viewer` this way
+  (stormcos#200) — and is shown as signed in by `/api/v1/auth/session`.
 - **Roles**: `viewer` reads; `operator` writes; `admin` also gets what is
   admin-only — Machines writes and typing into a SOL console, every cluster
   membership operation, the datastore,

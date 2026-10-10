@@ -1479,7 +1479,17 @@ create, rather than showing nothing.
   bearer, or `auth_token_file` (#102: a per-node token stormcos mints, since
   one in the golden would be shared by every node; re-read when its mtime
   moves; while it is missing or empty authentication stays on and nothing
-  matches, so a node whose mint is late is closed, not open); HttpOnly in-memory sessions (24 h); everything except `/healthz`,
+  matches, so a node whose mint is late is closed, not open), or a client
+  certificate (#127, `listen.rs`): with `[api] tls_cert_file`/`tls_key_file`
+  :9094 serves TLS (#48; each connection's first byte says TLS or plain, and
+  plain answers health only — 308 to https for a GET, 403 otherwise), and
+  with `client_ca_file` (forge's CA) the handshake takes any certificate,
+  proves the key, then verifies the chain against the CA (and its CRL)
+  outside the handshake so a refusal is a 401 naming why. A verified
+  certificate a `[[api.client_roles]]` rule names by CN or O is
+  `cert:<CN>` with that role, carried to handlers as `ConnectInfo<Peer>`.
+  The pair, CA and CRL are re-read when their mtimes move; handshakes run
+  off the accept loop. HttpOnly in-memory sessions (24 h); everything except `/healthz`,
   `/readyz`, `/api/version`, `/api/summary`, the auth endpoints and static
   assets requires a session or bearer; comparisons in constant time. The
   write gate is one check by method (§Who may do what).
