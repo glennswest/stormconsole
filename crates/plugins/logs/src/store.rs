@@ -84,7 +84,8 @@ pub const DEFAULT_KEEP_FREE: f64 = 0.20;
 /// No more than one recovery in this long: a disk that stays full must not
 /// turn every datagram into a reopen.
 pub const RECOVER_EVERY_MS: u64 = 5_000;
-/// Nor make room more often than this, unless an open or a recovery asks.
+/// After a shed that could not reach the floor, wait this long before the
+/// next one, unless an open or a sweep asks.
 const ROOM_EVERY_MS: u64 = 10_000;
 
 #[derive(Debug)]
@@ -215,6 +216,10 @@ pub struct Care {
     last_try: u64,
     #[serde(skip)]
     last_room: u64,
+    /// The last shed could not reach the floor: something else is filling
+    /// the disk, and shedding again at once would only empty the ring.
+    #[serde(skip)]
+    futile: bool,
 }
 
 type SpaceFn = Box<dyn Fn(&Path) -> Option<Space> + Send + Sync>;
@@ -521,7 +526,7 @@ impl Store {
             let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
             c.free_percent = (sp.total > 0).then(|| sp.avail as f64 * 100.0 / sp.total as f64);
             let floor = (sp.total as f64 * self.keep_free) as u64;
-            if sp.avail >= floor || (!force && now.saturating_sub(c.last_room) < ROOM_EVERY_MS) {
+            if sp.avail >= floor || (!force && c.futile && now.saturating_sub(c.last_room) < ROOM_EVERY_MS) {
                 return Ok(0);
             }
             c.last_room = now;
@@ -548,6 +553,7 @@ impl Store {
         if let Some(a) = after {
             c.free_percent = (a.total > 0).then(|| a.avail as f64 * 100.0 / a.total as f64);
         }
+        c.futile = after.is_some_and(|a| a.avail < floor);
         info!(
             shed,
             free_before = sp.avail,
