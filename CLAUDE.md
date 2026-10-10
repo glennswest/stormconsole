@@ -1382,7 +1382,7 @@ healthd.rs, README § API health). The console's unit binds neither
   (stormcos#525); until then a node shows each stormd's view, without PID
   1's own probes, and no history
 
-### Pod page at kubectl-describe parity, with stats over time (#124)
+### Pod page at kubectl-describe parity, with stats over time (#124) ✅ 2026-10-10
 Owner 2026-10-08: "events for itself, and all the stats … upstream
 guidance" (describe + top; pod-lifecycle; debug-pods). Most of describe is
 here since #69 (conditions, per-container state/lastState/restarts, images
@@ -1394,27 +1394,43 @@ drops per interface). No per-container rss/page faults/rootfs/logs, no pod
 volume[] or ephemeral-storage: filed **rustkube-node#242**, read when
 present. The kubelet writes Unhealthy/Killing/BackOff/Started events, and
 `ready`/`started` per container.
-- [ ] Stats sampler (`kubernetes/src/stats.rs`): every 15 s each node's
+- [x] Stats sampler (`kubernetes/src/stats.rs`): every 15 s each node's
       kubelet `/stats/summary` (console credential, the apiserver conn's
       client), one ring per pod (1 h); `GET /pods/{ns}/{name}/stats` as the
       viewer's pod — CPU cores (rate), memory, every reported field, network
       rates; what the node does not report named (rustkube-node#242)
-- [ ] Probes per container: configured (startup/liveness/readiness: type,
+- [x] Probes per container: configured (startup/liveness/readiness: type,
       target, delay, period, timeout, thresholds, k8s defaults) and last
       observed (ready/started + the latest `Unhealthy` event for that
       container and probe)
-- [ ] Volumes: each `spec.volumes` with its type and source, where it is
+- [x] Volumes: each `spec.volumes` with its type and source, where it is
       mounted (container, path, ro), a claim's phase, size, class and bound
       PV; used bytes when the kubelet reports them
-- [ ] Events: first and last seen, count, source, container (fieldPath);
+- [x] Events: first and last seen, count, source, container (fieldPath);
       the Events tab a full table refreshed every 5 s
-- [ ] UI: Containers card adds Ready, Started, requests/limits; Probes and
+- [x] UI: Containers card adds Ready, Started, requests/limits; Probes and
       Volumes cards; a **Stats** tab — charts over 15 m / 1 h with current
       values per container (CPU, memory) and per interface (rx/tx bytes,
       packets, errors, drops)
-- [ ] Tests; docs, changelog; `deploy/verify-pod-page.sh` extended (stand-in
+- [x] Tests; docs, changelog; `deploy/verify-pod-page.sh` extended (stand-in
       kubelet serving /stats/summary in rustkube-node's shape, Unhealthy
       events, probes, volumes, claims) + Chromium; release; golden
+- Verified with `sc-build deploy/verify-pod-page.sh` (0 API checks failed,
+  browser all ok, 54a025b): real fastetcd + rustkube, the stand-in kubelet
+  serving `/stats/summary` in rustkube-node 7bfe4d2's shape. Stats: app at
+  0.2499 cores and agent at 0.0499 (rates of the CPU counters), app's
+  working set 48 MiB, eth0 ~50 kB/s in, its errors counted, #242 named;
+  probes: app's liveness `http://:8080/healthz` period 5 s with defaults,
+  readiness passing with its ×4 failure kept, agent's liveness failing ×7
+  with the kubelet's words; the data volume's claim Bound 10Gi on
+  stormblock.storm.io, the ConfigMap read-only in app; events newest first
+  with container, count, first seen and source. Chromium: the Stats charts
+  (legend, hover readout, 1 h window), the Probes and Volumes rows,
+  requests/limits, the Events table; screenshots read
+- Found on the way: the flowsdn no-agent sentence said "golden" (#70),
+  caught by the words walk — fixed; clippy debt in authz.rs/network.rs → #133
+- Left: what the node does not serve yet (rustkube-node#242) is named on
+  the Stats tab; mirror pods show whatever the kubelet reports for them
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
