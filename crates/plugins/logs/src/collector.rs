@@ -52,7 +52,7 @@ pub async fn run(
     let failures = std::sync::Mutex::new(0u64);
     let mut buf = vec![0u8; 65536];
     loop {
-        let (len, src) = tokio::select! {
+        let first = tokio::select! {
             r = sock.recv_from(&mut buf) => match r {
                 Ok(x) => x,
                 Err(e) => {
@@ -62,24 +62,43 @@ pub async fn run(
             },
             _ = shutdown.cancelled() => return Ok(()),
         };
-        let line = String::from_utf8_lossy(&buf[..len]);
         let now = chrono::Utc::now();
+        let stamp = || now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        // A beacon is state, so it is taken here and kept beside the ring
-        // rather than being fished back out of it later (stormcos#26). It is
-        // *also* stored as an ordinary line below — it is a real log line,
-        // and dropping it would make a node's inventory invisible to anyone
-        // reading the group directly.
-        if let Some(b) = crate::beacon::from_line(&line, &src.ip().to_string()) {
-            inner.beacons.write().await.insert(b.host.clone(), b);
+        // Everything already waiting goes into the same batch: one
+        // transaction and one sync for all of it, rather than one per line
+        // (#128). The socket is not waited on for more.
+        let mut batch = Vec::new();
+        let mut next = Some(first);
+        while let Some((len, src)) = next.take() {
+            let line = String::from_utf8_lossy(&buf[..len]);
+            // A beacon is state, so it is taken here and kept beside the
+            // ring rather than being fished back out of it later
+            // (stormcos#26). It is *also* stored as an ordinary line — it
+            // is a real log line, and dropping it would make a node's
+            // inventory invisible to anyone reading the group directly.
+            if let Some(b) = crate::beacon::from_line(&line, &src.ip().to_string()) {
+                inner.beacons.write().await.insert(b.host.clone(), b);
+            }
+            batch.push(parse(&line, &src.ip().to_string(), stamp));
+            if batch.len() < crate::store::BATCH {
+                next = sock.try_recv_from(&mut buf).ok();
+            }
         }
-        let event = parse(&line, &src.ip().to_string(), || {
-            now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-        });
-        match store.insert(&event, now.timestamp_millis().max(0) as u64) {
+
+        // Off the async workers: a commit syncs, and making room compacts.
+        let at = now.timestamp_millis().max(0) as u64;
+        let s = store.clone();
+        let n = batch.len() as u64;
+        let stored = tokio::task::spawn_blocking(move || s.insert_many(&batch, at))
+            .await
+            .unwrap_or_else(|e| Err(crate::store::Error::from_text(format!("insert task: {e}"))));
+        match stored {
             Ok(inserted) => {
-                if inserted.notify {
-                    let _ = tail.send(inserted.event);
+                for i in inserted {
+                    if i.notify {
+                        let _ = tail.send(i.event);
+                    }
                 }
             }
             // A store that cannot take a line must not become a line: the
@@ -88,8 +107,9 @@ pub async fn run(
             // The plugin already reports the fault as component health.
             Err(e) => {
                 let mut seen = failures.lock().unwrap();
-                *seen += 1;
-                if *seen == 1 || (*seen).is_multiple_of(10_000) {
+                let before = *seen;
+                *seen += n;
+                if before == 0 || before / 10_000 != *seen / 10_000 {
                     warn!(error = %e, failures = *seen, "store insert failed");
                 }
             }

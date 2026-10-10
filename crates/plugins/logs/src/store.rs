@@ -29,13 +29,12 @@
 //! `last_seen` order the same, which is what lets pruning stop at the
 //! first live entry instead of scanning the whole ring.
 //!
-//! Durability: an insert commits without syncing (`Durability::None`), and
-//! every [`DURABLE_EVERY`] inserts or [`DURABLE_EVERY_MS`] one commit is
-//! durable. This is a bounded ring of fleet chatter, not a ledger; redb's
-//! `Eventual` is an `fdatasync` per commit on Linux, which held the
-//! collector to a few dozen lines a second on a real disk (#128) — and
-//! redb reuses freed pages only after a durable commit, so one is made
-//! often enough that pruning keeps the file from growing.
+//! Durability: one durable commit per **batch** — whatever datagrams were
+//! waiting on the socket, up to [`BATCH`]. A commit per line was an
+//! `fdatasync` per line (redb's `Eventual` syncs on Linux), which held the
+//! collector to a few hundred lines a second on a real disk and dropped
+//! the rest (#128); non-durable commits are no answer either, because redb
+//! frees a page only at a durable commit and the file balloons.
 //!
 //! **Bounded by the disk it is on, too** (#128). On a node the ring lives
 //! on the console's own data volume, 64 MiB, and 200,000 entries did not
@@ -95,10 +94,8 @@ pub const RECOVER_EVERY_MS: u64 = 5_000;
 /// After a shed that could not reach the floor, wait this long before the
 /// next one, unless an open or a sweep asks.
 const ROOM_EVERY_MS: u64 = 10_000;
-/// One insert in this many commits durably…
-pub const DURABLE_EVERY: u64 = 256;
-/// …and at least one this often.
-pub const DURABLE_EVERY_MS: u64 = 1_000;
+/// The most datagrams the collector stores in one transaction.
+pub const BATCH: usize = 512;
 
 #[derive(Debug)]
 pub struct Error(String);
@@ -109,6 +106,12 @@ impl std::fmt::Display for Error {
     }
 }
 impl std::error::Error for Error {}
+
+impl Error {
+    pub fn from_text(s: String) -> Self {
+        Error(s)
+    }
+}
 
 macro_rules! from_err {
     ($($t:ty),* $(,)?) => {$(
@@ -245,8 +248,6 @@ pub struct Store {
     dedup: bool,
     /// Insert counter, so a busy ring prunes without waiting for the timer.
     since_prune: Mutex<u64>,
-    /// Inserts since, and when, the last durable commit.
-    durable: Mutex<(u64, u64)>,
     /// The fraction of the filesystem kept free.
     keep_free: f64,
     /// How free space is measured: `statvfs`, or a test's stand-in.
@@ -429,7 +430,6 @@ impl Store {
             retain_ms,
             dedup,
             since_prune: Mutex::new(0),
-            durable: Mutex::new((0, 0)),
             keep_free: keep_free.clamp(0.0, 0.9),
             space,
             care: Mutex::new(Care::default()),
@@ -603,12 +603,26 @@ impl Store {
         Ok(shed)
     }
 
+    /// One line on its own; the collector stores batches.
+    #[cfg(test)]
     pub fn insert(&self, e: &LogEvent, now_ms: u64) -> Result<Insert> {
-        let out = self.with(|db| self.insert_in(db, e, now_ms))?;
+        let mut out = self.insert_many(std::slice::from_ref(e), now_ms)?;
+        Ok(out.remove(0))
+    }
+
+    /// Store what arrived together in one transaction (#128): the collector
+    /// drains every datagram waiting on its socket into one batch, so a
+    /// flood costs one sync per batch rather than one per line.
+    pub fn insert_many(&self, batch: &[LogEvent], now_ms: u64) -> Result<Vec<Insert>> {
+        if batch.is_empty() {
+            return Ok(Vec::new());
+        }
+        let out = self.with(|db| self.insert_in(db, batch, now_ms))?;
         let (room, due) = {
             let mut n = self.since_prune.lock().unwrap_or_else(|e| e.into_inner());
-            *n += 1;
-            let room = (*n).is_multiple_of(ROOM_EVERY);
+            let before = *n;
+            *n += batch.len() as u64;
+            let room = before / ROOM_EVERY != *n / ROOM_EVERY;
             let due = *n >= 4096;
             if due {
                 *n = 0;
@@ -623,24 +637,12 @@ impl Store {
         Ok(out)
     }
 
-    /// Whether this insert's commit is the durable one.
-    fn durable_due(&self) -> bool {
-        let now = now_ms();
-        let mut d = self.durable.lock().unwrap_or_else(|e| e.into_inner());
-        d.0 += 1;
-        if d.0 >= DURABLE_EVERY || now.saturating_sub(d.1) >= DURABLE_EVERY_MS {
-            *d = (0, now);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn insert_in(&self, db: &Database, e: &LogEvent, now_ms: u64) -> Result<Insert> {
-        let key = dedup_key(&e.host, &e.app, e.severity, &e.msg);
+    /// One durable transaction for the whole batch: one sync, and the
+    /// pages a batch frees are reused by the next.
+    fn insert_in(&self, db: &Database, batch: &[LogEvent], now_ms: u64) -> Result<Vec<Insert>> {
         let mut tx = db.begin_write()?;
-        tx.set_durability(if self.durable_due() { Durability::Immediate } else { Durability::None });
-        let out;
+        tx.set_durability(Durability::Immediate);
+        let mut out = Vec::with_capacity(batch.len());
         {
             let mut events = tx.open_table(EVENTS)?;
             let mut index = tx.open_table(INDEX)?;
@@ -648,85 +650,88 @@ impl Store {
             let mut severity = tx.open_table(SEVERITY)?;
             let mut meta = tx.open_table(META)?;
 
-            let seq = meta.get("next_seq")?.map(|v| v.value()).unwrap_or(1);
+            for e in batch {
+                let key = dedup_key(&e.host, &e.app, e.severity, &e.msg);
+                let seq = meta.get("next_seq")?.map(|v| v.value()).unwrap_or(1);
 
-            // An existing entry only counts as a duplicate if it is really
-            // still there; a stale index row is treated as a fresh line.
-            let previous = if self.dedup {
-                match index.get(key.as_str())?.map(|v| v.value()) {
-                    Some(old) => {
-                        let bytes = events.get(old)?.map(|v| v.value().to_vec());
-                        match bytes {
-                            Some(b) => {
-                                events.remove(old)?;
-                                Some(serde_json::from_slice::<StoredEvent>(&b)?)
+                // An existing entry only counts as a duplicate if it is really
+                // still there; a stale index row is treated as a fresh line.
+                let previous = if self.dedup {
+                    match index.get(key.as_str())?.map(|v| v.value()) {
+                        Some(old) => {
+                            let bytes = events.get(old)?.map(|v| v.value().to_vec());
+                            match bytes {
+                                Some(b) => {
+                                    events.remove(old)?;
+                                    Some(serde_json::from_slice::<StoredEvent>(&b)?)
+                                }
+                                None => None,
                             }
-                            None => None,
                         }
+                        None => None,
                     }
-                    None => None,
-                }
-            } else {
-                None
-            };
+                } else {
+                    None
+                };
 
-            let repeat = previous.is_some();
-            let mut record = match previous {
-                Some(mut r) => {
-                    r.count += 1;
-                    r.ts = e.ts.clone();
-                    r.last_seen = now_ms;
-                    r
+                let repeat = previous.is_some();
+                let mut record = match previous {
+                    Some(mut r) => {
+                        r.count += 1;
+                        r.ts = e.ts.clone();
+                        r.last_seen = now_ms;
+                        r
+                    }
+                    None => StoredEvent {
+                        ts: e.ts.clone(),
+                        host: e.host.clone(),
+                        app: e.app.clone(),
+                        severity: e.severity,
+                        facility: e.facility,
+                        msg: e.msg.clone(),
+                        count: 1,
+                        first_ts: e.ts.clone(),
+                        first_seen: now_ms,
+                        last_seen: now_ms,
+                        last_notified: 0,
+                    },
+                };
+
+                let notify = !repeat
+                    || now_ms.saturating_sub(record.last_notified) >= NOTIFY_INTERVAL_MS;
+                if notify {
+                    record.last_notified = now_ms;
                 }
-                None => StoredEvent {
-                    ts: e.ts.clone(),
+
+                events.insert(seq, serde_json::to_vec(&record)?.as_slice())?;
+                index.insert(key.as_str(), seq)?;
+                meta.insert("next_seq", seq + 1)?;
+
+                // Aggregates: an occurrence always counts, a distinct entry only
+                // when this line is new.
+                bump(&mut meta, "occurrences", 1)?;
+                if repeat {
+                    bump(&mut meta, "suppressed", 1)?;
+                }
+                let sev_now = severity.get(e.severity)?.map(|v| v.value()).unwrap_or(0);
+                severity.insert(e.severity, sev_now + 1)?;
+
+                let mut summary = read_host(&hosts, &e.host)?.unwrap_or_else(|| HostSummary {
                     host: e.host.clone(),
-                    app: e.app.clone(),
-                    severity: e.severity,
-                    facility: e.facility,
-                    msg: e.msg.clone(),
-                    count: 1,
-                    first_ts: e.ts.clone(),
-                    first_seen: now_ms,
-                    last_seen: now_ms,
-                    last_notified: 0,
-                },
-            };
+                    ..Default::default()
+                });
+                summary.count += 1;
+                if !repeat {
+                    summary.entries += 1;
+                }
+                summary.last_ts = e.ts.clone();
+                if !e.addr.is_empty() {
+                    summary.addr = e.addr.clone();
+                }
+                hosts.insert(e.host.as_str(), serde_json::to_vec(&summary)?.as_slice())?;
 
-            let notify = !repeat
-                || now_ms.saturating_sub(record.last_notified) >= NOTIFY_INTERVAL_MS;
-            if notify {
-                record.last_notified = now_ms;
+                out.push(Insert { event: record, notify });
             }
-
-            events.insert(seq, serde_json::to_vec(&record)?.as_slice())?;
-            index.insert(key.as_str(), seq)?;
-            meta.insert("next_seq", seq + 1)?;
-
-            // Aggregates: an occurrence always counts, a distinct entry only
-            // when this line is new.
-            bump(&mut meta, "occurrences", 1)?;
-            if repeat {
-                bump(&mut meta, "suppressed", 1)?;
-            }
-            let sev_now = severity.get(e.severity)?.map(|v| v.value()).unwrap_or(0);
-            severity.insert(e.severity, sev_now + 1)?;
-
-            let mut summary = read_host(&hosts, &e.host)?.unwrap_or_else(|| HostSummary {
-                host: e.host.clone(),
-                ..Default::default()
-            });
-            summary.count += 1;
-            if !repeat {
-                summary.entries += 1;
-            }
-            summary.last_ts = e.ts.clone();
-            if !e.addr.is_empty() {
-                summary.addr = e.addr.clone();
-            }
-            hosts.insert(e.host.as_str(), serde_json::to_vec(&summary)?.as_slice())?;
-
-            out = Insert { event: record, notify };
         }
         tx.commit()?;
         Ok(out)
