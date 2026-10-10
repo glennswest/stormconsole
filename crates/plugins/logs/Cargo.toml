@@ -19,6 +19,8 @@ redb.workspace = true
 socket2.workspace = true
 chrono.workspace = true
 futures-util.workspace = true
+# statvfs: how much of the ring's filesystem is free (#128).
+libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true

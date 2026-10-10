@@ -32,12 +32,32 @@
 //! Durability is `Eventual`: this is a bounded ring of ephemeral fleet
 //! chatter, not a ledger, and fsyncing every datagram would make the
 //! collector the slowest thing on the node.
+//!
+//! **Bounded by the disk it is on, too** (#128). On a node the ring lives
+//! on the console's own data volume, 64 MiB, and 200,000 entries did not
+//! fit: the volume filled, and being kept, every boot started full. So
+//! every [`ROOM_EVERY`] inserts and on every sweep the filesystem is asked
+//! (`statvfs`) how much is free; under `keep_free` of it, the oldest entries
+//! go in proportion to what is missing and the database is compacted —
+//! redb reuses freed pages but only `compact` gives them back to the
+//! filesystem. The same happens at open, for a volume a previous run left
+//! full.
+//!
+//! **One I/O error is not the end of it** (#128). After a failed write
+//! redb refuses every later transaction ("Previous I/O error … close and
+//! re-open the database"), and a ring that never reopened stayed broken
+//! for the rest of the run. Now an I/O error closes the handle and reopens
+//! the file — redb repairs it — sheds half the ring and compacts; a file
+//! that will not open at all is replaced by a new ring, because this is
+//! chatter, not a ledger. The operation that hit the error is tried once
+//! more. At most once every [`RECOVER_EVERY_MS`], said once per recovery.
 
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, RwLock};
 
 use redb::{Database, Durability, ReadableTable, ReadableTableMetadata, TableDefinition};
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::parse::LogEvent;
 
@@ -56,6 +76,16 @@ const META: TableDefinition<&str, u64> = TableDefinition::new("meta");
 /// than this. Without it a flooding message is a flood on the wire, in the
 /// browser, and in every other viewer too.
 const NOTIFY_INTERVAL_MS: u64 = 1_000;
+
+/// How often (in inserts) the filesystem is asked how much is free.
+pub const ROOM_EVERY: u64 = 128;
+/// The fraction of the filesystem kept free when nothing says otherwise.
+pub const DEFAULT_KEEP_FREE: f64 = 0.20;
+/// No more than one recovery in this long: a disk that stays full must not
+/// turn every datagram into a reopen.
+pub const RECOVER_EVERY_MS: u64 = 5_000;
+/// Nor make room more often than this, unless an open or a recovery asks.
+const ROOM_EVERY_MS: u64 = 10_000;
 
 #[derive(Debug)]
 pub struct Error(String);
@@ -83,6 +113,7 @@ from_err!(
     redb::TableError,
     redb::StorageError,
     redb::CommitError,
+    redb::CompactionError,
     serde_json::Error,
 );
 
@@ -158,13 +189,81 @@ pub struct Stats {
     pub suppressed: u64,
 }
 
+/// A filesystem's size and what is free on it, in bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Space {
+    pub total: u64,
+    pub avail: u64,
+}
+
+/// How the ring has kept itself within its disk and recovered (#128), for
+/// the collector's card.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Care {
+    /// Reopens after an I/O error.
+    pub recoveries: u64,
+    /// Entries dropped to keep the filesystem's floor free.
+    pub shed: u64,
+    /// The last recovery's cause, and when (epoch ms).
+    pub last_cause: String,
+    pub last_at: u64,
+    /// Why the ring is closed, while it is.
+    pub broken: Option<String>,
+    /// Free space on the ring's filesystem at the last look, in percent.
+    pub free_percent: Option<f64>,
+    #[serde(skip)]
+    last_try: u64,
+    #[serde(skip)]
+    last_room: u64,
+}
+
+type SpaceFn = Box<dyn Fn(&Path) -> Option<Space> + Send + Sync>;
+
 pub struct Store {
-    db: Database,
+    path: PathBuf,
+    /// `None` only while a recovery has failed: the next operation tries again.
+    db: RwLock<Option<Database>>,
     cap: u64,
     retain_ms: u64,
     dedup: bool,
     /// Insert counter, so a busy ring prunes without waiting for the timer.
     since_prune: Mutex<u64>,
+    /// The fraction of the filesystem kept free.
+    keep_free: f64,
+    /// How free space is measured: `statvfs`, or a test's stand-in.
+    space: SpaceFn,
+    care: Mutex<Care>,
+}
+
+/// The filesystem a path is on, by `statvfs`.
+// The field types differ by platform (u32 on some), so the casts are not
+// all no-ops everywhere.
+#[allow(clippy::unnecessary_cast)]
+pub fn statvfs(dir: &Path) -> Option<Space> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    // SAFETY: a zeroed statvfs is a valid out-parameter, and `c` is a
+    // NUL-terminated path that lives across the call.
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    let frsize = if st.f_frsize > 0 { st.f_frsize as u64 } else { st.f_bsize as u64 };
+    Some(Space { total: st.f_blocks as u64 * frsize, avail: st.f_bavail as u64 * frsize })
+}
+
+/// An error that leaves redb refusing everything until it is reopened, or
+/// that says the disk is the problem.
+pub fn is_io(e: &Error) -> bool {
+    let m = e.0.as_str();
+    m.contains("I/O error") || m.contains("No space left") || m.contains("os error")
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// SQLite stamps every database with this header, so an old ring is
@@ -268,6 +367,12 @@ fn strip_leading_timestamp(msg: &str) -> &str {
 
 impl Store {
     pub fn open(path: &str, cap: u64, retain_ms: u64, dedup: bool) -> Result<Self> {
+        Self::open_with(path, cap, retain_ms, dedup, DEFAULT_KEEP_FREE, Box::new(statvfs))
+    }
+
+    /// `keep_free` is the fraction of the filesystem kept free; `space`
+    /// measures it.
+    pub fn open_with(path: &str, cap: u64, retain_ms: u64, dedup: bool, keep_free: f64, space: SpaceFn) -> Result<Self> {
         if let Some(dir) = Path::new(path).parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -285,10 +390,33 @@ impl Store {
                      logs.redb ({e})"
                 )))
             }
-            Err(e) => return Err(e.into()),
+            // A ring that will not open — corrupt, or a repair that needs
+            // space a full volume does not have — is replaced: this is
+            // chatter, and a console with no fleet log is worse off than
+            // one that starts its ring over (#128).
+            Err(e) => {
+                warn!(path, error = %e, "the log ring will not open: starting a new one");
+                let _ = std::fs::remove_file(path);
+                Database::create(path)?
+            }
         };
-        let store = Self { db, cap, retain_ms, dedup, since_prune: Mutex::new(0) };
-        store.create_tables()?;
+        create_tables(&db)?;
+        let store = Self {
+            path: PathBuf::from(path),
+            db: RwLock::new(Some(db)),
+            cap,
+            retain_ms,
+            dedup,
+            since_prune: Mutex::new(0),
+            keep_free: keep_free.clamp(0.0, 0.9),
+            space,
+            care: Mutex::new(Care::default()),
+        };
+        // A volume the last run left full is made room on before the
+        // first datagram, not after it fails.
+        if let Err(e) = store.make_room(true) {
+            warn!(error = %e, "making room in the log ring at open failed");
+        }
         Ok(store)
     }
 
@@ -300,24 +428,159 @@ impl Store {
         Ok((store, dir))
     }
 
-    /// Every table is created up front so read transactions never have to
-    /// cope with one that does not exist yet.
-    fn create_tables(&self) -> Result<()> {
-        let tx = self.db.begin_write()?;
-        {
-            tx.open_table(EVENTS)?;
-            tx.open_table(INDEX)?;
-            tx.open_table(HOSTS)?;
-            tx.open_table(SEVERITY)?;
-            tx.open_table(META)?;
+    /// Run `op` on the database; on an I/O error, recover and run it once
+    /// more.
+    fn with<T>(&self, op: impl Fn(&Database) -> Result<T>) -> Result<T> {
+        let first = {
+            let g = self.db.read().unwrap_or_else(|e| e.into_inner());
+            match g.as_ref() {
+                Some(db) => op(db),
+                None => Err(Error(format!(
+                    "the log ring is closed: {}",
+                    self.care().broken.unwrap_or_else(|| "reopening".into())
+                ))),
+            }
+        };
+        match first {
+            Err(e) if is_io(&e) || e.0.starts_with("the log ring is closed") => {
+                if self.recover(&e.0) {
+                    let g = self.db.read().unwrap_or_else(|e| e.into_inner());
+                    if let Some(db) = g.as_ref() {
+                        return op(db);
+                    }
+                }
+                Err(e)
+            }
+            r => r,
         }
-        tx.commit()?;
-        Ok(())
+    }
+
+    /// What the ring has done to stay within its disk, and its recoveries.
+    pub fn care(&self) -> Care {
+        self.care.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Close the handle redb has poisoned, reopen the file, shed half and
+    /// compact. `false` when it was tried too recently or did not work.
+    pub fn recover(&self, cause: &str) -> bool {
+        let now = now_ms();
+        {
+            let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
+            if c.last_try > 0 && now.saturating_sub(c.last_try) < RECOVER_EVERY_MS {
+                return false;
+            }
+            c.last_try = now;
+        }
+        let mut g = self.db.write().unwrap_or_else(|e| e.into_inner());
+        // Dropping the database closes the file: the only way out of
+        // redb's "Previous I/O error".
+        drop(g.take());
+        let path = self.path.to_string_lossy().into_owned();
+        let opened = match Database::create(&self.path) {
+            Ok(db) => Ok(db),
+            Err(e) => {
+                warn!(path, error = %e, "the log ring will not reopen: starting a new one");
+                let _ = std::fs::remove_file(&self.path);
+                Database::create(&self.path).map_err(Error::from)
+            }
+        };
+        let mut db = match opened.and_then(|db| create_tables(&db).map(|_| db)) {
+            Ok(db) => db,
+            Err(e) => {
+                let why = format!("{path}: {e} (after: {cause})");
+                warn!(error = %why, "the log ring could not be reopened; trying again in a few seconds");
+                self.care.lock().unwrap_or_else(|e| e.into_inner()).broken = Some(why);
+                return false;
+            }
+        };
+        let entries = count(&db).unwrap_or(0);
+        let shed = self.prune_in(&db, now, Some(entries / 2)).unwrap_or(0);
+        if let Err(e) = db.compact() {
+            warn!(error = %e, "compacting the reopened log ring failed");
+        }
+        *g = Some(db);
+        drop(g);
+        let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
+        c.recoveries += 1;
+        c.shed += shed;
+        c.last_cause = cause.to_string();
+        c.last_at = now;
+        c.broken = None;
+        warn!(cause, shed, recoveries = c.recoveries, "the log ring was reopened after an I/O error");
+        true
+    }
+
+    /// Keep `keep_free` of the filesystem free: drop the oldest entries in
+    /// proportion to what is missing, then compact so the file shrinks.
+    /// Returns how many went. `force` skips the rate limit (open, a sweep).
+    pub fn make_room(&self, force: bool) -> Result<u64> {
+        let now = now_ms();
+        let dir = self.path.parent().unwrap_or(Path::new("."));
+        let Some(sp) = (self.space)(dir) else { return Ok(0) };
+        {
+            let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
+            c.free_percent = (sp.total > 0).then(|| sp.avail as f64 * 100.0 / sp.total as f64);
+            let floor = (sp.total as f64 * self.keep_free) as u64;
+            if sp.avail >= floor || (!force && now.saturating_sub(c.last_room) < ROOM_EVERY_MS) {
+                return Ok(0);
+            }
+            c.last_room = now;
+        }
+        let floor = (sp.total as f64 * self.keep_free) as u64;
+        let need = floor.saturating_sub(sp.avail);
+        let file = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0).max(1);
+        // The share of the file that is missing, and a tenth more so this
+        // does not run again at the next look. At most nine tenths: what
+        // filled the disk may not be the ring at all.
+        let share = (need as f64 / file as f64 + 0.1).min(0.9);
+        let entries = self.with(count)?;
+        let n = (entries as f64 * share).ceil() as u64;
+        let shed = self.with(|db| self.prune_in(db, now, Some(n)))?;
+        {
+            let mut g = self.db.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(db) = g.as_mut() {
+                db.compact().map_err(Error::from)?;
+            }
+        }
+        let after = (self.space)(dir);
+        let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
+        c.shed += shed;
+        if let Some(a) = after {
+            c.free_percent = (a.total > 0).then(|| a.avail as f64 * 100.0 / a.total as f64);
+        }
+        info!(
+            shed,
+            free_before = sp.avail,
+            free_after = after.map(|a| a.avail),
+            floor,
+            "the log ring gave space back to keep its filesystem's floor free"
+        );
+        Ok(shed)
     }
 
     pub fn insert(&self, e: &LogEvent, now_ms: u64) -> Result<Insert> {
+        let out = self.with(|db| self.insert_in(db, e, now_ms))?;
+        let (room, due) = {
+            let mut n = self.since_prune.lock().unwrap_or_else(|e| e.into_inner());
+            *n += 1;
+            let room = *n % ROOM_EVERY == 0;
+            let due = *n >= 4096;
+            if due {
+                *n = 0;
+            }
+            (room, due)
+        };
+        if due {
+            self.prune(now_ms)?;
+        } else if room {
+            self.make_room(false)?;
+        }
+        Ok(out)
+    }
+
+    fn insert_in(&self, db: &Database, e: &LogEvent, now_ms: u64) -> Result<Insert> {
         let key = dedup_key(&e.host, &e.app, e.severity, &e.msg);
-        let mut tx = self.db.begin_write()?;
+        let mut tx = db.begin_write()?;
         tx.set_durability(Durability::Eventual);
         let out;
         {
@@ -408,17 +671,6 @@ impl Store {
             out = Insert { event: record, notify };
         }
         tx.commit()?;
-
-        let mut n = self.since_prune.lock().unwrap();
-        *n += 1;
-        let due = *n >= 4096;
-        if due {
-            *n = 0;
-        }
-        drop(n);
-        if due {
-            self.prune(now_ms)?;
-        }
         Ok(out)
     }
 
@@ -428,7 +680,13 @@ impl Store {
     /// oldest entry and stopping at the first one that is still wanted
     /// visits only what it removes.
     pub fn prune(&self, now_ms: u64) -> Result<u64> {
-        let mut tx = self.db.begin_write()?;
+        let n = self.with(|db| self.prune_in(db, now_ms, None))?;
+        Ok(n + self.make_room(true)?)
+    }
+
+    /// The bounds, plus `shed` more of the oldest when space is wanted.
+    fn prune_in(&self, db: &Database, now_ms: u64, shed: Option<u64>) -> Result<u64> {
+        let mut tx = db.begin_write()?;
         tx.set_durability(Durability::Eventual);
         let mut removed = 0u64;
         {
@@ -439,7 +697,7 @@ impl Store {
             let mut meta = tx.open_table(META)?;
 
             let cutoff = now_ms.saturating_sub(self.retain_ms);
-            let mut over = events.len()?.saturating_sub(self.cap);
+            let mut over = events.len()?.saturating_sub(self.cap).max(shed.unwrap_or(0));
 
             let mut victims: Vec<(u64, StoredEvent)> = Vec::new();
             for item in events.iter()? {
@@ -490,8 +748,8 @@ impl Store {
     }
 
     pub fn stats(&self) -> Stats {
-        let read = || -> Result<Stats> {
-            let tx = self.db.begin_read()?;
+        self.with(|db| {
+            let tx = db.begin_read()?;
             let events = tx.open_table(EVENTS)?;
             let meta = tx.open_table(META)?;
             Ok(Stats {
@@ -499,8 +757,8 @@ impl Store {
                 occurrences: meta.get("occurrences")?.map(|v| v.value()).unwrap_or(0),
                 suppressed: meta.get("suppressed")?.map(|v| v.value()).unwrap_or(0),
             })
-        };
-        read().unwrap_or_default()
+        })
+        .unwrap_or_default()
     }
 
     /// Most-recent entries matching the filters, returned oldest-first.
@@ -523,7 +781,19 @@ impl Store {
     ) -> Result<Vec<StoredEvent>> {
         let want = last.max(0) as usize;
         let needle = search.map(|s| s.to_lowercase());
-        let tx = self.db.begin_read()?;
+        self.with(|db| self.query_in(db, host, app, min_severity, needle.as_deref(), want))
+    }
+
+    fn query_in(
+        &self,
+        db: &Database,
+        host: Option<&str>,
+        app: Option<&str>,
+        min_severity: Option<u8>,
+        needle: Option<&str>,
+        want: usize,
+    ) -> Result<Vec<StoredEvent>> {
+        let tx = db.begin_read()?;
         let events = tx.open_table(EVENTS)?;
 
         let mut rows: Vec<StoredEvent> = Vec::with_capacity(want.min(1024));
@@ -550,7 +820,7 @@ impl Store {
                     continue;
                 }
             }
-            if let Some(q) = &needle {
+            if let Some(q) = needle {
                 if !record.msg.to_lowercase().contains(q)
                     && !record.app.to_lowercase().contains(q)
                 {
@@ -571,7 +841,8 @@ impl Store {
     /// maintained on the hot path to answer a question asked twice an hour is
     /// the wrong trade. Bounded by the ring, which is bounded.
     pub fn apps(&self) -> Result<Vec<String>> {
-        let tx = self.db.begin_read()?;
+        self.with(|db| {
+        let tx = db.begin_read()?;
         let events = tx.open_table(EVENTS)?;
         let mut seen = std::collections::BTreeSet::new();
         for item in events.iter()? {
@@ -582,10 +853,12 @@ impl Store {
             }
         }
         Ok(seen.into_iter().collect())
+        })
     }
 
     pub fn hosts(&self) -> Result<Vec<HostSummary>> {
-        let tx = self.db.begin_read()?;
+        self.with(|db| {
+        let tx = db.begin_read()?;
         let hosts = tx.open_table(HOSTS)?;
         let mut out = Vec::new();
         for item in hosts.iter()? {
@@ -594,10 +867,12 @@ impl Store {
         }
         out.sort_by(|a, b| a.host.cmp(&b.host));
         Ok(out)
+        })
     }
 
     pub fn severity_counts(&self) -> Result<Vec<(u8, i64)>> {
-        let tx = self.db.begin_read()?;
+        self.with(|db| {
+        let tx = db.begin_read()?;
         let severity = tx.open_table(SEVERITY)?;
         let mut out = Vec::new();
         for item in severity.iter()? {
@@ -608,7 +883,30 @@ impl Store {
             }
         }
         Ok(out)
+        })
     }
+}
+
+/// Every table is created up front so read transactions never have to
+/// cope with one that does not exist yet.
+fn create_tables(db: &Database) -> Result<()> {
+    let tx = db.begin_write()?;
+    {
+        tx.open_table(EVENTS)?;
+        tx.open_table(INDEX)?;
+        tx.open_table(HOSTS)?;
+        tx.open_table(SEVERITY)?;
+        tx.open_table(META)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Distinct entries in the ring.
+fn count(db: &Database) -> Result<u64> {
+    let tx = db.begin_read()?;
+    let events = tx.open_table(EVENTS)?;
+    Ok(events.len()?)
 }
 
 fn bump(meta: &mut redb::Table<&str, u64>, key: &str, by: u64) -> Result<()> {
@@ -796,6 +1094,91 @@ mod tests {
         }
         assert_eq!(s.stats().entries, 10);
         assert_eq!(s.stats().suppressed, 0);
+    }
+
+    /// A store whose filesystem reports `avail` of 1000 units free.
+    fn on_disk(avail: std::sync::Arc<std::sync::atomic::AtomicU64>) -> (Store, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ring.redb");
+        let space: SpaceFn = Box::new(move |_| {
+            Some(Space { total: 1000, avail: avail.load(std::sync::atomic::Ordering::SeqCst) })
+        });
+        let store = Store::open_with(path.to_str().unwrap(), 1_000_000, 0, true, 0.2, space).unwrap();
+        (store, dir)
+    }
+
+    fn fill(store: &Store, n: usize) {
+        for i in 0..n {
+            store.insert(&ev("h", 6, &format!("line {i} {}", "x".repeat(200))), 1).unwrap();
+        }
+    }
+
+    #[test]
+    fn under_the_floor_the_oldest_go_and_the_file_shrinks() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let avail = std::sync::Arc::new(AtomicU64::new(900));
+        let (store, dir) = on_disk(avail.clone());
+        fill(&store, 2000);
+        let size = |d: &tempfile::TempDir| std::fs::metadata(d.path().join("ring.redb")).unwrap().len();
+        let before = size(&dir);
+        // Plenty free: nothing goes.
+        assert_eq!(store.make_room(true).unwrap(), 0);
+        assert_eq!(store.stats().entries, 2000);
+        assert_eq!(store.care().free_percent, Some(90.0));
+        // 15% free against a 20% floor: some of the oldest go, and only them.
+        avail.store(150, Ordering::SeqCst);
+        let shed = store.make_room(true).unwrap();
+        assert!(shed > 0 && shed < 2000, "{shed}");
+        assert_eq!(store.stats().entries, 2000 - shed);
+        let rows = store.query(None, None, None, None, 1).unwrap();
+        assert!(rows[0].msg.starts_with("line 1999 "), "the newest stays");
+        assert!(size(&dir) < before, "compacted: {} → {}", before, size(&dir));
+        assert_eq!(store.care().shed, shed);
+        // Without force, not again at once.
+        assert_eq!(store.make_room(false).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_closed_handle_is_reopened_and_the_insert_goes_through() {
+        use std::sync::atomic::AtomicU64;
+        let (store, _dir) = on_disk(std::sync::Arc::new(AtomicU64::new(900)));
+        fill(&store, 100);
+        // What a poisoned handle comes to once dropped: nothing to use.
+        *store.db.write().unwrap() = None;
+        store.insert(&ev("h", 3, "after the error"), 2).unwrap();
+        let care = store.care();
+        assert_eq!(care.recoveries, 1);
+        assert!(care.broken.is_none());
+        assert!(care.last_cause.contains("closed"), "{}", care.last_cause);
+        // Half shed on reopen, the new line kept.
+        let hits = store.query(None, None, Some(3), None, 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(store.stats().entries, 51);
+        // Not twice within the window.
+        assert!(!store.recover("again"));
+    }
+
+    #[test]
+    fn a_ring_that_will_not_open_is_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ring.redb");
+        std::fs::write(&path, vec![0x5a; 8192]).unwrap();
+        let store = Store::open(path.to_str().unwrap(), 10, 0, true).unwrap();
+        store.insert(&ev("h", 6, "fresh"), 1).unwrap();
+        assert_eq!(store.stats().entries, 1);
+    }
+
+    #[test]
+    fn io_errors_are_told_from_the_rest() {
+        assert!(is_io(&Error("I/O error: No space left on device (os error 28)".into())));
+        assert!(is_io(&Error("Previous I/O error occurred. Please close and re-open the database.".into())));
+        assert!(!is_io(&Error("expected value at line 1 column 1".into())));
+    }
+
+    #[test]
+    fn statvfs_reads_a_real_filesystem() {
+        let s = statvfs(Path::new(".")).unwrap();
+        assert!(s.total > 0 && s.avail <= s.total);
     }
 
     #[test]

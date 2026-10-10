@@ -84,6 +84,10 @@ mcast_group = "239.255.42.1:5514"
 # ring_cap = 200000       # most distinct entries kept; oldest go first
 # retain_hours = 168      # drop an entry this long after it was last seen
 #                         # (0 disables the age bound)
+# A third, in bytes: the ring keeps this much of its filesystem free. Under
+# it the oldest entries go and the file is compacted; an I/O error reopens
+# the ring rather than leaving it refusing everything.
+# keep_free_percent = 20
 
 [stormdrive]
 enabled = true

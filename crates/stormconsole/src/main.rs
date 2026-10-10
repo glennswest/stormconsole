@@ -155,7 +155,8 @@ async fn main() {
             config.logs.ring_cap,
             config.logs.retain_hours,
             config.logs.dedup,
-        ))
+        )
+        .keep_free_percent(config.logs.keep_free_percent))
     });
     // The fleet's hosts and their addresses: the fleet plugin drills into
     // them, and the drives plugin reads each one's stormdrive (#32).

@@ -42,6 +42,8 @@ struct Inner {
     cap: u64,
     retain_ms: u64,
     dedup: bool,
+    /// The fraction of the ring's filesystem kept free (#128).
+    keep_free: f64,
     store: RwLock<Option<Arc<Store>>>,
     tail: broadcast::Sender<StoredEvent>,
     status: RwLock<Status>,
@@ -57,6 +59,20 @@ struct Inner {
 
 pub struct LogsPlugin {
     inner: Arc<Inner>,
+}
+
+impl Inner {
+    /// The collector's word and line: its status, unless the ring is closed
+    /// (a recovery that has not worked yet, #128), which is said instead.
+    async fn now(&self) -> (Health, String) {
+        if let Some(store) = self.store.read().await.as_ref() {
+            if let Some(why) = store.care().broken {
+                return (Health::Error, format!("the log ring is closed and being reopened: {why}"));
+            }
+        }
+        let s = self.status.read().await;
+        (s.health, s.detail.clone())
+    }
 }
 
 /// How the ring is bounded when the config says nothing.
@@ -112,6 +128,7 @@ impl LogsPlugin {
                 cap,
                 retain_ms: retain_hours.saturating_mul(3_600_000),
                 dedup,
+                keep_free: store::DEFAULT_KEEP_FREE,
                 store: RwLock::new(None),
                 tail,
                 beacons: RwLock::new(std::collections::HashMap::new()),
@@ -121,6 +138,15 @@ impl LogsPlugin {
                 }),
             }),
         }
+    }
+
+    /// Keep this percentage of the ring's filesystem free (#128). Called
+    /// right after construction, before anything shares the plugin.
+    pub fn keep_free_percent(mut self, percent: u8) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.keep_free = f64::from(percent.min(90)) / 100.0;
+        }
+        self
     }
 }
 
@@ -143,7 +169,7 @@ impl ConsolePlugin for LogsPlugin {
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
-        let status = self.inner.status.read().await;
+        let (health, detail) = self.inner.now().await;
         let mut metrics = Vec::new();
         if let Some(store) = self.inner.store.read().await.as_ref() {
             let Stats { entries, occurrences, suppressed } = store.stats();
@@ -158,13 +184,26 @@ impl ConsolePlugin for LogsPlugin {
             if let Ok(hosts) = store.hosts() {
                 metrics.push(Metric::new("hosts", hosts.len().to_string()).tone("accent"));
             }
+            // How the ring stays within its disk, and whether it has had
+            // to come back from one (#128).
+            let care = store.care();
+            if let Some(f) = care.free_percent {
+                let low = f < self.inner.keep_free * 100.0;
+                metrics.push(Metric::new("disk free", format!("{f:.0}%")).tone(if low { "warn" } else { "muted" }));
+            }
+            if care.shed > 0 {
+                metrics.push(Metric::new("shed for space", care.shed.to_string()).tone("warn"));
+            }
+            if care.recoveries > 0 {
+                metrics.push(Metric::new("reopened", care.recoveries.to_string()).tone("warn"));
+            }
         }
         vec![ComponentSummary {
             id: "logs:collector".into(),
             kind: "collector".into(),
             label: "fleet log collector".into(),
-            health: status.health,
-            detail: status.detail.clone(),
+            health,
+            detail,
             metrics,
             actions: vec![],
             relations: vec![],
@@ -173,19 +212,21 @@ impl ConsolePlugin for LogsPlugin {
     }
 
     async fn health(&self) -> Health {
-        self.inner.status.read().await.health
+        self.inner.now().await.0
     }
 
     async fn detail(&self) -> String {
-        self.inner.status.read().await.detail.clone()
+        self.inner.now().await.1
     }
 
     async fn run(&self, shutdown: CancellationToken) {
-        let store = match Store::open(
+        let store = match Store::open_with(
             &self.inner.db_path,
             self.inner.cap,
             self.inner.retain_ms,
             self.inner.dedup,
+            self.inner.keep_free,
+            Box::new(store::statvfs),
         ) {
             Ok(s) => Arc::new(s),
             Err(e) => {

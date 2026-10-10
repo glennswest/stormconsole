@@ -287,6 +287,14 @@ pub struct Logs {
     /// entry with a count. Off stores every arrival separately.
     #[serde(default = "on")]
     pub dedup: bool,
+    /// Keep this percentage of the ring's filesystem free (#128): under it
+    /// the oldest entries go and the file is compacted. At most 90.
+    #[serde(default = "default_keep_free_percent")]
+    pub keep_free_percent: u8,
+}
+
+fn default_keep_free_percent() -> u8 {
+    20
 }
 
 impl Default for Logs {
@@ -298,6 +306,7 @@ impl Default for Logs {
             ring_cap: default_ring_cap(),
             retain_hours: default_retain_hours(),
             dedup: true,
+            keep_free_percent: default_keep_free_percent(),
         }
     }
 }
