@@ -121,7 +121,7 @@ pub fn read(dir: &str, process: Option<&str>, api: Option<&str>, limit: usize) -
     if !bad.is_empty() {
         out.note = format!("unreadable: {}", bad.join("; "));
     }
-    out.changes.sort_by(|a, b| b.ts.cmp(&a.ts));
+    out.changes.sort_by_key(|c| std::cmp::Reverse(c.ts));
     out.changes.truncate(limit);
     out
 }
