@@ -1526,22 +1526,29 @@ shrinks its file: only `compact()` returns space.
   576 MiB for 200k (stormcos#537); 64 MiB holds ~23k. Unit tests 36/36,
   clippy clean
 
-### A service not started here is off, not failed (#60)
+### A service not started here is off, not failed (#60) ✅ 2026-10-10
 C2NR0Q2 showed `plugin:ipmi` red: nothing on :9097. stormcos starts
 stormipmi only on single-node clusters (`start stormipmi roles=sno`,
 #269), and fastetcd/apiserver only on `sno,master`: a node may carry a
 service and, by design, not run it. The tell: nothing listens on the
 service's port **and** nothing on the stormd that would supervise it
 (stormipmi 9197, fastetcd 9081, the console's port layout).
-- [ ] `console_core::upstream::not_started(url, stormd_port)`: loopback
+- [x] `console_core::upstream::not_started(url, stormd_port)`: loopback
       only; the port refuses and its stormd refuses → not started. A refusal
       with its stormd up, a timeout or an HTTP error stays an error
-- [ ] stormipmi and fastetcd: Idle, "not started on this node", the role
+- [x] stormipmi and fastetcd: Idle, "not started on this node", the role
       it runs on and how to start it; an error only when started and silent
-- [ ] Tests (listeners on random ports: none, service only, stormd only);
+- [x] Tests (listeners on random ports: none, service only, stormd only);
       docs, changelog; a live check; release; golden
-- [ ] The apiserver on a worker is a different fault (the console should
-      read the cluster's endpoint there): filed apart
+- [x] The apiserver on a worker is a different fault (the console should
+      read the cluster's endpoint there): filed apart: #147
+- Verified with `sc-build deploy/verify-not-started.sh` (0 failed, 5667655):
+  a real console on a build VM running neither — ipmi and etcd Idle with
+  their sentences, nothing on the page an error, the Machines page saying
+  "not started on this node" with no page errors (the first run found it
+  still asking stormipmi, 502s: fixed); a bare listener on :9197 → ipmi an
+  error (started and silent); a stormipmi answering → ok. And
+  `verify-machines.sh` against a real stormipmi still passes (0 failed)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
