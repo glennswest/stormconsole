@@ -164,6 +164,16 @@ enabled = true
 # cert_file = "/data/stormcert/stormconsole-client.crt"
 # key_file = "/data/stormcert/stormconsole-client.key"
 
+[flowsdn]
+enabled = true
+# This node's pod network on the flowsdn edition: endpoints, IPAM, the
+# agent's health and modules, its config, Services and node routes, from
+# the agent's read-only listener (`http-listen`, loopback only). A node
+# whose release manifest names the cilium edition shows "not this edition"
+# and no page.
+# url = "http://127.0.0.1:9878"
+# release_manifest = "/etc/stormcos/release/manifest.json"
+
 # [stormcentral]
 # Where a stormpump:// image's golden is recorded: the pod page shows its
 # build (built at, by, commit, build id) beside the image. Off unless a url

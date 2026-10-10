@@ -271,6 +271,15 @@ async fn main() {
         )
         .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))));
     }
+    // This node's pod network on the flowsdn edition (#83): the agent's
+    // loopback API, endpoints scoped by namespace like the pods they are.
+    if config.flowsdn.enabled {
+        plugins.push(Arc::new(plugin_flowsdn::FlowsdnPlugin::new(
+            &config.flowsdn_url(),
+            &config.flowsdn_release_manifest(),
+            namespace_access.clone(),
+        )));
+    }
 
     // Destructive storage is asked of the apiserver as the viewer (#82);
     // with kubernetes off there is nobody to ask, and nobody may.

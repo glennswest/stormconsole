@@ -1089,6 +1089,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-flowsdn"
+version = "0.32.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "console-core",
+ "plugin-kubernetes",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "plugin-kubernetes"
 version = "0.32.0"
 dependencies = [
@@ -1810,6 +1825,7 @@ dependencies = [
  "mime_guess",
  "plugin-fastetcd",
  "plugin-fleet",
+ "plugin-flowsdn",
  "plugin-kubernetes",
  "plugin-logs",
  "plugin-sbregistry",

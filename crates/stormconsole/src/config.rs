@@ -47,6 +47,8 @@ pub struct Config {
     #[serde(default)]
     pub stormcluster: Stormcluster,
     #[serde(default)]
+    pub flowsdn: Flowsdn,
+    #[serde(default)]
     pub stormcentral: Stormcentral,
 }
 
@@ -417,6 +419,28 @@ impl Default for Fastetcd {
     }
 }
 
+/// This node's pod network on the flowsdn edition (#83): the agent's
+/// read-only HTTP listener, which only ever binds the node's loopback
+/// (flowsdn#297), and the release manifest that says which edition the
+/// node booted — a cilium node has no agent and says so.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Flowsdn {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// The agent's `http-listen`. Unset means `http://127.0.0.1:9878`, the
+    /// edition manifests' value.
+    pub url: Option<String>,
+    /// Unset means `/etc/stormcos/release/manifest.json`.
+    pub release_manifest: Option<String>,
+}
+
+impl Default for Flowsdn {
+    fn default() -> Self {
+        Self { enabled: true, url: None, release_manifest: None }
+    }
+}
+
 /// The Machines page (#31): stormipmi's Machines API, wherever the one
 /// stormipmi runs — a bastion, usually, not every node.
 #[derive(Debug, Clone, Deserialize)]
@@ -614,6 +638,14 @@ impl Config {
         self.sbregistry.url.clone().unwrap_or_else(|| "http://127.0.0.1:5100".to_string())
     }
 
+    pub fn flowsdn_url(&self) -> String {
+        self.flowsdn.url.clone().unwrap_or_else(|| "http://127.0.0.1:9878".to_string())
+    }
+
+    pub fn flowsdn_release_manifest(&self) -> String {
+        self.flowsdn.release_manifest.clone().unwrap_or_else(|| "/etc/stormcos/release/manifest.json".to_string())
+    }
+
     pub fn stormipmi_url(&self) -> String {
         self.stormipmi.url.clone().unwrap_or_else(|| "http://127.0.0.1:9097".to_string())
     }
@@ -766,6 +798,8 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.fastetcd_metrics_url(), "http://127.0.0.1:2381");
         assert_eq!(c.vmimages_url(), "http://127.0.0.1:9099");
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
+        assert_eq!(c.flowsdn_url(), "http://127.0.0.1:9878");
+        assert_eq!(c.flowsdn_release_manifest(), "/etc/stormcos/release/manifest.json");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
         assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");
         assert_eq!(c.stormcluster_url(), "http://127.0.0.1:9102");
