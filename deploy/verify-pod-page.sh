@@ -103,9 +103,32 @@ k POST /api/v1/namespaces/shop/pods "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",
     \"initContainers\":[{\"name\":\"migrate\",\"image\":\"reg.g8.lo/shop/migrate:2.1\"}],
     \"containers\":[
       {\"name\":\"app\",\"image\":\"reg.g8.lo/shop/web:2.1\",\"ports\":[{\"name\":\"http\",\"containerPort\":8080}],
-       \"resources\":{\"requests\":{\"cpu\":\"100m\",\"memory\":\"64Mi\"}}},
-      {\"name\":\"agent\",\"image\":\"stormpump://cilium\"}],
+       \"resources\":{\"requests\":{\"cpu\":\"100m\",\"memory\":\"64Mi\"},\"limits\":{\"memory\":\"256Mi\"}},
+       \"livenessProbe\":{\"httpGet\":{\"path\":\"/healthz\",\"port\":8080},\"periodSeconds\":5},
+       \"readinessProbe\":{\"tcpSocket\":{\"port\":\"http\"},\"failureThreshold\":1},
+       \"volumeMounts\":[{\"name\":\"data\",\"mountPath\":\"/var/lib/web\"},{\"name\":\"cfg\",\"mountPath\":\"/etc/web\",\"readOnly\":true}]},
+      {\"name\":\"agent\",\"image\":\"stormpump://cilium\",\"livenessProbe\":{\"exec\":{\"command\":[\"cat\",\"/tmp/healthy\"]}}}],
+    \"volumes\":[{\"name\":\"data\",\"persistentVolumeClaim\":{\"claimName\":\"web-data\"}},
+                 {\"name\":\"cfg\",\"configMap\":{\"name\":\"web-cfg\"}},{\"name\":\"scratch\",\"emptyDir\":{}}],
     \"dnsPolicy\":\"ClusterFirst\",\"dnsConfig\":{\"searches\":[\"shop.svc.cluster.local\"],\"options\":[{\"name\":\"ndots\",\"value\":\"2\"}]}}}"
+say "a bound claim behind the pod's data volume, and the kubelet's events (#124)"
+k POST /api/v1/persistentvolumes '{"apiVersion":"v1","kind":"PersistentVolume","metadata":{"name":"pvc-web-data"},
+  "spec":{"capacity":{"storage":"10Gi"},"accessModes":["ReadWriteOnce"],"persistentVolumeReclaimPolicy":"Delete","storageClassName":"stormblock",
+    "csi":{"driver":"stormblock.storm.io","volumeHandle":"shop-web-data"}}}'
+k POST /api/v1/namespaces/shop/persistentvolumeclaims '{"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"web-data"},
+  "spec":{"accessModes":["ReadWriteOnce"],"storageClassName":"stormblock","resources":{"requests":{"storage":"10Gi"}},"volumeName":"pvc-web-data"}}'
+k PATCH /api/v1/namespaces/shop/persistentvolumeclaims/web-data/status '{"status":{"phase":"Bound","capacity":{"storage":"10Gi"}}}' application/merge-patch+json
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+event() { # name type reason container count first last message
+  k POST /api/v1/namespaces/shop/events "{\"apiVersion\":\"v1\",\"kind\":\"Event\",\"metadata\":{\"name\":\"web-1.$1\"},
+    \"involvedObject\":{\"kind\":\"Pod\",\"namespace\":\"shop\",\"name\":\"web-1\",\"fieldPath\":\"spec.containers{$4}\"},
+    \"type\":\"$2\",\"reason\":\"$3\",\"count\":$5,\"firstTimestamp\":\"$6\",\"lastTimestamp\":\"$7\",
+    \"message\":\"$8\",\"source\":{\"component\":\"kubelet\",\"host\":\"n1\"}}"
+}
+event pulled Normal Pulled app 1 2026-10-02T11:00:02Z 2026-10-02T11:00:02Z 'Container image \"reg.g8.lo/shop/web:2.1\" already present on machine'
+event ready Warning Unhealthy app 4 2026-10-02T11:00:04Z 2026-10-02T11:00:09Z 'Readiness probe failed: dial tcp 10.244.0.15:8080: connect: connection refused'
+event live Warning Unhealthy agent 7 2026-10-02T11:05:00Z "$NOW" 'Liveness probe failed: cat: /tmp/healthy: No such file or directory'
+
 k POST /api/v1/namespaces/shop/services '{"apiVersion":"v1","kind":"Service","metadata":{"name":"web"},
   "spec":{"selector":{"app":"web"},"ports":[{"name":"http","port":80,"targetPort":8080,"protocol":"TCP"}]}}'
 k POST /api/v1/namespaces/shop/services '{"apiVersion":"v1","kind":"Service","metadata":{"name":"db"},"spec":{"selector":{"app":"db"},"ports":[{"port":5432}]}}'
@@ -222,6 +245,39 @@ echo "$T2"
 check '[ "$(echo "$T2" | q "d[\"interfaces\"][0][\"interface\"]")" = eth0 ]' "this pod's eth0, not the other pod's"
 check '[ "$(echo "$T2" | q "d[\"interfaces\"][0][\"rxBytes\"]")" -gt "$(echo "$T1" | q "d[\"interfaces\"][0][\"rxBytes\"]")" ]' "rx grows between reads"
 check 'echo "$T2" | q "d[\"missing\"]" | grep -q "rustkube-node#131"' "errors/packets/drops named as missing"
+
+say "probes, volumes and events (#124)"
+D=$(J /api/plugins/k8s/pods/shop/web-1)
+pr() { echo "$D" | q "[c for c in d[\"containers\"] if c[\"name\"]==\"$1\"][0][\"probes\"][\"$2\"][\"$3\"]"; }
+check '[ "$(pr app liveness target)" = "http://:8080/healthz" ] && [ "$(pr app liveness periodSeconds)" = 5 ] && [ "$(pr app liveness timeoutSeconds)" = 1 ]' "liveness as configured, defaults filled in"
+check '[ "$(pr app readiness type) $(pr app readiness target) $(pr app readiness failureThreshold)" = "tcp-socket :http 1" ]' "readiness as configured"
+check '[ "$(pr app readiness result)" = passing ] && echo "$D" | q "[c for c in d[\"containers\"] if c[\"name\"]==\"app\"][0][\"probes\"][\"readiness\"][\"lastFailure\"][\"count\"]" | grep -qx 4' "readiness passing (ready), its last failure ×4 recorded"
+check '[ "$(pr app liveness result)" = passing ]' "app's liveness passing: no failure in this run"
+check '[ "$(pr agent liveness result)" = failing ] && echo "$D" | q "[c for c in d[\"containers\"] if c[\"name\"]==\"agent\"][0][\"probes\"][\"liveness\"][\"lastFailure\"][\"message\"]" | grep -q "No such file"' "agent's liveness failing, with the kubelet's words"
+check 'echo "$D" | has "[v[\"name\"] for v in d[\"volumes\"]] == [\"data\", \"cfg\", \"scratch\"]"' "every volume"
+check 'echo "$D" | has "d[\"volumes\"][0][\"claim\"][\"phase\"] == \"Bound\" and d[\"volumes\"][0][\"claim\"][\"pv\"][\"driver\"] == \"stormblock.storm.io\" and d[\"volumes\"][0][\"claim\"][\"capacity\"] == \"10Gi\""' "the claim Bound, 10Gi, its PV's driver"
+check 'echo "$D" | has "d[\"volumes\"][1][\"mounts\"] == [{\"container\": \"app\", \"mountPath\": \"/etc/web\", \"readOnly\": True, \"subPath\": None}]"' "the ConfigMap mounted read-only in app"
+E=$(J /api/plugins/k8s/pods/shop/web-1/events)
+echo "$E" | q '"\n".join("  %s %s %s ×%s first %s last %s %s" % (e["type"], e["reason"], e["container"], e["count"], e["first"], e["time"], e["source"]) for e in d["items"])'
+check 'echo "$E" | has "d[\"items\"][0][\"reason\"] == \"Unhealthy\" and d[\"items\"][0][\"container\"] == \"agent\" and d[\"items\"][0][\"count\"] == 7"' "events newest first, the container from its field path"
+check 'echo "$E" | has "all(e[\"first\"] and e[\"source\"] == \"kubelet on n1\" for e in d[\"items\"]) and len(d[\"items\"]) == 3"' "first seen and source on every one"
+
+say "stats over time from the kubelet's /stats/summary (#124)"
+for _ in $(seq 40); do
+  S=$(J "/api/plugins/k8s/pods/shop/web-1/stats?window=900")
+  echo "$S" | has "d[\"available\"] and any(p[\"cpu\"] is not None for p in d[\"series\"][\"containers\"][0][\"points\"])" && break
+  sleep 2
+done
+echo "$S" | q 'json.dumps({k: d.get(k) for k in ("available","node","every","samples","missing","reason")}, indent=1)'
+cpu() { echo "$S" | q "[p[\"cpu\"] for c in d[\"series\"][\"containers\"] if c[\"name\"]==\"$1\" for p in c[\"points\"] if p[\"cpu\"] is not None][-1]"; }
+echo "  app $(cpu app) cores, agent $(cpu agent) cores"
+check 'python3 -c "import sys; sys.exit(0 if 0.2 < $(cpu app) < 0.3 else 1)"' "app's CPU is its counter's rate, 0.25 core"
+check 'python3 -c "import sys; sys.exit(0 if 0.03 < $(cpu agent) < 0.07 else 1)"' "agent's 0.05 core"
+check 'echo "$S" | has "d[\"series\"][\"containers\"][0][\"points\"][-1][\"workingSet\"] == 48 << 20"' "app's working set, 48 MiB"
+check 'echo "$S" | has "40000 < [p[\"rxBps\"] for p in d[\"series\"][\"interfaces\"][0][\"points\"] if p[\"rxBps\"] is not None][-1] < 60000"' "eth0 received ~50 kB/s"
+check 'echo "$S" | has "d[\"series\"][\"interfaces\"][0][\"totals\"][\"rxErrors\"] == 2"' "eth0's errors counted"
+check 'echo "$S" | has "any(\"rustkube-node#242\" in m for m in d[\"missing\"]) and not any(m.startswith(\"network\") for m in d[\"missing\"])"' "what the node does not report is named (rustkube-node#242)"
+check '[ "$(curl -s -o /dev/null -w %{http_code} $C/api/plugins/k8s/pods/shop/nope/stats)" = 404 ]' "stats of an unknown pod is 404"
 
 say "the pod row links to the page"
 check 'curl -s "$C/api/v1/components" | python3 -c "import json,sys; c=[x for x in json.load(sys.stdin) if x[\"id\"]==\"k8s:pod:shop/web-1\"][0]; assert c[\"link\"]==\"#/pod/shop/web-1\"; assert any(a[\"id\"]==\"logs\" for a in c[\"actions\"])"' "link and a Logs action"

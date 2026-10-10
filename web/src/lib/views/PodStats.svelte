@@ -48,8 +48,9 @@
   const has = (list, key) => list.some((c) => c.points.some((p) => p[key] != null))
 
   const cores = (v) => (v >= 1 ? `${v.toFixed(2)} cores` : `${Math.round(v * 1000)}m`)
-  const bytes = (v) => formatBytes(v)
-  const bps = (v) => `${formatBytes(v)}/s`
+  // stormview's formatBytes has no unit below one byte (a slow rate is).
+  const bytes = (v) => (v < 1 ? `${Math.round(v * 10) / 10} B` : formatBytes(v))
+  const bps = (v) => `${bytes(v)}/s`
   const pps = (v) => `${v >= 100 ? Math.round(v) : v.toFixed(1)} pkt/s`
   const count = (v) => String(Math.round(v))
   const n = (v) => (v == null ? '—' : String(v))

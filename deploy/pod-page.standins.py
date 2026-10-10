@@ -6,6 +6,10 @@ rustkube-node serves and nothing more:
 
   /containerLogs/{ns}/{pod}/{c}  ?previous ?tailLines ?follow ?timestamps
   /metrics/cadvisor              rx/tx bytes per pod interface, growing
+  /stats/summary                 rustkube-node 7bfe4d2's shape (#124): per
+                                 container cpu.usageCoreNanoSeconds (app at
+                                 0.25 core) and memory.workingSetBytes; the
+                                 pod's network with packets, errors, drops
 
 and a stormcentral serving /api/v1/goldens?component= behind a bearer.
 
@@ -70,6 +74,25 @@ class Kubelet(BaseHTTPRequestHandler):
                 f'container_network_transmit_bytes_total{{container="",id="sb1",interface="eth0",namespace="shop",pod="web-1"}} {tx}',
             ]
             return self.send_text(200, "\n".join(lines) + "\n")
+        if u.path == "/stats/summary":
+            t = time.time() - START
+            rx = int(1_000_000 + t * 50_000)
+            iface = {"name": "eth0", "rxBytes": rx, "txBytes": int(200_000 + t * 8_000),
+                     "rxPackets": int(t * 40), "txPackets": int(t * 10),
+                     "rxErrors": 2, "txErrors": 0, "rxDropped": int(t // 20), "txDropped": 0}
+            body = {"node": {"cpu": {"time": "2026-10-02T12:00:00Z", "usageCoreNanoSeconds": int(t * 2e9)},
+                             "memory": {"workingSetBytes": 4 << 30}},
+                    "pods": [
+                        {"podRef": {"name": "web-1", "namespace": "shop"},
+                         "containers": [
+                             {"name": "app", "cpu": {"usageCoreNanoSeconds": int(5e9 + t * 0.25e9)},
+                              "memory": {"workingSetBytes": 48 << 20}},
+                             {"name": "agent", "cpu": {"usageCoreNanoSeconds": int(1e9 + t * 0.05e9)},
+                              "memory": {"workingSetBytes": 96 << 20}}],
+                         "network": {**iface, "interfaces": [iface]}},
+                        {"podRef": {"name": "other", "namespace": "shop"},
+                         "containers": [{"name": "x", "cpu": {"usageCoreNanoSeconds": 1}, "memory": {"workingSetBytes": 1}}]}]}
+            return self.send_text(200, json.dumps(body), "application/json")
         if len(parts) == 4 and parts[0] == "containerLogs":
             _, ns, pod, c = parts
             rc = restarts()
