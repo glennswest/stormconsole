@@ -1255,6 +1255,18 @@ mod tests {
     }
 
     #[test]
+    fn a_batch_is_one_transaction_and_dedups_within_itself() {
+        let (store, _dir) = Store::open_temp(100, 0, true).unwrap();
+        let batch = vec![ev("h", 6, "same"), ev("h", 6, "other"), ev("h", 6, "same"), ev("g", 3, "same")];
+        let out = store.insert_many(&batch, 5).unwrap();
+        assert_eq!(out.len(), 4);
+        assert_eq!(out[2].event.count, 2, "the repeat found the line earlier in its own batch");
+        let st = store.stats();
+        assert_eq!((st.entries, st.occurrences, st.suppressed), (3, 4, 1));
+        assert!(store.insert_many(&[], 6).unwrap().is_empty());
+    }
+
+    #[test]
     fn a_ring_that_will_not_open_is_replaced() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("ring.redb");
