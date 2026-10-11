@@ -142,7 +142,7 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
                 .flatten()
                 .map(|i| format!("{} rx {} tx {}", i["interface"].as_str().unwrap_or("?"), i["rxBytes"], i["txBytes"]))
                 .collect();
-            r.record("cilium-counters", Outcome::Pass(ifs.join(" · ")), 0, Some(json!({"missing": a.body["missing"]})));
+            r.record("cilium-counters", Outcome::Pass(ifs.join(" · ")), 0, Some(json!({"missing": a.body["missing"]})))
         }
         Ok(a) if host_net && a.body["reason"].as_str().is_some_and(|w| w.contains("host network")) => {
             r.record("cilium-counters", Outcome::Pass(format!("said: {}", a.body["reason"].as_str().unwrap_or(""))), 0, None)
@@ -173,7 +173,7 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
                     format!("{} cpu {} ws {}", c["name"].as_str().unwrap_or("?"), last["cpu"], last["workingSet"])
                 })
                 .collect();
-            r.record("cilium-stats", Outcome::Pass(cs.join(" · ")), 0, Some(json!({"missing": a.body["missing"], "samples": a.body["samples"]})));
+            r.record("cilium-stats", Outcome::Pass(cs.join(" · ")), 0, Some(json!({"missing": a.body["missing"], "samples": a.body["samples"]})))
         }
         Ok(a) => r.record("cilium-stats", Outcome::Fail(a.body["reason"].as_str().map(String::from).unwrap_or_else(|| short(&a.text))), 0, None),
         Err(e) => r.record("cilium-stats", Outcome::Fail(e), 0, None),
@@ -219,7 +219,7 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
         Ok(a) if a.body["available"] == true => {
             let items = a.body["items"].as_array().cloned().unwrap_or_default();
             let reasons: Vec<String> = items.iter().take(5).map(|e| format!("{}×{}", e["reason"].as_str().unwrap_or("?"), e["count"])).collect();
-            r.record("cilium-events", Outcome::Pass(format!("{} events: {}", items.len(), reasons.join(", "))), 0, None);
+            r.record("cilium-events", Outcome::Pass(format!("{} events: {}", items.len(), reasons.join(", "))), 0, None)
         }
         Ok(a) => r.record("cilium-events", Outcome::Fail(a.body["reason"].as_str().map(String::from).unwrap_or_else(|| short(&a.text))), 0, None),
         Err(e) => r.record("cilium-events", Outcome::Fail(e), 0, None),
