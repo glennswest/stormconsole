@@ -134,7 +134,7 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
     );
 
     // Counters: the kubelet's, per interface; the host network has none.
-    match ctx.console.get(&format!("{base}/traffic")).await {
+    let _ = match ctx.console.get(&format!("{base}/traffic")).await {
         Ok(a) if a.body["available"] == true => {
             let ifs: Vec<String> = a.body["interfaces"]
                 .as_array()
@@ -162,7 +162,7 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     };
-    match stats {
+    let _ = match stats {
         Ok(a) if a.body["available"] == true => {
             let cs: Vec<String> = a.body["series"]["containers"]
                 .as_array()
@@ -215,7 +215,7 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
         };
     }
 
-    match ctx.console.get(&format!("{base}/events")).await {
+    let _ = match ctx.console.get(&format!("{base}/events")).await {
         Ok(a) if a.body["available"] == true => {
             let items = a.body["items"].as_array().cloned().unwrap_or_default();
             let reasons: Vec<String> = items.iter().take(5).map(|e| format!("{}×{}", e["reason"].as_str().unwrap_or("?"), e["count"])).collect();
