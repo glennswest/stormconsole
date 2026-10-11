@@ -1,0 +1,8 @@
+# stormconsole's suites beyond short/medium/long (stormcentral
+# docs/test-standard.md, #247). Each is run on request, not in the gates.
+
+# #69's done-when on the real node the run lands on (#76): cilium's pod and a
+# bridged VM, opened through the node's own console. Boots one guest from
+# the golden STORM_VM_GOLDEN (default fedora-44-x86_64) on stormbr0.
+[blade]
+budget_secs = 900

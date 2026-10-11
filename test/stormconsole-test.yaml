@@ -2,7 +2,10 @@
 # test machine, per stormcentral docs/test-standard.md.
 #
 # Test metadata (what the runner matches against the machine):
-#   suites:   short (< 2 min), medium (< 30 min), long (the night window)
+#   suites:   short (< 2 min), medium (< 30 min), long (the night window);
+#             blade (15 min, declared in requires.toml): #69's done-when on
+#             the real node — cilium's pod and a bridged VM (fedora-44 on
+#             stormbr0) through the node's console (#76)
 #   requires: [service: stormconsole]
 #             No hardware. The console is started on single-node clusters
 #             and optional elsewhere: on a node without it, every test
@@ -41,6 +44,10 @@ rules:
   - apiGroups: [""]
     resources: ["services", "configmaps"]
     verbs: ["create", "get", "list", "update", "delete"]
+  # blade (#76): the one bridged VM it boots and reads through the console.
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachineinstances"]
+    verbs: ["create", "get", "list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

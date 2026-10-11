@@ -6,6 +6,7 @@
 //! requirement is the console service itself, and a node without it reports
 //! every test as a skip, never a pass.
 
+pub mod blade;
 pub mod console;
 pub mod env;
 pub mod kube;
@@ -79,8 +80,9 @@ pub async fn run(suite: Option<String>) -> i32 {
         "short" => short::run(&ctx, &mut r).await,
         "medium" => medium::run(&ctx, &mut r).await,
         "long" => long::run(&ctx, &mut r).await,
+        "blade" => blade::run(&ctx, &mut r).await,
         other => {
-            r.record("suite", Outcome::Infra(format!("no suite {other:?}: short, medium or long")), 0, None);
+            r.record("suite", Outcome::Infra(format!("no suite {other:?}: short, medium, long or blade")), 0, None);
         }
     }
     // Leave the namespace as it was found, whatever happened above.

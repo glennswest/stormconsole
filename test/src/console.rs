@@ -118,6 +118,35 @@ impl Console {
     }
 }
 
+impl Console {
+    /// Read a websocket door's text (the VM serial door, #76) for up to
+    /// `wait`, or until `until` appears in it.
+    pub async fn read_ws(&self, path: &str, wait: Duration, until: &str) -> Result<String, String> {
+        let url = format!("{}{path}", self.base.replacen("http", "ws", 1));
+        let mut req = url.as_str().into_client_request().map_err(|e| e.to_string())?;
+        if let Some(t) = &self.token {
+            req.headers_mut().insert("Authorization", format!("Bearer {t}").parse().map_err(|_| "bad token")?);
+        }
+        let (mut ws, _) = tokio::time::timeout(Duration::from_secs(10), tokio_tungstenite::connect_async(req))
+            .await
+            .map_err(|_| "websocket did not open in 10s".to_string())?
+            .map_err(|e| format!("websocket: {e}"))?;
+        let t = Instant::now();
+        let mut text = String::new();
+        while t.elapsed() < wait && !text.contains(until) {
+            let left = wait.saturating_sub(t.elapsed());
+            match tokio::time::timeout(left, ws.next()).await {
+                Ok(Some(Ok(Message::Text(s)))) => text.push_str(s.as_str()),
+                Ok(Some(Ok(Message::Binary(b)))) => text.push_str(&String::from_utf8_lossy(&b)),
+                Ok(Some(Ok(_))) => {}
+                Ok(Some(Err(e))) => return if text.is_empty() { Err(format!("websocket: {e}")) } else { Ok(text) },
+                Ok(None) | Err(_) => break,
+            }
+        }
+        Ok(text)
+    }
+}
+
 /// Is a component with this id in the feed?
 pub fn has(feed: &[Value], id: &str) -> bool {
     feed.iter().any(|c| c["id"] == id)

@@ -45,6 +45,8 @@ impl Env {
         let budget = match suite.as_str() {
             "medium" => 1800,
             "long" => 8 * 3600,
+            // #69's done-when on a real node (#76): a VM to boot and read.
+            "blade" => 900,
             _ => 120,
         };
         Env {
