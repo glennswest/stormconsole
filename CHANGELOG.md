@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-11 — #69's done-when on a real node: the blade suite (#76)
+- **test:** the test container's **`blade`** suite (declared in
+  `test/requires.toml`, 15 min): on the machine it runs on, cilium's pod and
+  a bridged VM it boots, opened through the node's own console — what a
+  person reads on the pod and VM pages, against the node's real kubelet and
+  stormvm rather than #69's stand-ins. The Job's Role may create the run's
+  VirtualMachineInstances.
+
 ### 2026-10-10 — A service a node does not run is off, not failed (#60)
 - **fix:** stormipmi (opt-in: stormcos starts it with `roles=sno`) and
   fastetcd (`roles=sno,master`) are **Idle**, "not started on this node",

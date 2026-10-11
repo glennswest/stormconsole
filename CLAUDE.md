@@ -1564,8 +1564,12 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       stormbr0`, cloud-init printing its address to the console): Running,
       its address on stormbr0, its image, counters (stormvm#48 expected),
       the serial log through the console's door
-- [ ] run on pvetest1; record what each answered; file differences on
-      rustkube-node / stormvm; docs, changelog; close #76
+- [x] the suite: `test/src/blade.rs` (ea59a2c; builds, 4 tests, clippy clean)
+- [ ] run on pvetest1: **queued** as run 7cbe40706a behind pvetest1's valve
+      (closed by the master 2026-10-11: "tonight: no tests of paused
+      projects; the build for 12.15 goes first"). When it has run: `stormcentral
+      test show 7cbe40706a`, record what each answered on #76, file
+      differences on rustkube-node / stormvm, close #76
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
