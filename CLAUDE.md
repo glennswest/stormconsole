@@ -1550,6 +1550,23 @@ service's port **and** nothing on the stormd that would supervise it
   error (started and silent); a stormipmi answering → ok. And
   `verify-machines.sh` against a real stormipmi still passes (0 failed)
 
+### #69's done-when on a real node (#76)
+#69 was verified only against a stand-in kubelet. Test machines are not
+routable from this VM (192.168.8.0/24 only), so the check goes where the
+test standard puts it: a **`blade`** suite in `test/` (declared in
+`test/requires.toml`, 15 min), run by `stormcentral test run stormconsole
+blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
+12.14, a cilium node; stormvm's medium boots fedora-44 bridged there).
+- [ ] cilium's pod through the node's own console: addresses, image +
+      digest (or the gap named), build date (or why not), counters (traffic
+      / stats), current and previous logs, events, probes
+- [ ] a bridged VM (VMI from `fedora-44-x86_64`, `storm.io/bridge:
+      stormbr0`, cloud-init printing its address to the console): Running,
+      its address on stormbr0, its image, counters (stormvm#48 expected),
+      the serial log through the console's door
+- [ ] run on pvetest1; record what each answered; file differences on
+      rustkube-node / stormvm; docs, changelog; close #76
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
