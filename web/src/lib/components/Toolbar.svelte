@@ -1,7 +1,7 @@
 <script>
   // The filter row that sits between a page header and its data: search,
   // whatever filters the view declares, then the view switch and the
-  // result count on the right. Mirrors the OpenShift list toolbar.
+  // result count on the right.
   import Icon from './Icon.svelte'
 
   let {

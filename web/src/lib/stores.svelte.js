@@ -5,6 +5,7 @@
 // merging.
 
 import { sameRelation } from './ui/words.js'
+import { DEFAULT_STYLE, styleId } from './ui/styles.js'
 import { get, postJson, reconnectingSocket } from './api.js'
 import { setDefaultTheme } from 'stormview/theme'
 
@@ -21,7 +22,7 @@ export const nav = $state({
   sections: [],
 })
 
-// The namespace selector, OpenShift's project selector: '' means all
+// The namespace selector — the project selector: '' means all
 // namespaces.
 //
 // It is a *dimension*, not a menu item (#5): it scopes every namespaced
@@ -281,18 +282,13 @@ function save(key, value) {
   } catch {}
 }
 
-// The two chrome styles. Orthogonal to stormview's themes: a theme is
-// the palette, a style is the proportion and structure. Both work on all
-// twelve palettes, so picking one never constrains the other.
-export const STYLES = [
-  { id: 'openshift', label: 'OpenShift' },
-  { id: 'esxi', label: 'ESXi' },
-]
+// The chrome styles live in ui/styles.js (pure, tested with node).
+export { STYLES } from './ui/styles.js'
 
 export const prefs = $state({
   view: load('stormconsole-view', 'table'),
   collapsed: load('stormconsole-nav-collapsed', {}),
-  style: load('stormconsole-style', 'openshift'),
+  style: styleId(load('stormconsole-style', DEFAULT_STYLE)),
   navOpen: true,
 })
 
@@ -302,7 +298,7 @@ export function setView(v) {
 }
 
 export function applyStyle(id) {
-  const style = STYLES.some((s) => s.id === id) ? id : 'openshift'
+  const style = styleId(id)
   prefs.style = style
   document.documentElement.setAttribute('data-style', style)
   save('stormconsole-style', style)
@@ -311,7 +307,7 @@ export function applyStyle(id) {
 /// Called before the app mounts so the first paint is already in the
 /// chosen style — no flash of the default chrome.
 export function initStyle() {
-  applyStyle(load('stormconsole-style', 'openshift'))
+  applyStyle(load('stormconsole-style', DEFAULT_STYLE))
 }
 
 /// Whether a section is shut right now.

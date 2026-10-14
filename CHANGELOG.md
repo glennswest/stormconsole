@@ -3,6 +3,19 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-14 — The default style is ContainerFocus (#151)
+- **fix:** the masthead's style selector no longer offers a layout named
+  after another company's product: the default style is **ContainerFocus**
+  (id `containerfocus`, `[data-style='containerfocus']`). A choice stored
+  under the old id `openshift` opens in it and is saved under the new id,
+  so nobody's setting is lost. The ids and the rename map are one pure
+  module, `web/src/lib/ui/styles.js`, with `styles.test.mjs`.
+- **docs:** README/architecture/presentation and the SPA's comments
+  describe the layout in its own terms. The project API's names
+  (`project.openshift.io`, `openshift.io/*` annotations, the `openshift-*`
+  system namespaces) stay: they are API compatibility, not branding.
+- **test:** `deploy/verify-styles.sh` + `deploy/browser/styles.cjs`.
+
 ### 2026-10-14 — The rack label, and RAID sets named in the room (#43)
 - **feat:** a RAID set (stormblock#252) is named `<rack>.<shelf>.<set>` —
   the rack from the Node's `topology.storm.io/rack`, the shelf and the set

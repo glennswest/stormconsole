@@ -1,6 +1,6 @@
 # CLAUDE.md — stormconsole
 
-The StormCOS web console — patterned on the OpenShift console, built in Rust
+The StormCOS web console — an operator console built in Rust
 on stormd and stormview, with a pluggable architecture where each domain
 (kubernetes via rustkube, fleet/nodes, logs, stormdrive, stormblock,
 sbregistry) is a plugin contributing its own part.
@@ -185,7 +185,8 @@ OpenShift console and the ESXi host client.
 
 ### Two console styles (v0.6.0) ✅ 2026-09-02
 - [x] `data-style` as an axis independent of stormview's `data-theme`:
-      `openshift` (default) and `esxi`, selectable in the masthead and
+      `openshift` (default; `containerfocus` since #151) and `esxi`,
+      selectable in the masthead and
       persisted. A style is proportion and structure, not colour, so both
       work on all twelve palettes
 - [x] Density-dependent CSS moved onto style tokens (`--sc-row-py`,

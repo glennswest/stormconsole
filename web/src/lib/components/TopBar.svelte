@@ -244,8 +244,7 @@
   .mark { color: var(--brand); display: grid; place-items: center; }
   .word { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 
-  /* The working scope, set off by a rule the way OpenShift sets off its
-     project selector from the brand. */
+  /* The working scope, set off from the brand by a rule. */
   .scope {
     display: inline-flex;
     align-items: center;

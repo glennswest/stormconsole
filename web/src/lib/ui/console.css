@@ -16,10 +16,10 @@
    whether a button shouts. Both styles therefore work on all twelve
    palettes, and switching palette never changes the console's shape.
 
-     openshift — the OpenShift console. Comfortable density, a near-black
-                 masthead over a panel-coloured navigator, an accent rail
-                 on the active nav item, softly rounded corners, sentence
-                 case throughout.
+     containerfocus — the default, built around workloads. Comfortable
+                 density, a near-black masthead over a panel-coloured
+                 navigator, an accent rail on the active nav item, softly
+                 rounded corners, sentence case throughout.
      esxi      — the ESXi host client (VMware Clarity). Compact density, a
                  dark teal header, a tighter navigator tree, square
                  corners, zebra-striped tables, uppercase button labels.
@@ -40,14 +40,14 @@
   --sc-t-eyebrow: 11px;
 }
 
-/* ------------------------------------------------------- style: openshift
+/* -------------------------------------------------- style: containerfocus
    The default. 8px radii read consumer; 4px reads instrument. The
-   masthead is near-black whatever the palette — OpenShift keeps its
-   masthead dark in light mode too — but blended a little toward the
-   theme's panel so it still belongs to the palette it sits on. */
+   masthead is near-black whatever the palette — dark in light mode too —
+   but blended a little toward the theme's panel so it still belongs to
+   the palette it sits on. */
 
 :root,
-[data-style='openshift'] {
+[data-style='containerfocus'] {
   --radius: 4px;
   --radius-sm: 3px;
   --nav-h: 48px;

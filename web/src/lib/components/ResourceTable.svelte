@@ -323,8 +323,7 @@
   // on every row is a wall, not a set of choices — and it puts a
   // destructive one a mis-click away from a harmless one. So the two
   // safe, most-used actions stay on the row and everything else, every
-  // destructive action included, goes behind the row menu. The same rule
-  // OpenShift's kebab and ESXi's Actions menu follow.
+  // destructive action included, goes behind the row menu (the kebab).
   const INLINE = 2
 
   // Which two get the line, in order of what somebody came to the row to do.
@@ -727,7 +726,7 @@
   }
   tbody tr:last-child > td { border-bottom: none; }
   tr.clickable { cursor: pointer; }
-  /* Zebra striping is a Clarity signature; the openshift style sets the
+  /* Zebra striping belongs to the compact style; containerfocus sets the
      token to transparent and gets hairline-separated rows instead. */
   tbody tr:nth-child(even):not(.child) { background: var(--sc-zebra); }
   tbody tr:hover:not(.child) { background: var(--nav-hover); }

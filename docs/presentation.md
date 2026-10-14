@@ -113,7 +113,7 @@ them.
 - **Who sees what**: the feed filtered per viewer before it leaves the
   process; a user's own `kube_token` makes the apiserver's answer theirs.
 - **Who may do what**: viewer / operator / admin, one write gate by method.
-- Two styles × 12 palettes; OpenShift-shaped navigation, collapsible
+- Two styles × 12 palettes (ContainerFocus the default); grouped navigation, collapsible
   admin sections.
 
 Each of these has a live check: `sc-build deploy/verify-*.sh` stands the

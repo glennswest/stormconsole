@@ -1,5 +1,5 @@
 <script>
-  // A container's logs, as OpenShift shows them (#69): the latest lines,
+  // A container's logs (#69): the latest lines,
   // followed live, and the runs before this one.
   //
   // Three sources, one viewer. "Current" is the apiserver's pods/log,

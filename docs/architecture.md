@@ -1,6 +1,6 @@
 # stormconsole — Architecture
 
-The StormCOS console, patterned on the OpenShift console: one place to see
+The StormCOS console: one place to see
 and operate a cluster — workloads, nodes, storage, images, logs — but built
 the storm way: a single static Rust binary under stormd, rendering
 everything through the stormview contract, with a pluggable architecture in
@@ -26,7 +26,7 @@ API (stormcos#38), and a button that cannot work is worse than none. It is
 not an installer; a console that is only an installer is abandoned the day
 the cluster exists.
 
-The OpenShift console is the pattern for *shape*: left navigation grouped
+The *shape* is the familiar operator-console one: left navigation grouped
 by domain, a namespace (project) selector scoping the workload pages, list
 pages with filters, detail pages with tabs (Details / YAML / Events /
 Logs), an Overview that shows cluster health at a glance, and a plugin
@@ -254,10 +254,12 @@ console's shape. Both selectors live in the masthead and persist per
 browser; `initStyle()` runs before mount so the first paint is already in
 the chosen style.
 
-- **`openshift`** (default) — the OpenShift console. Comfortable density
-  (8px rows, 236px navigator, 22px page title), a near-black masthead
-  over a panel-coloured navigator, a 3px accent rail on the active nav
-  item, 4px radii, sentence case throughout, rows separated by hairlines.
+- **`containerfocus`** (default; labelled ContainerFocus) — built around
+  workloads. Comfortable density (8px rows, 236px navigator, 22px page
+  title), a near-black masthead over a panel-coloured navigator, a 3px
+  accent rail on the active nav item, 4px radii, sentence case throughout,
+  rows separated by hairlines. Called `openshift` before #151: a choice
+  stored under that id opens in this style (`web/src/lib/ui/styles.js`).
 - **`esxi`** — the ESXi host client (VMware Clarity). Compact density (5px
   rows, 212px navigator, 18px page title, 40px header), a dark teal
   header, 2px radii, zebra-striped tables, uppercase action labels. The

@@ -47,7 +47,7 @@
   const empties = $derived((data?.inventory || []).filter((i) => i.count === 0))
 
   // Annotations that answer "what is this namespace and whose is it" get a
-  // line of their own; the rest stay a list. The keys are OpenShift's,
+  // line of their own; the rest stay a list. The keys are the project API's,
   // because a project and a namespace are the same object and those are the
   // names already written on it.
   const DESCRIBED = {

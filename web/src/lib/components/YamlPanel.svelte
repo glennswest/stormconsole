@@ -1,5 +1,5 @@
 <script>
-  // The YAML tab every OpenShift resource page has: the object as the
+  // The YAML tab every resource page has: the object as the
   // apiserver holds it, and — where the plugin will take a write — an
   // edit that saves back.
   //
