@@ -1613,6 +1613,23 @@ engine laid out. So stormipmi#53 builds nothing; the label stays the rack.
 - Not seen on metal: no real Node carries the label until stormipmi's
   golden runs with `patch nodes` (stormcos#203/#76), nor a real DS2246 set
 
+### No trademark names in the style selector (#151)
+Owner 2026-10-13: the masthead's style selector offers "OpenShift", another
+company's trademark. Rename it **ContainerFocus** (id `containerfocus`); a
+stored `openshift` choice opens in it. The other style ("ESXi", VMware's)
+needs a name of our own too — the master recommends VMFocus; the name is
+the owner's to pick (asked on #151).
+- [ ] `web/src/lib/ui/styles.js` (pure): the styles, the default, the
+      rename map read on load; `styles.test.mjs`
+- [ ] stores, TopBar, console.css `[data-style='containerfocus']`; comments
+      in web/src describe the layout in its own terms
+- [ ] README, docs/architecture.md, docs/presentation.md, CLAUDE.md:
+      the style described without the name; namespace conventions
+      (`openshift-*`, `project.openshift.io`) stay — API compatibility
+- [ ] `deploy/verify-styles.sh` + `deploy/browser/styles.cjs`: the selector
+      reads ContainerFocus, a stored `openshift` opens in it, no visible
+      "OpenShift"; dist; changelog; sc-build; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
