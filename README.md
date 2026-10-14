@@ -93,6 +93,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-api-health.sh` | node API health (#123) — a real stormd (STORMD_REF) probing a stand-in service made to answer, go slow, stall and fail; PID 1's merge as a stand-in in stormpump's shape over the real stormd's state file; a console asking the stormd and one reading the summary; a container's stormd frozen (stale), the summary stopping; the alert bar and the page in Chromium |
 | `verify-client-cert.sh` | TLS on :9094 and forge-CA client certificates (#48, #127): openssl node, forge and stranger CAs; plain HTTP health only (308 for a GET, 403 for a POST); a viewer certificate reads the logs and is refused a write; an operator's write passes; another CA's, an expired, an unmapped and no certificate each 401 saying why; the token still admin; the CA removed and restored and the serving pair renewed with no restart; contradictions exit 78 |
 | `verify-logs-full.sh` | the log ring on a full disk (#128): a real console's ring on an 8 MiB tmpfs in an unprivileged user+mount namespace — a flood several times the volume stays under it, a filler file forces ENOSPC and the ring reopens (reads never say "Previous I/O error"), a restart on a full volume serves; bytes per entry on an ordinary disk |
+| `verify-install-token.sh` | `[api] install_token_file` (#66): one `token-auth.csv` in stormpump's format read by a real rustkube apiserver (`--token-auth-file`) and the console — no file → no sign-in; written → sign-in and bearer as `system:admin`, admin; a project made through the console requested by `system:admin`, not the console's credential; rewritten → the old session ends, the new token works; removed → refused; Chromium on the login page's token mode, alone and beside a user |
 | `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
 | `verify-storage-token.sh` | stormstorage's write token through the proxy (#53): a real stormstorage with `[api] api_token` — with `token_file` the feed's actions pass its check, without it (or with the browser sending the token) 401, an unreadable file warned, a DELETE left to the storage guard |
 | `verify-cluster.sh` | the Cluster page on objects (#88) — three real stormclusters from main over TLS on loopback addresses and a private multicast group, b1 reconciling a real rustkube (TLS, anonymous off), stand-ins for the node lifecycle API and fastetcd's gateway; plans and refusals in stormcluster's words, RBAC as the viewer, then form, join, a failed step on the object, release in Chromium as root and alice |
@@ -161,6 +162,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[api] client_crl_file` | — | that CA's revocation list (stormcert#61), when there is one |
 | `[[api.client_roles]]` `cn` \| `o`, `role` | — | a verified certificate's role by its subject CN or an O (exactly one), first match wins: `viewer` \| `operator` \| `admin`. A certificate no rule names is nobody |
 | `[api] auth_token_file` | — | the same credential from a file — a per-node token stormcos mints at boot (stormcos#200) — re-read when it changes; **while it is missing or empty the console is closed** (everything but the open list 401, the reason logged once); not with `auth_token` (exit 78) |
+| `[api] install_token_file` | — | the **install-time API token** (#66): storminstall's `apiToken`, which stormpump writes at first boot as the apiserver's `--token-auth-file` (`/state/config/token-auth.csv`, `<token>,system:admin,system:admin,"system:masters"`; a bare token line is read too). Signing in with it, or sending it as a bearer, is an administrator named by the file's user who acts **upstream as that token**. Re-read when it changes: a rewrite ends the sessions opened with the old token, a missing file is no such sign-in. Turns authentication on |
 | `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
 | `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | without `ca_file` the local default is unverified (warned at start, said on the card); a configured server is verified against the system roots unless set |
 | `[kubernetes] token_file` | — | the console's bearer from a file (stormcert's ServiceAccount token), re-read when it changes; not with `token` |
@@ -208,7 +210,7 @@ Started and silent (its stormd up, the service not answering) stays an error.
 
 ## Authentication and roles
 
-Off until `[api] auth_token`, `[api] auth_token_file`, `[api] client_ca_file` or a user is configured — then every request
+Off until `[api] auth_token`, `[api] auth_token_file`, `[api] install_token_file`, `[api] client_ca_file` or a user is configured — then every request
 not on the open list (`/healthz`, `/readyz`, `/api/version`, `/api/summary`,
 `/api/v1/auth/*`, static assets) needs a session, the bearer or a client certificate a rule names. With it
 off, everybody who reaches the port is an administrator, and the console
@@ -217,7 +219,17 @@ warns about that on every start.
 - **Sessions**: `POST /api/v1/auth/login {username, password}`, cookie
   `stormconsole_session` (HttpOnly, SameSite=Strict, 24 h, in memory — a
   restart signs everyone out). Tokens and passwords are compared in
-  constant time.
+  constant time. `GET /api/v1/auth/session` says which sign-ins the console
+  takes (`sign_in`: `password` for named users, `token` for the install or
+  node token), and the login page offers them: with no named users it opens
+  on the token alone.
+- **The install-time API token** (#66, storminstall#1): the token
+  `storminstall wait` prints with the console's URL signs in with no user
+  name. The session is `system:admin` (the file's user), an `admin`, and
+  everything it does upstream is done **as that token** — it is an
+  apiserver administrator's credential (rustkube#188), not a console
+  secret. The session holds the token it was opened with and ends when the
+  file stops carrying it.
 - **TLS and client certificates** (#48, #127): with `tls_cert_file`/`tls_key_file` :9094
   serves TLS, and plain HTTP on that port answers health only. With `client_ca_file` the
   handshake asks for a certificate and takes any (its key is still proven); the chain is

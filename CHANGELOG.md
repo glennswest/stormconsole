@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-14 — Sign in with the install-time API token (#66)
+- **feat:** `[api] install_token_file` — storminstall's `apiToken`, as
+  stormpump#78 writes it at first boot for the apiserver
+  (`/state/config/token-auth.csv`, `<token>,system:admin,system:admin,
+  "system:masters"`). The token signs in (no user name needed) and works as
+  a bearer: an administrator named by the file's user, acting upstream as
+  that token. Re-read when the file changes: a rewrite ends the sessions
+  opened with the old token; a missing file is no such sign-in. Setting it
+  turns authentication on.
+- **feat:** `/api/v1/auth/session` says which sign-ins exist (`sign_in`:
+  `password`, `token`); the login page has a token mode — the first screen
+  when there are no named users, one click away beside them.
+- **test:** `deploy/verify-install-token.sh` + `deploy/browser/install-token.cjs`.
+
 ### 2026-10-14 — The default style is ContainerFocus (#151)
 - **fix:** the masthead's style selector no longer offers a layout named
   after another company's product: the default style is **ContainerFocus**

@@ -25,6 +25,11 @@ bind = "0.0.0.0:9094"
 # auth_token_file = "/etc/stormcert/stormconsole-api.token"
 #                                    # the same, from a per-node file, re-read when
 #                                    # it changes; missing = closed, not open
+# install_token_file = "/state/config/token-auth.csv"
+#                                    # the install-time API token (storminstall's
+#                                    # apiToken, written by stormpump as the
+#                                    # apiserver's token-auth file): signing in with
+#                                    # it is an admin acting upstream as that token
 # tls_cert_file = "/data/stormcert/stormconsole.crt"   # :9094 over TLS (a stormcert
 # tls_key_file = "/data/stormcert/stormconsole.key"    # serving pair, re-read when
 #                                    # renewed); plain HTTP then answers health only

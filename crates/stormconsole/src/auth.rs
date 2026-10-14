@@ -94,6 +94,104 @@ impl ConsoleToken {
     }
 }
 
+/// The install-time API token (#66): storminstall's `apiToken`, which
+/// stormpump writes at first boot as the apiserver's `--token-auth-file`
+/// (`/state/config/token-auth.csv`, stormpump#78):
+/// `<token>,system:admin,system:admin,"system:masters"`.
+///
+/// So it is not a console secret: it is an apiserver administrator's bearer,
+/// the one `sc` uses too. Signing in with it is an administrator's session
+/// that acts upstream **as that token**, named by the file's user. Each line
+/// is a credential (first field the token, second the user); a line with no
+/// comma is a bare token. Re-read when the file's modification time moves;
+/// a missing file is simply no such credential.
+pub struct InstallToken {
+    file: Option<std::path::PathBuf>,
+    read: Mutex<InstallRead>,
+}
+
+#[derive(Default)]
+struct InstallRead {
+    stamp: Option<std::time::SystemTime>,
+    entries: Vec<(String, String)>,
+    said: Option<String>,
+    read_once: bool,
+}
+
+/// The user a bare-token line signs in as.
+pub const INSTALL_USER: &str = "install";
+
+/// `token,user,uid,"group1,group2"` lines, or a bare token.
+fn parse_token_auth(text: &str) -> Vec<(String, String)> {
+    let field = |f: &str| f.trim().trim_matches('"').to_string();
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, ',');
+            let token = field(parts.next()?);
+            let user = parts.next().map(field).filter(|u| !u.is_empty()).unwrap_or_else(|| INSTALL_USER.into());
+            (!token.is_empty()).then_some((token, user))
+        })
+        .collect()
+}
+
+impl InstallToken {
+    pub fn new(file: Option<String>) -> Self {
+        let t = Self { file: file.map(Into::into), read: Mutex::new(InstallRead::default()) };
+        let _ = t.entries();
+        t
+    }
+
+    pub fn configured(&self) -> bool {
+        self.file.is_some()
+    }
+
+    fn entries(&self) -> Vec<(String, String)> {
+        let Some(path) = self.file.as_ref() else { return vec![] };
+        let stamp = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let mut r = self.read.lock().unwrap_or_else(|e| e.into_inner());
+        if !r.read_once || r.stamp != stamp {
+            r.read_once = true;
+            r.stamp = stamp;
+            let (entries, why) = match std::fs::read_to_string(path) {
+                Ok(s) => {
+                    let e = parse_token_auth(&s);
+                    let why = e.is_empty().then(|| format!("[api] install_token_file {} carries no token", path.display()));
+                    (e, why)
+                }
+                Err(e) => (vec![], Some(format!("[api] install_token_file {}: {e}", path.display()))),
+            };
+            match &why {
+                Some(w) if r.said.as_deref() != Some(w) => {
+                    tracing::info!("{w}: no sign-in with the install token until it is there")
+                }
+                None if r.entries != entries => tracing::info!(
+                    file = %path.display(),
+                    "install_token_file read: the install token signs in as {}",
+                    entries.iter().map(|(_, u)| u.as_str()).collect::<Vec<_>>().join(", ")
+                ),
+                _ => {}
+            }
+            r.said = why;
+            r.entries = entries;
+        }
+        r.entries.clone()
+    }
+
+    /// The user `given` signs in as, if it is an install token. Constant time
+    /// per entry.
+    pub fn user_for(&self, given: &str) -> Option<String> {
+        let mut found = None;
+        for (t, u) in self.entries() {
+            if constant_time_eq(given, &t) && found.is_none() {
+                found = Some(u);
+            }
+        }
+        found
+    }
+}
+
 const SESSION_COOKIE: &str = "stormconsole_session";
 const SESSION_TTL: Duration = Duration::from_secs(24 * 3600);
 
@@ -103,7 +201,17 @@ pub struct Sessions {
 
 struct Session {
     user: String,
+    /// The install token the session was opened with (#66): it is checked
+    /// on every use, so a session ends when the file stops carrying it, and
+    /// it is the bearer the session acts as upstream.
+    install: Option<String>,
     expires: Instant,
+}
+
+/// Who a session is.
+struct Signed {
+    user: String,
+    install: Option<String>,
 }
 
 impl Sessions {
@@ -111,20 +219,23 @@ impl Sessions {
         Self { inner: Mutex::new(HashMap::new()) }
     }
 
-    fn create(&self, user: &str) -> String {
+    fn create(&self, user: &str, install: Option<String>) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let mut map = self.inner.lock().unwrap();
         map.retain(|_, s| s.expires > Instant::now());
         map.insert(id.clone(), Session {
             user: user.to_string(),
+            install,
             expires: Instant::now() + SESSION_TTL,
         });
         id
     }
 
-    fn user_of(&self, id: &str) -> Option<String> {
+    fn get(&self, id: &str) -> Option<Signed> {
         let map = self.inner.lock().unwrap();
-        map.get(id).filter(|s| s.expires > Instant::now()).map(|s| s.user.clone())
+        map.get(id)
+            .filter(|s| s.expires > Instant::now())
+            .map(|s| Signed { user: s.user.clone(), install: s.install.clone() })
     }
 
     fn remove(&self, id: &str) {
@@ -151,7 +262,10 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
         // something, not from having decided nothing.
         return Viewer { roles: vec!["admin".into()], ..Viewer::anonymous() };
     }
-    if let Some(user) = cookie_session(req).and_then(|id| state.sessions.user_of(&id)) {
+    if let Some(Signed { user, install }) = signed(state, req) {
+        if let Some(t) = install {
+            return install_viewer(user, t);
+        }
         let token = state.config.kube_token_for(&user);
         // A session opened with the console's own token is the token's, and
         // the token is an administrator's credential — as it is on a bearer.
@@ -181,11 +295,30 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
                 ssh_keys: vec![],
             };
         }
+        if let Some(user) = state.install.user_for(&given) {
+            return install_viewer(user, given);
+        }
     }
     if let Some(v) = cert_viewer(req) {
         return v;
     }
     Viewer::anonymous()
+}
+
+/// The session behind this request, if it is still good: an install-token
+/// session only while the file still carries its token.
+fn signed(state: &AppState, req: &Request) -> Option<Signed> {
+    let s = cookie_session(req).and_then(|id| state.sessions.get(&id))?;
+    match &s.install {
+        Some(t) if state.install.user_for(t).is_none() => None,
+        _ => Some(s),
+    }
+}
+
+/// An install-token holder (#66): an apiserver administrator, acting as
+/// that token.
+fn install_viewer(user: String, token: String) -> Viewer {
+    Viewer { user: Some(user), token: Some(token), roles: vec!["admin".into()], ssh_keys: vec![] }
 }
 
 /// A client certificate that verified against `[api] client_ca_file` and
@@ -232,17 +365,15 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         return next.run(req).await;
     }
     if let Some(given) = bearer(&req) {
-        if state.token.matches(&given) {
+        if state.token.matches(&given) || state.install.user_for(&given).is_some() {
             return storage_gate(&state, &who, req, next).await;
         }
     }
-    if let Some(id) = cookie_session(&req) {
-        if state.sessions.user_of(&id).is_some() {
-            if let Some(refusal) = refuse_read_only(&who, &req) {
-                return refusal;
-            }
-            return storage_gate(&state, &who, req, next).await;
+    if signed(&state, &req).is_some() {
+        if let Some(refusal) = refuse_read_only(&who, &req) {
+            return refusal;
         }
+        return storage_gate(&state, &who, req, next).await;
     }
     // A client certificate as a role (#127). A viewer reads; a write is
     // refused the way a reader's session is.
@@ -424,15 +555,26 @@ pub const TOKEN_USER: &str = "token";
 
 pub async fn login(State(state): State<AppState>, Json(body): Json<LoginBody>) -> Response {
     let as_user = state.config.api.users.iter().any(|u| u.name == body.username && verify(u, &body.password));
-    let as_token = !as_user && state.token.matches(&body.password);
-    if !as_user && !as_token {
+    // The install token (#66) before the console's own: it is somebody's —
+    // the installer's — and the session acts upstream as it.
+    let install = (!as_user).then(|| state.install.user_for(&body.password)).flatten();
+    let as_token = !as_user && install.is_none() && state.token.matches(&body.password);
+    if !as_user && install.is_none() && !as_token {
         return (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid credentials"})))
             .into_response();
     }
-    // Signed in with the token, whatever name was typed: the session is the
+    // Signed in with a token, whatever name was typed: the session is the
     // token's, an administrator's, not a user of that name's.
-    let user: &str = if as_user { &body.username } else { TOKEN_USER };
-    let id = state.sessions.create(user);
+    let (user, kept): (String, Option<String>) = match install {
+        Some(u) => {
+            tracing::info!(user = %u, "signed in with the install token");
+            (u, Some(body.password.clone()))
+        }
+        None if as_user => (body.username.clone(), None),
+        None => (TOKEN_USER.into(), None),
+    };
+    let user = user.as_str();
+    let id = state.sessions.create(user, kept);
     let cookie = format!(
         "{SESSION_COOKIE}={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
         SESSION_TTL.as_secs()
@@ -451,12 +593,21 @@ pub async fn logout(State(state): State<AppState>, req: Request) -> Response {
 pub async fn session(State(state): State<AppState>, req: Request) -> Response {
     // A client certificate is signed in too (#127): the SPA skips its login
     // screen for a browser that presented one a rule names.
-    let user = cookie_session(&req)
-        .and_then(|id| state.sessions.user_of(&id))
-        .or_else(|| cert_viewer(&req).and_then(|v| v.user));
+    let user = signed(&state, &req).map(|s| s.user).or_else(|| cert_viewer(&req).and_then(|v| v.user));
     let roles = viewer(&state, &req).roles;
+    // Which sign-ins this console takes, so the login page can offer the
+    // right one: named users, and a token (the install token, #66, or the
+    // console's own bearer).
+    let mut sign_in = vec![];
+    if !state.config.api.users.is_empty() {
+        sign_in.push("password");
+    }
+    if state.install.configured() || state.config.api.auth_token.is_some() || state.config.api.auth_token_file.is_some() {
+        sign_in.push("token");
+    }
     Json(json!({
         "required": state.auth_required,
+        "sign_in": sign_in,
         "authenticated": !state.auth_required || user.is_some(),
         "user": user,
         "roles": roles,
@@ -495,6 +646,36 @@ mod tests {
         let later = later + Duration::from_secs(5);
         std::fs::File::options().write(true).open(&p).unwrap().set_modified(later).unwrap();
         assert!(!t.matches("second") && !t.matches(""), "an empty file is closed too");
+    }
+
+    /// stormpump#78's line, verbatim in shape: the token and the user it is.
+    #[test]
+    fn the_token_auth_file_is_read_as_the_apiserver_reads_it() {
+        let tok = "0123456789abcdef0123456789abcdef0123456789abcdef";
+        let e = parse_token_auth(&format!("{tok},system:admin,system:admin,\"system:masters\"\n"));
+        assert_eq!(e, vec![(tok.to_string(), "system:admin".to_string())]);
+        assert_eq!(parse_token_auth(" bare \n"), vec![("bare".into(), INSTALL_USER.into())]);
+        assert_eq!(parse_token_auth("# comment\n\n\"q\",\"bob\"\n,nobody\n"), vec![("q".into(), "bob".into())]);
+    }
+
+    /// Missing is no install sign-in; written, its token signs in as its
+    /// user; replaced, the old one no longer does — no restart.
+    #[test]
+    fn the_install_token_file_follows_its_changes() {
+        let p = tokdir("install");
+        let t = InstallToken::new(Some(p.display().to_string()));
+        assert!(t.configured() && t.user_for("").is_none());
+        std::fs::write(&p, "abc,system:admin,system:admin,\"system:masters\"\n").unwrap();
+        assert_eq!(t.user_for("abc").as_deref(), Some("system:admin"));
+        assert!(t.user_for("ab").is_none() && t.user_for("abcd").is_none() && t.user_for("system:admin").is_none());
+        std::fs::write(&p, "xyz,system:admin\n").unwrap();
+        let later = std::time::SystemTime::now() + Duration::from_secs(5);
+        std::fs::File::options().write(true).open(&p).unwrap().set_modified(later).unwrap();
+        assert!(t.user_for("abc").is_none());
+        assert_eq!(t.user_for("xyz").as_deref(), Some("system:admin"));
+        std::fs::remove_file(&p).unwrap();
+        assert!(t.user_for("xyz").is_none(), "removed: no install sign-in");
+        assert!(!InstallToken::new(None).configured());
     }
 
     #[test]

@@ -1534,7 +1534,11 @@ create, rather than showing nothing.
 
 - **Auth** — stormd-compatible: `[[api.users]]` (argon2 `password_hash`,
   roles, SSH keys, an optional `kube_token`) + an optional `auth_token`
-  bearer, or `auth_token_file` (#102: a per-node token stormcos mints, since
+  bearer, or `install_token_file` (#66: storminstall's `apiToken` as
+  stormpump writes it for the apiserver, `token,user,uid,"groups"` lines;
+  a session or bearer with it is an admin named by its user who acts
+  upstream as that token, and a session ends when the file stops carrying
+  its token), or `auth_token_file` (#102: a per-node token stormcos mints, since
   one in the golden would be shared by every node; re-read when its mtime
   moves; while it is missing or empty authentication stays on and nothing
   matches, so a node whose mint is late is closed, not open), or a client

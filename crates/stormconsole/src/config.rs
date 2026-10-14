@@ -85,6 +85,12 @@ pub struct Api {
     /// would be shared by every node. While it is missing the console is
     /// closed. Not with `auth_token`.
     pub auth_token_file: Option<String>,
+    /// The install-time API token (#66): storminstall's `apiToken`, which
+    /// stormpump writes at first boot as the apiserver's token-auth file
+    /// (`/state/config/token-auth.csv`). Signing in with it is an
+    /// administrator acting upstream as that token. Re-read when it
+    /// changes; while it is missing that sign-in is not there.
+    pub install_token_file: Option<String>,
     /// Named users for the login screen. Any user or the token being set
     /// turns authentication on, stormd-style.
     #[serde(default)]
@@ -122,6 +128,7 @@ impl Default for Api {
             bind: default_bind(),
             auth_token: None,
             auth_token_file: None,
+            install_token_file: None,
             users: Vec::new(),
             tls_cert_file: None,
             tls_key_file: None,
@@ -824,11 +831,14 @@ impl Config {
     pub fn auth_required(&self) -> bool {
         // A token file configured is authentication on, whether or not the
         // file is there yet: missing is closed, never open (#102).
+        // So is the install token's (#66): a node given an apiToken was
+        // meant to be signed into, and that token is an apiserver admin's.
         // So is a client CA: a certificate is a credential, and with one
         // configured nothing is left open to whoever has none (#127).
         !self.api.users.is_empty()
             || self.api.auth_token.is_some()
             || self.api.auth_token_file.is_some()
+            || self.api.install_token_file.is_some()
             || self.api.client_ca_file.is_some()
     }
 
@@ -1037,6 +1047,12 @@ data_dir    = \"/var/lib/stormconsole\"
     }
 
     /// #102: a per-node token file turns authentication on by itself.
+    #[test]
+    fn an_install_token_file_is_authentication_on() {
+        let c = Config::parse("[api]\ninstall_token_file = \"/state/config/token-auth.csv\"\n").unwrap();
+        assert!(c.auth_required());
+    }
+
     #[test]
     fn an_auth_token_file_is_authentication_on() {
         let c = Config::parse("[api]\nauth_token_file = \"/etc/stormcert/stormconsole-api.token\"\n").unwrap();

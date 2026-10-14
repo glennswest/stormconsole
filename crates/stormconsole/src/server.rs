@@ -25,6 +25,8 @@ pub struct AppState {
     pub auth_required: bool,
     /// The console's own bearer, inline or from its file (#102).
     pub token: Arc<auth::ConsoleToken>,
+    /// The install-time API token, from its file (#66).
+    pub install: Arc<auth::InstallToken>,
     /// The apiserver connection every caller shares (#33).
     pub kube: Option<Arc<console_core::apiserver::Conn>>,
 }

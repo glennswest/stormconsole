@@ -184,6 +184,9 @@ export const auth = $state({
   required: false,
   authenticated: true,
   user: null,
+  // Which sign-ins the console takes: 'password' (named users), 'token'
+  // (the install-time API token, #66, or the console's own bearer).
+  signIn: ['password'],
 })
 
 export async function checkAuth() {
@@ -192,6 +195,7 @@ export async function checkAuth() {
     auth.required = !!s.required
     auth.authenticated = !!s.authenticated
     auth.user = s.user || null
+    if (Array.isArray(s.sign_in) && s.sign_in.length) auth.signIn = s.sign_in
     if (s.container) nav.name = s.container
     if (s.theme) setDefaultTheme(s.theme)
   } catch {
