@@ -1582,6 +1582,24 @@ compaction over 10 s used the whole hold-off up.
   -p plugin-logs` 36/36 (that test ran 63 s there — the work outlasts the
   10 s hold-off); default `sc-build` 400 tests, 0 warnings
 
+### The rack label and RAID sets (#43)
+Owner (2026-10-02): `topology.storm.io/rack`, set by stormipmi (built:
+stormipmi#29, `PUT /api/v1/machines/{tag}/location {site,rack,shelf,u}`).
+The RAID-set form was left to pick (stormipmi#53 builds it). **Pick: a
+dotted name the console composes — `<rack>.<shelf>.<set>` — not a second
+label and not a dotted rack value.** stormblock#252 stores a set's name and
+its shelf (the set's `pool`) on every member's superblock and serves them
+on `/api/v1/arrays`; a node with a DS2246 has several sets, which one Node
+label cannot hold; and a name an admin records would drift from what the
+engine laid out. So stormipmi#53 builds nothing; the label stays the rack.
+- [ ] sb plugin: array members carry `set` (name) and `shelf` (pool)
+- [ ] drivemap: `set`/`shelf` per drive, `setName` → `rack.shelf.set`,
+      group by RAID set; test
+- [ ] DrivesView: "RAID set" grouping, the set's name on the picked drive
+- [ ] Machines page: the location (site/rack/shelf/U), edited by an admin
+      through stormipmi's `PUT …/location`
+- [ ] Say the pick on stormipmi#53; docs, changelog; sc-build; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
