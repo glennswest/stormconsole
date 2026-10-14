@@ -1679,6 +1679,14 @@ token is an apiserver administrator's, not a console secret.
 - Left for stormcos (#256): bind `/state/config/token-auth.csv` into the
   console and set `install_token_file`
 
+### Pin git dependencies to a rev (#120)
+stormcentral#571: golden builds refuse a git dependency not pinned to a
+`rev`. The only one is `stormview` (`branch = "main"`).
+- [x] Cargo.toml `rev = "5ea5e60d…"` (the commit Cargo.lock had); the lock's
+      source `?rev=<sha>#<sha>`, edited to match (no cargo on this VM)
+- [ ] sc-build with `--locked` (the golden's lock check); close; golden
+- To move stormview forward: bump the `rev` and the lock's source together
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

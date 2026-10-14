@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-14 — stormview pinned to a rev (#120)
+- **build:** `stormview` is pinned by `rev` (5ea5e60, the commit the lock
+  already had) instead of `branch = "main"`: stormcentral's golden builds
+  refuse an unpinned git dependency (stormcentral#571). Moving it forward is
+  now a deliberate `rev` bump. The web build's stormview was already pinned
+  to the same commit by `web/package-lock.json`.
+
 ### 2026-10-14 — Sign in with the install-time API token (#66)
 - **feat:** `[api] install_token_file` — storminstall's `apiToken`, as
   stormpump#78 writes it at first boot for the apiserver

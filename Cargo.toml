@@ -42,7 +42,7 @@ plugin-stormcluster = { path = "crates/plugins/stormcluster" }
 plugin-flowsdn = { path = "crates/plugins/flowsdn" }
 plugin-apihealth = { path = "crates/plugins/apihealth" }
 
-stormview = { git = "https://github.com/glennswest/stormview", branch = "main" }
+stormview = { git = "https://github.com/glennswest/stormview", rev = "5ea5e60d471b3a09c3f4fd2923423046391744b2" }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7" }
 axum = { version = "0.8", features = ["ws"] }
