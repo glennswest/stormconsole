@@ -144,7 +144,14 @@ def engine(path):
         return {"items": [{"id": "arr-1", "level": "raid6", "member_count": 3, "members": [
             {"index": 0, "uuid": "m0", "state": "active", "device_path": "/dev/sd20"},
             {"index": 1, "uuid": "m1", "state": "rebuilding", "device_path": "/dev/sd21"},
-            {"index": 2, "uuid": "m2", "state": "active", "device_path": "/dev/sd22"}]}]}
+            {"index": 2, "uuid": "m2", "state": "active", "device_path": "/dev/sd22"}]},
+            # A RAID set on a shelf as stormblock#252 serves it (#43): named,
+            # its pool the shelf, each member naming its drive by serial. The
+            # device paths are stale on purpose: the join is by serial.
+            {"id": "u-ds0a", "name": "ds0-a", "pool": "ds0", "level": "raid6", "member_count": 11, "members": [
+                {"index": k, "uuid": f"s{k}", "state": "active", "device_path": f"/dev/old{k}",
+                 "drive": {"uuid": f"d{k}", "serial": f"{node}-SN{40 + k:03d}", "model": "HGST", "path": f"/dev/old{k}"}}
+                for k in range(11)]}]}
     return {"items": []}
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass

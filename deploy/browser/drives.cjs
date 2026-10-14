@@ -39,6 +39,20 @@ walk('drives, pools, shelves', async (t) => {
   await page.locator('select[aria-label="Group by"]').selectOption('rack')
   t.check(await t.until(async () => /\bA\b/.test(await main()) && /\bB\b/.test(await main())), 'grouped by rack: A and B')
 
+  // RAID sets named in the room (#43): rack label · the engine's shelf and set.
+  await page.locator('select[aria-label="Group by"]').selectOption('set')
+  t.check(await t.until(async () => /set A\.ds0\.ds0-a/.test(await main())), 'grouped by RAID set: A.ds0.ds0-a', (await main()).slice(0, 400))
+  t.check(/in no RAID set/.test(await main()), 'and the drives in none said so')
+  await t.shot(page, 'drives-sets')
+  await page.getByRole('button', { name: 'Map', exact: true }).click().catch(() => {})
+  await page.locator('input[aria-label="Search drives"]').fill('here-SN045')
+  t.check(await t.until(async () => (await page.locator('button.bay').count()) === 1), 'search finds here-SN045')
+  await page.locator('button.bay').first().click()
+  t.check(await t.until(async () => /RAID set\s*A\.ds0\.ds0-a\s*·\s*active/.test(await picked.innerText())), 'its RAID set on the picked drive',
+    await picked.innerText().catch(() => ''))
+  await picked.getByRole('button', { name: 'Close' }).click()
+  await page.locator('input[aria-label="Search drives"]').fill('')
+
   t.check(await t.open(page, '#/drives?group=pool', /storm-1/), 'Pools: a pool per node and tier', (await main()).slice(0, 300))
   const pools = await main()
   t.check(/hot/.test(pools) && /warm/.test(pools), 'with their tiers', pools.slice(0, 300))

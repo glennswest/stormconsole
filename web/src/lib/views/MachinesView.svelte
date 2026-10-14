@@ -3,7 +3,9 @@
   //
   // One row per machine: what its BMC is, whether it is on (what the BMC
   // last said, not what was asked), the release it boots from the forge,
-  // whether it is a test machine, and its serial console. Then the default
+  // whether it is a test machine, where it is (site, rack, shelf, U — its
+  // rack becomes the Node's `topology.storm.io/rack`, which stormipmi keeps,
+  // stormipmi#29 / #43), and its serial console. Then the default
   // image a new tag boots, and the hosts the forge has seen that nothing
   // manages yet, to adopt.
   //
@@ -119,6 +121,31 @@
       test ? `Mark ${m.tag} as a test machine? stormcentral powers test machines off in the evening and installs on them.` : null)
   }
 
+  // Location (#43): what an admin records of where the machine is. stormipmi
+  // keeps the rack on the machine's Node as `topology.storm.io/rack`, which
+  // the Drives page groups by. A PUT replaces the whole location; all empty
+  // clears it (and the label stormipmi set).
+  const PLACE = ['site', 'rack', 'shelf', 'u']
+  let placing = $state('')
+  let place = $state({ site: '', rack: '', shelf: '', u: '' })
+  function where(l) {
+    if (!l) return ''
+    return [l.rack && `rack ${l.rack}`, l.shelf && `shelf ${l.shelf}`, l.u && `U${l.u}`, l.site && `site ${l.site}`].filter(Boolean).join(' · ')
+  }
+  function startPlace(m) {
+    placing = m.tag
+    place = Object.fromEntries(PLACE.map((k) => [k, m.location?.[k] || '']))
+  }
+  function savePlace(m) {
+    const body = Object.fromEntries(PLACE.filter((k) => place[k].trim()).map((k) => [k, place[k].trim()]))
+    const clearing = !Object.keys(body).length
+    act('Location', async () => {
+      const r = await postJson(`${API}/machines/${encodeURIComponent(m.tag)}/location`, body, 'PUT')
+      placing = ''
+      return r?.message ? r : { message: clearing ? `${m.tag}: location cleared` : `${m.tag}: ${where(body)}` }
+    }, clearing ? `Clear where ${m.tag} is? stormipmi takes back the rack label it set on the Node.` : null)
+  }
+
   // Adopt: a tag the forge has seen, given a BMC so stormipmi manages it.
   let adopting = $state('')
   let adopt = $state({ address: '', username: '', password: '', insecure: true, test: false })
@@ -216,7 +243,7 @@
   {#if managed.length}
     <table class="machines">
       <thead>
-        <tr><th>Service tag</th><th>BMC</th><th>Power</th><th>Boots</th><th>Test</th><th></th></tr>
+        <tr><th>Service tag</th><th>BMC</th><th>Power</th><th>Boots</th><th>Location</th><th>Test</th><th></th></tr>
       </thead>
       <tbody>
         {#each managed as m (m.tag || m.name)}
@@ -260,6 +287,21 @@
                 <div class="dim">intent: {intents[m.tag].unsupported ? intents[m.tag].why : intents[m.tag].intent}</div>
               {:else if m.tag}
                 <button class="link" onclick={() => readIntent(m)}>boot intent</button>
+              {/if}
+            </td>
+            <td>
+              {#if placing === m.tag}
+                <div class="place">
+                  {#each PLACE as k (k)}
+                    <input bind:value={place[k]} placeholder={k === 'u' ? 'U' : k} aria-label="{k} of {m.tag}" />
+                  {/each}
+                  <button class="primary" disabled={!!busy} onclick={() => savePlace(m)}>Save</button>
+                  <button onclick={() => (placing = '')}>Cancel</button>
+                </div>
+              {:else}
+                {#if where(m.location)}<span>{where(m.location)}</span>{:else}<span class="dim">not recorded</span>{/if}
+                {#if m.location?.rack && !m.node}<div class="dim">no Node to label yet</div>{/if}
+                {#if me.admin && m.host && m.tag}<button class="link" onclick={() => startPlace(m)}>{m.location ? 'edit' : 'set'}</button>{/if}
               {/if}
             </td>
             <td>
@@ -389,4 +431,6 @@
   .state.closed { color: var(--error); }
   .screen { margin: 0; padding: 8px 10px; height: 360px; overflow: auto; color: #d8dee9; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
   .cin input { width: 100%; font-family: var(--mono); border: 0; border-top: 1px solid var(--border); border-radius: 0; }
+  .place { display: flex; flex-wrap: wrap; gap: 4px; max-width: 18rem; }
+  .place input { width: 7.5rem; }
 </style>

@@ -1054,6 +1054,20 @@ page is a map by default: each chassis a grid of its bays (12 across up to
 whose counts are filters; a list view capped at 200 a group. The live check
 is `deploy/verify-drives.sh`.
 
+**Racks and RAID sets (#43).** The rack is the Node label
+`topology.storm.io/rack` (owner, 2026-10-02), which stormipmi keeps on
+each machine's Node from the location an admin records on the Machines page
+(`PUT /api/v1/machines/{tag}/location {site, rack, shelf, u}`,
+stormipmi#29). A RAID set (stormblock#252: several per shelf) is **not** a
+label: one Node label holds one value and a shelf carries several sets, and
+the engine already stores each set's name and its shelf (the array's `pool`)
+on every member's superblock. So the stormblock plugin puts `set`, `shelf`
+and the member's drive `serial` on each `sb:member:` row, drivemap joins a
+drive to its member by serial (then device path), and the console names the
+set `<rack>.<shelf>.<set>` — `rack3.ds1.ds1-a` — with `no-rack` where the
+Node has no label. The Drives page groups by it ("RAID set") and the picked
+drive says its set.
+
 ### Each drive's usage, slabs and volumes; pools (#29)
 
 The feed says how full a drive is in words; a page that adds up 1,600
@@ -1142,8 +1156,10 @@ BMC address/vendor/model/firmware and the credentials Secret's name, power
 as the BMC last said it (and what was asked, when they differ), state, the
 release each boots (`pinnedFromDefault`, `dangling`, since), Set release
 (confirmed; stormipmi answers once read back; takes effect at next boot),
-boot intent (stormipmi's 501 shown as it says it), test marks, the default
-image, and new hosts to adopt with their BMC. `deploy/verify-machines.sh` is
+boot intent (stormipmi's 501 shown as it says it), test marks, where each
+machine is (site, rack, shelf, U, set by an admin through `PUT …/location`;
+stormipmi keeps the rack on the Node as `topology.storm.io/rack`, #43), the
+default image, and new hosts to adopt with their BMC. `deploy/verify-machines.sh` is
 the live check on stormipmi's own rig.
 
 ### The pod network on flowsdn (#83)

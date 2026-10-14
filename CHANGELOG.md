@@ -3,6 +3,21 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-14 — The rack label, and RAID sets named in the room (#43)
+- **feat:** a RAID set (stormblock#252) is named `<rack>.<shelf>.<set>` —
+  the rack from the Node's `topology.storm.io/rack`, the shelf and the set
+  from the engine (the array's `pool` and `name`). Not a second label: a
+  shelf carries several sets and one Node label holds one value. The
+  stormblock plugin puts `set`, `shelf` and the drive's `serial` on each
+  array member; drivemap joins by serial, then device path; the Drives page
+  groups by **RAID set** and the picked drive names its set.
+- **feat:** Machines page: each machine's location (site, rack, shelf, U),
+  set by an admin through stormipmi's `PUT …/location`; stormipmi keeps the
+  rack on the machine's Node (stormipmi#29).
+- **test:** `drivemap.test.mjs` (a DS2246 as two sets and two spares, joined
+  by serial); `verify-drives.sh`'s stand-in engine serves a set and the
+  browser walk groups by it and opens a member.
+
 ### 2026-10-14 — The log ring's hold-off counts from the end of the work (#154)
 - **fix:** after a shed that could not reach the floor, the next unforced
   look waits `ROOM_EVERY_MS` from when the prune and compaction *ended*, not
