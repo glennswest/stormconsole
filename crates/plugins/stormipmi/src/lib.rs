@@ -136,7 +136,7 @@ async fn me(viewer: Viewer) -> Response {
     Json(json!({
         "admin": viewer.has_role("admin"),
         "why": if viewer.has_role("admin") { "" } else {
-            "power, releases, test marks and adopting hosts are for administrators"
+            "power, releases, locations, test marks and adopting hosts are for administrators"
         },
     }))
     .into_response()
@@ -160,7 +160,7 @@ async fn proxy(
             StatusCode::FORBIDDEN,
             Json(json!({"error": format!(
                 "{who} is not an administrator: powering machines, repointing what they boot, \
-                 test marks and adopting hosts need the admin role"
+                 recording where they are, test marks and adopting hosts need the admin role"
             )})),
         )
             .into_response();
