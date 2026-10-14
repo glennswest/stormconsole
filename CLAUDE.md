@@ -1641,25 +1641,43 @@ the owner's to pick (asked on #151).
 - Open: the ESXi style's own name — asked on #151 (recommended VMFocus);
   a one-line change to `STYLES` + `RENAMED` once answered
 
-### Sign in with the install-time API token (#66)
+### Sign in with the install-time API token (#66) ✅ 2026-10-14
 storminstall#1 puts an optional `apiToken` (48 hex) in install-config.yaml;
 stormpump#78 (golden-stormpump-3ddaf59e1c31) writes it at first boot to
 `/state/config/token-auth.csv`, 0600, as the apiserver's `--token-auth-file`:
 `<token>,system:admin,system:admin,"system:masters"` (rustkube#188). So the
 token is an apiserver administrator's, not a console secret.
-- [ ] `[api] install_token_file`: that file (CSV lines, first field the
+- [x] `[api] install_token_file`: that file (CSV lines, first field the
       token, second the user; or a bare token), re-read when it changes;
       setting it turns auth on (missing → no install credential)
-- [ ] Sign-in and bearer with it: an admin session named by the file's user
+- [x] Sign-in and bearer with it: an admin session named by the file's user
       (`system:admin`) that acts upstream **as that token**; the session
       holds the token it was opened with and ends when the file stops
       carrying it
-- [ ] `/api/v1/auth/session` says which sign-ins exist (`password`,
+- [x] `/api/v1/auth/session` says which sign-ins exist (`password`,
       `token`); the login page has a token mode, the default when there are
       no named users
-- [ ] Tests; `deploy/verify-install-token.sh` (a real console, the file in
-      stormpump's format, Chromium on the token mode); docs, example config,
-      changelog; file stormcos to bind the file and set the key; golden
+- [x] Tests; `deploy/verify-install-token.sh`; docs, example config,
+      changelog; dist; stormcos#256 asked to bind the file and set the key;
+      golden
+- Verified with `sc-build deploy/verify-install-token.sh` (0 failed,
+  9c483d1): one token-auth.csv in stormpump's format read by a real rustkube
+  apiserver built at 86579d5 (`--token-auth-file`, anonymous off) on
+  fastetcd v1.2.0 and by a real console. No file → the token signs in
+  nowhere, the console says it takes `password+token`; written (0600) →
+  sign-in with no user name (or any name) and bearer as `system:admin`,
+  admin, a near miss 401, alice still herself, the token never logged; a
+  project made through the console with that session requested by
+  `system:admin`, one made with the node bearer's by `stormconsole` (the
+  console's own credential); rewritten → the old session ends and says so,
+  old token 401, new 200, alice untouched; removed → its session ends, the
+  node bearer still works. Chromium: a console with only the install token
+  opens on the token screen (no user field, says where the token comes
+  from), a wrong token refused on the page, the token opens the console;
+  beside a user, the user screen first and the token one click away; no
+  page errors. Default `sc-build`: all tests pass, 0 warnings
+- Left for stormcos (#256): bind `/state/config/token-auth.csv` into the
+  console and set `install_token_file`
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
