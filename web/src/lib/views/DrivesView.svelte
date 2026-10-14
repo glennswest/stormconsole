@@ -25,7 +25,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
-  import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage } from '../drivemap.js'
+  import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName } from '../drivemap.js'
 
   const asShelves = $derived(route.current.query.get('group') === 'shelf')
   const asPools = $derived(route.current.query.get('group') === 'pool')
@@ -235,6 +235,7 @@
           <option value="chassis">chassis</option>
           <option value="node">node</option>
           <option value="rack">rack</option>
+          <option value="set">RAID set</option>
         </select>
       </label>
       <label>colour by
@@ -300,7 +301,10 @@
             {#each dr.errors || [] as e}<span class="error">{e}</span>{/each}
           </div>
         {/if}
-        {#if pick.member}<p class="warn">Array member: {pick.member}</p>{/if}
+        {#if setName(pick)}
+          <!-- The set's name in the room (#43): rack label · the engine's shelf and set. -->
+          <p class:warn={pick.member !== 'active'}>RAID set <span class="mono">{setName(pick)}</span> · {pick.member}</p>
+        {:else if pick.member}<p class="warn">Array member: {pick.member}</p>{/if}
         {#if pick.usage?.slabs?.length}
           <h3>Slabs on this drive</h3>
           <table class="pools">

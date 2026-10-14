@@ -2,7 +2,7 @@
 // with plain node — `node web/src/lib/drivemap.test.mjs` — no browser, no
 // bundler. It checks the joins and the grouping and measures them.
 import assert from 'node:assert/strict'
-import { build, groups, totals, heat, cells, columns, parseBytes, formatBytes, passes, pools, noUsage } from './drivemap.js'
+import { build, groups, setName, totals, heat, cells, columns, parseBytes, formatBytes, passes, pools, noUsage } from './drivemap.js'
 
 function drive(host, i, extra = {}) {
   const local = host === null
@@ -150,6 +150,31 @@ assert.equal(groups(records, { search: 'storm-7' }).reduce((n, g) => n + g.drive
 assert.equal(formatBytes(all.capacity), '11.4 PB')
 assert.equal(formatBytes(1024 ** 6 * 2), '2.0 EB')
 assert.equal(heat(here0, 'temp').text, '30 °C')
+
+// #43: RAID sets named in the room, `<rack>.<shelf>.<set>`. A DS2246 on this
+// node as stormblock#252 lays it out: two RAID-6 sets of 11 and two spares,
+// the members naming their drive by serial (the device path is stale on
+// purpose, so the join has to be by serial).
+const raid = []
+for (let s = 0; s < 1; s++) raid.push(shelf(null, s))
+for (let i = 0; i < 24; i++) raid.push(drive(null, i))
+for (let i = 0; i < 24; i++) {
+  const set = i < 11 ? 'ds1-a' : i < 22 ? 'ds1-b' : null
+  const metrics = [{ label: 'path', value: `/dev/old${i}` }, { label: 'state', value: set ? 'active' : 'spare' }, { label: 'serial', value: `here-SN${i}` }]
+  if (set) metrics.push({ label: 'set', value: set }, { label: 'shelf', value: 'ds1' })
+  if (set) raid.push({ id: `sb:member:/dev/old${i}`, kind: 'array-member', label: `/dev/old${i}`, metrics })
+}
+raid.push({ id: 'k8s:node:here', kind: 'k8s-node', label: 'here', metrics: [{ label: 'rack', value: 'rack3' }] })
+const rr = build(raid).records
+assert.equal(setName(rr[0]), 'rack3.ds1.ds1-a')
+assert.equal(setName(rr[11]), 'rack3.ds1.ds1-b')
+assert.equal(setName(rr[23]), null, 'a spare is in no set')
+const bySet = groups(rr, { by: 'set' })
+assert.deepEqual(bySet.map((g) => [g.label, g.drives.length]),
+  [['here · in no RAID set', 2], ['set rack3.ds1.ds1-a', 11], ['set rack3.ds1.ds1-b', 11]])
+// No rack label: the name says so rather than borrowing another's.
+const unracked = build(raid.filter((c) => c.kind !== 'k8s-node')).records
+assert.equal(setName(unracked[0]), 'no-rack.ds1.ds1-a')
 
 console.log(`1,600 drives on ${all.nodes} nodes, ${formatBytes(all.capacity)} raw: ` +
   `${byChassis.length} chassis, ${byRack.length} racks, ${all.failing} failing, ${all.degraded} degraded, ${all.rebuilding} rebuilding, ${all.full} full`)

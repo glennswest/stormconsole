@@ -333,11 +333,32 @@ pub fn array_members(arrays: &[Value]) -> Vec<ComponentSummary> {
     for a in arrays {
         let aid = field(a, &["id"]).unwrap_or_default();
         let level = field(a, &["level"]).unwrap_or_default();
+        // A RAID set on a shelf (stormblock#252) has a name and a pool, which
+        // is its shelf; both are on every member's superblock. The console
+        // names the set `<rack>.<shelf>.<set>` from these and the Node's rack
+        // label (#43).
+        let set = field(a, &["name"]).filter(|n| !n.is_empty());
+        let shelf = field(a, &["pool"]).filter(|p| !p.is_empty());
         for m in a.get("members").and_then(Value::as_array).into_iter().flatten() {
             let Some(path) = m.get("device_path").and_then(Value::as_str).filter(|p| !p.is_empty()) else {
                 continue;
             };
             let state = field(m, &["state"]).unwrap_or_else(|| "unknown".into());
+            let mut metrics = vec![
+                Metric::new("state", state.clone()),
+                Metric::new("array", aid.clone()),
+                Metric::new("level", level.clone()),
+                Metric::new("path", path),
+            ];
+            if let Some(n) = &set {
+                metrics.push(Metric::new("set", n.clone()));
+            }
+            if let Some(p) = &shelf {
+                metrics.push(Metric::new("shelf", p.clone()));
+            }
+            if let Some(sn) = m.pointer("/drive/serial").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+                metrics.push(Metric::new("serial", sn));
+            }
             out.push(ComponentSummary {
                 id: format!("sb:member:{path}"),
                 kind: "array-member".into(),
@@ -348,13 +369,11 @@ pub fn array_members(arrays: &[Value]) -> Vec<ComponentSummary> {
                     "failed" => Health::Error,
                     _ => Health::Unknown,
                 },
-                detail: format!("{level} array {aid} · {state}"),
-                metrics: vec![
-                    Metric::new("state", state),
-                    Metric::new("array", aid.clone()),
-                    Metric::new("level", level.clone()),
-                    Metric::new("path", path),
-                ],
+                detail: match &set {
+                    Some(n) => format!("{level} set {n} · {state}"),
+                    None => format!("{level} array {aid} · {state}"),
+                },
+                metrics,
                 actions: vec![],
                 relations: vec![Relation::belongs_to("array", format!("sb:array:{aid}"))],
                 link: None,
@@ -908,6 +927,18 @@ mod tests {
         assert_eq!(a[1].health, Health::Warn);
         assert_eq!(m(&a[1], "state"), Some("rebuilding".into()));
         assert_eq!(a[2].health, Health::Error);
+
+        // A set on a shelf (stormblock#252) names itself, its shelf, and the
+        // drive under each member (#43).
+        let arrays = vec![json!({"id": "u1", "name": "ds1-a", "pool": "ds1", "level": "raid6", "members": [
+            {"index": 0, "state": "active", "device_path": "/dev/sdg", "drive": {"serial": "SN7", "uuid": "x", "model": "m", "path": "/dev/sdg"}},
+            {"index": 1, "state": "active", "device_path": "/dev/sdh"}]})];
+        let a = array_members(&arrays);
+        assert_eq!(m(&a[0], "set"), Some("ds1-a".into()));
+        assert_eq!(m(&a[0], "shelf"), Some("ds1".into()));
+        assert_eq!(m(&a[0], "serial"), Some("SN7".into()));
+        assert_eq!(m(&a[1], "serial"), None);
+        assert_eq!(a[0].detail, "raid6 set ds1-a · active");
     }
 
     #[test]

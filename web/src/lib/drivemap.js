@@ -8,7 +8,10 @@
 //   - this node's engine, per drive: `sb:member:<dev>` (a drive-level array
 //     member's state), and `sb:use:<serial>` (slab bytes, free) — used only
 //     for a drive whose stormdrive predates usage;
-//   - each kube node's `rack` metric (label `topology.storm.io/rack`).
+//   - each kube node's `rack` metric (label `topology.storm.io/rack`, kept
+//     by stormipmi from the machine's location, stormipmi#29);
+//   - a RAID set's name and shelf (stormblock#252: the array's `name` and
+//     `pool`) on its members, which name the set `<rack>.<shelf>.<set>` (#43).
 //
 // And, when the page has fetched them (#29), two answers that are not in
 // the feed because only this page wants them:
@@ -99,6 +102,7 @@ export function build(components, extra = {}) {
   const byId = new Map()
   const use = new Map()
   const member = new Map()
+  const memberBySerial = new Map()
   const rack = new Map()
   const drives = []
   const shelves = []
@@ -107,7 +111,10 @@ export function build(components, extra = {}) {
     if (c.kind === 'drive') drives.push(c)
     else if (c.kind === 'shelf') shelves.push(c)
     else if (c.kind === 'drive-use') use.set(metric(c, 'serial'), c)
-    else if (c.kind === 'array-member') member.set(metric(c, 'path'), c)
+    else if (c.kind === 'array-member') {
+      member.set(metric(c, 'path'), c)
+      if (metric(c, 'serial')) memberBySerial.set(metric(c, 'serial'), c)
+    }
     else if (c.kind === 'k8s-node' && metric(c, 'rack')) rack.set(c.label, metric(c, 'rack'))
   }
   const usageBy = new Map((extra.usage?.drives || []).map((r) => [r.component, r]))
@@ -127,7 +134,9 @@ export function build(components, extra = {}) {
     // The engine's placement is keyed by serial (the WWN when it names no
     // serial); serials are the drive's own, so this joins on any node.
     const volumes = onDrive[serial] || (r?.wwn && onDrive[r.wwn]) || null
-    const m = local ? member.get(metric(c, 'dev')) : null
+    // By serial first: the engine names the drive under a set's member
+    // (stormblock#252), and a device path can move across a reboot.
+    const m = local ? memberBySerial.get(serial) || member.get(metric(c, 'dev')) : null
     const detail = c.detail || ''
     return {
       id: c.id,
@@ -153,6 +162,8 @@ export function build(components, extra = {}) {
       drain: r?.drain || null,
       volumes,
       member: m ? metric(m, 'state') : null,
+      set: m ? metric(m, 'set') || null : null,
+      setShelf: m ? metric(m, 'shelf') || null : null,
       outOfFleet: detail.includes('out of fleet'),
       spare: /(^|·\s)spare(\s|·|$)/.test(detail),
       failedMark: /(^|·\s)failed(\s|·|$)/.test(detail),
@@ -204,9 +215,24 @@ export function matches(d, search) {
     .includes(q)
 }
 
+/// A RAID set's name in the room (#43): `<rack>.<shelf>.<set>`. The rack is
+/// the Node's `topology.storm.io/rack`, the shelf and the set the engine's
+/// (an array's `pool` and `name`, stormblock#252) — never a label of their
+/// own, because a node with one shelf carries several sets. A missing part
+/// reads as what it is, so the name never claims a place nobody recorded.
+export function setName(d) {
+  if (!d.set) return null
+  return `${d.rack || 'no-rack'}.${d.setShelf || d.node}.${d.set}`
+}
+
 /// Group key and label for a drive.
 export function groupOf(d, by) {
   if (by === 'node') return [d.node, d.node]
+  if (by === 'set') {
+    const n = setName(d)
+    if (n) return [`${d.node}/${n}`, `set ${n}`]
+    return [`${d.node}/`, d.member === 'spare' ? `${d.node} · spares` : `${d.node} · in no RAID set`]
+  }
   if (by === 'rack') return [d.rack || '', d.rack ? `rack ${d.rack}` : 'no rack label']
   // chassis: a shelf is a node's, so two nodes' "shelf 1" are two chassis.
   const key = d.shelfId || `${d.node}/`
