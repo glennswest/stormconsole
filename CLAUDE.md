@@ -1577,7 +1577,10 @@ The golden's `cargo test --release --target musl` failed
 again (180). `last_room` was stamped before the prune + compact, so a
 compaction over 10 s used the whole hold-off up.
 - [x] Stamp `last_room` once the work is done
-- [ ] sc-build: the golden's test command and the default; close; golden
+- [x] sc-build: the golden's test command and the default; close; golden
+- Verified: `cargo test --release --locked --target x86_64-unknown-linux-musl
+  -p plugin-logs` 36/36 (that test ran 63 s there — the work outlasts the
+  10 s hold-off); default `sc-build` 400 tests, 0 warnings
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
