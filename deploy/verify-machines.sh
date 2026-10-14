@@ -11,7 +11,7 @@
 # a real console in front of it, with an administrator and an operator.
 set -euo pipefail
 
-STORMIPMI_REF=${STORMIPMI_REF:-v0.4.0}
+STORMIPMI_REF=${STORMIPMI_REF:-v0.6.0}
 FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
 RUSTKUBE_VER=${RUSTKUBE_VER:-v0.15.0}
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-machines.XXXXXX")
@@ -170,6 +170,15 @@ sleep 3
 echo "  test: $(mach "d['test']")"
 printf '  ?test=true lists: '; curl -sf -b "$W/jar.ops" "http://127.0.0.1:$P$M?test=true" | python3 -c 'import json,sys; print([m["tag"] for m in json.load(sys.stdin)["machines"]])'
 
+say "5b. location (#43): where the machine is; its rack labels the Node (stormipmi#29)"
+printf 'ops sets it: '; c ops PUT "$M/$TAG/location" '{"rack":"rack3","shelf":"1","u":"12"}'
+printf 'admin sets it: '; c admin PUT "$M/$TAG/location" '{"site":"g11","rack":"rack3","shelf":"1","u":"12"}'
+sleep 2
+echo "  read back: $(mach "d.get('location')")"
+printf 'admin, a rack that is not a label value: '; c admin PUT "$M/$TAG/location" '{"rack":"rack 3"}'
+LOC=$(mach "d.get('location')")
+case $LOC in *rack3*) echo "  ok   location kept: $LOC" ;; *) echo "  FAIL location not read back: $LOC"; LOCFAIL=1 ;; esac
+
 say "6. adopt NEWBOX1 (a BMC that does not answer, so it cannot contend with sim-0)"
 printf 'ops: '; c ops POST "$M/NEWBOX1/adopt" '{"bmc":{"address":"ipmi://127.0.0.1:9","username":"u","password":"adopt-only-pw"},"online":false}'
 printf 'admin: '; c admin POST "$M/NEWBOX1/adopt" '{"bmc":{"address":"ipmi://127.0.0.1:9","username":"u","password":"adopt-only-pw"},"online":false}'
@@ -220,7 +229,7 @@ python3 -c 'import websockets' 2>/dev/null || { python3 -m venv "$W/py" && "$W/p
 "$PY" "$W/ws.py" "ws://127.0.0.1:$P/api/plugins/ipmi/console/$HOST_NS/$HOST_NAME" "$W/jar.ops" "$W/jar.admin"
 
 say "8. the page in a browser (#58)"
-RC=0
+RC=${LOCFAIL:-0}
 deploy/browser/run.sh "$W" machines.cjs "http://127.0.0.1:$P" TAG="$TAG" || RC=1
 
 say "console logs (warnings, errors, and the audit line for each act)"

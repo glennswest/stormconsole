@@ -30,6 +30,16 @@ walk('machines', async (t) => {
   await row().first().getByRole('button', { name: 'boot intent' }).click()
   t.check(await t.until(async () => /intent:/.test(await row().first().innerText())), 'boot intent answers (as stormipmi words it)', await row().first().innerText())
 
+  // Where it is (#43): edited, saved through stormipmi, read back.
+  await row().first().getByRole('button', { name: /^(set|edit)$/ }).click()
+  await page.locator(`input[aria-label="rack of ${TAG}"]`).fill('rack7')
+  await page.locator(`input[aria-label="shelf of ${TAG}"]`).fill('2')
+  await page.locator(`input[aria-label="u of ${TAG}"]`).fill('30')
+  await row().first().getByRole('button', { name: 'Save' }).click()
+  t.check(await t.until(async () => /rack rack7 · shelf 2 · U30/.test(await row().first().innerText()), 20000),
+    'Location: saved and read back', await row().first().innerText())
+  await t.shot(page, 'machines-location')
+
   // The SOL console: replay and live output, and what is typed echoes.
   await row().first().getByRole('button', { name: 'Console' }).click()
   const screen = page.locator('section.console pre.screen')
@@ -45,6 +55,8 @@ walk('machines', async (t) => {
   t.check(await t.open(ops, '#/machines', new RegExp(TAG)), 'ops sees the machines')
   t.check((await ops.locator(`select[aria-label="Power ${TAG}"]`).count()) === 0, 'ops is offered no power')
   t.check((await ops.locator(`select[aria-label="Release for ${TAG}"]`).count()) === 0, 'nor a release')
+  t.check(/rack rack7/.test(await ops.locator('table tr', { hasText: TAG }).first().innerText()), 'ops reads the location')
+  t.check((await ops.locator('table tr', { hasText: TAG }).first().getByRole('button', { name: /^(set|edit)$/ }).count()) === 0, 'and is offered no edit')
   await ops.locator('table tr', { hasText: TAG }).first().getByRole('button', { name: 'Console' }).click()
   t.check(await t.until(async () => /watching — typing is for administrators/.test(await ops.locator('section.console').innerText())), 'ops watches the console, and is told why there is no input')
   t.check((await ops.locator('input[aria-label="Console input"]').count()) === 0, 'and has no input')
