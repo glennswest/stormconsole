@@ -1641,6 +1641,26 @@ the owner's to pick (asked on #151).
 - Open: the ESXi style's own name — asked on #151 (recommended VMFocus);
   a one-line change to `STYLES` + `RENAMED` once answered
 
+### Sign in with the install-time API token (#66)
+storminstall#1 puts an optional `apiToken` (48 hex) in install-config.yaml;
+stormpump#78 (golden-stormpump-3ddaf59e1c31) writes it at first boot to
+`/state/config/token-auth.csv`, 0600, as the apiserver's `--token-auth-file`:
+`<token>,system:admin,system:admin,"system:masters"` (rustkube#188). So the
+token is an apiserver administrator's, not a console secret.
+- [ ] `[api] install_token_file`: that file (CSV lines, first field the
+      token, second the user; or a bare token), re-read when it changes;
+      setting it turns auth on (missing → no install credential)
+- [ ] Sign-in and bearer with it: an admin session named by the file's user
+      (`system:admin`) that acts upstream **as that token**; the session
+      holds the token it was opened with and ends when the file stops
+      carrying it
+- [ ] `/api/v1/auth/session` says which sign-ins exist (`password`,
+      `token`); the login page has a token mode, the default when there are
+      no named users
+- [ ] Tests; `deploy/verify-install-token.sh` (a real console, the file in
+      stormpump's format, Chromium on the token mode); docs, example config,
+      changelog; file stormcos to bind the file and set the key; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
