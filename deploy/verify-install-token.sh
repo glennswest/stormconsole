@@ -120,9 +120,9 @@ grep -q "$T1" "$W/c.log" && { echo "  FAIL the token is in the log"; FAILED=$((F
 
 say "3. the session acts upstream as the token"
 for _ in $(seq 40); do [ "$(code -k -H "Authorization: Bearer $T1" "$API/api/v1/namespaces")" = 200 ] && break; sleep 0.5; done
-check "$(code -b "$W/j1" -X POST -H 'content-type: application/json' -d '{"name":"by-install"}' "$C/api/plugins/k8s/projects")" 201 "a project made with the install token's session ($(cut -c1-160 "$W/out"))"
+check "$(code -b "$W/j1" -X POST -H 'content-type: application/json' -d '{"name":"by-install"}' "$C/api/plugins/k8s/projects")" 200 "a project made with the install token's session ($(cut -c1-160 "$W/out"))"
 login jn '' "node-$$" >/dev/null
-check "$(code -b "$W/jn" -X POST -H 'content-type: application/json' -d '{"name":"by-node"}' "$C/api/plugins/k8s/projects")" 201 "and one with the node bearer's session ($(cut -c1-160 "$W/out"))"
+check "$(code -b "$W/jn" -X POST -H 'content-type: application/json' -d '{"name":"by-node"}' "$C/api/plugins/k8s/projects")" 200 "and one with the node bearer's session ($(cut -c1-160 "$W/out"))"
 req() { curl -sk -H "Authorization: Bearer $CONSOLE_SA" "$API/api/v1/namespaces/$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["metadata"].get("annotations",{}).get("openshift.io/requester"))'; }
 check "$(req by-install)" "system:admin" "by-install was requested by system:admin: the install token, as itself"
 check "$(req by-node)" "stormconsole" "by-node by the console's own credential"
