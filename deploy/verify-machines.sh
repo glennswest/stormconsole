@@ -11,7 +11,9 @@
 # a real console in front of it, with an administrator and an operator.
 set -euo pipefail
 
-STORMIPMI_REF=${STORMIPMI_REF:-v0.6.0}
+# The machine location (#29, for #43) is in stormipmi's golden and not yet in
+# a tag: pinned to that commit (a tag or a commit both work).
+STORMIPMI_REF=${STORMIPMI_REF:-f93ef4c}
 FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
 RUSTKUBE_VER=${RUSTKUBE_VER:-v0.15.0}
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-machines.XXXXXX")
@@ -33,7 +35,7 @@ BIN="$(pwd)/${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 [ -x "$BIN" ] || BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
 say "stormipmi $STORMIPMI_REF, fastetcd $FASTETCD_VER, rustkube $RUSTKUBE_VER"
-git clone -q --depth 1 --branch "$STORMIPMI_REF" https://github.com/glennswest/stormipmi "$W/stormipmi"
+git clone -q https://github.com/glennswest/stormipmi "$W/stormipmi" && git -C "$W/stormipmi" checkout -q "$STORMIPMI_REF"
 (cd "$W/stormipmi" && CARGO_TARGET_DIR="$W/ipmi-target" cargo build -q)
 export STORMIPMI="$W/ipmi-target/debug/stormipmi"
 curl -sfL "https://github.com/glennswest/fastetcd/releases/download/$FASTETCD_VER/fastetcd-$FASTETCD_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
