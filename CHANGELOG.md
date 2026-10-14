@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-10-14 — The log ring's hold-off counts from the end of the work (#154)
+- **fix:** after a shed that could not reach the floor, the next unforced
+  look waits `ROOM_EVERY_MS` from when the prune and compaction *ended*, not
+  from when they began. A compaction slower than the hold-off (the golden's
+  release build on a busy build VM) let the next look shed again at once,
+  and failed `under_the_floor_the_oldest_go_and_the_file_shrinks`.
+
 ### 2026-10-11 — #69's done-when on a real node: the blade suite (#76)
 - **test:** the test container's **`blade`** suite (declared in
   `test/requires.toml`, 15 min): on the machine it runs on, cilium's pod and

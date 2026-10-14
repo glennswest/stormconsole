@@ -588,6 +588,10 @@ impl Store {
         }
         let after = (self.space)(dir);
         let mut c = self.care.lock().unwrap_or_else(|e| e.into_inner());
+        // The hold-off runs from when the work ended: a compaction on a slow
+        // disk can take longer than the hold-off itself, and the next look
+        // would start another at once (#154).
+        c.last_room = now_ms();
         c.shed += shed;
         if let Some(a) = after {
             c.free_percent = (a.total > 0).then(|| a.avail as f64 * 100.0 / a.total as f64);

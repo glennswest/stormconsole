@@ -1571,6 +1571,14 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       test show 7cbe40706a`, record what each answered on #76, file
       differences on rustkube-node / stormvm, close #76
 
+### The ring's hold-off from the end of the work (#154)
+The golden's `cargo test --release --target musl` failed
+`under_the_floor_…`: `make_room(false)` right after a forced shed shed
+again (180). `last_room` was stamped before the prune + compact, so a
+compaction over 10 s used the whole hold-off up.
+- [x] Stamp `last_room` once the work is done
+- [ ] sc-build: the golden's test command and the default; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
