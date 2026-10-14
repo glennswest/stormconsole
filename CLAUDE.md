@@ -1582,7 +1582,7 @@ compaction over 10 s used the whole hold-off up.
   -p plugin-logs` 36/36 (that test ran 63 s there — the work outlasts the
   10 s hold-off); default `sc-build` 400 tests, 0 warnings
 
-### The rack label and RAID sets (#43)
+### The rack label and RAID sets (#43) ✅ 2026-10-14
 Owner (2026-10-02): `topology.storm.io/rack`, set by stormipmi (built:
 stormipmi#29, `PUT /api/v1/machines/{tag}/location {site,rack,shelf,u}`).
 The RAID-set form was left to pick (stormipmi#53 builds it). **Pick: a
@@ -1592,13 +1592,26 @@ its shelf (the set's `pool`) on every member's superblock and serves them
 on `/api/v1/arrays`; a node with a DS2246 has several sets, which one Node
 label cannot hold; and a name an admin records would drift from what the
 engine laid out. So stormipmi#53 builds nothing; the label stays the rack.
-- [ ] sb plugin: array members carry `set` (name) and `shelf` (pool)
-- [ ] drivemap: `set`/`shelf` per drive, `setName` → `rack.shelf.set`,
-      group by RAID set; test
-- [ ] DrivesView: "RAID set" grouping, the set's name on the picked drive
-- [ ] Machines page: the location (site/rack/shelf/U), edited by an admin
+- [x] sb plugin: array members carry `set` (name), `shelf` (pool), `serial`
+- [x] drivemap: `set`/`setShelf` per drive (joined by serial, then path),
+      `setName` → `rack.shelf.set` (`no-rack` without a label), group by
+      RAID set; test
+- [x] DrivesView: "RAID set" grouping, the set's name on the picked drive
+- [x] Machines page: the location (site/rack/shelf/U), edited by an admin
       through stormipmi's `PUT …/location`
-- [ ] Say the pick on stormipmi#53; docs, changelog; sc-build; close; golden
+- [x] Said the pick on stormipmi#53; docs, changelog, dist; sc-build; close;
+      golden
+- Verified: `sc-build` (400 tests, 0 warnings); `node drivemap.test.mjs`
+  PASS (a DS2246 as two sets + two spares, joined by serial with stale
+  paths); `sc-build deploy/verify-drives.sh` 0 failed — the stand-in engine
+  serves set `ds0-a` (pool `ds0`) over here-SN040..050, Chromium groups by
+  RAID set "set A.ds0.ds0-a" and the picked here-SN045 reads "RAID set
+  A.ds0.ds0-a · active"; `sc-build deploy/verify-machines.sh` 0 failed
+  against stormipmi f93ef4c (the location is in its golden, not a tag yet):
+  ops 403, admin PUT read back, `rack 3` refused 400 in stormipmi's words;
+  Chromium edits rack7/2/30 and reads it back, ops reads it and gets no edit
+- Not seen on metal: no real Node carries the label until stormipmi's
+  golden runs with `patch nodes` (stormcos#203/#76), nor a real DS2246 set
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
