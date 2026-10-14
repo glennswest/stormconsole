@@ -181,7 +181,10 @@
       Run
       <select bind:value={source} aria-label="Which run">
         <option value="current">Current</option>
-        <option value="previous" disabled={!current?.restartCount}>Previous (from the node)</option>
+        <!-- Not gated on restartCount (#76): a real node served the run
+             before a reboot with the count back at 0. The node answers, and
+             says so when there is none. -->
+        <option value="previous">Previous (from the node)</option>
         {#each runs as r (r.run)}
           <option value={`run:${r.run}`}>{runLabel(r)}</option>
         {/each}
@@ -209,7 +212,7 @@
     {#if source === 'current'}
       The last {TAIL} lines of the run now going{follow ? ', followed as it writes' : ''}.
     {:else if source === 'previous'}
-      The run before this one, as the node serves it.
+      The run before this one, as the node serves it — also one that ended before the node restarted.
     {:else}
       Kept by this console when the run ended. It keeps the last {keep} per container, in memory — a
       console restart starts over, and a run that ended and was replaced between two looks is missed.

@@ -216,10 +216,23 @@ pub fn describe(snap: &Snapshot, key: &str, c: &mut ComponentSummary) {
 /// One interface outside is enough: traffic leaves by that one.
 pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Option<Outside> {
     let ifs = vmi.pointer("/status/interfaces").and_then(Value::as_array);
+    // The node's words (stormvm-net `Made::binding`, #76): `host-bridge` is a
+    // tap on a node bridge; `bridge`, `masquerade`, `passt` the pod network,
+    // masquerade being a NAT inside the hypervisor. An older node said `user`
+    // for that NAT and `bridge` for a host bridge, so `bridge` on a machine
+    // that asked for a host bridge (`storm.io/bridge…`) is read that way.
+    let asked_host_bridge = |iface: &str| {
+        let a = vmi.pointer("/metadata/annotations").and_then(Value::as_object);
+        a.is_some_and(|a| a.contains_key("storm.io/bridge") || a.contains_key(&format!("storm.io/bridge.{iface}")))
+    };
     for i in ifs.into_iter().flatten() {
         let name = i.get("name").and_then(Value::as_str).unwrap_or("?");
-        match i.get("storm.io/binding").and_then(Value::as_str) {
-            Some("user") => {
+        let binding = match i.get("storm.io/binding").and_then(Value::as_str) {
+            Some("bridge") if asked_host_bridge(name) => Some("host-bridge"),
+            b => b,
+        };
+        match binding {
+            Some("user" | "masquerade") => {
                 return Some(Outside {
                     why: "nat",
                     sentence: format!(
@@ -228,7 +241,7 @@ pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Opt
                     ),
                 })
             }
-            Some("bridge") => {
+            Some("host-bridge") => {
                 return Some(Outside {
                     why: "bridge",
                     sentence: format!(
@@ -423,8 +436,16 @@ mod tests {
         // Even with an endpoint recorded under its name: the binding wins.
         let ceps = HashMap::from([("shop/vm1".to_string(), json!({}))]);
         assert_eq!(outside_policy(&vmi(json!([{"name": "default", "storm.io/binding": "user"}])), Some(&ceps)).unwrap().why, "nat");
-        let o = outside_policy(&vmi(json!([{"name": "lan", "storm.io/binding": "bridge"}])), None).unwrap();
+        // A current node's names (#76): masquerade is the NAT, host-bridge a node bridge.
+        assert_eq!(outside_policy(&vmi(json!([{"name": "default", "storm.io/binding": "masquerade"}])), None).unwrap().why, "nat");
+        let o = outside_policy(&vmi(json!([{"name": "lan", "storm.io/binding": "host-bridge"}])), None).unwrap();
         assert_eq!(o.why, "bridge");
+        // `bridge` is a host bridge only where one was asked for (an older
+        // node's word); otherwise it is the pod network's bridge binding.
+        let mut old = vmi(json!([{"name": "lan", "storm.io/binding": "bridge"}]));
+        old["metadata"]["annotations"] = json!({"storm.io/bridge": "stormbr0"});
+        assert_eq!(outside_policy(&old, None).unwrap().why, "bridge");
+        assert!(outside_policy(&vmi(json!([{"name": "default", "storm.io/binding": "bridge"}])), None).is_none());
     }
 
     #[test]

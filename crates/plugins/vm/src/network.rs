@@ -104,8 +104,16 @@ fn verdict(asked: Option<&Asked>, running: bool, status: Option<&Value>) -> (&'s
     let binding = st.get("storm.io/binding").and_then(Value::as_str).unwrap_or("");
     let addrs = addresses(st);
     let asked_pod = asked.is_some_and(|a| a.network == "pod");
+    // The node's words for how an interface is attached (stormvm-net
+    // `Made::binding`, read 2026-10-11 after a real node said `host-bridge`,
+    // #76): `host-bridge` a tap on one of the node's bridges; `bridge`,
+    // `masquerade` and `passt` the pod network (masquerade a NAT inside the
+    // hypervisor on 10.155.0.0/24); `multus` a secondary network. An older
+    // node said `user` for the NAT and `bridge` for a host bridge, so a
+    // `bridge` on an interface that asked for a host bridge is read that way.
+    let asked_host_bridge = asked.filter(|a| a.network == "bridge");
     match binding {
-        "user" => (
+        "user" | "masquerade" => (
             "nat",
             if asked_pod {
                 "asked for the pod network, and this node runs it as a NAT inside the hypervisor \
@@ -123,14 +131,25 @@ fn verdict(asked: Option<&Asked>, running: bool, status: Option<&Value>) -> (&'s
              once the guest has spoken on the network"
                 .into(),
         ),
-        "bridge" => (
+        "host-bridge" => (
             "reachable",
-            match asked.filter(|a| a.network == "bridge") {
+            match asked_host_bridge {
                 Some(a) => format!("on host bridge {}: reachable from that segment", a.target),
-                None => "on a bridge: reachable from that segment".into(),
+                None => "on a host bridge: reachable from that segment".into(),
             },
         ),
+        "bridge" => match asked_host_bridge {
+            Some(a) => ("reachable", format!("on host bridge {}: reachable from that segment", a.target)),
+            None => ("reachable", "on the pod network (the bridge binding): the pod's address".into()),
+        },
         "passt" => ("reachable", "on the pod network".into()),
+        "multus" => (
+            "reachable",
+            match asked.filter(|a| a.network == "multus") {
+                Some(a) => format!("on network {}", a.target),
+                None => "on a secondary network".into(),
+            },
+        ),
         _ => ("unknown", "the node did not say how this interface is attached".into()),
     }
 }
@@ -211,6 +230,36 @@ mod tests {
         assert_eq!(i["reach"], "nat");
         assert!(i["note"].as_str().unwrap().contains("stormvm#16"));
         assert_eq!(i["addresses"], json!(["10.155.0.15"]), "the address is shown, and marked, not hidden");
+    }
+
+    /// What pvetest1 (12.14) reported for a VMI on stormbr0 (#76): the
+    /// current node says `host-bridge`.
+    #[test]
+    fn a_real_nodes_host_bridge_is_reachable_on_that_bridge() {
+        let v = vmi(
+            json!({"storm.io/bridge": "stormbr0"}),
+            json!({"name": "default", "masquerade": {}}),
+            json!([{"name": "default", "mac": "02:00:00:aa:bb:cc", "ipAddress": "192.168.16.116",
+                    "ipAddresses": ["192.168.16.116"], "storm.io/binding": "host-bridge"}]),
+        );
+        let i = one(&v);
+        assert_eq!(i["did"], "host-bridge");
+        assert_eq!(i["reach"], "reachable");
+        assert_eq!(i["note"], "on host bridge stormbr0: reachable from that segment");
+    }
+
+    /// On a current node `bridge` is the pod network's bridge binding, and
+    /// `masquerade` the NAT that was `user`.
+    #[test]
+    fn the_pod_networks_bindings_read_as_the_pod_network() {
+        let pod = |iface: Value, binding: &str| {
+            one(&vmi(json!({}), iface, json!([{"name": "default", "ipAddress": "10.244.0.9", "storm.io/binding": binding}])))
+        };
+        let i = pod(json!({"name": "default", "bridge": {}}), "bridge");
+        assert_eq!((i["reach"].as_str(), i["note"].as_str()), (Some("reachable"), Some("on the pod network (the bridge binding): the pod's address")));
+        let i = pod(json!({"name": "default"}), "masquerade");
+        assert_eq!(i["reach"], "nat");
+        assert!(i["note"].as_str().unwrap().contains("stormvm#16"));
     }
 
     #[test]
