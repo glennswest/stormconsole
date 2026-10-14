@@ -44,7 +44,7 @@ write() { # <token> <mtime offset> — stormpump's line, 0600, replaced atomical
 say "build the SPA and the console from this commit"
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
-BIN="$PWD/${CARGO_TARGET_DIR:-target}/debug/stormconsole"
+BIN=$(realpath "${CARGO_TARGET_DIR:-target}/debug/stormconsole")
 
 say "fastetcd $FASTETCD_VER; rustkube's apiserver at $RUSTKUBE_REF"
 curl -sfL "https://github.com/glennswest/fastetcd/releases/download/$FASTETCD_VER/fastetcd-$FASTETCD_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
