@@ -18,6 +18,7 @@ walk('runs-on', async (t) => {
   t.check(/app@aaaa/.test(text) && !/app@bbbb/.test(text), "stormcentral's record of that one, not the newest built")
   t.check(/says this container was cloned from/.test(text) && !/not confirmed running/.test(text), 'and not hedged')
   t.check(/cloned \d+[smhd] ago/i.test(text), 'when it was cloned', (text.match(/.{0,40}cloned \d.{0,20}/i) || [''])[0])
+  await page.getByText('Runs on').first().scrollIntoViewIfNeeded()
   await t.shot(page, 'runs-on-pod')
 
   t.check(await t.open(page, '#/pod/shop/quiet', /Images/), 'a container the node said nothing of')

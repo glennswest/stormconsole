@@ -665,7 +665,10 @@
               {/each}
             </dl>
           {/if}
-          <h3 class="sub">Each disk's instance</h3>
+        </div>
+
+        <div class="card wide">
+          <h2>Each disk's instance</h2>
           <RunsOn query={{ owner: 'VirtualMachineInstance,VirtualMachine', namespace: ns, name }} node={vm.node} word="disk owned by this machine" />
         </div>
 
