@@ -1880,7 +1880,7 @@ install_config, handover`); stormpump (`history.rs`, `crash.rs`)
   opens the newest record of each part when it runs on a node with system-data
 - Open upstream: stormblock#534 (boot id in the record; pruning counts directories)
 
-### Offered drives, formatted only by a person (#153)
+### Offered drives, formatted only by a person (#153) ✅ 2026-11-05
 stormblock#154, decision 3 (owner 2026-10-13: "on auto format, no, since we may
 be doing a test, and a power off could destroy a drive"). Read from stormblock
 main (bcbe3e0d, `mgmt/api/drives.rs`, `drive_offer.rs`, `api/slabs.rs`,
@@ -1897,8 +1897,22 @@ disk. The engine reviews it as verb **`destroy`** on resource `drives` (#382).
 - [x] Drives page: offered drives band and filter, the offer on a picked drive;
       Format shows the 412's risk, takes the typed serial, one at a time; then a
       rebalance: dry run, confirm, progress. `web/src/lib/driveoffer.js` + test
-- [ ] `deploy/verify-drive-offer.sh` on a real engine and apiserver + Chromium;
+- [x] `deploy/verify-drive-offer.sh` on a real engine and apiserver + Chromium;
       docs, changelog, dist; golden
+- Verified with `sc-build deploy/verify-drive-offer.sh` (0 failed): stormblock and
+  rustkube from main, the engine reviewing bearers at the apiserver. bob
+  (storage-viewer), carol (reader) and the console's token 403; no word or the wrong
+  one 428; no word in the body or the wrong one 412 with the real risk, still blank;
+  the node token alone 401 at the engine; ours 409. Chromium: band, risk, Format off
+  until the word is typed, cancel leaves it, a real format as alice, a real rebalance
+  of 130 extents to done; the row button's path too. Also `verify-drives.sh`,
+  `verify-storage-guard.sh`, default `sc-build` (441 tests, 0 warnings)
+- Found on the way: the engine's `sb:drive:` rows counted as extra drives on the
+  page and in the navigator (fixed); a file-backed drive's serial is literally `file`
+- Not run: a drive with a real serial (unit tests only), two formats at once (the
+  engine's 409), a format over the proxy's 30 s, pressing Stop on a running rebalance
+  (the route is checked with none running). On a real node a format needs a
+  kubernetes identity, which is #165's open question
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
