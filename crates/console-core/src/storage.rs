@@ -109,6 +109,11 @@ pub fn classify(method: &Method, path: &str, query: Option<&str>) -> Option<Guar
     let rest = path.strip_prefix("/api/plugins/")?;
     let (plugin, rest) = rest.split_once('/')?;
     match plugin {
+        // The console's own format page (#165): it carries the drives in its
+        // body and forwards as the viewer, so it is one verb to review.
+        "drive" if rest == "format" => {
+            Some(Guarded::new("driveoperations", "create", "format drives", "format"))
+        }
         "drive" => {
             // `proxy/…` for this node, `node/<host>/proxy/…` for another.
             let inner = match rest.strip_prefix("proxy/") {
@@ -366,6 +371,14 @@ mod tests {
 
     fn c(m: Method, p: &str) -> Option<Guarded> {
         classify(&m, p, None)
+    }
+
+    #[test]
+    fn the_format_page_is_one_guarded_verb() {
+        let g = classify(&Method::POST, "/api/plugins/drive/format", None).unwrap();
+        assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("driveoperations", "create", "format"));
+        assert!(classify(&Method::GET, "/api/plugins/drive/formats", None).is_none());
+        assert!(classify(&Method::GET, "/api/plugins/drive/formats/history", None).is_none());
     }
 
     #[test]

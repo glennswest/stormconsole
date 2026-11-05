@@ -8,6 +8,8 @@ const routes = [
   // #/grid?id=<component>&rel=<relation>
   { pattern: '#/grid', name: 'grid' },
   { pattern: '#/drives', name: 'drives' },
+  // Formatting drives, and following a format (#165).
+  { pattern: '#/drives/format', name: 'driveformat' },
   { pattern: '#/vms', name: 'vmlist' },
   { pattern: '#/nodes', name: 'nodes' },
   // Every API on this node, its state and latency (#123).

@@ -13,6 +13,7 @@
   import K8sEvents from './lib/views/K8sEvents.svelte'
   import ProjectDetail from './lib/views/ProjectDetail.svelte'
   import DrivesView from './lib/views/DrivesView.svelte'
+  import DriveFormat from './lib/views/DriveFormat.svelte'
   import NodeDetail from './lib/views/NodeDetail.svelte'
   import NodesView from './lib/views/NodesView.svelte'
   import VmList from './lib/views/VmList.svelte'
@@ -41,6 +42,7 @@
     k8sevents: K8sEvents,
     project: ProjectDetail,
     drives: DrivesView,
+    driveformat: DriveFormat,
     nodes: NodesView,
     nodedetail: NodeDetail,
     vmlist: VmList,

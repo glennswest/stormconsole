@@ -26,7 +26,7 @@ fn n(v: &Value, key: &str) -> Option<u64> {
 
 /// The drive's id as stormdrive serialises it — a bare string, or a
 /// newtype some versions wrap in an object.
-fn drive_id(d: &Value) -> Option<String> {
+pub(crate) fn drive_id(d: &Value) -> Option<String> {
     match d.get("id") {
         Some(Value::String(s)) => Some(s.clone()),
         Some(Value::Object(o)) => o.values().find_map(|v| v.as_str().map(str::to_string)),

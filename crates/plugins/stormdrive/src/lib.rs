@@ -25,6 +25,7 @@
 //! is used, free, outside a slab and promised, the slabs on it and any
 //! drain — see [`usage`].
 
+pub mod format;
 pub mod usage;
 
 use std::collections::BTreeMap;
@@ -36,9 +37,9 @@ use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get};
+use axum::routing::{any, get, post};
 use axum::{Extension, Json, Router};
-use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, Metric, NavSection};
+use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, Metric, NavSection, Viewer};
 use plugin_logs::LogHosts;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -58,6 +59,8 @@ struct Inner {
     client: reqwest::Client,
     /// The last usage answer and when it was made (#29).
     usage: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
+    /// The same for the format page (#165).
+    formats: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
 }
 
 pub struct DrivesPlugin {
@@ -125,6 +128,7 @@ impl DrivesPlugin {
                 remotes: RwLock::new(BTreeMap::new()),
                 client: reqwest::Client::new(),
                 usage: tokio::sync::Mutex::new(None),
+                formats: tokio::sync::Mutex::new(None),
             }),
         }
     }
@@ -155,6 +159,7 @@ impl ConsolePlugin for DrivesPlugin {
         vec![NavSection::new("Hardware", 45)
             .admin()
             .item_at("Drives", "#/drives", 10)
+            .item_at("Format", "#/drives/format", 15)
             .item_at("Shelves", "#/drives?group=shelf", 20)
             .item_at("Pools", "#/drives?group=pool", 30)]
     }
@@ -163,6 +168,9 @@ impl ConsolePlugin for DrivesPlugin {
         Router::new()
             .route("/node/{host}/proxy/{*path}", any(node_proxy))
             .route("/usage", get(usage_route))
+            .route("/formats", get(formats_route))
+            .route("/formats/history", get(format_history))
+            .route("/format", post(format_start))
             .with_state(self.inner.clone())
             .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.local.base.clone()))
     }
@@ -281,6 +289,164 @@ async fn usage_route(State(inner): State<Arc<Inner>>) -> Response {
     let v = json!({"drives": drives, "nodes": nodes});
     *cache = Some((std::time::Instant::now(), v.clone()));
     Json(v).into_response()
+}
+
+/// This node's label, and every node to read: label, base, id prefix.
+async fn targets(inner: &Inner) -> Vec<(String, String, String)> {
+    let local = if inner.local_name.is_empty() { "this node".to_string() } else { inner.local_name.clone() };
+    let mut out = vec![(local, inner.local.base.clone(), prefix(None))];
+    for (host, feed) in inner.remotes.read().await.iter() {
+        out.push((host.clone(), feed.base.clone(), prefix(Some(host))));
+    }
+    out
+}
+
+async fn read_json(client: &reqwest::Client, url: String) -> Result<serde_json::Value, String> {
+    use std::error::Error as _;
+    let resp = client
+        .get(&url)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(format!("stormdrive answered {}", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+/// Every node's drives as the format page wants them, read now.
+async fn read_formats(inner: &Inner) -> serde_json::Value {
+    let targets = targets(inner).await;
+    let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| async move {
+        let (drives, objects) = tokio::join!(
+            read_json(&inner.client, format!("{base}/api/v1/drives")),
+            read_json(&inner.client, format!("{base}/apis/storage.storm.io/v1/drives")),
+        );
+        (drives, objects)
+    }))
+    .await;
+    let mut drives = Vec::new();
+    let mut nodes = Vec::new();
+    for ((node, _, pre), (rest, objects)) in targets.iter().zip(answers) {
+        match rest {
+            Ok(body) => {
+                let d = format::reduce(&body, objects.as_ref().ok(), node, pre);
+                nodes.push(json!({"node": node, "ok": true, "drives": d.len(), "plans": objects.is_ok()}));
+                drives.extend(d);
+            }
+            Err(e) => nodes.push(json!({"node": node, "ok": false, "error": e})),
+        }
+    }
+    json!({"drives": drives, "nodes": nodes})
+}
+
+/// The format page's read (#165). Nothing is kept but this short cache: the
+/// runs are stormdrive's, so a reload or a console restart reads them again.
+async fn formats_route(State(inner): State<Arc<Inner>>) -> Response {
+    let mut cache = inner.formats.lock().await;
+    if let Some((at, v)) = cache.as_ref() {
+        if at.elapsed() < format::FRESH {
+            return Json(v.clone()).into_response();
+        }
+    }
+    let v = read_formats(&inner).await;
+    *cache = Some((std::time::Instant::now(), v.clone()));
+    Json(v).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct HistoryQuery {
+    node: String,
+    id: String,
+}
+
+/// Every format a drive has had, from its own history on system-data.
+async fn format_history(State(inner): State<Arc<Inner>>, axum::extract::Query(q): axum::extract::Query<HistoryQuery>) -> Response {
+    let Some((_, base, _)) = targets(&inner).await.into_iter().find(|t| t.0 == q.node) else {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no stormdrive known on {}", q.node)}))).into_response();
+    };
+    if !q.id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "bad drive id"}))).into_response();
+    }
+    match read_json(&inner.client, format!("{base}/api/v1/drives/{}/history?limit=1000", q.id)).await {
+        Ok(h) => Json(json!({"active": h.get("active"), "runs": format::runs(&h)})).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response(),
+    }
+}
+
+/// Start formats (#165). The host has already asked the apiserver whether this
+/// viewer is a storage-admin (#82); this checks the phrase against the serials
+/// it reads now, sends one all-or-nothing request per node and format, as the
+/// viewer, and records who asked for what.
+async fn format_start(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    OriginalUri(original): OriginalUri,
+    act: Option<Extension<console_core::storage::ActAs>>,
+    Json(req): Json<format::Start>,
+) -> Response {
+    let refuse = |code: StatusCode, e: String| (code, Json(json!({"error": e}))).into_response();
+    let bearer = match console_core::storage::upstream_bearer(&Method::POST, &original, act.as_deref(), None) {
+        Ok(b) => b.map(str::to_string),
+        Err(refused) => return refused,
+    };
+    if req.drives.is_empty() {
+        return refuse(StatusCode::BAD_REQUEST, "no drives to format".into());
+    }
+    if let Some(e) = req.drives.iter().find_map(|w| format::check(w).err()) {
+        return refuse(StatusCode::BAD_REQUEST, e);
+    }
+    let known = read_formats(&inner).await;
+    let list = known["drives"].as_array().cloned().unwrap_or_default();
+    let mut names = Vec::new();
+    let mut serials = Vec::new();
+    for w in &req.drives {
+        let Some(d) = list.iter().find(|d| d["node"] == w.node.as_str() && d["id"] == w.id.as_str()) else {
+            return refuse(StatusCode::NOT_FOUND, format!("no drive {} on {}", w.id, w.node));
+        };
+        serials.push(d["serial"].as_str().unwrap_or("").to_string());
+        names.push(format!("{}/{} ({})", w.node, d["name"].as_str().unwrap_or(""), d["serial"].as_str().unwrap_or("")));
+    }
+    let wanted = format::phrase(&serials.iter().map(String::as_str).collect::<Vec<_>>());
+    if req.confirm.trim() != wanted {
+        return refuse(StatusCode::PRECONDITION_REQUIRED, format!("type {wanted} to format {}", names.join(", ")));
+    }
+    let bases = targets(&inner).await;
+    let mut results = Vec::new();
+    let mut all_ok = true;
+    for (node, block_size, protection, ids) in format::batches(&req.drives) {
+        let Some((_, base, _)) = bases.iter().find(|t| t.0 == node) else { continue };
+        tracing::info!(
+            user = viewer.user.as_deref().unwrap_or("anonymous"), node, block_size, protection, drives = ?names,
+            "drive format requested"
+        );
+        let mut call = inner
+            .client
+            .post(format!("{base}/api/v1/format"))
+            .timeout(Duration::from_secs(120))
+            .json(&json!({"drives": ids, "block_size": block_size, "protection": protection}));
+        if let Some(t) = &bearer {
+            call = call.bearer_auth(t);
+        }
+        let (status, body) = match call.send().await {
+            Ok(r) => {
+                let s = r.status();
+                (s.as_u16(), r.json::<serde_json::Value>().await.unwrap_or(json!({})))
+            }
+            Err(e) => (502, json!({"error": e.to_string()})),
+        };
+        let ok = (200..300).contains(&status);
+        all_ok &= ok;
+        results.push(json!({
+            "node": node, "drives": ids, "block_size": block_size, "protection": protection,
+            "ok": ok, "status": status, "error": body.get("error"),
+        }));
+    }
+    // The next read shows the runs.
+    *inner.formats.lock().await = None;
+    let code = if all_ok { StatusCode::OK } else { StatusCode::MULTI_STATUS };
+    (code, Json(json!({"results": results}))).into_response()
 }
 
 /// A remote node's drive actions, through the console.

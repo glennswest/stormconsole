@@ -58,10 +58,10 @@ function typedConfirm(g) {
 /// A JSON body with a method. PUT is a replace or a patch and POST is a
 /// create; the caller knows which it is doing, and defaulting to POST
 /// meant every PUT route grew a POST alias to be reachable from here.
-export async function postJson(path, body, method = 'POST') {
+export async function postJson(path, body, method = 'POST', headers = {}) {
   const resp = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   })
   const data = await resp.json().catch(() => ({}))
