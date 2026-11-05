@@ -379,17 +379,17 @@ pub fn origin(items: &[Value], name: &str) -> Value {
     let wanted = plain_name(name);
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(String::from);
     match items.iter().find(|i| i.get("name").and_then(Value::as_str).is_some_and(|n| plain_name(n) == wanted)) {
-        None => json!({"found": false}),
+        None => serde_json::json!({"found": false}),
         Some(i) => {
             let source = s(i, "source");
-            json!({
+            serde_json::json!({
                 "found": true,
                 "name": s(i, "name"),
                 "component": s(i, "component"),
                 "upstreamDigest": source.as_ref().and(s(i, "digest")),
                 "source": source,
                 "contentDigest": if i.get("source").is_some() { None } else { s(i, "digest") },
-                "releases": i.get("releases").cloned().unwrap_or(json!([])),
+                "releases": i.get("releases").cloned().unwrap_or_else(|| serde_json::json!([])),
             })
         }
     }
