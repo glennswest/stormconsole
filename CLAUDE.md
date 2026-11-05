@@ -1730,7 +1730,7 @@ node shows flowsdn `unknown`; that manifest has no `edition` key anyway, only
   still take ring space (read-time rule, so membership changes need no rewrite)
 - Filed: stormcos#786 (release volume), stormcluster#81 (peer network)
 
-### Projects and namespaces are one thing (#162)
+### Projects and namespaces are one thing (#162) ✅ 2026-11-05
 Owner (2026-11-04/05): "a project and a namespace are one and the same";
 "oc new project creates a namespace, project=namespace. Almost everything is
 attached to a namespace. Also network"; "pods are in namespaces/projects!".
@@ -1738,19 +1738,36 @@ Read from the code: `/projects` already lists namespaces; `Cluster →
 Namespaces` and the word are the split. Platform namespaces read from
 stormcos/stormcentral: `storm-*` (`storm-assets`, `storm-ext4-check`,
 `storm-data-gate`, `storm-build`, `storm-system`), `cilium`, `cilium-secrets`.
-- [ ] System rule: those built in; `system_namespaces` takes `prefix-*`
-- [ ] `GET /projects`: system ones for whoever the apiserver lists them for,
+- [x] System rule: those built in; `system_namespaces` takes `prefix-*`
+- [x] `GET /projects`: system ones for whoever the apiserver lists them for,
       marked; `#/projects` lists all, filter yours/system, contents per
       project; `#/k8s/ns` redirects there; `Cluster → Namespaces` and the bare
       Namespace creator go
-- [ ] One word: project in the SPA and every sentence (`term` both sides); the
+- [x] One word: project in the SPA and every sentence (`term` both sides); the
       API's `kind: Namespace` in YAML stays
-- [ ] Inside their project: lists' crumbs (Projects → p → kind), group header
+- [x] Inside their project: lists' crumbs (Projects → p → kind), group header
       marked system; the project page counts VMs, load balancers, routes,
       network attachments, config maps; Secrets as the viewer, names and keys
       only; opening a project selects it, so a create lands there
-- [ ] Rows for what had a count but no row: cm, quota, limits, route, nad
-- [ ] Tests; `deploy/verify-projects.sh` + walk; docs, changelog, dist; golden
+- [x] Rows for what had a count but no row: cm, quota, limits, route, nad
+- [x] Tests; `deploy/verify-projects.sh` + walk; docs, changelog, dist; golden
+- Verified with `sc-build deploy/verify-projects.sh` (0 failed, 327e375): real
+  fastetcd + rustkube v0.15.0, alice/bob/root each with their own identity.
+  storm-assets, cilium-secrets, cilium, kube-system and default marked system,
+  on one page, filterable; `#/k8s/ns` lands on Projects, no Namespaces in the
+  nav; the inventory counts a VM, load balancer, route, network attachment and
+  config map, each with a row in its project; Secrets name and keys only (bob,
+  view: the sentence); opening a project selects it, a Create targets it, the
+  masthead moves the page; a header per project with the system one marked;
+  no "namespace" on 15 pages and the project tabs but the one sentence saying
+  what a project is. Also passing: default `sc-build`, `verify-vm-policy.sh`,
+  `verify-flowsdn.sh`, `verify-create-project.sh`, `verify-pod-page.sh`,
+  `verify-tests.sh`
+- Not seen on forge1 itself. Other platform namespaces (`perf-*`, `test-*`) are
+  not system by default: `system_namespaces = ["perf-*"]` does it
+- To add to #78's RBAC list: `route.openshift.io/routes` and
+  `k8s.cni.cncf.io/network-attachment-definitions` (list, watch). Secrets are
+  not on it: asked as the viewer
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
