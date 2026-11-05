@@ -3,6 +3,25 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The node's record of itself (#121)
+- **feat:** `GET /api/v1/history`: system-data read-only, authenticated like the
+  rest of :9094 — `/boots`, `/boots/{id}`, `/boots/{id}/kernel` (`?tail=`,
+  `?download=true`), `/crashes`, `/installs`, `/drives`, `/assets`, each with one
+  record. `[history] enabled / system_data` (default
+  `/run/stormblock/system-data`). A diskless boot says "no system-data on this
+  node" and has no card or navigator item.
+- **feat:** a boot is one row, stormblock's record joined to PID 1's timeline
+  (stormblock# would name the boot; until then by time and command line, and the
+  row says so), with how it ended, time to all running and its services.
+- **feat:** `#/history` (Compute → History): boots with their timeline, slowest
+  phases, disk verdict and kernel log (level, search, download); kernel crashes;
+  installs; drives with findings, counters over time and what happened to them;
+  hardware by boot with what changed. The local node page links it.
+- **feat:** `ConsolePlugin::node_api`: a plugin's part of the node API, at
+  `/api/v1/{name}`.
+- **test:** `deploy/verify-history.sh` runs the real writers; `node-history` in
+  the medium suite.
+
 ### 2026-11-05 — Enclosures hold shelves (#166)
 - **fix:** a node with drives on a backplane no longer reads "no enclosure" or
   "no shelf". Where stormdrive has not read the shelf, the Drives and Shelves

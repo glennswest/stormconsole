@@ -64,6 +64,7 @@ walk('history', async (t) => {
   await t.shot(page, 'history-drives')
   await page.locator(`a[href*="${DRIVE}"]`).first().click()
   t.check(await t.until(async () => /Counters over these records/i.test(await t.text(page))), 'a drive opens')
+  t.check((await page.locator('h1').first().innerText()).includes(DRIVE), 'titled by its whole key', await page.locator('h1').first().innerText())
   text = await t.text(page)
   t.check(/media_errors grew 32 → 33/.test(text), 'its finding, in the words stormdrive would use', text.slice(0, 700))
   t.check(/went backwards/.test(text), 'a counter gone backwards')
@@ -76,6 +77,7 @@ walk('history', async (t) => {
   await page.locator('table tbody tr a[href*="tab=assets"]').first().click()
   t.check(await t.until(async () => /This boot's hardware/i.test(await t.text(page))), 'a record opens')
   t.check((await page.locator('section.card').count()) > 1, 'its parts, grouped', (await t.text(page)).slice(0, 400))
+  t.check(/cores\s+\d/.test(await t.text(page)), "a part's fields read apart from their values", (await t.text(page)).slice(0, 500))
   await t.shot(page, 'history-asset')
 
   // Something that is not there: said on the page.

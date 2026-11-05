@@ -59,7 +59,8 @@
     const m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z/.exec(s || '')
     return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : s
   }
-  const short = (s) => (s && s.length > 13 && s.includes('-') ? s.slice(0, 8) : s)
+  // A boot id reads by its first part; a drive's key or a stamp is the whole name.
+  const short = (s) => (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(s || '') ? s.slice(0, 8) : s)
 
   // --- a boot's kernel log: the last of it, and all of it to download.
   const TAIL = 5000
@@ -89,7 +90,7 @@
 <div class="sc-page">
   <PageHeader
     crumbs={[{ label: 'Compute' }, { label: 'History', href: '#/history' }, ...(id ? [{ label: TABS.find((t) => t[0] === tab)?.[1] || tab, href: link(tab) }] : [])]}
-    title={id ? short(id) : 'History'}
+    title={id ? (tab === 'assets' ? 'Hardware record' : short(id)) : 'History'}
     scope="this node"
   />
 
@@ -154,7 +155,7 @@
                   <td title={b.end_detail || ''}><StatusPill health={e.health} label={e.label} /></td>
                   <td class="num">{seconds(b.all_running_ms)}</td>
                   <td class="num">
-                    {#if b.events}{b.started} started{#if b.exited} · <span class="warn">{b.exited} exited</span>{/if}{#if b.refused} · <span class="bad">{b.refused} refused</span>{/if}{:else}—{/if}
+                    {#if b.events}{b.started} started{#if b.exited}{' · '}<span class="warn">{b.exited} exited</span>{/if}{#if b.refused}{' · '}<span class="bad">{b.refused} refused</span>{/if}{:else}—{/if}
                   </td>
                   <td>{b.disk || '—'}</td>
                   <td class="num">{bytes(b.kernel_log_bytes)}</td>
@@ -174,10 +175,10 @@
         <ul class="kv">
           <li><span class="k">boot id</span> <span class="mono">{record.boot_id || 'not recorded: PID 1 kept no timeline for this boot'}</span></li>
           <li><span class="k">when</span> <span title={record.at || ''}>{when(record.at)}</span></li>
-          <li><span class="k">release</span> {record.release || '—'}{#if record.installed} · installed {record.installed}{/if}</li>
+          <li><span class="k">release</span> {record.release || '—'}{#if record.installed}{` · installed ${record.installed}`}{/if}</li>
           <li><span class="k">kernel</span> <span class="mono">{record.kernel || '—'}</span></li>
           <li><span class="k">host</span> {record.hostname || record.tag || '—'}</li>
-          <li><span class="k">all running</span> {seconds(record.all_running_ms)}{#if record.pid1_starts > 1} · PID 1 started {record.pid1_starts} times{/if}</li>
+          <li><span class="k">all running</span> {seconds(record.all_running_ms)}{#if record.pid1_starts > 1}{` · PID 1 started ${record.pid1_starts} times`}{/if}</li>
           <li><span class="k">command line</span> <span class="mono wrap">{record.cmdline || '—'}</span> {#if record.cmdline}<CopyButton value={record.cmdline} />{/if} {#if record.cmdline}<span class="dim small">({record.cmdline.length} bytes)</span>{/if}</li>
           {#if record.assets}<li><span class="k">hardware</span> <a href={link('assets', record.assets)}>this boot's record</a></li>{/if}
         </ul>
@@ -229,7 +230,7 @@
               <tbody>
                 {#each timelineRows(record.timeline) as r}
                   <tr class:alert={r.tone === 'bad'}>
-                    <td class="num">{seconds(r.t_ms)}</td>
+                    <td class="num">{r.event === 'crashed' && !r.t_ms ? '—' : seconds(r.t_ms)}</td>
                     <td class:bad={r.tone === 'bad'} class:warn={r.tone === 'warn'}>{r.event}</td>
                     <td>{r.name || ''}</td>
                     <td class="num">{r.ms != null ? seconds(r.ms) : ''}</td>
@@ -343,8 +344,8 @@
           <li><span class="k">serial</span> <span class="mono">{newest?.drive?.serial || '—'}</span></li>
           <li><span class="k">wwn</span> <span class="mono">{newest?.drive?.wwn || '—'}</span></li>
           <li><span class="k">firmware</span> {newest?.drive?.firmware || '—'}</li>
-          <li><span class="k">where</span> {newest?.drive?.bay || '—'} · <span class="mono">{newest?.drive?.path || '—'}</span>{#if record.summary?.nodes?.length} · seen on {record.summary.nodes.join(', ')}{/if}</li>
-          <li><span class="k">records</span> {record.records.length}{#if record.summary} · {record.summary.actions} operations, {record.summary.warnings} warnings since {record.summary.first_at}{/if}</li>
+          <li><span class="k">where</span> {newest?.drive?.bay || '—'} · <span class="mono">{newest?.drive?.path || '—'}</span>{#if record.summary?.nodes?.length}{` · seen on ${record.summary.nodes.join(', ')}`}{/if}</li>
+          <li><span class="k">records</span> {record.records.length}{#if record.summary}{` · ${record.summary.actions} operations, ${record.summary.warnings} warnings since ${record.summary.first_at}`}{/if}</li>
         </ul>
         {#if record.cut}<p class="warn small">Only the end of a long month was read.</p>{/if}
       </section>
@@ -437,7 +438,7 @@
               {#each g.rows as r (r.key)}
                 <tr>
                   <td class="mono name">{r.name}</td>
-                  <td class="small">{#each r.fields as [k, v], i}{i ? ' · ' : ''}{#if k}<span class="dim">{k}</span> {/if}{v}{/each}</td>
+                  <td class="small">{#each r.fields as [k, v], i}{i ? ' · ' : ''}{#if k}<span class="dim">{k}&nbsp;</span>{/if}{v}{/each}</td>
                 </tr>
               {/each}
             </tbody>

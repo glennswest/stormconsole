@@ -124,7 +124,7 @@ INSTALL=$(st $((now-3600)))
 say "boot 1, two hours ago: stormblock, then PID 1; it panics"
 stormblock_boot "$(st $((now-7200)))" 12.60 '{"slabs": ["/dev/sda"]}'
 "$WRITER" "$SD" "$BOOT1" $((now-7180)) "$CMD" 12.60 - \
-  'phase|early||12|900' 'phase|modules|1800||1000' 'started|stormdrive|||5000' 'exited|sidecar||exit 1|6000' \
+  'phase|early|12||900' 'phase|modules|1800||1000' 'started|stormdrive|||5000' 'exited|sidecar||exit 1|6000' \
   'refused|stormvm||no kvm|6500' 'all-running|||2 service(s)|9000'
 say "a boot that never reached PID 1, 90 minutes ago"
 stormblock_boot "$ALONE" 12.60 '{"slabs": ["/dev/sda"]}'
@@ -133,10 +133,10 @@ stormblock_boot "$INSTALL" 12.61 '{"slabs": ["/dev/sda"], "installed": {"version
 mkdir -p "$W/pstore"
 printf 'Panic#1 Part1\n<0>Kernel panic - not syncing: Fatal exception\n<4>Oops: 0002 [#1] SMP\n' > "$W/pstore/dmesg-efi-175000000001001"
 "$WRITER" "$SD" "$BOOT2" $((now-3580)) "$CMD" 12.61 "$W/pstore" \
-  'phase|early||15|800' 'started|stormdrive|||4000' 'all-running|||1 service(s)|7000' 'shutdown|||reboot|99000'
+  'phase|early|15||800' 'started|stormdrive|||4000' 'all-running|||1 service(s)|7000' 'shutdown|||reboot|99000'
 say "boot 3, now: this VM's own boot id"
 stormblock_boot "$(st $((now-20)))" 12.61 '{"slabs": ["/dev/sda"]}'
-"$WRITER" "$SD" "$BOOT3" $now "$CMD" 12.61 - 'phase|early||11|800' 'all-running|||1 service(s)|6500'
+"$WRITER" "$SD" "$BOOT3" $now "$CMD" 12.61 - 'phase|early|11||800' 'all-running|||1 service(s)|6500'
 
 echo '--- files'; (cd "$SD" && find . -type f | sort | head -40)
 BOOTS_OUT=$("$PUMP" --boots --system-data "$SD" 2>&1 || true)

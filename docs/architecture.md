@@ -1306,6 +1306,40 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
   nor `/system-data` yet: stormcos#525. `deploy/verify-api-health.sh` is
   the live check.
 
+### The node's record of itself (#121)
+
+stormcos#456: each node keeps a record of itself in `system-data`, a volume in
+the data half that every install keeps. PID 1 serves no HTTP and stormdrive only
+its part, so `crates/plugins/history` (name `history`) is where a person or
+stormcentral reads the whole of it. It is the first plugin with a route outside
+its console namespace: `ConsolePlugin::node_api` mounts at `/api/v1/{name}`, the
+node's API, behind the same authentication (`/api/plugins/{name}` is the
+console's own).
+
+- **What is there**, read from the writers (2026-11-05):
+  `history/{boots,installs}/<ts>.json` (stormblock's `/init`),
+  `history/boots/<boot id>/stormpump.jsonl`, `logs/kernel/<boot id>.log` and
+  `logs/kernel/crash/<dir>/` (PID 1), `history/drives/<key>/` and
+  `assets/<ts>-<boot id>.json` (stormdrive).
+- **A boot is one row.** stormblock runs first and names its record by the time;
+  PID 1 names its directory by the boot id. They are joined by a `boot_id` in the
+  record or a `<boot id>/stormblock.json` when a writer gives one; otherwise the
+  record pairs with the earliest timeline within 15 minutes after it (2 before)
+  with the same command line, newest first, so a boot that never reached PID 1
+  cannot take the next boot's timeline. The row says `joined: "time"`.
+- **How a boot ended:** `crashed` (PID 1 collected a panic for it), `running`
+  (this boot id), `shut down`, `no clean end` (a timeline that stops with neither),
+  `no timeline`.
+- **Nothing is cached but the card's counts.** The files are the record. Every read
+  is bounded and off the async threads with a 15 s limit, because a storage
+  handover pauses the volume; a torn last line is normal and skipped; names are one
+  plain path component and links are not followed.
+- **No system-data** (a diskless boot: the directory is absent; a failed mount: it
+  is empty, with no `history/`): the API and the page say so; `present()` is false,
+  so no card and no navigator item.
+- **Page** `#/history` (Compute → History): Boots, Installs, Drives, Hardware, with
+  `?tab=&id=` opening a record. The local node's page links it.
+
 ### Cluster membership, from stormcluster (#63)
 
 `crates/plugins/stormcluster` (name `cluster`) reads stormcluster
@@ -1710,6 +1744,7 @@ stormconsole/
       stormcluster/          # cluster membership: form, join, promote, split
       flowsdn/               # this node's pod network on the flowsdn edition
       apihealth/             # every API on this node: state, latency, stall alerts, history
+      history/               # the node's record of itself in system-data: /api/v1/history
   web/                       # Svelte 5 SPA (stormview npm); web/dist committed, embedded
   config/                    # config.toml (example), stormd.toml (Containerfile)
   deploy/                    # verify-*.sh — live checks run with sc-build

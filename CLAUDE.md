@@ -1840,16 +1840,16 @@ install_config, handover`); stormpump (`history.rs`, `crash.rs`)
 `logs/kernel/crash/<dir>/{manifest.json,dmesg.txt,…}`; stormdrive
 `history/drives/<key>/<YYYY-MM>.jsonl`, `<key>/log/<YYYY-MM>.jsonl`,
 `<key>/summary.json`, `assets/<ts>-<boot_id>.json`.
-- [ ] `crates/plugins/history` (name `history`), `[history] enabled/system_data`;
+- [x] `crates/plugins/history` (name `history`), `[history] enabled/system_data`;
       a plugin may serve the node API (`/api/v1/<name>`): lists and one record
       for installs, boots, drives, assets, a boot's kernel log and crash files;
       read-only, bounded, torn last lines skipped, no system-data said
-- [ ] A boot is one row: stormblock's flat record paired with stormpump's
+- [x] A boot is one row: stormblock's flat record paired with stormpump's
       timeline (`boot_id` field or `<id>/stormblock.json` when written; else
       nearest time, same cmdline); file the missing boot id on stormblock
-- [ ] `#/history` (Compute → History; off the nav on a diskless node), the node
+- [x] `#/history` (Compute → History; off the nav on a diskless node), the node
       page's row; `web/src/lib/history.js` + test
-- [ ] Tests; `deploy/verify-history.sh` with the real writers (stormblock's
+- [x] Tests; `deploy/verify-history.sh` with the real writers (stormblock's
       block, stormpump's `Writer`, stormdrive) + Chromium; the test suite's
       medium; docs, changelog, dist; golden
 

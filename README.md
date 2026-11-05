@@ -34,6 +34,7 @@ create forms and a slice of the component feed every page is drawn from.
 | stormcluster (`cluster`) | stormcluster (:9102, TLS) feed, reads and dry run on this node — any node's answers for the cluster; the `cluster.storm.io` `Cluster`/`ClusterMember` objects through the apiserver | Cluster → Membership: the cluster (or this SNO), members with role, state, the cluster CA and each object's phase, blockers and operation, the last operations and their steps; other machines only in Form and Join, free ones only (a single node in no other cluster), with their network from their release flavour | form, join (as workers, or masters in pairs), promote (in pairs), demote, drain, uncordon, serve storage, release (data erased), dissolve — each previewed as stormcluster's plan, then written as objects **as the viewer**, so RBAC decides |
 | flowsdn (`flowsdn`) | this node's flowsdn agent, its read-only loopback listener (`http-listen`, :9878, flowsdn#297); the release manifest for the edition, else this node's beacon's release flavour. **On a flowsdn node only:** a cilium node has no plugin card, row, health or navigator item (#161) | Networking → Pod network (flowsdn): endpoints led by pod, with node and project filters, addresses, identity, interface, owner, one opened live with its link health; IPAM pools (exact past 2^53); the agent's health and modules; its config; the Services it programs; direct node routes; the health table; a cilium node says "not this edition" and has no page | — (the listener is read-only) |
 | health (`health`) | PID 1's node-wide API health summary `/run/stormpump/health.json` (stormpump#127: its own probes and every container's stormd, stormd#52); when that is not readable, each local stormd's `GET /api/v1/health/apis` (stormd#49) on the fleet ports; the kept changes in `/system-data/history/api/*.jsonl` | Compute → API health: every declared API's state (healthy, slow, stalled, down), for how long, last/p50/p99 latency against its budget, its error, who probes it; a picked API's probe and kept changes. **An alert bar on every page** for each stalled or down API, naming the service, the probe and how long; the node row and the local node's page carry the worst | — |
+| history (`history`) | system-data (`/run/stormblock/system-data`, stormcos#456): stormblock's boot and install records, PID 1's timelines, kernel logs and crash records, stormdrive's drive history and hardware. The node API `/api/v1/history` and the History page |
 
 **This node and its cluster, nobody else (#161).** The stormcast group is a
 segment's, so every node on it is heard, whichever cluster it belongs to.
@@ -102,6 +103,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-one-node.sh` | one node among other clusters' machines (#161) — real fastetcd, rustkube and console with its SPA, stand-ins for stormdrive, stormstorage and stormcluster, lines and beacons from other addresses, no release manifest: one node with its 5 drives, its logs, no other machine in the feed or on any page and no drill-down to one; flowsdn out of sight on a cilium release and an error on a `-flowsdn` one; free nodes only in the form; a second Node object adds a row and its drives, and removing it takes them away |
 | `verify-flowsdn.sh` | the flowsdn plugin (#83) — a stand-in agent in flowsdn's shapes and transport (one request per connection, writes 403, Kubernetes routes only in Kubernetes mode; the real agent needs root for BPF); consoles on a flowsdn node, a standalone agent, a cilium node and a missing agent; an endpoint going down, the agent stopping (last good kept) and coming back; every tab in Chromium |
 | `verify-api-health.sh` | node API health (#123) — a real stormd (STORMD_REF) probing a stand-in service made to answer, go slow, stall and fail; PID 1's merge as a stand-in in stormpump's shape over the real stormd's state file; a console asking the stormd and one reading the summary; a container's stormd frozen (stale), the summary stopping; the alert bar and the page in Chromium |
+| `verify-history.sh` | the node history API and page (#121) — system-data written by the real writers (stormblock's `/init` block, stormpump's `Writer` and crash collection, stormdrive), a drive's past as a fixture in stormdrive's shape, real consoles (a token, a diskless node, a failed mount), Chromium |
 | `verify-client-cert.sh` | TLS on :9094 and forge-CA client certificates (#48, #127): openssl node, forge and stranger CAs; plain HTTP health only (308 for a GET, 403 for a POST); a viewer certificate reads the logs and is refused a write; an operator's write passes; another CA's, an expired, an unmapped and no certificate each 401 saying why; the token still admin; the CA removed and restored and the serving pair renewed with no restart; contradictions exit 78 |
 | `verify-logs-full.sh` | the log ring on a full disk (#128): a real console's ring on an 8 MiB tmpfs in an unprivileged user+mount namespace — a flood several times the volume stays under it, a filler file forces ENOSPC and the ring reopens (reads never say "Previous I/O error"), a restart on a full volume serves; bytes per entry on an ordinary disk |
 | `verify-install-token.sh` | `[api] install_token_file` (#66): one `token-auth.csv` in stormpump's format read by a real rustkube apiserver (`--token-auth-file`) and the console — no file → no sign-in; written → sign-in and bearer as `system:admin`, admin; a project made through the console requested by `system:admin`, not the console's credential; rewritten → the old session ends, the new token works; removed → refused; Chromium on the login page's token mode, alone and beside a user |
@@ -196,6 +198,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[stormcluster] ca_file / cert_file / key_file` | — | :9102 is TLS only (stormcluster#5): trust only this CA, present the console's client pair; re-read when they change; a bad file is the card's error; half a pair, or certificates with an `http://` url, exit 78 |
 | `[flowsdn] enabled / url / release_manifest` | on / `http://127.0.0.1:9878` / `/etc/stormcos/release/manifest.json` | the agent's `http-listen` (loopback only, so each node's console reads its own); the manifest names the edition — `edition`/`network`, else its components, else its version (`<n>-flowsdn` is flowsdn, plain `<n>` cilium); where it cannot be read, this node's beacon's release says the same (stormcos does not bind the release volume into the console yet). A cilium node asks no agent and shows nothing; with no word either way, the plugin shows once an agent answers |
 | `[health] enabled / summary_file / history_dir` | on / `/run/stormpump/health.json` / `/system-data/history/api` | PID 1's API health summary, read every 5 s and said stale when not rewritten for 30 s; when it cannot be read, each stormd at `[fleet] stormd_host` on `stormd_ports` is asked instead (which misses PID 1's own probes, the engine's first). On a node both need stormcos to bind them into the console's unit (stormcos#525) |
+| `[history] enabled / system_data` | on / `/run/stormblock/system-data` | the node's record of itself, served read-only at `/api/v1/history` (#121). The console's `/run/stormblock` bind shows it on a node (`/system-data` is the same volume); a diskless boot has none, and says so |
 | `[stormcentral] url / token_file` | — / — | stormcentral, for a `stormpump://` image's golden (build, commit, built by) on the pod page; off unless set — its golden list is authenticated |
 
 An upstream that does not answer is an error on its card, naming the address
@@ -296,6 +299,27 @@ warns about that on every start.
 | `/api/v1/auth/login` · `/logout` · `/session` | |
 | `/api/plugins/<id>/…` | each plugin's own routes (see [docs/architecture.md](docs/architecture.md)) |
 
+## The node history API (#121)
+
+`GET /api/v1/history`, read-only and authenticated like the rest of :9094, reads
+the node's kept record from system-data when asked. Lists are newest first and
+take `?limit=` (default 200, at most 5000), with `total` beside them.
+
+| route | what |
+|---|---|
+| `/api/v1/history` | what is kept here: `available`, `note`, `boot_id`, counts |
+| `/boots`, `/boots/{id}` | one row per boot: stormblock's record and PID 1's timeline joined; how it ended, time to all running, its services. `{id}` is the boot id or stormblock's name for it |
+| `/boots/{id}/kernel` | the boot's kernel log as text; `?tail=N`, `?download=true` |
+| `/crashes`, `/crashes/{dir}/{file}` | kernel panics PID 1 collected from pstore: the manifest, `dmesg.txt`, each record |
+| `/installs`, `/installs/{id}` | what each install put down, over what, on which drive |
+| `/drives`, `/drives/{key}` | each drive's latest record and summary; its records and log, across months |
+| `/assets`, `/assets/{id}` | the hardware at each boot, and what changed since the boot before |
+
+A diskless boot answers `available: false` with `no system-data on this node`; a
+list stays a 200 and one record is a 404 saying the same. A boot's two records
+have no shared name today, so they are joined by time and command line (`joined:
+"time"`); a record that names its boot wins (stormblock#).
+
 ## How it ships
 
 A stormcos **service golden**, `stormconsole` (32 MB), described by its
@@ -341,6 +365,9 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   is loopback only, so each node's console shows its own. Endpoint and
   Service scoping by namespace is unit-tested and not yet run live against
   RBAC (the rig has no apiserver).
+- **History of another node** — system-data is on the node, and the console
+  holds no credential for another node's :9094, so each node's console shows its
+  own (the node page says so); stormcentral pulls each node's API itself.
 - **API health on another node** — PID 1's summary is a file on the node,
   so each node's console shows its own (the node page says so). Until
   stormcos binds `/run/stormpump` and `/system-data` into the console
