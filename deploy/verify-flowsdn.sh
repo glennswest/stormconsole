@@ -70,6 +70,8 @@ wait_for http://127.0.0.1:19878/v1/healthz
 wait_for http://127.0.0.1:19879/v1/healthz
 wait_for http://127.0.0.1:19880/v1/healthz
 check "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE http://127.0.0.1:19878/v1/endpoint)" "403" "the stand-in refuses writes, as the agent's TCP listener does"
+# That DELETE was this script's; from here on the log is the console's.
+OWN=$(wc -l < "$W/agent-a.log")
 : > "$W/agent-c.log"
 
 say "consoles A (flowsdn, k8s), B (flowsdn, standalone), C (cilium), D (flowsdn, no agent)"
@@ -169,7 +171,7 @@ check "$(curl -s -o /dev/null -w '%{http_code}' $A/api/plugins/flowsdn/endpoint/
 check "$(curl -sf $A/api/plugins/flowsdn/state/health | py 'import json,sys; print([r["row"]["id"] for r in json.load(sys.stdin)["rows"]])')" \
   "['agent.api', 'agent.restore', 'agent.controllers']" "the health table, as rows"
 check "$(curl -s -o /dev/null -w '%{http_code}' $A/api/plugins/flowsdn/state/secrets)" "404" "a table off the allowlist is not asked for"
-check "$(grep -vE '^(GET |POST /v1/statedb/query$)' "$W/agent-a.log" | grep -v '^$' | head -3)" "" "the console only ever read from the agent"
+check "$(tail -n +$((OWN+1)) "$W/agent-a.log" | grep -vE '^(GET |POST /v1/statedb/query$)' | grep -v '^$' | head -3)" "" "the console only ever read from the agent"
 check "$(grep -c '^GET /v1/healthz' "$W/agent-a.log" | awk '{print ($1 >= 2)}')" "1" "and polls it"
 
 say "A: an endpoint goes down under the console"
