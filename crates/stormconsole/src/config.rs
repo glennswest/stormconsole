@@ -53,6 +53,8 @@ pub struct Config {
     #[serde(default)]
     pub history: NodeHistory,
     #[serde(default)]
+    pub stormupdate: Stormupdate,
+    #[serde(default)]
     pub stormcentral: Stormcentral,
 }
 
@@ -513,6 +515,25 @@ impl Default for ApiHealth {
     }
 }
 
+/// The Update page (#164): stormupdate's API, which any node answers for its cluster.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Stormupdate {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// Unset means this node's :9088.
+    pub url: Option<String>,
+    /// Its update token, for an admin's start, pause, resume and rollback. Reads need
+    /// none. Unset: the page shows everything and says the actions are not set up.
+    pub token_file: Option<String>,
+}
+
+impl Default for Stormupdate {
+    fn default() -> Self {
+        Self { enabled: true, url: None, token_file: None }
+    }
+}
+
 /// The node's record of itself in system-data (#121, stormcos#456), served
 /// read-only at `/api/v1/history`.
 #[derive(Debug, Clone, Deserialize)]
@@ -783,6 +804,10 @@ impl Config {
 
     pub fn history_system_data(&self) -> String {
         self.history.system_data.clone().unwrap_or_else(|| "/run/stormblock/system-data".to_string())
+    }
+
+    pub fn stormupdate_url(&self) -> String {
+        self.stormupdate.url.clone().unwrap_or_else(|| "http://127.0.0.1:9088".to_string())
     }
 
     pub fn stormipmi_url(&self) -> String {

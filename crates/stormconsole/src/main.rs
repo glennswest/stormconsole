@@ -304,6 +304,13 @@ async fn main() {
             config.fleet.stormd_ports.clone(),
         )));
     }
+    // What the cluster runs and an update's steps, with an admin's acts (#164).
+    if config.stormupdate.enabled {
+        plugins.push(Arc::new(
+            plugin_stormupdate::StormupdatePlugin::new(&config.stormupdate_url(), config.stormupdate.token_file.as_deref(), &config.data_dir())
+                .with_engine(&config.stormblock_url(), engine_token.clone()),
+        ));
+    }
     // The node's record of itself, kept across installs (#121).
     if config.history.enabled {
         plugins.push(Arc::new(plugin_history::HistoryPlugin::new(&config.history_system_data())));

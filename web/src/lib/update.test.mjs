@@ -1,0 +1,60 @@
+// The Update page's model (#164), with plain node: `node web/src/lib/update.test.mjs`.
+import assert from 'node:assert/strict'
+import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running } from './update.js'
+
+const states = (n) => nodeSteps(n).map((s) => s.state).join(' ')
+assert.equal(states({ phase: 'PrePulling' }), 'now todo todo todo todo todo')
+assert.equal(states({ phase: 'Upgrading' }), 'done done done now todo todo')
+assert.equal(states({ phase: 'Done' }), 'done done done done done done')
+const failed = nodeSteps({ phase: 'RolledBack' })
+assert.equal(failed.at(-1).word, 'Rolled back')
+assert.equal(failed.at(-1).state, 'warn')
+assert.equal(nodeSteps({ phase: 'Failed' }).at(-1).state, 'bad')
+assert.equal(nodeSteps({ phase: 'RollingBack' }).at(-1).state, 'now')
+
+assert.equal(nodeLine({ phase: 'Upgrading', agentMessage: 'staging 12.15: 3 of 7 volumes', message: 'upgrading' }), 'staging 12.15: 3 of 7 volumes', "the agent's words first")
+assert.equal(nodeLine({ phase: 'Verifying', waitingOn: ['workloads', 'fastetcd'], agentMessage: 'done' }), 'waiting on workloads, fastetcd')
+assert.equal(nodeLine({ phase: 'Pending', message: 'next' }), 'next')
+assert.equal(nodeLine({ phase: 'Pending' }), '')
+
+assert.equal(duration(5), '5s')
+assert.equal(duration(125), '2m 5s')
+assert.equal(duration(3700), '1h 1m')
+assert.equal(duration(90000), '1d 1h')
+assert.equal(duration(null), '—')
+
+assert.deepEqual(actions({}, { phase: 'Idle', previousRelease: '' }), { start: true, pause: false, resume: false, rollback: false })
+assert.deepEqual(actions({}, { phase: 'Progressing', previousRelease: '12.58' }), { start: false, pause: true, resume: false, rollback: true })
+assert.deepEqual(actions({ paused: true }, { phase: 'Paused', previousRelease: '12.58' }), { start: false, pause: false, resume: true, rollback: true })
+assert.deepEqual(actions({}, { phase: 'RollingBack', previousRelease: '12.58', rollbackRun: true }), { start: false, pause: false, resume: false, rollback: false })
+assert.equal(actions({}, { phase: 'Completed', previousRelease: '12.58' }).rollback, true)
+assert.equal(actions({}, undefined).start, true)
+assert.ok(running('RollingBack') && !running('Failed'))
+
+const r = releases({ currentRelease: '12.61', previousRelease: '12.58', phase: 'Completed', history: [] }, { staged: { version: '12.62', complete: true } })
+assert.deepEqual([r.running, r.staged, r.stagedComplete, r.target, r.previous, r.rolledBackFrom], ['12.61', '12.62', true, '', '12.58', ''])
+const moving = releases({ phase: 'Progressing', targetRelease: '12.61', nodes: [{ release: '12.58' }, { release: '12.61' }] }, null)
+assert.equal(moving.running, '12.58, 12.61')
+assert.ok(moving.mixed)
+assert.equal(moving.target, '12.61')
+assert.equal(moving.staged, '')
+const back = releases({ currentRelease: '12.58', phase: 'RolledBack', targetRelease: '12.61', history: [] }, null)
+assert.deepEqual([back.rolledBackFrom, back.rolledBackFromNow], ['12.61', true])
+const earlier = releases({ currentRelease: '12.62', phase: 'Completed', history: [{ to: '12.61', result: 'RolledBack' }, { to: '12.62', result: 'Completed' }] }, null)
+assert.deepEqual([earlier.rolledBackFrom, earlier.rolledBackFromNow], ['12.61', false])
+
+const h = historyRows({ history: [{ from: 'a', to: 'b', started: 100, finished: 160, result: 'Completed' }, { from: 'b', to: 'c', started: 200, result: 'Progressing' }, { from: 'b', to: 'c', started: 300, finished: 301, result: 'Failed' }, { from: 'c', to: 'd', started: 400, finished: 500, result: 'RolledBack' }] })
+assert.deepEqual(h.map((x) => x.tone), ['warn', 'error', 'idle', 'ok'], 'newest first')
+assert.equal(h[3].took, 60)
+assert.equal(h[2].took, null)
+
+const im = imageRows({ images: [{ name: 'lb', digest: 'd', dataPolicy: 'reuse', nodes: [{ node: 'a', state: 'Pulled' }, { node: 'b', state: 'Pulled' }, { node: 'c', state: 'Failed', message: 'no room' }] }] })
+assert.deepEqual(im[0].states, [{ state: 'Pulled', count: 2 }, { state: 'Failed', count: 1 }])
+assert.deepEqual(im[0].failed, ['c: no room'])
+assert.deepEqual(imageRows({}), [])
+
+assert.equal(changeLine({ component: 'stormlb', from: 'aaa', to: 'bbb' }), 'stormlb aaa → bbb')
+assert.equal(changeLine({ component: 'kernel', kind: 'kernel', from: 'x'.repeat(64), to: 'y'.repeat(64) }), 'kernel (kernel) xxxxxxxxxxxx → yyyyyyyyyyyy')
+assert.equal(changeLine({ component: 'new', to: 'b' }), 'new added')
+assert.equal(changeLine({ component: 'old', from: 'a' }), 'old removed')
+console.log('update.test.mjs PASS')

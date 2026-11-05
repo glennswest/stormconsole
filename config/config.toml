@@ -203,6 +203,14 @@ enabled = true
 # summary_file = "/run/stormpump/health.json"
 # history_dir = "/system-data/history/api"
 
+[stormupdate]
+enabled = true
+# The Update page: what this cluster runs, an update's steps, history, and an admin's
+# start, pause, resume and rollback. Reads are open. Writes need stormupdate's update
+# token, held here and added on the server; without it the page says they are not set up.
+# url = "http://127.0.0.1:9088"
+# token_file = "/etc/stormupdate/install/update-token"
+
 [history]
 enabled = true
 # The node's record of itself, kept across installs (stormcos#456): installs,

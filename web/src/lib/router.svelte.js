@@ -14,6 +14,8 @@ const routes = [
   { pattern: '#/nodes', name: 'nodes' },
   // Every API on this node, its state and latency (#123).
   { pattern: '#/health', name: 'health' },
+  // What the cluster runs, an update's steps, history (#164).
+  { pattern: '#/update', name: 'update' },
   // This node's boots, installs, drives and hardware, kept across installs
   // (#121); the part and the record travel in the query.
   { pattern: '#/history', name: 'history' },

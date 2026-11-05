@@ -1264,6 +1264,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-stormupdate"
+version = "0.32.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "console-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "plugin-vm"
 version = "0.32.0"
 dependencies = [
@@ -1871,6 +1888,7 @@ dependencies = [
  "plugin-stormdrive",
  "plugin-stormipmi",
  "plugin-stormstorage",
+ "plugin-stormupdate",
  "plugin-vm",
  "plugin-vmimages",
  "rust-embed",

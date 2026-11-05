@@ -1,0 +1,22 @@
+[package]
+name = "plugin-stormupdate"
+description = "stormconsole update plugin — the release a node runs, an update's steps live, history, and an admin's start, pause, resume and rollback, through stormupdate's API (:9088)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
