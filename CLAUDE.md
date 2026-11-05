@@ -1689,6 +1689,33 @@ stormcentral#571: golden builds refuse a git dependency not pinned to a
   on 416d163 — the lock as edited is what cargo resolves, all tests pass
 - To move stormview forward: bump the `rev` and the lock's source together
 
+### No machine but this cluster's (#161)
+Owner on forge1 (a single-node cilium node, 2026-11-05): it read as broken
+when it is healthy. Other machines heard on the group were counted as its
+nodes and drives and rolled into its health. "It should only show other
+machines in cluster, and since its a sno node, should just be itself"; "we
+will show others when we want to build a cluster, and only free nodes".
+Read from the code: the log host list *was* the fleet; stormstorage's own
+row has kind `node`; the console's unit does not mount
+`/etc/stormcos/release`, so every node's edition is Unknown and a cilium
+node shows flowsdn `unknown`; that manifest has no `edition` key anyway, only
+`version` (`12.61` or `12.61-flowsdn`) and components.
+- [ ] `console_core::members` + `KubernetesPlugin::membership()`: the
+      apiserver's Node objects, names and addresses
+- [ ] `plugin_logs::scope`: one rule. `LogHosts` (so fleet and drives), log
+      reads, the summary and the live tail admit only members and this node;
+      rows with one address merge; a member not heard yet still has a row
+- [ ] Nodes page: one row per host, stormstorage's numbers on it, its own
+      row is `storage node`
+- [ ] flowsdn: `ConsolePlugin::present()`; edition from the manifest, else
+      this node's beacon's release flavour; off the feed and navigator
+      unless the node is flowsdn or an agent answers
+- [ ] Cluster: `cluster:peer:*` out of the feed; the page shows members
+      (an SNO: itself); others only in Form/Join, free nodes only; a peer's
+      network from its release flavour
+- [ ] Filed: stormcos (mount the release volume), stormcluster (peer network)
+- [ ] `deploy/verify-one-node.sh`; rigs, docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
