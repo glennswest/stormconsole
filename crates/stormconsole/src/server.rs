@@ -104,6 +104,9 @@ pub fn router(state: AppState) -> Router {
 
     for plugin in state.registry.plugins() {
         app = app.nest(&format!("/api/plugins/{}", plugin.name()), plugin.routes());
+        if let Some(api) = plugin.node_api() {
+            app = app.nest(&format!("/api/v1/{}", plugin.name()), api);
+        }
     }
 
     app.route("/", get(spa))

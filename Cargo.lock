@@ -1122,6 +1122,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-history"
+version = "0.32.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "console-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "plugin-kubernetes"
 version = "0.32.0"
 dependencies = [
@@ -1846,6 +1861,7 @@ dependencies = [
  "plugin-fastetcd",
  "plugin-fleet",
  "plugin-flowsdn",
+ "plugin-history",
  "plugin-kubernetes",
  "plugin-logs",
  "plugin-sbregistry",

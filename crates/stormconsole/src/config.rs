@@ -51,6 +51,8 @@ pub struct Config {
     #[serde(default)]
     pub health: ApiHealth,
     #[serde(default)]
+    pub history: NodeHistory,
+    #[serde(default)]
     pub stormcentral: Stormcentral,
 }
 
@@ -511,6 +513,24 @@ impl Default for ApiHealth {
     }
 }
 
+/// The node's record of itself in system-data (#121, stormcos#456), served
+/// read-only at `/api/v1/history`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeHistory {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// Unset means `/run/stormblock/system-data`, where stormblock's `/init`
+    /// mounts it and the console's `/run/stormblock` bind shows it.
+    pub system_data: Option<String>,
+}
+
+impl Default for NodeHistory {
+    fn default() -> Self {
+        Self { enabled: true, system_data: None }
+    }
+}
+
 /// The Machines page (#31): stormipmi's Machines API, wherever the one
 /// stormipmi runs — a bastion, usually, not every node.
 #[derive(Debug, Clone, Deserialize)]
@@ -761,6 +781,10 @@ impl Config {
         self.health.history_dir.clone().unwrap_or_else(|| "/system-data/history/api".to_string())
     }
 
+    pub fn history_system_data(&self) -> String {
+        self.history.system_data.clone().unwrap_or_else(|| "/run/stormblock/system-data".to_string())
+    }
+
     pub fn stormipmi_url(&self) -> String {
         self.stormipmi.url.clone().unwrap_or_else(|| "http://127.0.0.1:9097".to_string())
     }
@@ -926,6 +950,7 @@ data_dir    = \"/var/lib/stormconsole\"
         assert!(c.health.enabled);
         assert_eq!(c.health_summary_file(), "/run/stormpump/health.json");
         assert_eq!(c.health_history_dir(), "/system-data/history/api");
+        assert_eq!(c.history_system_data(), "/run/stormblock/system-data");
         assert_eq!(c.stormstorage_url(), "http://127.0.0.1:9093");
         assert_eq!(c.stormvm_url(), "http://127.0.0.1:9095");
         assert_eq!(c.stormcluster_url(), "http://127.0.0.1:9102");

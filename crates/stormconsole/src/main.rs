@@ -304,6 +304,10 @@ async fn main() {
             config.fleet.stormd_ports.clone(),
         )));
     }
+    // The node's record of itself, kept across installs (#121).
+    if config.history.enabled {
+        plugins.push(Arc::new(plugin_history::HistoryPlugin::new(&config.history_system_data())));
+    }
 
     // Destructive storage is asked of the apiserver as the viewer (#82);
     // with kubernetes off there is nobody to ask, and nobody may.

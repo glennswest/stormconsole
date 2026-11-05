@@ -40,6 +40,13 @@ pub trait ConsolePlugin: Send + Sync {
         axum::Router::new()
     }
 
+    /// Routes mounted at `/api/v1/{name}`: this plugin's part of the node's
+    /// own API, the one other components read (stormcos#456), where
+    /// [`routes`](Self::routes) is the console's. Same authentication.
+    fn node_api(&self) -> Option<axum::Router> {
+        None
+    }
+
     /// This plugin's slice of the aggregated component feed. Ids must be
     /// prefixed with `{name}:`.
     async fn components(&self) -> Vec<ComponentSummary>;

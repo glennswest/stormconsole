@@ -203,6 +203,13 @@ enabled = true
 # summary_file = "/run/stormpump/health.json"
 # history_dir = "/system-data/history/api"
 
+[history]
+enabled = true
+# The node's record of itself, kept across installs (stormcos#456): installs,
+# boots, kernel logs, drive history and hardware, served read-only at
+# /api/v1/history and on the History page. A diskless boot has none, and says so.
+# system_data = "/run/stormblock/system-data"
+
 # [stormcentral]
 # Where a stormpump:// image's golden is recorded: the pod page shows its
 # build (built at, by, commit, build id) beside the image. Off unless a url
