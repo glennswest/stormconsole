@@ -64,8 +64,10 @@ const MOVED = {
 }
 
 function follow() {
-  const to = MOVED[(location.hash || '').split('?')[0]]
-  if (to) location.replace(to)
+  // A moved list keeps what it was asked for: a project's link says which project.
+  const [path, query] = (location.hash || '').split('?')
+  const to = MOVED[path]
+  if (to) location.replace(query ? `${to}?${query}` : to)
   return !!to
 }
 

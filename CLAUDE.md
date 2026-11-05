@@ -2008,12 +2008,12 @@ FlowsdnNetworkPolicy, FlowsdnClusterwideNetworkPolicy, FlowsdnEndpoint, FlowsdnI
 Cilium's schemas ("change the API group and the kind"); the agent's endpoints are on its
 loopback API, so this node's, and `/v1/healthz` `kubernetes.policy.endpoints[]` carries
 `ingress-enforced`, `egress-enforced`. Kubernetes NetworkPolicy is on both.
-- [ ] kubernetes: `netview.rs` (pure) policies and endpoints; watches fsep, fsid, fsnp, fscnp;
+- [x] kubernetes: `netview.rs` (pure) policies and endpoints; watches fsep, fsid, fsnp, fscnp;
       `GET /api/plugins/k8s/network/{policies,endpoints}`, another project's withheld
-- [ ] flowsdn: `GET /api/plugins/flowsdn/network-endpoints`, the same row
-- [ ] `#/network/policies`, `#/network/endpoints`, in the project and cluster-wide; nav and
+- [x] flowsdn: `GET /api/plugins/flowsdn/network-endpoints`, the same row
+- [x] `#/network/policies`, `#/network/endpoints`, in the project and cluster-wide; nav and
       titles without the product; `web/src/lib/network.js` + test
-- [ ] `deploy/verify-network-pages.sh`, both editions; docs, changelog, dist; golden
+- [x] `deploy/verify-network-pages.sh`, both editions; docs, changelog, dist; golden
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

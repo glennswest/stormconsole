@@ -43,7 +43,9 @@ walk(`network pages (${NET})`, async (t) => {
   t.check(/app=web/.test(await main()), 'an identity, by what it means')
   await t.shot(page, `network-${NET}-endpoints`)
 
-  // A list that moved lands here, whichever way someone came.
+  // A list that moved lands here, a project's link keeping its project.
+  await page.goto(`${t.BASE}/#/k8s/cep?ns=shop`)
+  t.check(await t.until(async () => page.url().includes('#/network/endpoints?ns=shop')), "a project's link keeps its project", page.url())
   await page.goto(`${t.BASE}/#/k8s/cnp`)
   t.check(await t.until(async () => page.url().includes('#/network/policies')), 'the old list goes to the new page', page.url())
 

@@ -3,6 +3,18 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Network Policies and Network Endpoints (#168)
+- **feat:** `#/network/policies` and `#/network/endpoints` (Networking), in the project picked or
+  across every project: one table whichever pod network this is, with no product name but a
+  small "from:" line. A policy: project, sort, whom it selects, its rules, a default deny said,
+  and the pods it applies to. An endpoint: pod or VM, addresses, node, identity by what it means,
+  enforcement in and out, state.
+- **feat:** `GET /api/plugins/k8s/network/{policies,endpoints}`, reading Kubernetes NetworkPolicy,
+  cilium.io and flowsdn.io objects; `GET /api/plugins/flowsdn/network-endpoints`, this node's
+  agent in the same row. Another project's rows are withheld.
+- **change:** the navigator, list titles and the network card lose the product name ("Pod network",
+  "Network nodes"). The old policy and endpoint lists land on the new pages.
+
 ### 2026-11-05 — A pod at describe and inspect depth, a VM likewise (#167)
 - **feat:** the pod page gains each container's command, arguments, working directory,
   environment, mounts, security context, container ID, exit code and times; a secret's

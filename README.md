@@ -65,7 +65,7 @@ page names the API's word once, in the Registry image row's tooltip.
 
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
-`#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) · `#/drives/format` ·
+`#/network/policies` · `#/network/endpoints` · `#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) · `#/drives/format` ·
 `#/nodes` · `#/node/<host>` · `#/logs` · `#/etcd/keys` · `#/account/keys` ·
 `#/attach/<ns>/<claim>` · `#/grid?id=&rel=`. The masthead carries the
 Project selector, Create, cluster health, the key (your SSH keys),
@@ -102,6 +102,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-drive-offer.sh` | offered drives (#153) — a real engine on file-backed drives reviewing bearers at a real apiserver with the storage roles, a stand-in stormdrive for the join, a real console: who is offered what, both locks refused and passed, a real format and a real rebalance in Chromium |
 | `verify-registry.sh` | the Registry page (#163) — a real engine, registry and apiserver: holders made through the engine's API, a machine's real boot claim, the token appearing after the console started, the registry stopped, a viewer who may not see a project; Chromium |
 | `verify-update.sh` | the Update page (#164) — a real stormupdate on a real apiserver: its controller reading a stand-in catalog and starting a run; writes through its real API and token (who may, no token, wrong token, a release not offered); a walk's states in its status shape; Chromium |
+| `verify-network-pages.sh` | Network Policies and Endpoints (#168) — two clusters on real apiservers, one with cilium's objects and one with flowsdn's and a stand-in agent, one table on both; a viewer in one project; no product name but the small line; Chromium |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes; the map, a picked drive, Pools and Shelves in Chromium |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge); power, release, boot intent and the SOL console in Chromium, as admin and as ops |
 | `verify-one-node.sh` | one node among other clusters' machines (#161) — real fastetcd, rustkube and console with its SPA, stand-ins for stormdrive, stormstorage and stormcluster, lines and beacons from other addresses, no release manifest: one node with its 5 drives, its logs, no other machine in the feed or on any page and no drill-down to one; flowsdn out of sight on a cilium release and an error on a `-flowsdn` one; free nodes only in the form; a second Node object adds a row and its drives, and removing it takes them away |

@@ -43,7 +43,8 @@
   load()
   onDestroy(() => clearTimeout(timer))
 
-  const project = $derived(k8sns.selected || '')
+  // As every list reads it: the link's own project first, else the masthead's (#5).
+  const project = $derived(route.current.query.has('ns') ? route.current.query.get('ns') : k8sns.selected || '')
   const shown = $derived(search(inProject(rows || [], project), needle))
   const title = policies ? 'Network Policies' : 'Network Endpoints'
 </script>

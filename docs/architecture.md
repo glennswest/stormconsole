@@ -1085,6 +1085,26 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### Network Policies and Network Endpoints (#168)
+
+The owner: "Network Policies (No cillium) Network Endpoints (No Cillium), and these should come
+from either cillium or flowsdn". One table, with the source only a small "from:" line.
+
+- **One reader, two kinds of object.** flowsdn's CRDs have Cilium's schemas ("change the API group
+  and the kind"), so `kubernetes/src/netview.rs` reads `netpol`, `cnp`, `ccnp`, `fsnp`, `fscnp`
+  and `cep`, `fsep` into the same rows, the identity from `cid` or `fsid`. Which network a cluster
+  runs is which CRDs it serves.
+- **A flowsdn agent's endpoints.** flowsdn writes no `FlowsdnEndpoint` yet and its agent's API is on
+  its loopback, so the flowsdn plugin makes the same row from this node's agent
+  (`/network-endpoints`), with enforcement from `/v1/healthz` `kubernetes.policy.endpoints[]`. The
+  page merges the two, the agent's row winning, and says these are this node's.
+- **What a policy applies to** is worked out from the pods' labels, in its project or everywhere for a
+  cluster-wide one. A selector with `matchExpressions` is said to be unevaluated, not half evaluated.
+- **An endpoint with no pod behind its name** is called a VM, because a machine's endpoint is filed
+  under the machine (#51); one whose pod has just gone reads as a VM until it goes too.
+- **Not every mention is gone.** The VM page's sentences about a machine outside policy, and the
+  YAML and its Create entries for CiliumNetworkPolicy, still say the API's word.
+
 ### A pod and a VM at describe depth (#167)
 
 Owner: "match the info that docker/podman has, oc describe pod xyzzy gives lots of info".
