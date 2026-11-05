@@ -1638,8 +1638,10 @@ the owner's to pick (asked on #151).
   switches and survives a reload; no visible "OpenShift" (text, titles,
   labels, placeholders, options); no page errors. Default `sc-build` on
   42ed758 (dist rebuilt): all tests pass, 0 warnings
-- Open: the ESXi style's own name — asked on #151 (recommended VMFocus);
-  a one-line change to `STYLES` + `RENAMED` once answered
+- [x] The other style is **VMFocus** (id `vmfocus`; master's decision on #151,
+      following the owner's rule): a stored `esxi` opens in it; console.css's
+      comments describe both layouts without naming other companies' design
+      systems; the walk covers it; dist; golden
 
 ### Sign in with the install-time API token (#66) ✅ 2026-10-14
 storminstall#1 puts an optional `apiToken` (48 hex) in install-config.yaml;
