@@ -107,7 +107,7 @@ OTHER=$(clone "$IMG" lab.vm1-root); own "$OTHER" VirtualMachineInstance lab vm1
 EMPTY=$(curl -s -X POST "${AUTH[@]}" "$EN/volumes" -d '{"name":"shop.vm1-data","size":"16M"}' | vid); own "$EMPTY" VirtualMachine shop vm1
 BEFORE=$(curl -s "${AUTH[@]}" "$EN/volumes/$ROOT" | j 'd["allocated_bytes"]')
 # Something written through the clone, so it costs what it was written.
-python3 -c "import json; print(json.dumps({'files':[{'path':'/data.txt','contents':'x'*3000000}]}))" > "$W/files.json"
+python3 -c "import json; print(json.dumps({'files':[{'path':'/data.txt','contents':'x'*1500000}]}))" > "$W/files.json"
 curl -s -X POST -H 'Authorization: Bearer rig-admin-75' -H 'Content-Type: application/json' "$EN/volumes/$ROOT/files" -d @"$W/files.json" | head -c 200; echo
 AFTER=$(curl -s "${AUTH[@]}" "$EN/volumes/$ROOT" | j 'd["allocated_bytes"]')
 echo "  written through the clone: $BEFORE -> $AFTER bytes"
