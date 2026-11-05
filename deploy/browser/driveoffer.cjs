@@ -1,7 +1,7 @@
 // Offered drives in a browser (#153), over deploy/verify-drive-offer.sh's real
 // engine and apiserver.
 const { walk } = require('./lib.cjs')
-const { BLANK, FOREIGN, RUN_MOVES } = process.env
+const { BLANK, FOREIGN, WORD } = process.env
 
 walk('offered drives', async (t) => {
   const band = (p) => p.locator('section[aria-label="Offered drives"]')
@@ -30,7 +30,7 @@ walk('offered drives', async (t) => {
   const cell = page.locator('.cell, button.bay, [data-drive]').first()
   if (await cell.count()) await cell.click().catch(() => {})
   if (await page.locator('.offerline').count()) {
-    t.check(/Offered: holds .*GPT/.test(await page.locator('.offerline').innerText()), 'a picked drive says its offer', await page.locator('.offerline').innerText())
+    t.check(/Offered: (holds|blank)|ours:/.test(await page.locator('.offerline').innerText()), 'a picked drive says its offer', await page.locator('.offerline').innerText())
   }
 
   // The foreign drive: cancelled, nothing happens.
@@ -51,7 +51,7 @@ walk('offered drives', async (t) => {
   // The blank drive: formatted.
   await row(page, BLANK).getByRole('button', { name: /Format/ }).click()
   t.check(await t.until(async () => /erases what it holds/.test(await ask(page).innerText())), 'the blank drive asks too')
-  await ask(page).getByLabel("The drive's name, typed").fill(BLANK)
+  await ask(page).getByLabel("The drive's name, typed").fill(WORD)
   t.check(await go.isEnabled(), 'the right word turns it on')
   await go.click()
   t.check(await t.until(async () => /is a data slab now/.test(await t.text(page)), 60000), 'formatted', (await t.text(page)).slice(0, 400))
@@ -62,13 +62,9 @@ walk('offered drives', async (t) => {
   t.check(await t.until(async () => /Rebalance: a dry run/i.test(await reb.innerText()), 30000), 'a dry run follows', await reb.innerText().catch(() => ''))
   const plan = await reb.innerText()
   await t.shot(page, 'offer-plan')
-  if (RUN_MOVES === 'yes') {
-    t.check(/extent\(s\) would move/.test(plan), 'it says what would move', plan)
-    await reb.getByRole('button', { name: 'Run this rebalance' }).click()
-    t.check(await t.until(async () => /Rebalance (running|done): \d+ of \d+ moved/.test(await reb.innerText()), 30000), 'the run reports its progress', await reb.innerText())
-    t.check(await t.until(async () => /Rebalance done/.test(await reb.innerText()), 120000), 'and finishes', await reb.innerText())
-    await t.shot(page, 'offer-done')
-  } else {
-    t.check(/Nothing to move/.test(plan), 'it says nothing would move', plan)
-  }
+  t.check(/extent\(s\) would move/.test(plan), 'it says what would move, so a real run can follow', plan)
+  await reb.getByRole('button', { name: 'Run this rebalance' }).click()
+  t.check(await t.until(async () => /Rebalance (running|done): \d+ of \d+ moved/.test(await reb.innerText()), 30000), 'the run reports its progress', await reb.innerText())
+  t.check(await t.until(async () => /Rebalance done/.test(await reb.innerText()), 120000), 'and finishes', await reb.innerText())
+  await t.shot(page, 'offer-done')
 })

@@ -107,8 +107,11 @@ for d in "$OURS" "$BLANK" "$FOREIGN"; do
 done
 did() { curl -s "${AUTH[@]}" "$EN/drives" | python3 -c "import json,sys; print(next(x['uuid'] for x in json.load(sys.stdin)['items'] if x['path']=='$1'))"; }
 OURS_ID=$(did "$OURS"); BLANK_ID=$(did "$BLANK"); FOREIGN_ID=$(did "$FOREIGN")
+# The word is the engine's: a real drive's serial. A file-backed one's serial is
+# the literal "file", so all three share it here.
+WORD=$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["confirm"]'); echo "  the word: $WORD"
 echo "  a slab on the first, and data on it, as the admin"
-curl -s -X POST "${ROOT[@]}" "$EN/drives/$OURS_ID/format" -d "{\"confirm\":\"$OURS\"}" | j '"  slab " + str(d.get("id") or d.get("uuid") or d)[:60]'
+curl -s -X POST "${ROOT[@]}" "$EN/drives/$OURS_ID/format" -d "{\"confirm\":\"$WORD\"}" | j '"  slab " + str(d.get("id") or d.get("uuid") or d)[:60]'
 curl -s -m 300 -X POST "${AUTH[@]}" "$EN/fstemplates" -d '{"name":"pvc-256M","size":"256M"}' | j '"  template " + str((d.get("template") or d).get("state") or d)[:80]'
 
 say "a stand-in stormdrive listing the same files"
@@ -160,33 +163,34 @@ check "$(feed bob "$Q
 print(a('$BLANK_ID'), a('$FOREIGN_ID'), m('$BLANK_ID','offer'))")" "[] [] blank" "bob sees the offer and no action"
 
 say "the console's gate"
-HDR=(-H "X-Storm-Confirm: $BLANK")
-check "$(code bob "${HDR[@]}" -d "{\"confirm\":\"$BLANK\"}" "$FMT")" 403 "bob, storage-viewer: 403, the word does not help"
-check "$(code carol "${HDR[@]}" -d "{\"confirm\":\"$BLANK\"}" "$FMT")" 403 "carol, a console reader who holds storage-admin: 403"
-check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer console-own-153' -H 'content-type: application/json' "${HDR[@]}" -d "{\"confirm\":\"$BLANK\"}" "$FMT")" 403 "the console's own token, no kubernetes identity: 403"
-check "$(code alice -d "{\"confirm\":\"$BLANK\"}" "$FMT")" 428 "alice with no word in the header: 428"
-check "$(code alice -H 'X-Storm-Confirm: sda' -d "{\"confirm\":\"$BLANK\"}" "$FMT")" 428 "the wrong word: 428"
-check "$(as alice -X POST -H 'content-type: application/json' -d '{}' "$FMT" | j 'd["guard"]["confirm"]')" "$BLANK" "it names the word, the engine's too"
+HDR=(-H "X-Storm-Confirm: $WORD")
+check "$(code bob "${HDR[@]}" -d "{\"confirm\":\"$WORD\"}" "$FMT")" 403 "bob, storage-viewer: 403, the word does not help"
+check "$(code carol "${HDR[@]}" -d "{\"confirm\":\"$WORD\"}" "$FMT")" 403 "carol, a console reader who holds storage-admin: 403"
+check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer console-own-153' -H 'content-type: application/json' "${HDR[@]}" -d "{\"confirm\":\"$WORD\"}" "$FMT")" 403 "the console's own token, no kubernetes identity: 403"
+check "$(code alice -d "{\"confirm\":\"$WORD\"}" "$FMT")" 428 "alice with no word in the header: 428"
+check "$(code alice -H 'X-Storm-Confirm: sda' -d "{\"confirm\":\"$WORD\"}" "$FMT")" 428 "the wrong word: 428"
+check "$(as alice -X POST -H 'content-type: application/json' -d '{}' "$FMT" | j 'd["guard"]["confirm"]')" "$WORD" "it names the word, the engine's too"
 
 say "the engine's lock, reached through the gate"
 R=$(as alice -X POST -H 'content-type: application/json' "${HDR[@]}" -d '{}' "$FMT")
 check "$(code alice "${HDR[@]}" -d '{}' "$FMT")" 412 "no word in the body: 412, nothing happens"
-check "$(j '"power cut" in d["error"] and "erases what it holds" in d["error"] and d["confirm"]' <<<"$R")" "$BLANK" "the risk, and the word"
+check "$(j '"power cut" in d["error"] and "erases what it holds" in d["error"] and d["confirm"]' <<<"$R")" "$WORD" "the risk, and the word"
 check "$(code alice "${HDR[@]}" -d '{"confirm":"nope"}' "$FMT")" 412 "the wrong word in the body: 412"
 check "$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["offer"]["state"]')" blank "still blank"
-check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${AUTH[@]}" -d "{\"confirm\":\"$BLANK\"}" "$EN/drives/$BLANK_ID/format")" 401 "the node token alone cannot format at the engine: it is the viewer's bearer that does"
-check "$(code alice -H "X-Storm-Confirm: $OURS" -d "{\"confirm\":\"$OURS\"}" "$SBP/drives/$OURS_ID/format")" 409 "a drive of ours: 409, not reformatted"
+check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${AUTH[@]}" -d "{\"confirm\":\"$WORD\"}" "$EN/drives/$BLANK_ID/format")" 401 "the node token alone cannot format at the engine: it is the viewer's bearer that does"
+check "$(code alice -H "X-Storm-Confirm: $WORD" -d "{\"confirm\":\"$WORD\"}" "$SBP/drives/$OURS_ID/format")" 409 "a drive of ours: 409, not reformatted"
 
 say "a rebalance is the node's ordinary word, a dry run by default"
 check "$(as bob -X POST -H 'content-type: application/json' -d '{"dry_run":true}' "$SBP/slabs/rebalance" | j '"plan" in d')" True "a plan comes back, through the proxy"
 
 say "the page, in Chromium (a real format, a real rebalance)"
 BR=0
-env BLANK="$BLANK" FOREIGN="$FOREIGN" RUN_MOVES="${RUN_MOVES:-auto}" "$HERE/deploy/browser/run.sh" "$W" driveoffer.cjs "$C" || BR=1
+env BLANK="$BLANK" FOREIGN="$FOREIGN" WORD="$WORD" "$HERE/deploy/browser/run.sh" "$W" driveoffer.cjs "$C" || BR=1
 check "$BR" 0 "the walk"
 check "$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["offer"]["state"]')" ours "the engine holds it as ours now"
 check "$(curl -s "${AUTH[@]}" "$EN/drives/$FOREIGN_ID" | j 'd["offer"]["state"]')" foreign "and the one cancelled is untouched"
-check "$(grep -c 'a person formats a drive' "$W/engine.log" || true)" "$(grep -c 'a person formats a drive' "$W/engine.log" || true)" "engine log read"
+check "$(grep -c 'a person formats a drive' "$W/engine.log" || true)" 2 "the engine logged two formats: the admin's seed slab, and alice's"
+check "$(curl -s "${AUTH[@]}" "$EN/slabs/rebalance" | j 'd["state"]')" done "the real rebalance ran to its end"
 echo '--- the slabs afterwards'; curl -s "${AUTH[@]}" "$EN/slabs" | j '[(s.get("id","")[:8], s.get("role"), s.get("used_slots"), s.get("total_slots")) for s in d.get("items",[])]' || true
 
 tar czf "$HERE/offer-shots.tgz" -C "$W" shots 2>/dev/null || true
