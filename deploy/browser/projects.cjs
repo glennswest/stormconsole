@@ -120,11 +120,12 @@ walk('projects', async (t) => {
   t.check(/Routes/.test(labels) && /Network attachments/.test(labels) && /Config maps/.test(labels), 'and has what a project holds')
 
   // Lists show their project: a column, and a header per project when several.
-  t.check(await t.open(root, '#/k8s/pod?ns=', /alice-work/), 'all projects: pods')
+  // Config maps: the rig has them in alice-work and kube-system (root's note).
+  t.check(await t.open(root, '#/k8s/cm?ns=', /root-note/), 'all projects: config maps')
   t.check(/^project$/i.test((await root.locator('th.place').first().innerText()).replace(/[^a-z]/gi, '')), 'the column is called Project', await root.locator('th.place').first().innerText())
   const heads = await root.locator('tr.group').allInnerTexts()
   t.check(heads.some((h) => /alice-work/.test(h)) && heads.some((h) => /kube-system[\s\S]*system/i.test(h)), 'grouped by project, the system one marked', heads.join(' | '))
-  await t.shot(root, 'pods-by-project')
+  await t.shot(root, 'config-maps-by-project')
 
   // One word. YAML is the API's, and the Projects page says once what a
   // project is; everything else a person reads says project.
