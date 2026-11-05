@@ -87,7 +87,7 @@ if not i: sys.exit('the engine said: '+t[:400])
 print(i)"; }
 # A component's image as a release lays it: a volume under that name, sealed.
 image() { local id; id=$(curl -s -X POST "${AUTH[@]}" "$EN/volumes" -d "{\"name\":\"$1\",\"size\":\"64M\"}" | vid)
-  curl -s -o /dev/null -X POST "${AUTH[@]}" "$EN/volumes/$id/seal"; echo "$id"; }
+  curl -s -o /dev/null -X POST "${AUTH[@]}" "$EN/volumes/$id/seal" -d '{"force":true}'; echo "$id"; }
 clone() { curl -s -X POST "${AUTH[@]}" "$EN/volumes/$1/clone" -d "{\"name\":\"$2\"}" | vid; }
 own() { curl -s -o /dev/null -w '' -X PUT "${AUTH[@]}" "$EN/volumes/$1/owner" -d "{\"owner\":{\"kind\":\"$2\",\"namespace\":\"$3\",\"name\":\"$4\"}}"; }
 
