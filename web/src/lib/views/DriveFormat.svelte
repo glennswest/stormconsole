@@ -176,7 +176,7 @@
     {/if}
 
     {#if asking && selection.length}
-      <section class="card confirm" role="dialog" aria-label="Confirm the format">
+      <div class="card confirm" role="dialog" aria-label="Confirm the format">
         <h2>Format {selection.length} {selection.length === 1 ? 'drive' : 'drives'}: their data goes</h2>
         <p>Everything on these drives is destroyed and cannot be recovered. A large drive takes most of a day, and a format cannot be cancelled. It is done as you.</p>
         <table>
@@ -202,7 +202,7 @@
           <button class="danger" disabled={busy || typed.trim() !== word} onclick={start}>Format</button>
           <button disabled={busy} onclick={() => (asking = false)}>Cancel</button>
         </div>
-      </section>
+      </div>
     {/if}
 
     {#each nodes as n (n.node)}

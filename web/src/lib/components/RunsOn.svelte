@@ -22,7 +22,7 @@
 </script>
 
 {#if error}
-  <p class="none">{/404/.test(error) ? 'This console reads no engine.' : `The engine did not answer: ${error}`}</p>
+  <p class="none">{error.includes('404') ? 'This console reads no engine.' : `The engine did not answer: ${error}`}</p>
 {:else if answer?.error}
   <p class="none">{answer.error}</p>
 {:else if answer && !answer.volumes.length}
