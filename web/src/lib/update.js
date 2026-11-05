@@ -55,7 +55,8 @@ export function actions(spec, st) {
     start: !moving,
     pause: phase === 'Progressing' && !spec?.paused,
     resume: !!spec?.paused || phase === 'Paused',
-    rollback: !!st?.previousRelease && phase !== 'RollingBack' && !st?.rollbackRun,
+    // A pull that stopped the run moved nothing, so there is nothing to roll back.
+    rollback: !!st?.previousRelease && phase !== 'RollingBack' && !st?.rollbackRun && prePull(st)?.state !== 'stopped',
   }
 }
 
@@ -86,25 +87,64 @@ export function historyRows(st) {
   }))
 }
 
-/// How far the target's images have come, per image: the nodes in each state.
+const IMAGE_STATE_WORDS = {
+  InRelease: 'In the release',
+  PreUpgrade: 'Pre-upgrade hook',
+  PostUpgrade: 'Post-upgrade hook',
+  RolledBack: 'Rolled back',
+}
+const imageState = (s) => IMAGE_STATE_WORDS[s] || s
+
+/// What happens to an image's data, in stormupdate's terms (its README, Images).
+const POLICY_WORDS = {
+  reuse: 'kept as it is',
+  replace: 'a fresh volume; the old one is kept for rollback',
+  migrate: 'migrated on a copy; a rollback boots on the untouched original',
+}
+
+/// The target's images: each one's identity, its data, its hooks, and each node's state.
 export function imageRows(st) {
   return (st?.images || []).map((i) => {
     const counts = {}
-    for (const n of i.nodes || []) counts[n.state] = (counts[n.state] || 0) + 1
+    for (const n of i.nodes || []) {
+      const word = imageState(n.state)
+      counts[word] = (counts[word] || 0) + 1
+    }
     return {
       name: i.name,
       digest: i.digest,
-      policy: i.dataPolicy,
+      reference: i.reference || '',
+      volume: i.dataVolume || '',
+      policy: i.dataPolicy || 'reuse',
+      policyWords: POLICY_WORDS[i.dataPolicy || 'reuse'] || '',
+      hooks: i.hooks || [],
       states: Object.entries(counts).map(([state, count]) => ({ state, count })),
+      nodes: (i.nodes || []).map((n) => ({ node: n.node, state: imageState(n.state), message: n.message || '', bad: n.state === 'Failed' })),
       failed: (i.nodes || []).filter((n) => n.state === 'Failed').map((n) => `${n.node}: ${n.message || 'failed'}`),
     }
   })
 }
 
+/// The pre-pull, which comes before any node moves: under way, or stopped with nothing
+/// changed. `null` once a run is past it, or for a stop that has nothing to do with it.
+export function prePull(st) {
+  if (!st || st.prePulled || st.rollbackRun) return null
+  const nodes = st.nodes || []
+  const on = [...new Set(nodes.map((n) => n.release).filter(Boolean))]
+  const stillOn = st.previousRelease || st.currentRelease || on.join(', ')
+  if (st.phase === 'Failed' && nodes.some((n) => /^pre-pull/.test(n.message || ''))) {
+    return { state: 'stopped', stillOn, mixed: on.length > 1, failed: nodes.filter((n) => n.phase === 'Failed').map((n) => n.name) }
+  }
+  if (nodes.some((n) => n.phase === 'PrePulling')) return { state: 'pulling', stillOn, mixed: on.length > 1, failed: [] }
+  return null
+}
+
 /// A change between releases, in a line.
 export function changeLine(c) {
   const short = (s) => (s && s.length > 16 ? s.slice(0, 12) : s)
-  const what = c.kind ? `${c.component} (${c.kind})` : c.component
+  // The manifest's word for a component's image; the page says image (stormupdate#5).
+  const kind = c.kind === 'golden' ? 'image' : c.kind
+  const what = kind ? `${c.component} (${kind})` : c.component
   if (c.from && c.to) return `${what} ${short(c.from)} → ${short(c.to)}`
   return c.to ? `${what} added` : `${what} removed`
 }

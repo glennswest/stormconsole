@@ -1,6 +1,6 @@
 // The Update page's model (#164), with plain node: `node web/src/lib/update.test.mjs`.
 import assert from 'node:assert/strict'
-import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running } from './update.js'
+import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running, prePull } from './update.js'
 
 const states = (n) => nodeSteps(n).map((s) => s.state).join(' ')
 assert.equal(states({ phase: 'PrePulling' }), 'now todo todo todo todo todo')
@@ -50,6 +50,8 @@ assert.equal(h[2].took, null)
 
 const im = imageRows({ images: [{ name: 'lb', digest: 'd', dataPolicy: 'reuse', nodes: [{ node: 'a', state: 'Pulled' }, { node: 'b', state: 'Pulled' }, { node: 'c', state: 'Failed', message: 'no room' }] }] })
 assert.deepEqual(im[0].states, [{ state: 'Pulled', count: 2 }, { state: 'Failed', count: 1 }])
+assert.equal(im[0].policyWords, 'kept as it is')
+assert.deepEqual(im[0].nodes.map((n) => n.bad), [false, false, true], 'each node, the failed one marked')
 assert.deepEqual(im[0].failed, ['c: no room'])
 assert.deepEqual(imageRows({}), [])
 
@@ -57,4 +59,22 @@ assert.equal(changeLine({ component: 'stormlb', from: 'aaa', to: 'bbb' }), 'stor
 assert.equal(changeLine({ component: 'kernel', kind: 'kernel', from: 'x'.repeat(64), to: 'y'.repeat(64) }), 'kernel (kernel) xxxxxxxxxxxx → yyyyyyyyyyyy')
 assert.equal(changeLine({ component: 'new', to: 'b' }), 'new added')
 assert.equal(changeLine({ component: 'old', from: 'a' }), 'old removed')
+const full = imageRows({ images: [{ name: 'db', digest: 'd', reference: 'r@d', dataVolume: 'db-data', dataPolicy: 'migrate', hooks: ['pre_upgrade', 'migrate'], nodes: [{ node: 'a', state: 'InRelease' }] }] })[0]
+assert.deepEqual([full.reference, full.volume, full.hooks.length], ['r@d', 'db-data', 2])
+assert.match(full.policyWords, /untouched original/)
+assert.deepEqual(full.states, [{ state: 'In the release', count: 1 }], 'in words')
+assert.equal(imageRows({ images: [{ name: 'x' }] })[0].policy, 'reuse', 'no data means reuse')
+
+assert.equal(changeLine({ component: 'stormlb', kind: 'golden', to: 'b', from: 'a' }), 'stormlb (image) a → b', 'the page says image')
+
+// stormupdate's a_failed_pull_stops_the_run_before_anything_changes, as its status reads.
+const stopped = { phase: 'Failed', previousRelease: '11.40', nodes: [{ name: 'w1', release: '11.40', phase: 'Pending', message: 'pre-pull stopped' }, { name: 'w2', release: '11.40', phase: 'Failed', message: 'pre-pull: stormlb: forge: 404' }] }
+assert.deepEqual(prePull(stopped), { state: 'stopped', stillOn: '11.40', mixed: false, failed: ['w2'] })
+assert.equal(actions({}, stopped).rollback, false, 'nothing moved, nothing to roll back')
+assert.equal(actions({}, stopped).start, true, 'and it can be started again')
+assert.equal(prePull({ phase: 'Progressing', previousRelease: '11.40', nodes: [{ name: 'a', phase: 'PrePulling' }] }).state, 'pulling')
+assert.equal(prePull({ phase: 'Failed', prePulled: true, nodes: [{ name: 'a', phase: 'Failed', message: 'pre-pull: late' }] }), null, 'past it, a failure is not this')
+assert.equal(prePull({ phase: 'Failed', message: 'refused: no quorum' }), null, 'nor is a refusal')
+assert.equal(prePull({ phase: 'Progressing', rollbackRun: true, nodes: [{ phase: 'PrePulling' }] }), null, 'nor is a rollback')
+assert.equal(prePull({ phase: 'Progressing', prePulled: true, nodes: [{ phase: 'Upgrading' }] }), null)
 console.log('update.test.mjs PASS')

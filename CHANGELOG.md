@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The Update page: the pre-pull and each image (#62)
+- **feat:** every image of the target with its digest, reference, data volume, what happens to its data, its
+  hooks and each node's state. The images stay on the page after the run ends.
+- **fix:** a pull that stops an update says the whole cluster is still on the old release, keeps the images
+  shown and offers no rollback, since nothing moved. Before, the images vanished and Roll back was offered.
+- **fix:** a changed release row of kind `golden` read "(golden)"; it reads "(image)".
+
 ### 2026-11-05 — What a container runs on, and what it was cloned from (#75)
 - **feat:** the pod page, per container, and the VM page, per disk: **Runs on** (the engine volume,
   bytes written of its size and read through from the image, node, slabs, drives, health),

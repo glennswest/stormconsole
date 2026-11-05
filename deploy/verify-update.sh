@@ -196,7 +196,7 @@ walk offered
 check "$(spec 'd["spec"]["desiredRelease"]')" 12.61 "the walk's click reached the spec"
 
 say "B: in progress"
-check "$(setstatus "{'phase':'Progressing','message':'waiting for fastetcd quorum: no leader','targetRelease':'12.61','previousRelease':'12.58','available':$AVAIL,'nodes':[{'name':'n1','controlPlane':True,'release':'12.58','phase':'Upgrading','since':now-125,'agentState':'staging','agentMessage':'staging 12.61: 3 of 7 volumes'},{'name':'n2','release':'12.61','phase':'Verifying','since':now-30,'waitingOn':['workloads','fastetcd']},{'name':'n3','release':'12.58','phase':'Pending','since':now-30}],'images':[{'name':'stormlb','digest':'sha256:ab','dataPolicy':'reuse','nodes':[{'node':'n1','state':'Pulled'},{'node':'n2','state':'Pulling'}]}],'history':[{'from':'12.58','to':'12.61','started':now-200,'result':'Progressing'}]}")" 200 "status: three nodes, three steps"
+check "$(setstatus "{'phase':'Progressing','message':'waiting for fastetcd quorum: no leader','targetRelease':'12.61','previousRelease':'12.58','available':$AVAIL,'nodes':[{'name':'n1','controlPlane':True,'release':'12.58','phase':'Upgrading','since':now-125,'agentState':'staging','agentMessage':'staging 12.61: 3 of 7 volumes'},{'name':'n2','release':'12.61','phase':'Verifying','since':now-30,'waitingOn':['workloads','fastetcd']},{'name':'n3','release':'12.58','phase':'Pending','since':now-30}],'images':[{'name':'stormlb','digest':'sha256:ab','dataPolicy':'reuse','nodes':[{'node':'n1','state':'Pulled'},{'node':'n2','state':'Pulling'}]},{'name':'stormdb','digest':'sha256:cd','reference':'forge.g8.lo/stormdb@sha256:cd','dataVolume':'stormdb-data','dataPolicy':'migrate','hooks':['pre_upgrade','migrate'],'nodes':[{'node':'n1','state':'Migrating','message':'copying stormdb-data'},{'node':'n2','state':'InRelease'}]}],'history':[{'from':'12.58','to':'12.61','started':now-200,'result':'Progressing'}]}")" 200 "status: three nodes, three steps"
 sleep 6
 walk progress
 check "$(spec 'd["spec"]["paused"]')" True "the walk's pause reached the spec"
@@ -206,6 +206,14 @@ check "$(setstatus "{'phase':'Failed','message':'refused: cannot read fastetcd q
 sleep 6
 walk failed
 check "$(curl -s -H 'Authorization: Bearer own-164' "$C/api/v1/components" | j '[c["health"] for c in d if c["id"]=="update:cluster"]')" "['error']" "the row is an error, naming why"
+
+say "E: a pull stops the run before any node moves, in the words stormupdate's own test has"
+check "$(setstatus "{'phase':'Progressing','message':'pre-pulling the images of 12.61: 1 of 2 nodes hold them','targetRelease':'12.61','previousRelease':'12.58','available':$AVAIL,'prePulled':False,'nodes':[{'name':'n1','release':'12.58','phase':'Pending','since':now-20},{'name':'n2','release':'12.58','phase':'PrePulling','since':now-20}],'images':[{'name':'stormlb','digest':'sha256:ab','dataPolicy':'reuse','nodes':[{'node':'n1','state':'Pulled'},{'node':'n2','state':'Pulling'}]}]}")" 200 "status: pulling"
+sleep 6
+walk pulling
+check "$(setstatus "{'phase':'Failed','message':'stopped: n2: pre-pull: stormlb: forge: 404','targetRelease':'12.61','previousRelease':'12.58','available':$AVAIL,'prePulled':False,'nodes':[{'name':'n1','release':'12.58','phase':'Pending','since':now-20,'message':'pre-pull stopped'},{'name':'n2','release':'12.58','phase':'Failed','since':now-20,'message':'pre-pull: stormlb: forge: 404'}],'images':[{'name':'stormlb','digest':'sha256:ab','reference':'forge.g8.lo/stormlb@sha256:ab','dataPolicy':'reuse','nodes':[{'node':'n1','state':'Pulled'},{'node':'n2','state':'Failed','message':'forge: 404'}]}]}")" 200 "status: a pull failed"
+sleep 6
+walk pullfailed
 
 say "D: rolled back"
 check "$(setstatus "{'phase':'RolledBack','message':'n1 failed its gates: rolled back','currentRelease':'12.60','targetRelease':'12.61','previousRelease':'12.58','nodes':[{'name':'n1','release':'12.60','phase':'RolledBack','since':now-60,'updateSeconds':300}],'history':[{'from':'12.58','to':'12.60','started':now-9000,'finished':now-8900,'result':'Completed'},{'from':'12.60','to':'12.61','started':now-600,'finished':now-60,'result':'RolledBack','message':'workloads did not come back in 900 s'}]}")" 200 "status: rolled back"

@@ -1952,6 +1952,13 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### The Update page's pre-pull and images (#62)
+#164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
+offered a rollback of nothing; digest, reference, data volume, hooks and each node's state were not shown; a
+change of kind `golden` showed that word.
+- [ ] `update.js` `prePull`, `imageRows`, `changeLine`; the page; test
+- [ ] `verify-update.sh`: pulling and a failed pull, each image; docs, changelog, dist; golden
+
 ### An Update page (#164) ✅ 2026-11-05
 Owner 2026-11-04, on forge1's first update: "update needs a ui as well". Read from
 stormupdate 0d8a85b (`api.rs`, `crd.rs`, README): reads at :9088 are open (`GET

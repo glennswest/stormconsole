@@ -1,5 +1,5 @@
 // The Update page in a browser (#164), over deploy/verify-update.sh's real stormupdate
-// and apiserver. PHASE: offered, progress, failed, back.
+// and apiserver. PHASE: offered, progress, failed, pulling, pullfailed, back.
 const { walk } = require('./lib.cjs')
 const PHASE = process.env.PHASE
 
@@ -56,6 +56,35 @@ walk(`update (${PHASE})`, async (t) => {
   if (PHASE === 'failed') {
     t.check(await has(/refused: cannot read fastetcd quorum/), 'a refusal is said, with why')
     t.check(await has(/not kept here yet/), "and that it won't stay in the history")
+  }
+
+  if (PHASE === 'progress') {
+    const im = page.locator('section[aria-label="Images"]')
+    const text = await im.innerText()
+    t.check(/sha256:cd/.test(text) && /forge\.g8\.lo\/stormdb@sha256:cd/.test(text), 'an image: its digest and reference', text.slice(0, 300))
+    t.check(/stormdb-data/.test(text) && /migrate/.test(text) && /untouched original/.test(text), 'its data volume and what happens to it')
+    t.check(/pre_upgrade, migrate/.test(text), 'its hooks')
+    t.check(/1 Migrating/.test(text) && /1 In the release/.test(text), 'its states, in words')
+    await im.locator('summary').nth(1).click()
+    t.check(/n1 Migrating · copying stormdb-data/.test(await im.innerText()), 'each node, with what it said', await im.innerText())
+    t.check(!/golden/i.test(await t.text(page)), 'images, not the other word')
+    await t.shot(page, 'update-images')
+  }
+
+  if (PHASE === 'pulling') {
+    t.check(await has(/no node moves until all of them hold them/), 'the pre-pull: nothing moves yet')
+    t.check(await has(/stays on\s*12\.58/), 'and which release it stays on')
+    await t.shot(page, 'update-pulling')
+  }
+
+  if (PHASE === 'pullfailed') {
+    t.check(await has(/stopped: n2: pre-pull: stormlb: forge: 404/), "stormupdate's reason")
+    t.check(await has(/still on\s*12\.58/), 'the whole cluster is still on the old release', (await t.text(page)).slice(0, 400))
+    const im = page.locator('section[aria-label="Images"]')
+    t.check(await im.isVisible() && /n2: forge: 404/.test(await im.innerText()), 'the images stay shown, the failed node named')
+    t.check((await page.getByRole('button', { name: /Roll back/ }).count()) === 0, 'nothing moved, so nothing to roll back')
+    t.check(!(await page.getByRole('button', { name: 'Update to 12.61' }).isDisabled()), 'and it can be started again')
+    await t.shot(page, 'update-pull-failed')
   }
 
   if (PHASE === 'back') {

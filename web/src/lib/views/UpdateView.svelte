@@ -8,7 +8,7 @@
   import { onDestroy } from 'svelte'
   import { get, postJson } from '../api.js'
   import { ago } from '../ui/time.js'
-  import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running } from '../update.js'
+  import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running, prePull } from '../update.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import StatusPill from '../components/StatusPill.svelte'
@@ -42,6 +42,7 @@
   const st = $derived(data?.update?.status)
   const rel = $derived(releases(st, data?.generations))
   const may = $derived(actions(spec, st))
+  const pull = $derived(prePull(st))
   const canAct = $derived(data?.admin && data?.can_write)
   const when = (unix) => (unix ? `${ago(new Date(unix * 1000).toISOString())} ago` : '—')
   const stamp = (unix) => (unix ? new Date(unix * 1000).toISOString() : '')
@@ -99,6 +100,11 @@
           {#if data.message_since}<span class="dim small" title="since this console first saw the message; stormupdate keeps no clock on it (stormupdate#37)">this message for {duration(Math.round(now - data.message_since))}</span>{/if}
         </div>
         <p class:bad={st?.phase === 'Failed'} class="msg">{st?.message || st?.phase}</p>
+        {#if pull?.state === 'stopped'}
+          <p class="small">The update stopped before any node moved{#if pull.stillOn && !pull.mixed}: the whole cluster is still on <strong class="mono">{pull.stillOn}</strong>{/if}. Once the image can be pulled, updating again pulls again.</p>
+        {:else if pull?.state === 'pulling'}
+          <p class="small dim">Every node pulls the images first, and no node moves until all of them hold them{#if pull.stillOn && !pull.mixed}. The cluster stays on <span class="mono">{pull.stillOn}</span> until then{/if}.</p>
+        {/if}
         {#if canAct && (may.pause || may.resume || (may.rollback && running(st?.phase)))}
           <div class="row">
             {#if may.pause}<button disabled={!!acting} onclick={pause}>Pause at the next node</button>{/if}
@@ -130,17 +136,33 @@
       </section>
     {/if}
 
-    {#if st?.images?.length && running(st?.phase)}
-      <section class="card">
+    {#if st?.images?.length}
+      <section class="card" aria-label="Images">
         <h2>Images of {st.targetRelease}</h2>
         <table>
           <thead><tr><th>Image</th><th>Data</th><th>Nodes</th></tr></thead>
           <tbody>
             {#each imageRows(st) as i (i.name)}
               <tr>
-                <td class="mono">{i.name}</td>
-                <td class="small">{i.policy}</td>
-                <td class="small">{#each i.states as s, k}{k ? ', ' : ''}{s.count} {s.state}{/each}{#each i.failed as f}<div class="bad">{f}</div>{/each}</td>
+                <td>
+                  <span class="mono">{i.name}</span>
+                  {#if i.digest}<div class="mono dim small wrap">{i.digest}</div>{/if}
+                  {#if i.reference}<div class="mono dim small wrap">{i.reference}</div>{/if}
+                </td>
+                <td class="small">
+                  {#if i.volume}<span class="mono">{i.volume}</span>{' · '}{/if}{i.policy}
+                  {#if i.policyWords}<div class="dim">{i.policyWords}</div>{/if}
+                  {#if i.hooks.length}<div class="dim">hooks: <span class="mono">{i.hooks.join(', ')}</span></div>{/if}
+                </td>
+                <td class="small">
+                  {#each i.states as s, k}{k ? ', ' : ''}{s.count} {s.state}{/each}
+                  {#each i.failed as f}<div class="bad">{f}</div>{/each}
+                  {#if i.nodes.length}
+                    <details><summary>each node</summary>
+                      <ul class="plain">{#each i.nodes as n (n.node)}<li class:bad={n.bad}><span class="mono">{n.node}</span> {n.state}{#if n.message}{' · '}{n.message}{/if}</li>{/each}</ul>
+                    </details>
+                  {/if}
+                </td>
               </tr>
             {/each}
           </tbody>
@@ -225,6 +247,7 @@
   .dim { color: var(--text-dim); }
   .warn { color: var(--warn-strong); }
   .bad { color: var(--error); }
+  .wrap { overflow-wrap: anywhere; }
   .mono { font-family: var(--mono); }
   .band { display: flex; gap: 28px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px var(--sc-row-px); margin-bottom: 12px; }
   .band .k, h2 { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }

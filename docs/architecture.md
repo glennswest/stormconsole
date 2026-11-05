@@ -1167,6 +1167,11 @@ stormupdate` (name `update`) and `#/update` (Compute → Update), over stormupda
   says the first and times the message itself from when the console first saw it, a clock
   that restarts with the console.
 
+
+**The pre-pull (#62):** every node pulls the target's images before any node moves. `status.prePulled` says a run
+got past it, so a Failed run with it unset and a node's message starting `pre-pull` moved nothing: the page says
+the cluster is still on the old release and offers no rollback. Each image shows its digest, reference, data
+volume, policy (`reuse`, `replace`, `migrate`), hooks and each node's state, and stays shown once the run ends.
 ### The Registry page (#163)
 
 Owner: "goldens, and who has clones", in OCI Distribution's words: repository, tag,
