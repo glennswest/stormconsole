@@ -90,7 +90,7 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   check(text.includes('shop.svc.cluster.local'), 'DNS search')
   const att = await page.locator('section[aria-label="Attachments"]').innerText()
   check(/storage\s+this one\s+macvlan\s+net1\s+10\.5\.0\.2\s+yes/.test(att), 'a network in the project: its type, interface and address', att)
-  check(/fast\s+no such network\s+other/.test(att) && /not reported/.test(att), 'one in another project, said so, and one that does not exist', att)
+  check(/fast\s*no such network\s+other/.test(att) && /not reported/.test(att), 'one in another project, said so, and one that does not exist', att)
   const points = await page.locator('svg.spark polyline').first().getAttribute('points')
   check(!!points && points.split(' ').length >= 2, 'the receive sparkline is drawn', points || 'none')
   check(text.includes('rustkube-node#131'), 'interface detail and missing counters name rustkube-node#131')
@@ -109,9 +109,6 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
     await pause(500)
     check((await page.locator('select[aria-label="Container"]').inputValue()) === 'app', 'Previous opens that container')
   }
-  await page.goto(`${BASE}/#/pod/shop/web-1?tab=Logs`)
-  await pause(800)
-
   // Logs: current, followed
   await tab('Logs')
   const out = page.locator('pre.out')

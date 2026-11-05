@@ -1085,6 +1085,24 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### A pod and a VM at describe depth (#167)
+
+Owner: "match the info that docker/podman has, oc describe pod xyzzy gives lots of info".
+`GET /api/plugins/k8s/pods/{ns}/{name}` (`pod.rs`) and `#/pod/:ns/:name` carry what #69 and
+#124 did, plus: each container's `workingDir`, `env`, `envFrom`, `mounts`, `securityContext`;
+`nodeSelector`, `tolerations`; `startTiming`, the kubelet's `storm.io/start-timing` split into
+phases, the steps inside them and queue counts; `network.attachments`, each entry of
+`k8s.v1.cni.cncf.io/networks` joined to its NetworkAttachmentDefinition and to
+`network-status`.
+
+**A secret's value is not read.** `env_of` turns a `secretKeyRef` into its name and key, and
+the console fetches no Secret for this page. A value written in the spec is shown, because it
+is the pod's own text and on its YAML tab anyway.
+
+The VM's `domain` and `guestAgent` (`facts.rs`): the agent's connection, OS and an address's
+source are read as KubeVirt writes them. The kubelet asks the agent for addresses and does not
+yet write these (rustkube-node#322), so the card says the node does not report it.
+
 ### The Update page (#164)
 
 The owner, on forge1's first update: "update needs a ui as well". `crates/plugins/

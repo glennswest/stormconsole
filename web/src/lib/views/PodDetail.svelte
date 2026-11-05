@@ -595,7 +595,7 @@
             <tbody>
               {#each pod.network.attachments as a (a.namespace + a.name)}
                 <tr>
-                  <td>{#if a.id}<a href={`#/grid?id=${encodeURIComponent(a.id)}`}>{a.name}</a>{:else}{a.name}{/if}{#if !a.exists} <span class="warn">no such network</span>{/if}</td>
+                  <td>{#if a.id}<a href={`#/grid?id=${encodeURIComponent(a.id)}`}>{a.name}</a>{:else}{a.name}{/if}{#if !a.exists}<span class="warn gapl">no such network</span>{/if}</td>
                   <td>{#if a.inProject}<span class="dim">this one</span>{:else}<a href={`#/k8s/ns/${encodeURIComponent(a.namespace)}`}>{a.namespace}</a>{/if}</td>
                   <td>{a.type || '—'}</td>
                   <td class="mono">{a.interface || '—'}</td>
@@ -738,6 +738,7 @@
 </div>
 
 <style>
+  .gapl { margin-left: 8px; }
   .ctr { border-top: 1px solid var(--sc-hairline); padding: 8px 0; }
   .ctr summary { cursor: pointer; }
   .ctr h3 { font-size: var(--sc-t-meta); color: var(--text-faint); margin: 10px 0 4px; }

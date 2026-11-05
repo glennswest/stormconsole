@@ -1985,9 +1985,9 @@ security context; node selector, tolerations, created and host IP on the card;
 network attachments asked for (`k8s.v1.cni.cncf.io/networks`) and their NADs; logs of one
 container and its previous instance in one click; a link to the registry. VMs: domain,
 conditions, guest agent.
-- [ ] `pod.rs`: the above, tested; page: container detail, start timing, attachments, log links
-- [ ] `vm/facts.rs`: domain and guest agent; page cards; what the node does not report, named
-- [ ] `verify-pod-page.sh`, `verify-vm-net.sh` extended, Chromium; docs, changelog, dist; golden
+- [x] `pod.rs`: the above, tested; page: container detail, start timing, attachments, log links
+- [x] `vm/facts.rs`: domain and guest agent; page cards; what the node does not report, named
+- [x] `verify-pod-page.sh`, `verify-vm-net.sh` extended, Chromium; docs, changelog, dist; golden
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

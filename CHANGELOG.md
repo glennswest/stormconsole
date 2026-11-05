@@ -3,6 +3,17 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — A pod at describe and inspect depth, a VM likewise (#167)
+- **feat:** the pod page gains each container's command, arguments, working directory,
+  environment, mounts, security context, container ID, exit code and times; a secret's
+  environment is its reference, and the value is never fetched. Node selector, tolerations,
+  host IP and created. The kubelet's start timing (`storm.io/start-timing`). The networks it
+  asked for, each with its project, type, interface and address. Each image links to the
+  registry. Logs of one container and its previous instance, one click from its row.
+- **feat:** the VM page gains its machine type, CPU, firmware, QoS and how it got to its
+  phase; and a Guest agent card, which says when the node reports nothing rather than
+  calling the agent absent (rustkube-node#322).
+
 ### 2026-11-05 — The Update page (#164)
 - **feat:** `#/update` (Compute → Update), over stormupdate's API: the release running,
   staged here, moving to, and rolled back from; what is offered, with notes and what
