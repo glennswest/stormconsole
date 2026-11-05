@@ -108,7 +108,13 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
     await prev.click()
     await pause(500)
     check((await page.locator('select[aria-label="Container"]').inputValue()) === 'app', 'Previous opens that container')
+    await page.waitForFunction(() => document.querySelector('pre.out')?.innerText.includes('panic'), null, { timeout: 8000 }).catch(() => {})
+    check(/panic/.test(await page.locator('pre.out').innerText()), 'on the run before this one')
   }
+  // Back to a page opened fresh, as the rest of the walk expects.
+  await page.goto(`${BASE}/#/`)
+  await page.goto(`${BASE}/#/pod/shop/web-1`)
+  await page.locator('h2', { hasText: 'Containers' }).waitFor({ timeout: 15000 })
   // Logs: current, followed
   await tab('Logs')
   const out = page.locator('pre.out')
