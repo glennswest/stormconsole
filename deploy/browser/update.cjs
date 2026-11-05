@@ -84,6 +84,7 @@ walk(`update (${PHASE})`, async (t) => {
     t.check(await im.isVisible() && /n2: forge: 404/.test(await im.innerText()), 'the images stay shown, the failed node named')
     t.check((await page.getByRole('button', { name: /Roll back/ }).count()) === 0, 'nothing moved, so nothing to roll back')
     t.check(!(await page.getByRole('button', { name: 'Update to 12.61' }).isDisabled()), 'and it can be started again')
+    t.check(!/Waiting its turn/.test(await page.locator('section[aria-label="Nodes"]').innerText()), 'the other node is stopped, not waiting')
     await t.shot(page, 'update-pull-failed')
   }
 

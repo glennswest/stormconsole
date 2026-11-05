@@ -19,6 +19,8 @@ export const STEP_WORDS = {
 /// A node's steps, each done, here or still to come. Off the walk (a failure, a
 /// rollback) the walk says nothing true any more, so only where it ended is shown.
 export function nodeSteps(n) {
+  // A pull elsewhere stopped the run: this node is not waiting for anything (stormupdate rollout.rs).
+  if (n.phase === 'Pending' && n.message === 'pre-pull stopped') return [{ step: 'Stopped', word: 'Stopped', state: 'warn' }]
   const at = STEPS.indexOf(n.phase)
   if (at < 0) {
     if (!n.phase) return []

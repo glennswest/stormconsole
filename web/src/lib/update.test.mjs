@@ -9,6 +9,7 @@ assert.equal(states({ phase: 'Done' }), 'done done done done done done')
 const failed = nodeSteps({ phase: 'RolledBack' })
 assert.deepEqual(failed.map((s) => [s.word, s.state]), [['Rolled back', 'warn']], 'off the walk, only where it ended')
 assert.deepEqual(nodeSteps({}), [])
+assert.deepEqual(nodeSteps({ phase: 'Pending', message: 'pre-pull stopped' }).map((s) => s.word), ['Stopped'], 'not waiting its turn')
 assert.equal(nodeSteps({ phase: 'Failed' }).at(-1).state, 'bad')
 assert.equal(nodeSteps({ phase: 'RollingBack' }).at(-1).state, 'now')
 

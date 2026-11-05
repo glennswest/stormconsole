@@ -1956,8 +1956,12 @@ are the source; the catalog adds names. No sealed-at in either.
 #164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
 offered a rollback of nothing; digest, reference, data volume, hooks and each node's state were not shown; a
 change of kind `golden` showed that word.
-- [ ] `update.js` `prePull`, `imageRows`, `changeLine`; the page; test
-- [ ] `verify-update.sh`: pulling and a failed pull, each image; docs, changelog, dist; golden
+- [x] `update.js` `prePull`, `imageRows`, `changeLine`; the page; test
+- [x] `verify-update.sh`: pulling and a failed pull, each image; docs, changelog, dist; golden
+- Verified with `sc-build deploy/verify-update.sh` (0 failed): a real stormupdate and rustkube; the walks over status
+  written in stormupdate's shape, a failed pull in the words of its own test. Default `sc-build`
+- Not seen: a real pre-pull. It needs a node's agent and a registry, so the pulling and stopped states are written
+  into the status, not produced by a run. Cancel stays #196 (stormupdate#36)
 
 ### An Update page (#164) ✅ 2026-11-05
 Owner 2026-11-04, on forge1's first update: "update needs a ui as well". Read from
