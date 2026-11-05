@@ -434,7 +434,7 @@ export function idsForRoute(href) {
     return ns ? ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`)) : ids
   }
   if (path === '#/network/endpoints') {
-    const ids = feed.components.filter((c) => /^k8s:cep:|^flowsdn:endpoint/.test(c.id)).map((c) => c.id)
+    const ids = feed.components.filter((c) => /^k8s:cep:|^flowsdn:ep:/.test(c.id)).map((c) => c.id)
     return ns ? ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`)) : ids
   }
   if (path === '#/nodes') {

@@ -573,7 +573,7 @@
         <div class="card">
           <h2>Pod network</h2>
           {#if !pod.network.cilium}
-            <p class="none">{pod.network.hostNetwork ? 'Host network: the pod network does not manage this interface.' : 'No Cilium endpoint for this pod.'}</p>
+            <p class="none">{pod.network.hostNetwork ? 'Host network: the pod network does not manage this interface.' : 'No network endpoint for this pod.'}</p>
           {:else}
             <dl>
               <dt>Datapath</dt><dd class:ok={pod.network.cilium.state === 'ready'} class:warn={pod.network.cilium.state !== 'ready'}>{pod.network.cilium.state || '—'}</dd>

@@ -609,7 +609,7 @@ pub fn network_row(s: &Snapshot, e: &Endpoint) -> Value {
     let vm = e.workloads.iter().any(|w| w.contains("VirtualMachine"));
     let (ns, name) = (&e.namespace, &e.pod);
     json!({
-        "id": format!("{NAME}:endpoint:{}", e.id),
+        "id": format!("{NAME}:ep:{}", e.id),
         "kind": if vm { "VM" } else { "Pod" },
         "project": ns,
         "name": name,

@@ -38,7 +38,9 @@ def healthz():
     h = {"agent": {"state": "Ok", "msg": "initial endpoint API ready"}}
     if K8S:
         h["kubernetes"] = {"state": "Ok", "msg": "node-a: 2 nodes, 3 pods, 2 frontends", "node-name": "node-a",
-                           "auto-direct-node-routes": True, "service-lb": True}
+                           "auto-direct-node-routes": True, "service-lb": True,
+                           "policy": {"endpoints": [{"id": 1, "pod": "shop/web-7d9", "ingress-enforced": True, "egress-enforced": False, "entries": 4}],
+                                      "ipcache": 3, "problems": []}}
     return h
 
 
