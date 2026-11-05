@@ -178,6 +178,9 @@ say "the page: following it to the read-back"
 deploy/browser/run.sh "$W" driveformat.cjs "$C" PHASE=follow || RC=1
 check "$(curl -s "http://127.0.0.1:$D2/_writes" | python3 -c 'import json,sys; w=json.load(sys.stdin)[-1]; print(w["bearer"]==sys.argv[1], w["body"]["drives"])' "$ALICE")" "True ['b1']" "the other node's format went there, as alice"
 
+# The screenshots, for whoever asks: SC_BUILD_OUT=format-shots.tgz.
+tar czf format-shots.tgz -C "$W" shots
+
 say "console log"
 grep -hE "WARN|ERROR" "$W/c.log" | grep -v 'plaintext\|not verified' | cut -c1-200 | head -10 || true
 say "done: $FAILED failed, browser rc $RC"

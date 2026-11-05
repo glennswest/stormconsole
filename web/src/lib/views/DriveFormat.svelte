@@ -195,7 +195,7 @@
             {/each}
           </tbody>
         </table>
-        <label class="type">Type <span class="mono">{word}</span> to confirm
+        <label class="type"><span>Type <span class="mono">{word}</span> to confirm</span>
           <input bind:value={typed} aria-label="Confirmation" autocomplete="off" />
         </label>
         <div class="row">

@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — A drive format page (#165)
+- **feat:** `#/drives/format` (Hardware → Format): every member's drives by node
+  with model, serial/WWN, bay, current block size and PI, what they would become
+  and the fallbacks, and why a drive is refused. Choose one or several, block
+  size and PI, and confirm: the confirmation names each drive and that its data
+  goes, and takes the serial or `format N drives`.
+- **feat:** the run live, per drive: stormdrive's phase, the drive's percent,
+  elapsed, estimated time left, refused formats, controller resets. Then the
+  result read back, a run that reads back something else marked, the last run of
+  each drive and a drive's whole history. All from stormdrive's persisted record,
+  so it survives a reload and a console restart.
+- **feat:** `GET /api/plugins/drive/formats`, `GET …/formats/history`, `POST
+  /api/plugins/drive/format`: storage-admin only (#82), as the viewer, recorded.
+
 ### 2026-11-05 — Projects and namespaces are one thing (#162)
 - **feat:** one page: `#/projects` lists every project the apiserver lists for
   the viewer, system ones marked and filterable, each with what it holds.

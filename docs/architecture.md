@@ -1045,6 +1045,32 @@ know the first screenful is history is reading it as though it were now. stormvm
 not `/healthz` — every daemon here answers `/healthz`, and a health probe
 would have the console offering a terminal that dials a stranger.
 
+### Formatting drives (#165)
+
+`#/drives/format`, under Hardware. A format on a 10 TB SAS drive takes most of
+a day, so the page is one to come back to, and **the console keeps nothing**:
+the plan (`status.plannedFormat`), the current format and the run
+(`status.format`, persisted by stormdrive, stormdrive#108) come from each node's
+`/apis/storage.storm.io/v1/drives`, joined with `/api/v1/drives` by `GET
+/api/plugins/drive/formats` (cached 3 s, like the page's 5 s poll). A reload or
+a console restart reads the same run. A stormdrive older than v0.39.0 has no
+plan or record, and the node says so. A drive's every format is in its history
+(`GET …/formats/history?node=&id=`, from `/api/v1/drives/{id}/history`).
+
+**Why a drive is refused** (`format::why_not`) mirrors stormdrive's
+`format_blocker` so the page can say it first. It is only a preview: stormdrive
+checks again, and checks what only it can see.
+
+**Starting one** is `POST /api/plugins/drive/format`, one verb to the storage
+guard (#82): the apiserver's yes as the viewer, then the phrase in the body, the
+drive's serial or `format N drives`, which the handler checks against what it
+reads now. It sends one request per node and format, because stormdrive checks
+one request all-or-nothing and takes one format in it; so several nodes or
+formats can partly start, and the answer says per request. It goes **as the
+viewer**, not on a console credential, and logs who and which drives. The page
+sends the plan's format where it can: only a format equal to the plan falls back
+if the drive refuses, so the confirmation says what each run would do.
+
 ### Drives at rack scale (#32)
 
  160 drives a node, ~1,600 a rack. The

@@ -63,7 +63,7 @@ page names the API's word once, in the Registry image row's tooltip.
 
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
-`#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) ·
+`#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) · `#/drives/format` ·
 `#/nodes` · `#/node/<host>` · `#/logs` · `#/etcd/keys` · `#/account/keys` ·
 `#/attach/<ns>/<claim>` · `#/grid?id=&rel=`. The masthead carries the
 Project selector, Create, cluster health, the key (your SSH keys),
@@ -96,6 +96,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-vm-network-edit.sh` | the VM settings network edit (#50): stopped, running and per-interface-pinned machines — the definition read back from the apiserver, the form and pending, the Settings tab in Chromium — real fastetcd + rustkube |
 | `verify-kube-tls.sh` | the console's apiserver credential (#33): rustkube over TLS with an openssl CA and anonymous off — `ca_file` + `token_file`, a stranger CA, a CA minted late, an expired token renewed in place, skip-verify, system roots, config contradictions |
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only; Images, Volumes and Unattached in Chromium |
+| `verify-drive-format.sh` | the format page (#165): real apiserver with the storage roles, stand-in stormdrives in v0.39.0's shapes on a clock, Chromium: who may start one, refusals said, plan and fallbacks, typed confirmation, one all-or-nothing request per node as the viewer, live percent/elapsed/left, a reload and a console restart, read-back, a mismatch, history |
 | `verify-drives.sh` | the Drives map at 1,600 drives across 10 nodes; each drive's usage, slabs, volumes and pools — stand-ins in stormdrive v0.15.0's and stormblock's shapes; the map, a picked drive, Pools and Shelves in Chromium |
 | `verify-machines.sh` | the Machines page — stormipmi's own rig (ipmi_sim, stand-in forge); power, release, boot intent and the SOL console in Chromium, as admin and as ops |
 | `verify-one-node.sh` | one node among other clusters' machines (#161) — real fastetcd, rustkube and console with its SPA, stand-ins for stormdrive, stormstorage and stormcluster, lines and beacons from other addresses, no release manifest: one node with its 5 drives, its logs, no other machine in the feed or on any page and no drill-down to one; flowsdn out of sight on a cilium release and an error on a `-flowsdn` one; free nodes only in the form; a second Node object adds a row and its drives, and removing it takes them away |
