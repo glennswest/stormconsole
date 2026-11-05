@@ -1614,7 +1614,7 @@ engine laid out. So stormipmi#53 builds nothing; the label stays the rack.
 - Not seen on metal: no real Node carries the label until stormipmi's
   golden runs with `patch nodes` (stormcos#203/#76), nor a real DS2246 set
 
-### No trademark names in the style selector (#151)
+### No trademark names in the style selector (#151) ✅ 2026-11-05
 Owner 2026-10-13: the masthead's style selector offers "OpenShift", another
 company's trademark. Rename it **ContainerFocus** (id `containerfocus`); a
 stored `openshift` choice opens in it. The other style ("ESXi", VMware's)
@@ -1642,6 +1642,13 @@ the owner's to pick (asked on #151).
       following the owner's rule): a stored `esxi` opens in it; console.css's
       comments describe both layouts without naming other companies' design
       systems; the walk covers it; dist; golden
+- Verified with `sc-build deploy/verify-styles.sh` (0 failed): options exactly
+  ContainerFocus, VMFocus; stored `openshift` and `esxi` each open in their style
+  (48px / 40px header) and are rewritten; no CSS for the old id; no trademark name
+  visible on the overview; no page errors. Default `sc-build`: 439 tests, 0 warnings.
+  Left as they are: `openshift.io/*` annotation keys and `project.openshift.io`
+  (API compatibility), and prose in docs/architecture.md and crate comments that
+  cite OpenShift as a design reference, which is not this style or the UI
 
 ### Sign in with the install-time API token (#66) ✅ 2026-10-14
 storminstall#1 puts an optional `apiToken` (48 hex) in install-config.yaml;
