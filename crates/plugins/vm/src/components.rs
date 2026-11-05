@@ -590,7 +590,7 @@ mod tests {
         let m = metric(&vm, "policy").unwrap();
         assert_eq!((m.value.as_str(), m.tone.as_deref()), ("none applies (NAT)", Some("warn")));
         assert!(!vm.relations.iter().any(|r| r.name == "endpoint"));
-        let vm = networked(json!([{"name": "default", "ipAddress": "192.168.8.61", "storm.io/binding": "bridge"}]));
+        let vm = networked(json!([{"name": "default", "ipAddress": "192.168.8.61", "storm.io/binding": "host-bridge"}]));
         assert_eq!(metric(&vm, "policy").unwrap().value, "none applies (host bridge)");
         assert!(!vm.relations.iter().any(|r| r.name == "endpoint"));
         let vm = networked(json!([{"name": "default", "ipAddress": "10.1.0.4", "storm.io/binding": "passt"}]));
