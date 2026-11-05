@@ -26,6 +26,7 @@
   import ClusterView from './lib/views/ClusterView.svelte'
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import HealthView from './lib/views/HealthView.svelte'
+  import HistoryView from './lib/views/HistoryView.svelte'
   import ImagesView from './lib/views/ImagesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
@@ -55,6 +56,7 @@
     cluster: ClusterView,
     flowsdn: FlowsdnView,
     health: HealthView,
+    history: HistoryView,
     images: ImagesView,
     attachclaim: AttachClaim,
   }

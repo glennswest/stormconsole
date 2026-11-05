@@ -18,6 +18,7 @@ pub async fn run(ctx: &Ctx, r: &mut Report) {
     r.run("open-surface", open_surface(ctx)).await;
     r.run("plugin-cards", plugin_cards(ctx)).await;
     r.run("creators", creators(ctx)).await;
+    r.run("node-history", node_history(ctx)).await;
     let feed = ctx.console.components().await.unwrap_or_default();
     if !has(&feed, "plugin:k8s") {
         for t in ["websocket-push", "apply-into-project", "apply-needs-a-project", "apply-bad-yaml", "object-yaml",
@@ -71,6 +72,43 @@ async fn open_surface(ctx: &Ctx) -> Outcome {
         }
     }
     Outcome::Pass(notes.join("; "))
+}
+
+/// The node's record of itself (#121): what a node keeps it answers with,
+/// and a diskless one says it keeps none. Every list parses and the newest
+/// record of each opens, whichever release wrote them.
+async fn node_history(ctx: &Ctx) -> Outcome {
+    let status = match ctx.console.call(Method::GET, "/api/v1/history", None, true).await {
+        Ok(a) if a.status == 200 => a.body,
+        Ok(a) => return Outcome::Fail(format!("/api/v1/history answered {}", a.status)),
+        Err(e) => return Outcome::Fail(e),
+    };
+    if status["available"] != true {
+        let note = status["note"].as_str().unwrap_or("");
+        return if note.contains("no system-data") {
+            Outcome::Pass(note.to_string())
+        } else {
+            Outcome::Fail(format!("no record and no sentence: {status}"))
+        };
+    }
+    for (part, key) in [("boots", "id"), ("installs", "id"), ("drives", "key"), ("assets", "id")] {
+        let list = match ctx.console.call(Method::GET, &format!("/api/v1/history/{part}?limit=1"), None, true).await {
+            Ok(a) if a.status == 200 => a.body,
+            Ok(a) => return Outcome::Fail(format!("{part} answered {}", a.status)),
+            Err(e) => return Outcome::Fail(e),
+        };
+        if let Some(id) = list["items"][0][key].as_str() {
+            match ctx.console.call(Method::GET, &format!("/api/v1/history/{part}/{id}"), None, true).await {
+                Ok(a) if a.status == 200 => {}
+                Ok(a) => return Outcome::Fail(format!("{part}/{id} answered {}", a.status)),
+                Err(e) => return Outcome::Fail(e),
+            }
+        }
+    }
+    Outcome::Pass(format!(
+        "{} boots, {} installs, {} drives, {} hardware records in {}",
+        status["boots"], status["installs"], status["drives"], status["assets"], status["root"].as_str().unwrap_or("?")
+    ))
 }
 
 async fn plugin_cards(ctx: &Ctx) -> Outcome {

@@ -37,6 +37,8 @@
   // This node's API health (#123): PID 1's summary is read on the node,
   // so only the node's own console has it.
   const apiHealth = $derived(feed.components.find((c) => c.id === 'health:node'))
+  // Its record of itself (#121): kept on the node, read by its own console.
+  const history = $derived(feed.components.find((c) => c.id === 'history:node'))
 
   async function load() {
     busy = true
@@ -107,6 +109,16 @@
               <a href="#/health"><StatusPill health={apiHealth.health} label="" /> {apiHealth.detail}</a>
             {:else}
               <span class="dim">on that node's own console</span>
+            {/if}
+          </dd>
+          <dt>History</dt>
+          <dd>
+            {#if !isLocal}
+              <span class="dim">on that node's own console</span>
+            {:else if history}
+              <a href="#/history">{history.detail}</a>
+            {:else}
+              <span class="dim">no system-data on this node</span>
             {/if}
           </dd>
         </dl>

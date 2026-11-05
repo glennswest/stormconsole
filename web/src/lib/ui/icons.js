@@ -34,10 +34,13 @@ export const ICONS = {
   vm: 'M3 4h18v12H3zM8 20h8M12 16v4M8 8h8M8 12h5',
   // A pulse: API health (#123).
   health: 'M3 12h4l3-8 4 16 3-8h4',
+  // A clock turned back: the node's history (#121).
+  history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3',
 }
 
 const RULES = [
   [/health/i, 'health'],
+  [/history/i, 'history'],
   [/events/i, 'events'],
   [/virtual machine|^vms?$|hypervisor/i, 'vm'],
   [/log/i, 'logs'],
