@@ -149,7 +149,7 @@ say "who holds what"
 Q() { curl -s "${AT[@]}" "$HOLD" | python3 -c "import json,sys
 d=json.load(sys.stdin)['holdings']
 repo={r['name']:r for r in d['repositories']}
-tag={i['tag']:i for r in d['repositories'] for i in r['images']}
+tag={i.get('tag',''):i for r in d['repositories'] for i in r['images']}
 c={c['name']:c for r in d['repositories'] for i in r['images'] for c in i['clones']}
 print($1)"; }
 check "$(Q 'sorted(i["tag"] for i in repo["stormlb"]["images"])')" "['aaaaaaaaaaaa', 'bbbbbbbbbbbb']" "both name forms are one repository, two tags"
@@ -167,7 +167,8 @@ check "$(Q 'any("hostgolden" in i["name"] or "host" in i["repository"] for r in 
 check "$(curl -s "${AT[@]}" "$C/api/v1/components" | j 'sum(1 for c in d if c["kind"]=="repository") >= 2')" True "a feed row per repository, for the navigator"
 
 say "the catalog adds what the engine cannot say, and the page stands without it"
-Q 'tag["aaaaaaaaaaaa"]["kind"], tag["aaaaaaaaaaaa"]["digest"], tag["aaaaaaaaaaaa"]["releases"]' | sed 's/^/  /'
+check "$(Q 'tag["aaaaaaaaaaaa"]["kind"], c["pod-root"]["holder"]["name"]')" "('component', 'web')" "the catalog's kind beside the engine's holder"
+Q 'tag["aaaaaaaaaaaa"].get("digest"), tag["aaaaaaaaaaaa"]["releases"]' | sed 's/^/  digest, releases as the catalog says: /'
 kill "$REG_PID"; sleep 11
 check "$(curl -s "${AT[@]}" "$HOLD" | j 'bool(d["catalog_note"]) and len(d["holdings"]["repositories"]) >= 2')" True "registry gone: said, and the engine's answer still shown"
 check "$(Q 'c["pod-root"]["holder"]["name"]')" web "the holders with it"
