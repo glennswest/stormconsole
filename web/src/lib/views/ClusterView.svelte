@@ -1,8 +1,9 @@
 <script>
   // Cluster (#63, #88): what the cluster is made of, from stormcluster's
-  // feed — the cluster (or this node as a single-node cluster), its members
-  // and their roles, the nodes discovered that are not members, and the
-  // last operations with their steps.
+  // feed — the cluster (or this node as a single-node cluster, which is its
+  // only member), its members and their roles, and the last operations with
+  // their steps. Other machines are named only in a form or a join, and only
+  // free ones: a single node in no other cluster (#161).
   //
   // A change is a cluster.storm.io object (stormcluster#12): a `Cluster`
   // forms the cluster seeded on this node, a `ClusterMember` per node joins,
@@ -23,6 +24,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import { byNode, moving } from '../progress.js'
+  import { clusterCard, freeNodes, networkOf } from '../cluster.js'
 
   const BASE = '/api/plugins/cluster'
   const API = `${BASE}/proxy/api/v1`
@@ -92,16 +94,18 @@
   const metric = (c, label) => c?.metrics?.find((m) => m.label === label)?.value ?? ''
   const opId = (c) => c.id.replace(/^op:/, '')
 
-  const system = $derived(cards?.find((c) => c.id === 'system'))
+  const system = $derived(clusterCard(cards?.find((c) => c.id === 'system')))
   const members = $derived((cards || []).filter((c) => c.kind === 'member'))
   const peers = $derived((cards || []).filter((c) => c.kind === 'peer'))
   const ops = $derived((cards || []).filter((c) => c.kind === 'operation'))
   const inCluster = $derived(members.length > 0)
   const masters = $derived(members.filter((m) => metric(m, 'role') === 'master'))
   const workers = $derived(members.filter((m) => metric(m, 'role') === 'worker'))
-  // The nodes a form or a join can take: SNOs stormcluster calls available
-  // (not stale, stormcluster running there, not a laptop), and not this one.
-  const available = $derived(peers.filter((p) => p.detail === 'single-node cluster, available' && p.label !== self))
+  // The nodes a form or a join can take, and the only other machines this
+  // page ever names (#161).
+  const available = $derived(freeNodes(peers, self))
+  // A single node's cluster is itself.
+  const own = $derived(peers.find((p) => p.label === self))
   const cluster = $derived(objs.clusters[0] || null)
   const memberObj = (node) => objs.members.find((o) => o.name === node)
   // Objects for nodes that are not members yet: joins in progress, or
@@ -281,6 +285,7 @@
   }
 
   const hardware = (c) => ['cores', 'memory', 'drives'].map((k) => metric(c, k) && `${metric(c, k)} ${k === 'memory' ? '' : k}`.trim()).filter(Boolean).join(' · ')
+  const offered = (p) => [metric(p, 'release'), networkOf(p), hardware(p)].filter(Boolean).join(' · ')
   const when = (t) => (t ? new Date(t).toLocaleString() : '')
 </script>
 
@@ -305,7 +310,7 @@
 {/snippet}
 
 <div class="sc-page">
-  <PageHeader crumbs={[{ label: 'Cluster' }, { label: 'Membership' }]} title={system?.label || 'Cluster'} count={cards ? members.length || null : null} />
+  <PageHeader crumbs={[{ label: 'Cluster' }, { label: 'Membership' }]} title={system?.label || 'Cluster'} count={cards ? members.length || 1 : null} />
 
   {#if !me.write && cards}<p class="dim">{me.why}</p>{/if}
   {#if error}<p class="error">{error}</p>{/if}
@@ -422,6 +427,7 @@
             <button disabled={busy || busyCluster || !workers.length} onclick={() => (promote = { open: true, nodes: [] })}>Promote workers…</button>
             {#if cluster && !cluster.deleting}<button class="danger" disabled={busy} onclick={dissolve}>Dissolve…</button>{/if}
           {/if}
+          {#if !available.length}<span class="dim">No free node to add: only a single node in no other cluster can be.</span>{/if}
         </div>
       {/if}
     </section>
@@ -446,7 +452,7 @@
               <td class="mono">{p.label}{#if metric(p, 'suggested name')} <span class="dim">({metric(p, 'suggested name')})</span>{/if}</td>
               <td><input type="checkbox" aria-label="{p.label} as master" checked={form.masters.includes(p.label)} onchange={() => pickMaster(p.label)} /></td>
               <td><input type="checkbox" aria-label="{p.label} as worker" checked={form.workers.includes(p.label)} onchange={() => pickWorker(p.label)} /></td>
-              <td class="dim">{hardware(p)}</td>
+              <td class="dim">{offered(p)}</td>
             </tr>
           {/each}
         </tbody>
@@ -472,7 +478,7 @@
             <tr>
               <td><input type="checkbox" aria-label="Join {p.label}" checked={join.nodes.includes(p.label)} onchange={() => toggle(join.nodes, p.label)} /></td>
               <td class="mono">{p.label}</td>
-              <td class="dim">{hardware(p)}</td>
+              <td class="dim">{offered(p)}</td>
             </tr>
           {/each}
         </tbody>
@@ -563,26 +569,20 @@
     </table>
   {/if}
 
-  {#if cards}
-    <h3>{inCluster ? 'Other nodes discovered' : 'Nodes discovered'}</h3>
-    {#if peers.length}
-      <table class="rows">
-        <thead><tr><th>Node</th><th>What it is</th><th>Address</th><th>Release</th><th>Hardware</th></tr></thead>
-        <tbody>
-          {#each peers as p (p.id)}
-            <tr class="health-{p.health}">
-              <td><span class="dot {p.health}" aria-hidden="true"></span> <span class="mono strong">{p.label}</span>{#if p.label === self} <span class="tagchip">this node</span>{/if}</td>
-              <td>{p.detail}{#if p.health === 'error'} <span class="bad">· stale</span>{/if}{#if metric(p, 'suggested name')} <span class="dim">· would be {metric(p, 'suggested name')}</span>{/if}</td>
-              <td class="mono">{metric(p, 'address')}</td>
-              <td class="mono">{metric(p, 'release')}{metric(p, 'edition') ? ` · ${metric(p, 'edition')}` : ''}</td>
-              <td class="dim">{hardware(p)}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {:else}
-      <EmptyState icon="node" title="No other nodes heard" hint="stormcluster hears nodes through their announcements on the stormcast group; none has announced itself on this segment yet." />
-    {/if}
+  {#if cards && !inCluster}
+    <h3>Members</h3>
+    <table class="rows">
+      <thead><tr><th>Node</th><th>Role</th><th>Address</th><th>Release</th><th>Hardware</th></tr></thead>
+      <tbody>
+        <tr class="health-{own?.health || 'ok'}">
+          <td><span class="dot {own?.health || 'ok'}" aria-hidden="true"></span> <span class="mono strong">{self}</span> <span class="tagchip">this node</span></td>
+          <td>single node</td>
+          <td class="mono">{metric(own, 'address')}</td>
+          <td class="mono">{metric(own, 'release')}{networkOf(own) ? ` · ${networkOf(own)}` : ''}</td>
+          <td class="dim">{hardware(own)}</td>
+        </tr>
+      </tbody>
+    </table>
   {/if}
 
   {#if ops.length}

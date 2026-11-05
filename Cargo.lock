@@ -1113,6 +1113,7 @@ dependencies = [
  "axum",
  "console-core",
  "plugin-kubernetes",
+ "plugin-logs",
  "reqwest",
  "serde",
  "serde_json",

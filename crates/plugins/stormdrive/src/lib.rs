@@ -1,4 +1,4 @@
-//! The stormdrive plugin: physical drives, fleet-wide (#32).
+//! The stormdrive plugin: physical drives, this cluster's (#32, #161).
 //!
 //! Drives are **hardware**, not storage (issue #8). A drive is a physical
 //! object with a serial, a shelf and a bay that somebody walks up to and
@@ -6,11 +6,12 @@
 //! different sections of the navigator, and the drives get a view laid out
 //! the way the hardware is.
 //!
-//! **Every node's drives, not one's.** At 160 drives a node and ~1,600 a
+//! **Every member's drives, not one's.** At 160 drives a node and ~1,600 a
 //! rack, a console that reads only its own node's stormdrive shows a tenth
 //! of a rack. So this reads this node's stormdrive (`drive:` ids, exactly as
-//! before) and every other node's: each host the fleet has heard from, at
-//! its address on :9092, plus any named in `[stormdrive] nodes`. A remote
+//! before) and every other member's: each node of this cluster (never a
+//! machine merely heard on the segment), at its address on :9092, plus any
+//! named in `[stormdrive] nodes`. A remote
 //! node's components are `drive:@<host>:…` (under the plugin's own prefix,
 //! as every component id must be), its actions go through
 //! `/api/plugins/drive/node/<host>/proxy`, and every drive and shelf carries
@@ -86,8 +87,7 @@ pub fn proxy_base(host: Option<&str>) -> String {
     }
 }
 
-/// The nodes to read besides this one: every host the fleet has an address
-/// for, at :9092, and the configured ones, which win.
+/// The nodes to read besides this one: every member with an address, at :9092, and the configured ones, which win.
 pub fn wanted(discovered: &[(String, String)], statics: &BTreeMap<String, String>, local: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for (host, addr) in discovered {

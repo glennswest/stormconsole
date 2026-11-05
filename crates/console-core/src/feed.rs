@@ -196,6 +196,8 @@ pub struct FeedPlugin {
     /// (#53). The browser's `Authorization` is never passed on: the
     /// console decides who acts upstream, not the page.
     bearer: Option<String>,
+    /// An upstream kind that is a different thing here.
+    rekind: Option<(&'static str, &'static str)>,
 }
 
 impl FeedPlugin {
@@ -218,6 +220,7 @@ impl FeedPlugin {
             feed,
             client: reqwest::Client::new(),
             bearer: None,
+            rekind: None,
         }
     }
 
@@ -247,6 +250,19 @@ impl FeedPlugin {
     pub fn upstream(&self) -> &str {
         &self.feed.base
     }
+
+    /// The feed itself, for a plugin that shows part of it on its own rows.
+    pub fn feed(&self) -> Arc<Feed> {
+        self.feed.clone()
+    }
+
+    /// This upstream's `from` rows are `to` here. stormstorage calls a
+    /// machine it places volumes on a `node`; that is not what the console
+    /// counts as one (#161).
+    pub fn rekind(mut self, from: &'static str, to: &'static str) -> Self {
+        self.rekind = Some((from, to));
+        self
+    }
 }
 
 #[async_trait::async_trait]
@@ -274,7 +290,13 @@ impl ConsolePlugin for FeedPlugin {
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
-        self.feed.components().await
+        let mut list = self.feed.components().await;
+        if let Some((from, to)) = self.rekind {
+            for c in list.iter_mut().filter(|c| c.kind == from) {
+                c.kind = to.to_string();
+            }
+        }
+        list
     }
 
     async fn health(&self) -> Health {

@@ -5,9 +5,11 @@ to a multicast group.
 
   logs-flood.py <group:port> <count> [rate/s] [tag]
 
+Sent as this machine: the console shows no other machine's lines (#161).
 Apps rotate through stormdrive, stormblock, kubelet and stormd, so a
 filtered read (`?app=stormdrive`) always has something to find.
 """
+import os
 import socket
 import sys
 import time
@@ -17,13 +19,14 @@ count = int(sys.argv[2])
 rate = float(sys.argv[3]) if len(sys.argv) > 3 else 4000.0
 tag = sys.argv[4] if len(sys.argv) > 4 else "flood"
 apps = ["stormdrive", "stormblock", "kubelet", "stormd"]
+host = os.uname().nodename
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
 s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
 start = time.time()
 for i in range(count):
     app = apps[i % len(apps)]
-    msg = (f"<14>1 2026-10-10T12:00:00.000Z node-{i % 7} {app} - - - {tag} {i}: "
+    msg = (f"<14>1 2026-10-10T12:00:00.000Z {host} {app} - - - {tag} {i}: "
            f"reconciled volume pvc-{i:08d} on slab {i % 97} after {i % 1000} ms; "
            f"placement drives=[SN{i % 160:04d},SN{(i + 1) % 160:04d}] legs=2 state=ok "
            f"generation={i} checksum={hash((tag, i)) & 0xffffffffffff:012x}")

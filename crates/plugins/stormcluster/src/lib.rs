@@ -140,7 +140,7 @@ impl ConsolePlugin for StormclusterPlugin {
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
-        self.inner.feed.components().await
+        without_peers(self.inner.feed.components().await)
     }
 
     async fn health(&self) -> Health {
@@ -179,6 +179,24 @@ impl ConsolePlugin for StormclusterPlugin {
             }
         }
     }
+}
+
+/// The console's feed has the cluster, not the segment (#161). A peer is a
+/// machine this cluster could take, so it belongs to the step that takes one:
+/// the Cluster page reads them from stormcluster when a form or a join asks.
+pub fn without_peers(mut list: Vec<ComponentSummary>) -> Vec<ComponentSummary> {
+    list.retain(|c| c.kind != "peer");
+    let system = format!("{NAME}:system");
+    for c in list.iter_mut().filter(|c| c.id == system) {
+        c.metrics.retain(|m| m.label != "peers");
+        // "b1 is a single-node cluster; 4 peer(s) discovered"
+        if let Some((said, rest)) = c.detail.split_once("; ") {
+            if rest.ends_with("peer(s) discovered") {
+                c.detail = said.to_string();
+            }
+        }
+    }
+    list
 }
 
 fn err(code: StatusCode, e: impl Into<String>) -> Response {

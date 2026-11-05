@@ -234,3 +234,12 @@ fn ids_are_encoded_for_the_agents_path() {
     assert_eq!(encode_id("sandbox-id:eth0"), "sandbox-id%3Aeth0");
     assert_eq!(encode_id("../v1/config"), "..%2Fv1%2Fconfig");
 }
+
+#[test]
+fn it_shows_on_a_flowsdn_node_and_nowhere_else() {
+    let (f, c, u) = (Edition::Flowsdn(String::new()), Edition::Cilium(String::new()), Edition::Unknown(String::new()));
+    assert!(shows(&f, false), "an agent that is down on a flowsdn node is a fault to show");
+    assert!(!shows(&c, false) && !shows(&c, true));
+    assert!(!shows(&u, false), "nothing said and nothing answering: a cilium node looks like this");
+    assert!(shows(&u, true), "only a flowsdn node has an agent");
+}

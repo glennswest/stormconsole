@@ -25,10 +25,21 @@ pub enum Edition {
 }
 
 impl Edition {
+    /// What a release's name says: a flowsdn release is `<n>-flowsdn`, and
+    /// the only other flavour is the plain `<n>`, which is cilium
+    /// (stormcos docs/NETWORK-TYPE.md). A node's beacon carries this name.
+    pub fn from_release(release: &str) -> Self {
+        if release.ends_with("-flowsdn") {
+            Edition::Flowsdn(format!("release {release}"))
+        } else {
+            Edition::Cilium(format!("release {release}"))
+        }
+    }
+
     /// Read from the release manifest stormcos ships at
     /// `/etc/stormcos/release/manifest.json`. An `edition` (or `network`)
-    /// field wins; then the release version, which a flowsdn release
-    /// carries as `<n>-flowsdn`; then the components it was built from.
+    /// field wins; then the components it was built from; then the name of
+    /// the release ([`Self::from_release`]).
     pub fn from_manifest(text: &str, path: &str) -> Self {
         let Ok(doc) = serde_json::from_str::<Value>(text) else {
             return Edition::Unknown(format!("{path} is not JSON"));
@@ -43,11 +54,6 @@ impl Edition {
                 };
             }
         }
-        if let Some(v) = doc.get("version").and_then(Value::as_str) {
-            if v.ends_with("-flowsdn") {
-                return Edition::Flowsdn(format!("release {v}"));
-            }
-        }
         if let Some(c) = doc.get("components").and_then(Value::as_object) {
             if c.keys().any(|k| k.starts_with("flowsdn")) {
                 return Edition::Flowsdn(format!("{path} lists the flowsdn component"));
@@ -55,6 +61,9 @@ impl Edition {
             if c.keys().any(|k| k.contains("cilium")) {
                 return Edition::Cilium(format!("{path} lists cilium and no flowsdn"));
             }
+        }
+        if let Some(v) = doc.get("version").and_then(Value::as_str).filter(|v| !v.is_empty()) {
+            return Self::from_release(v);
         }
         Edition::Unknown(format!("{path} names no pod network"))
     }

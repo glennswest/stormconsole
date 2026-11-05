@@ -88,6 +88,30 @@ pub struct KubernetesPlugin {
     inner: Arc<Inner>,
 }
 
+/// The members, from the watch cache of Node objects.
+struct NodeObjects(Arc<Store>);
+
+#[async_trait]
+impl console_core::members::Membership for NodeObjects {
+    async fn members(&self) -> Vec<console_core::members::Member> {
+        let nodes = self.0.kind_if_present("node").await.unwrap_or_default();
+        nodes.iter().map(|(name, obj)| member(name, obj)).collect()
+    }
+}
+
+/// A Node object as a member: its name and the addresses traffic comes from.
+fn member(name: &str, node: &Value) -> console_core::members::Member {
+    let addrs = node
+        .pointer("/status/addresses")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|a| matches!(a.get("type").and_then(Value::as_str), Some("InternalIP" | "ExternalIP")))
+        .filter_map(|a| a.get("address").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    console_core::members::Member { name: name.to_string(), addrs }
+}
+
 impl KubernetesPlugin {
     /// stormcentral, for the provenance of a `stormpump://` image on the
     /// pod page. Called right after `new`, before anything shares the
@@ -103,6 +127,11 @@ impl KubernetesPlugin {
     /// the same question once rather than a second time.
     pub fn namespace_access(&self) -> Arc<authz::NamespaceAccess> {
         self.inner.access.clone()
+    }
+
+    /// Who is in this cluster: the apiserver's Node objects (#161).
+    pub fn membership(&self) -> Arc<dyn console_core::members::Membership> {
+        Arc::new(NodeObjects(self.inner.store.clone()))
     }
 
     /// `conn` is the apiserver — its address, the console's bearer and the
@@ -1043,4 +1072,18 @@ mod path_tests {
         assert_eq!(namespace_in_path("/api/v1/namespaces"), None);
         assert_eq!(namespace_in_path("/api/v1/namespaces/"), None);
     }
+
+    #[test]
+    fn a_member_is_a_node_objects_name_and_its_routable_addresses() {
+        let node = serde_json::json!({"status": {"addresses": [
+            {"type": "InternalIP", "address": "192.168.31.203"},
+            {"type": "Hostname", "address": "storm-94a281"},
+            {"type": "ExternalIP", "address": "10.0.0.1"},
+        ]}});
+        let m = member("storm-94a281", &node);
+        assert_eq!(m.name, "storm-94a281");
+        assert_eq!(m.addrs, ["192.168.31.203", "10.0.0.1"]);
+        assert!(member("bare", &serde_json::json!({})).addrs.is_empty());
+    }
 }
+

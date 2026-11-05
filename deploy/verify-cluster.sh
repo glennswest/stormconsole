@@ -39,6 +39,7 @@ check() { # ok what [detail]
 say "build the SPA from this commit, then the console that embeds it"
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 node web/src/lib/progress.test.mjs
+node web/src/lib/cluster.test.mjs
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -240,6 +241,7 @@ curl -sf -b "$W/jar.ops" "http://127.0.0.1:$P/api/v1/components" > "$W/out"
 j '"\n".join("  %-20s %-9s [%s] %s actions=%d" % (x["id"], x["kind"], x["health"], x["label"], len(x.get("actions",[]))) for x in d if x["id"].startswith("cluster:"))'
 check "$(j 'int(not any(x["id"]=="cluster:system" and x["label"]=="b1 (SNO)" for x in d))')" "the system card is b1 as an SNO, over TLS"
 check "$(j 'int(any(x.get("actions") for x in d if x["id"].startswith("cluster:")))')" "the feed carries no actions: a change is an object"
+check "$(j 'int(any(x["kind"]=="peer" for x in d))')" "no peer in the feed: the segment is not the cluster (#161)"
 code=$(c ops GET "$X/objects"); check $([ "$code" = 200 ]; echo $?) "the objects are read" "$code installed=$(j 'd["installed"]') clusters=$(j 'len(d["clusters"])') members=$(j 'len(d["members"])')"
 check "$(j 'int(not d["installed"])')" "both kinds are served (stormcluster installed them)"
 code=$(c root POST "$X/proxy/api/v1/peers/b2/join"); check $([ "$code" = 404 ] || [ "$code" = 405 ]; echo $?) "the old write paths are not forwarded" "$code"

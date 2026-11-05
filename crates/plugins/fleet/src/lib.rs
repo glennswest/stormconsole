@@ -1,9 +1,11 @@
 //! The fleet plugin: nodes and the services on them.
 //!
-//! Nodes announce themselves by existing — every StormCOS node sends its
-//! syslog to the stormcast multicast group, so the log collector's host
-//! list *is* the fleet, with recency as health. There is no inventory
-//! service, by design.
+//! The nodes are this cluster's (#161): the apiserver's Node objects and this
+//! node, which is what [`LogHosts`] answers. Each sends its syslog to the
+//! stormcast group, so recency is its health and the address is where to ask
+//! it things. Other machines on the segment are heard too, and are never
+//! here: they belong to other clusters. One row per machine, however many
+//! names it has been heard under, with stormstorage's numbers on it.
 //!
 //! This node's services are its stormd instances, discovered by probing
 //! the StormCOS port layout on loopback; each one's own stormview feed
@@ -53,6 +55,8 @@ struct Inner {
     hostname: String,
     client: reqwest::Client,
     services: RwLock<BTreeMap<u16, Arc<Service>>>,
+    /// stormstorage's feed: what the engine on each node holds.
+    storage: Option<Arc<Feed>>,
 }
 
 pub struct FleetPlugin {
@@ -71,8 +75,43 @@ impl FleetPlugin {
                 hostname,
                 client: reqwest::Client::new(),
                 services: RwLock::new(BTreeMap::new()),
+                storage: None,
             }),
         }
+    }
+
+    /// stormstorage's feed, for the numbers on a node's row. Called right
+    /// after construction, before anything shares the plugin.
+    pub fn with_storage(mut self, feed: Option<Arc<Feed>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.storage = feed;
+        }
+        self
+    }
+}
+
+/// What stormstorage says about a machine, on that machine's row.
+fn with_storage(node: &mut ComponentSummary, storage: &[ComponentSummary]) {
+    let Some(s) = storage.iter().find(|c| c.kind == "node" && c.label == node.label) else { return };
+    let said = |label: &str| s.metrics.iter().find(|m| m.label == label).map(|m| m.value.clone());
+    let mut line = Vec::new();
+    if let (Some(free), Some(total)) = (said("free"), said("total")) {
+        line.push(format!("{free} free of {total}"));
+    }
+    if let Some(v) = said("vols") {
+        line.push(format!("{v} volumes"));
+    }
+    if !line.is_empty() {
+        node.detail = format!("{} · storage {}", node.detail, line.join(", "));
+    }
+    for label in ["free", "total", "vols"] {
+        if let Some(v) = said(label) {
+            node.metrics.push(Metric::new(&format!("storage {label}"), v).tone("muted"));
+        }
+    }
+    node.relations.push(Relation::has_one("storage", s.id.clone()));
+    if rank(s.health) < rank(node.health) {
+        node.health = s.health;
     }
 }
 
@@ -175,7 +214,7 @@ impl ConsolePlugin for FleetPlugin {
             svc_ids.push(sys_id);
         }
 
-        // Nodes: every host the collector has heard from, this one included.
+        // Nodes: this cluster's, this one included.
         let mut hosts = match &self.inner.hosts {
             Some(h) => h.hosts().await,
             None => Vec::new(),
@@ -199,6 +238,9 @@ impl ConsolePlugin for FleetPlugin {
             let (health, seen) = match age {
                 a if a < 120 => (Health::Ok, "just now".to_string()),
                 a if a < 600 => (Health::Warn, format!("{} min ago", a / 60)),
+                // A member with nothing on the group yet: the apiserver says
+                // it is ours, and its own row there says how it is.
+                _ if h.last_ts.is_empty() => (Health::Idle, "not heard yet".to_string()),
                 a if a == i64::MAX => (Health::Unknown, "unknown".to_string()),
                 a => (Health::Error, format!("{} ago", stormview::format_duration(a))),
             };
@@ -227,6 +269,7 @@ impl ConsolePlugin for FleetPlugin {
                             "{addr}{here} · {} · last seen {seen}",
                             describe(b)
                         ),
+                        None if h.last_ts.is_empty() => format!("{addr}{here} · {seen} on the group"),
                         None => format!(
                             "{addr}{here} · {} log events · last seen {seen}",
                             h.count
@@ -266,6 +309,12 @@ impl ConsolePlugin for FleetPlugin {
                 link: Some(format!("#/node/{}", self.inner.hostname)),
             });
         }
+        if let Some(feed) = &self.inner.storage {
+            let storage = feed.components().await;
+            for n in &mut nodes {
+                with_storage(n, &storage);
+            }
+        }
         let mut all = nodes;
         all.extend(out);
         all
@@ -289,7 +338,8 @@ impl ConsolePlugin for FleetPlugin {
             Some(h) => h.hosts().await.len(),
             None => 0,
         };
-        format!("{} nodes heard on {} · {services} services on this node", nodes.max(1), self.inner.mcast_group)
+        let nodes = nodes.max(1);
+        format!("{nodes} node{} · {services} services on this node", if nodes == 1 { "" } else { "s" })
     }
 
     async fn run(&self, shutdown: CancellationToken) {
@@ -568,6 +618,48 @@ fn human_bytes(n: u64) -> String {
 mod beacon_render_tests {
     use super::*;
     use plugin_logs::beacon::Beacon;
+
+    fn row(id: &str, kind: &str, label: &str, health: Health, metrics: Vec<Metric>) -> ComponentSummary {
+        ComponentSummary {
+            id: id.into(),
+            kind: kind.into(),
+            label: label.into(),
+            health,
+            detail: "192.168.31.203 · this node".into(),
+            metrics,
+            actions: vec![],
+            relations: vec![],
+            link: None,
+        }
+    }
+
+    #[test]
+    fn the_storage_engines_numbers_are_on_the_nodes_row() {
+        let storage = vec![row(
+            "storage:node:storm-94a281",
+            "node",
+            "storm-94a281",
+            Health::Ok,
+            vec![Metric::new("free", "8.9 TB"), Metric::new("total", "8.9 TB"), Metric::new("vols", "206")],
+        )];
+        let mut n = row("fleet:node:local", "node", "storm-94a281", Health::Ok, vec![]);
+        with_storage(&mut n, &storage);
+        assert_eq!(n.detail, "192.168.31.203 · this node · storage 8.9 TB free of 8.9 TB, 206 volumes");
+        assert!(n.metrics.iter().any(|m| m.label == "storage vols" && m.value == "206"));
+        assert_eq!(n.health, Health::Ok);
+    }
+
+    #[test]
+    fn an_engine_that_is_down_shows_on_the_node_and_another_machines_does_not() {
+        let storage = vec![row("storage:node:far", "node", "far", Health::Error, vec![])];
+        let mut n = row("fleet:node:local", "node", "here", Health::Ok, vec![]);
+        with_storage(&mut n, &storage);
+        assert_eq!(n.health, Health::Ok);
+        assert!(n.relations.is_empty());
+        let storage = vec![row("storage:node:here", "node", "here", Health::Error, vec![])];
+        with_storage(&mut n, &storage);
+        assert_eq!(n.health, Health::Error);
+    }
 
     fn beacon(pairs: &[(&str, &str)]) -> Beacon {
         let mut b = Beacon::default();

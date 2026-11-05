@@ -187,6 +187,16 @@ pub struct HostSummary {
     pub last_ts: String,
 }
 
+/// What [`Store::summary_where`] counts.
+#[derive(Debug, Clone, Default)]
+pub struct ScopedSummary {
+    pub entries: u64,
+    pub occurrences: u64,
+    pub suppressed: u64,
+    pub apps: Vec<String>,
+    pub severities: Vec<(u8, i64)>,
+}
+
 /// What an insert did, so the collector knows whether to wake followers.
 pub struct Insert {
     pub event: StoredEvent,
@@ -839,6 +849,7 @@ impl Store {
     /// which is the wrong answer when what you want is what one crashing
     /// container said. That distinction is why this is its own parameter
     /// rather than a preset search.
+    #[cfg(test)]
     pub fn query(
         &self,
         host: Option<&str>,
@@ -849,13 +860,29 @@ impl Store {
     ) -> Result<Vec<StoredEvent>> {
         let want = last.max(0) as usize;
         let needle = search.map(|s| s.to_lowercase());
-        self.with(|db| self.query_in(db, host, app, min_severity, needle.as_deref(), want))
+        let admit = |h: &str| host.is_none_or(|want| h == want);
+        self.with(|db| self.query_in(db, &admit, app, min_severity, needle.as_deref(), want))
+    }
+
+    /// `query`, keeping only lines whose host `admit` takes (#161). Asking
+    /// for one host is that with a single name.
+    pub fn query_where(
+        &self,
+        admit: &dyn Fn(&str) -> bool,
+        app: Option<&str>,
+        min_severity: Option<u8>,
+        search: Option<&str>,
+        last: i64,
+    ) -> Result<Vec<StoredEvent>> {
+        let want = last.max(0) as usize;
+        let needle = search.map(|s| s.to_lowercase());
+        self.with(|db| self.query_in(db, admit, app, min_severity, needle.as_deref(), want))
     }
 
     fn query_in(
         &self,
         db: &Database,
-        host: Option<&str>,
+        admit: &dyn Fn(&str) -> bool,
         app: Option<&str>,
         min_severity: Option<u8>,
         needle: Option<&str>,
@@ -871,10 +898,8 @@ impl Store {
             }
             let (_, v) = item?;
             let record: StoredEvent = serde_json::from_slice(v.value())?;
-            if let Some(h) = host {
-                if record.host != h {
-                    continue;
-                }
+            if !admit(&record.host) {
+                continue;
             }
             if let Some(a) = app {
                 if record.app != a {
@@ -901,6 +926,36 @@ impl Store {
         Ok(rows)
     }
 
+    /// The summary's counts over the lines whose host `admit` takes (#161).
+    /// A scan, like [`Self::apps`]: the aggregates are the whole segment's,
+    /// and this is asked when somebody opens the page, not on every insert.
+    pub fn summary_where(&self, admit: &dyn Fn(&str) -> bool) -> Result<ScopedSummary> {
+        self.with(|db| {
+            let tx = db.begin_read()?;
+            let events = tx.open_table(EVENTS)?;
+            let mut out = ScopedSummary::default();
+            let mut apps = std::collections::BTreeSet::new();
+            let mut severities = std::collections::BTreeMap::<u8, i64>::new();
+            for item in events.iter()? {
+                let (_, v) = item?;
+                let record: StoredEvent = serde_json::from_slice(v.value())?;
+                if !admit(&record.host) {
+                    continue;
+                }
+                out.entries += 1;
+                out.occurrences += record.count;
+                out.suppressed += record.count.saturating_sub(1);
+                *severities.entry(record.severity).or_default() += record.count as i64;
+                if !record.app.is_empty() {
+                    apps.insert(record.app);
+                }
+            }
+            out.apps = apps.into_iter().collect();
+            out.severities = severities.into_iter().collect();
+            Ok(out)
+        })
+    }
+
     /// Every emitter the ring has heard from, so a container can be picked
     /// rather than typed.
     ///
@@ -908,6 +963,7 @@ impl Store {
     /// when somebody opens a filter, not on every insert, and a second index
     /// maintained on the hot path to answer a question asked twice an hour is
     /// the wrong trade. Bounded by the ring, which is bounded.
+    #[cfg(test)]
     pub fn apps(&self) -> Result<Vec<String>> {
         self.with(|db| {
         let tx = db.begin_read()?;
@@ -938,6 +994,7 @@ impl Store {
         })
     }
 
+    #[cfg(test)]
     pub fn severity_counts(&self) -> Result<Vec<(u8, i64)>> {
         self.with(|db| {
         let tx = db.begin_read()?;
@@ -1002,6 +1059,31 @@ fn read_host(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scoped_read_and_summary_count_only_the_hosts_admitted() {
+        let (s, _dir) = Store::open_temp(1000, 3_600_000, true).unwrap();
+        let line = |host: &str, app: &str, sev: u8, msg: &str| LogEvent {
+            ts: "2026-11-05T00:00:00Z".into(),
+            host: host.into(),
+            addr: "10.0.0.1".into(),
+            app: app.into(),
+            severity: sev,
+            facility: 1,
+            msg: msg.into(),
+        };
+        s.insert(&line("here", "kubelet", 6, "mine"), 1000).unwrap();
+        s.insert(&line("here", "kubelet", 6, "mine"), 1001).unwrap();
+        s.insert(&line("far", "theirs", 3, "not mine"), 1002).unwrap();
+        let admit = |h: &str| h == "here";
+        let rows = s.query_where(&admit, None, None, None, 100).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].msg, "mine");
+        let sum = s.summary_where(&admit).unwrap();
+        assert_eq!((sum.entries, sum.occurrences, sum.suppressed), (1, 2, 1));
+        assert_eq!(sum.apps, ["kubelet"]);
+        assert_eq!(sum.severities, [(6, 2)]);
+    }
 
     const HOUR: u64 = 3_600_000;
 

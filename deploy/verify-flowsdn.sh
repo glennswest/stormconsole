@@ -201,9 +201,8 @@ check "$(curl -sf $B/api/plugins/flowsdn/snapshot | py 'import json,sys; s=json.
 
 say "C: a cilium node"
 feed $C
-check "$(row flowsdn:agent | cut -d'|' -f1)" "idle" "the row is idle"
-check "$(row flowsdn:agent | cut -d'|' -f3 | grep -c '^not this edition')" "1" "saying not this edition"
-check "$(py "import json; print(len([c for c in json.load(open('$W/feed.json')) if c['id'].startswith('flowsdn:')]))")" "1" "and nothing else"
+check "$(py "import json; print(len([c for c in json.load(open('$W/feed.json')) if c['id'].startswith('flowsdn:') or c['id'] == 'plugin:flowsdn']))")" "0" "no card and no row (#161)"
+check "$(curl -sf $C/api/plugins/flowsdn/snapshot | py 'import json,sys; print(json.load(sys.stdin)["sentence"].startswith("not this edition"))')" "True" "the page, opened by hand, says not this edition"
 check "$(navitem $C)" "False" "no navigator item"
 check "$(wc -l < "$W/agent-c.log" | tr -d ' ')" "0" "the agent there was never asked"
 

@@ -115,6 +115,8 @@ async fn main() {
     // authorization answer derived from it; the VM plugin shares that one
     // answer rather than asking the apiserver the same question twice.
     let mut namespace_access = None;
+    // Which machines are this cluster's: its apiserver's Node objects (#161).
+    let mut membership = None;
     // One connection to the apiserver for everything that speaks to it as
     // the console (#33): the bearer from `token_file` follows its renewals,
     // and the certificate is checked against `ca_file`.
@@ -146,6 +148,7 @@ async fn main() {
         let k8s = Arc::new(k8s);
         k8s.namespace_access().set_system_namespaces(config.kubernetes.system_namespaces.clone());
         namespace_access = Some(k8s.namespace_access());
+        membership = Some(k8s.membership());
         plugins.push(k8s);
     }
     let logs = config.logs.enabled.then(|| {
@@ -156,18 +159,34 @@ async fn main() {
             config.logs.retain_hours,
             config.logs.dedup,
         )
-        .keep_free_percent(config.logs.keep_free_percent))
+        .keep_free_percent(config.logs.keep_free_percent)
+        .members(membership.clone()))
     });
-    // The fleet's hosts and their addresses: the fleet plugin drills into
+    // The cluster's nodes and their addresses: the fleet plugin drills into
     // them, and the drives plugin reads each one's stormdrive (#32).
     let log_hosts = logs.as_ref().map(|l| l.hosts());
+    let stormstorage = config.stormstorage.enabled.then(|| {
+        // stormstorage's write token (#53), held server-side like the
+        // engine's: every action on its feed is a write.
+        let token = config.stormstorage.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!(file = f, "stormstorage token_file unreadable, its writes will be refused: {e}");
+                None
+            }
+        });
+        Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url(), token))
+    });
     if config.fleet.enabled {
-        plugins.push(Arc::new(plugin_fleet::FleetPlugin::new(
-            config.fleet.mcast_group.clone(),
-            config.fleet.stormd_host.clone(),
-            config.fleet.stormd_ports.clone(),
-            logs.as_ref().map(|l| l.hosts()),
-        )));
+        plugins.push(Arc::new(
+            plugin_fleet::FleetPlugin::new(
+                config.fleet.mcast_group.clone(),
+                config.fleet.stormd_host.clone(),
+                config.fleet.stormd_ports.clone(),
+                logs.as_ref().map(|l| l.hosts()),
+            )
+            .with_storage(stormstorage.as_ref().map(|p| p.feed())),
+        ));
     }
     if let Some(logs) = logs {
         plugins.push(logs);
@@ -179,17 +198,8 @@ async fn main() {
             log_hosts.clone(),
         )));
     }
-    if config.stormstorage.enabled {
-        // stormstorage's write token (#53), held server-side like the
-        // engine's: every action on its feed is a write.
-        let token = config.stormstorage.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                tracing::warn!(file = f, "stormstorage token_file unreadable, its writes will be refused: {e}");
-                None
-            }
-        });
-        plugins.push(Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url(), token)));
+    if let Some(p) = stormstorage {
+        plugins.push(p);
     }
     if config.stormblock.enabled {
         // A guarded engine answers every read with 401 without its token;
@@ -275,12 +285,14 @@ async fn main() {
     }
     // This node's pod network on the flowsdn edition (#83): the agent's
     // loopback API, endpoints scoped by namespace like the pods they are.
+    // On any other node it stays out of sight (#161).
     if config.flowsdn.enabled {
         plugins.push(Arc::new(plugin_flowsdn::FlowsdnPlugin::new(
             &config.flowsdn_url(),
             &config.flowsdn_release_manifest(),
             namespace_access.clone(),
-        )));
+        )
+        .with_hosts(log_hosts.clone())));
     }
     // Every API on this node and an alert when one stalls (#123): PID 1's
     // summary, or each stormd on the fleet's ports when it is not bound in.

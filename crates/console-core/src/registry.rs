@@ -81,7 +81,7 @@ impl Registry {
     }
 
     pub fn nav(&self) -> Vec<NavSection> {
-        merge(self.plugins.iter().flat_map(|p| p.nav()).collect())
+        merge(self.plugins.iter().filter(|p| p.present()).flat_map(|p| p.nav()).collect())
     }
 
     /// Every plugin's creators, each stamped with its owner.
@@ -273,7 +273,7 @@ impl Registry {
     /// slice. Publishes only when the snapshot changed.
     pub async fn refresh(&self) {
         let mut all: Vec<ComponentSummary> = Vec::new();
-        for p in &self.plugins {
+        for p in self.plugins.iter().filter(|p| p.present()) {
             let slice = p.components().await;
             for c in &slice {
                 if !c.id.starts_with(&format!("{}:", p.name())) && c.id != p.name() {

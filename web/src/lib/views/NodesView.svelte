@@ -1,11 +1,7 @@
 <script>
-  // The fleet: every node that has announced itself.
-  //
-  // A node announces itself by existing — it emits to the multicast group
-  // from the moment its network is up in the initramfs, so a console that
-  // joins the group sees every node on the segment with no configuration
-  // on either side (CLUSTER.md). There is no inventory service and no
-  // registration, which is why this list is built from log traffic.
+  // This cluster's nodes (#161): its apiserver's Node objects, and this node.
+  // A single node's list is itself. Other machines on the segment are heard
+  // on the same group and are never here; they are other clusters'.
   //
   // Health here is recency, not a probe: a node that stopped talking is
   // the thing worth noticing, and it is the only thing the log group can
@@ -35,7 +31,6 @@
     })
   )
   const quiet = $derived(all.filter((c) => c.health === 'error' || c.health === 'warn').length)
-  const collector = $derived(feed.components.find((c) => c.id === 'plugin:logs'))
 </script>
 
 <div class="sc-page">
@@ -56,20 +51,14 @@
   {#if !feed.loaded}
     <div class="sc-empty"><p>Connecting to the component feed…</p></div>
   {:else if all.length === 0}
-    <EmptyState
-      icon="node"
-      title="No nodes heard"
-      hint={collector && collector.health !== 'ok'
-        ? `The log collector is not listening, so nothing can announce itself: ${collector.detail}`
-        : 'Nothing has announced itself on the multicast group. A node joins it as soon as its network is up, so an empty list means either no node is on this segment or the group is not reaching this console — a bridged or NAT’d container cannot join it.'}
-    />
+    <EmptyState icon="node" title="No nodes" hint="The console has not listed this node yet." />
   {:else}
     <Toolbar
       bind:search
       placeholder="Search nodes by name or address"
       bind:view={prefs.view}
       onview={setView}
-      hint={rows.length !== all.length ? `${rows.length} of ${all.length}` : `${all.length} heard`}
+      hint={rows.length !== all.length ? `${rows.length} of ${all.length}` : `${all.length} ${all.length === 1 ? 'node' : 'nodes'}`}
     >
       {#snippet filters()}
         <select bind:value={state} aria-label="Filter by state">

@@ -118,3 +118,45 @@ fn the_nav_puts_membership_first_in_cluster() {
     assert_eq!(p.inner.base, "http://127.0.0.1:9102");
     assert!(StormclusterPlugin::new("http://x", Some(" \n".into())).inner.token.is_none());
 }
+
+#[test]
+fn the_feed_has_the_cluster_and_not_the_segment() {
+    let row = |id: &str, kind: &str, detail: &str, metrics: Vec<console_core::Metric>| ComponentSummary {
+        id: id.into(),
+        kind: kind.into(),
+        label: id.into(),
+        health: console_core::Health::Idle,
+        detail: detail.into(),
+        metrics,
+        actions: vec![],
+        relations: vec![],
+        link: None,
+    };
+    let out = without_peers(vec![
+        row("cluster:system", "cluster", "b1 is a single-node cluster; 4 peer(s) discovered", vec![console_core::Metric::new("peers", "4")]),
+        row("cluster:peer:b1", "peer", "single-node cluster, available", vec![]),
+        row("cluster:peer:b2", "peer", "worker in other", vec![]),
+        row("cluster:member:b3", "member", "ready", vec![]),
+        row("cluster:op:1", "operation", "done", vec![]),
+    ]);
+    let ids: Vec<&str> = out.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["cluster:system", "cluster:member:b3", "cluster:op:1"]);
+    assert_eq!(out[0].detail, "b1 is a single-node cluster");
+    assert!(out[0].metrics.is_empty());
+}
+
+#[test]
+fn a_clusters_own_line_is_left_as_it_says_it() {
+    let row = ComponentSummary {
+        id: "cluster:system".into(),
+        kind: "cluster".into(),
+        label: "storm".into(),
+        health: console_core::Health::Ok,
+        detail: "storm: 3 members, endpoint https://x; ok".into(),
+        metrics: vec![],
+        actions: vec![],
+        relations: vec![],
+        link: None,
+    };
+    assert_eq!(without_peers(vec![row])[0].detail, "storm: 3 members, endpoint https://x; ok");
+}

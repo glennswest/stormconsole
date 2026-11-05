@@ -12,6 +12,7 @@
 pub mod beacon;
 mod collector;
 mod parse;
+pub mod scope;
 mod store;
 
 use std::sync::Arc;
@@ -22,6 +23,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use console_core::members::Membership;
 use console_core::{ComponentSummary, ConsolePlugin, Health, Metric, NavSection};
 use futures_util::stream::Stream;
 use serde_json::json;
@@ -30,6 +32,7 @@ use tokio_util::sync::CancellationToken;
 
 use store::{Stats, Store, StoredEvent};
 pub use store::HostSummary;
+pub use scope::Scope;
 
 struct Status {
     health: Health,
@@ -55,6 +58,13 @@ struct Inner {
     /// take the node's capabilities off the fleet view while the node was
     /// still shouting them every thirty seconds.
     beacons: RwLock<std::collections::HashMap<String, beacon::Beacon>>,
+    /// The apiserver's answer to who is in this cluster (#161).
+    members: Option<Arc<dyn Membership>>,
+    /// This node's name, as its own lines carry it.
+    local: String,
+    /// The scope, rebuilt at most every [`SCOPE_FRESH`]: the live tail asks
+    /// for every line.
+    scope: std::sync::Mutex<Option<(std::time::Instant, Arc<Scope>)>>,
 }
 
 pub struct LogsPlugin {
@@ -62,6 +72,39 @@ pub struct LogsPlugin {
 }
 
 impl Inner {
+    /// Who this console shows, as of a few seconds ago (#161).
+    async fn scope(&self) -> Arc<Scope> {
+        if let Ok(cached) = self.scope.lock() {
+            if let Some((at, s)) = cached.as_ref() {
+                if at.elapsed() < SCOPE_FRESH {
+                    return s.clone();
+                }
+            }
+        }
+        let heard = match self.store.read().await.as_ref() {
+            Some(store) => store.hosts().unwrap_or_default(),
+            None => Vec::new(),
+        };
+        let members = match &self.members {
+            Some(m) => m.members().await,
+            None => Vec::new(),
+        };
+        let fresh = Arc::new(Scope::build(&self.local, &members, &heard));
+        if let Ok(mut cached) = self.scope.lock() {
+            *cached = Some((std::time::Instant::now(), fresh.clone()));
+        }
+        fresh
+    }
+
+    /// The hosts heard from this cluster, one row per node.
+    async fn scoped_hosts(&self) -> Vec<HostSummary> {
+        let heard = match self.store.read().await.as_ref() {
+            Some(store) => store.hosts().unwrap_or_default(),
+            None => Vec::new(),
+        };
+        self.scope().await.rows(heard)
+    }
+
     /// The collector's word and line: its status, unless the ring is closed
     /// (a recovery that has not worked yet, #128), which is said instead.
     async fn now(&self) -> (Health, String) {
@@ -83,8 +126,12 @@ pub const DEFAULT_RETAIN_HOURS: u64 = 168;
 /// goes quiet still expires what it left behind.
 const PRUNE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// A handle other plugins hold to ask which hosts the collector has heard
-/// from — the fleet plugin's node list is exactly this.
+/// How long one answer to "who is in this cluster" is used for.
+const SCOPE_FRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A handle other plugins hold to ask which of this cluster's nodes the
+/// collector has heard from (#161): the fleet plugin's node list, and where
+/// the drives plugin reads stormdrive. A machine outside it is not in here.
 #[derive(Clone)]
 pub struct LogHosts(Arc<Inner>);
 
@@ -93,14 +140,28 @@ impl LogHosts {
     /// hostname the node calls itself — the same key `hosts()` uses, so the
     /// fleet plugin can join the two without a second identity.
     pub async fn beacons(&self) -> std::collections::HashMap<String, beacon::Beacon> {
-        self.0.beacons.read().await.clone()
+        let scope = self.0.scope().await;
+        let mut out = std::collections::HashMap::new();
+        for (host, b) in self.0.beacons.read().await.iter() {
+            if let Some(node) = scope.node_of(host) {
+                // Its own name's beacon over one sent under another name.
+                if host == node || !out.contains_key(node) {
+                    out.insert(node.to_string(), b.clone());
+                }
+            }
+        }
+        out
     }
 
+    /// This node's own beacon: what it says about itself, wherever the
+    /// console cannot read that from a file.
+    pub async fn own_beacon(&self) -> Option<beacon::Beacon> {
+        self.0.beacons.read().await.get(&self.0.local).cloned()
+    }
+
+    /// This cluster's nodes, one row each.
     pub async fn hosts(&self) -> Vec<HostSummary> {
-        match self.0.store.read().await.as_ref() {
-            Some(store) => store.hosts().unwrap_or_default(),
-            None => Vec::new(),
-        }
+        self.0.scoped_hosts().await
     }
 }
 
@@ -132,6 +193,9 @@ impl LogsPlugin {
                 store: RwLock::new(None),
                 tail,
                 beacons: RwLock::new(std::collections::HashMap::new()),
+                members: None,
+                local: local_hostname(),
+                scope: std::sync::Mutex::new(None),
                 status: RwLock::new(Status {
                     health: Health::Idle,
                     detail: "collector not started".to_string(),
@@ -148,6 +212,21 @@ impl LogsPlugin {
         }
         self
     }
+
+    /// Who is in this cluster (#161). Without it the console shows this node
+    /// alone. Called right after construction, like `keep_free_percent`.
+    pub fn members(mut self, members: Option<Arc<dyn Membership>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.members = members;
+        }
+        self
+    }
+}
+
+/// The node's name as its syslog carries it (the golden shares the host's
+/// UTS namespace, so this is the node, not the container).
+fn local_hostname() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string()).unwrap_or_default()
 }
 
 #[async_trait]
@@ -181,9 +260,7 @@ impl ConsolePlugin for LogsPlugin {
                 Metric::new("duplicates", suppressed.to_string())
                     .tone(if suppressed > 0 { "warn" } else { "muted" }),
             );
-            if let Ok(hosts) = store.hosts() {
-                metrics.push(Metric::new("hosts", hosts.len().to_string()).tone("accent"));
-            }
+            metrics.push(Metric::new("hosts", self.inner.scoped_hosts().await.len().to_string()).tone("accent"));
             // How the ring stays within its disk, and whether it has had
             // to come back from one (#128).
             let care = store.care();
@@ -301,8 +378,16 @@ async fn events(State(inner): State<Arc<Inner>>, Query(q): Query<EventsQuery>) -
     let Some(store) = inner.store.read().await.clone() else {
         return Json(json!([])).into_response();
     };
-    match store.query(
-        q.host.as_deref(),
+    // Asked by a name, the node's other names are the same machine's.
+    let scope = inner.scope().await;
+    let wanted = q.host.as_deref().map(|h| scope.node_of(h).map(str::to_string));
+    let admit = |host: &str| match (scope.node_of(host), &wanted) {
+        (None, _) => false,
+        (Some(_), None) => true,
+        (Some(n), Some(w)) => w.as_deref() == Some(n),
+    };
+    match store.query_where(
+        &admit,
         q.app.as_deref(),
         q.min_severity,
         q.search.as_deref(),
@@ -325,15 +410,14 @@ async fn summary(State(inner): State<Arc<Inner>>) -> Response {
         }))
         .into_response();
     };
-    let hosts = store.hosts().unwrap_or_default();
-    let apps = store.apps().unwrap_or_default();
-    let severities: Vec<_> = store
-        .severity_counts()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(s, n)| json!({"severity": s, "count": n}))
-        .collect();
-    let Stats { entries, occurrences, suppressed } = store.stats();
+    let hosts = inner.scoped_hosts().await;
+    // Counted over what this console shows, not over the whole segment.
+    let scope = inner.scope().await;
+    let seen = store.summary_where(&|host| scope.node_of(host).is_some()).unwrap_or_default();
+    let severities: Vec<_> =
+        seen.severities.into_iter().map(|(s, n)| json!({"severity": s, "count": n})).collect();
+    let (entries, occurrences, suppressed) = (seen.entries, seen.occurrences, seen.suppressed);
+    let apps = seen.apps;
     Json(json!({
         "total": entries,
         "received": occurrences,
@@ -354,6 +438,7 @@ async fn stream(
 ) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
     let rx = inner.tail.subscribe();
     let stream = futures_util::stream::unfold(rx, move |mut rx| {
+        let inner = inner.clone();
         let host = q.host.clone();
         // The live tail has to agree with the query it follows. Filtering the
         // page by one container and then streaming every container into it
@@ -364,8 +449,10 @@ async fn stream(
             loop {
                 match rx.recv().await {
                     Ok(e) => {
+                        let scope = inner.scope().await;
+                        let Some(node) = scope.node_of(&e.host) else { continue };
                         if let Some(h) = &host {
-                            if e.host != *h {
+                            if scope.node_of(h) != Some(node) {
                                 continue;
                             }
                         }

@@ -48,10 +48,11 @@ async function as(browser, user) {
   const summary = page.locator('section.summary')
 
   try {
-    console.log('\n--- 1. an SNO and its peers')
+    console.log('\n--- 1. an SNO: itself, and others only in the form')
     await page.goto(`${BASE}/#/cluster`)
     check(await until(async () => (await body()).includes('b1 (SNO)')), 'the page names b1 as an SNO')
-    for (const n of ['b2', 'b3']) check(await until(async () => (await row(n).count()) === 1), `${n} is listed as discovered`)
+    check(await until(async () => (await row('b1').count()) === 1), 'b1 is its own member')
+    check((await row('b2').count()) === 0 && (await row('b3').count()) === 0 && !/discovered/i.test(await body()), 'no other machine is named outside the form', await body())
     check(await page.getByRole('button', { name: 'Resume' }).count() === 0, 'no Resume: a failed operation resumes by itself')
 
     console.log('\n--- 2. Form storm on b1: the plan, then the objects')
@@ -136,7 +137,7 @@ async function as(browser, user) {
     const alice = await as(browser, 'alice')
     await alice.goto(`${BASE}/#/cluster`)
     const aliceBody = () => alice.locator('main').innerText()
-    await until(async () => (await aliceBody()).includes('Nodes discovered') || (await aliceBody()).includes('Other nodes discovered'))
+    await until(async () => (await aliceBody()).includes('Members'))
     const joinBtn = alice.getByRole('button', { name: 'Join nodes…' })
     if (await joinBtn.count()) {
       await joinBtn.click()

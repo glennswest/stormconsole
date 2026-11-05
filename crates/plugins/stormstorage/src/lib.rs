@@ -6,10 +6,14 @@
 //! (stormstorage#6): publish, assemble, move and delete on a volume. Reads
 //! and the feed stay open. So the token — `[stormstorage] token_file` —
 //! goes on what the proxy forwards, added server-side (#53).
+//!
+//! Its `node` rows say what the engine on a machine holds. They are not
+//! machines to the console (#161): the fleet plugin puts the numbers on the
+//! node's own row, and here they are `storage node`.
 
 use console_core::FeedPlugin;
 
 /// `token` is stormstorage's `[api] api_token`, when it has one.
 pub fn plugin(url: &str, token: Option<String>) -> FeedPlugin {
-    FeedPlugin::new("storage", "stormstorage", "Storage", 40, "Pools", url).admin().bearer(token)
+    FeedPlugin::new("storage", "stormstorage", "Storage", 40, "Pools", url).admin().bearer(token).rekind("node", "storage node")
 }
