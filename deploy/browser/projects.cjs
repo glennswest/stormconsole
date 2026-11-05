@@ -124,7 +124,7 @@ walk('projects', async (t) => {
   t.check(await t.open(root, '#/k8s/cm?ns=', /root-note/), 'all projects: config maps')
   t.check(/^project$/i.test((await root.locator('th.place').first().innerText()).replace(/[^a-z]/gi, '')), 'the column is called Project', await root.locator('th.place').first().innerText())
   const heads = await root.locator('tr.group').allInnerTexts()
-  t.check(heads.some((h) => /alice-work/.test(h)) && heads.some((h) => /kube-system[\s\S]*system/i.test(h)), 'grouped by project, the system one marked', heads.join(' | '))
+  t.check(heads.some((h) => /alice-work/i.test(h)) && heads.some((h) => /kube-system[\s\S]*system/i.test(h)), 'grouped by project, the system one marked', heads.join(' | '))
   await t.shot(root, 'config-maps-by-project')
 
   // One word. YAML is the API's, and the Projects page says once what a
