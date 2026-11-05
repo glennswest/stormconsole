@@ -1730,6 +1730,28 @@ node shows flowsdn `unknown`; that manifest has no `edition` key anyway, only
   still take ring space (read-time rule, so membership changes need no rewrite)
 - Filed: stormcos#786 (release volume), stormcluster#81 (peer network)
 
+### Projects and namespaces are one thing (#162)
+Owner (2026-11-04/05): "a project and a namespace are one and the same";
+"oc new project creates a namespace, project=namespace. Almost everything is
+attached to a namespace. Also network"; "pods are in namespaces/projects!".
+Read from the code: `/projects` already lists namespaces; `Cluster →
+Namespaces` and the word are the split. Platform namespaces read from
+stormcos/stormcentral: `storm-*` (`storm-assets`, `storm-ext4-check`,
+`storm-data-gate`, `storm-build`, `storm-system`), `cilium`, `cilium-secrets`.
+- [ ] System rule: those built in; `system_namespaces` takes `prefix-*`
+- [ ] `GET /projects`: system ones for whoever the apiserver lists them for,
+      marked; `#/projects` lists all, filter yours/system, contents per
+      project; `#/k8s/ns` redirects there; `Cluster → Namespaces` and the bare
+      Namespace creator go
+- [ ] One word: project in the SPA and every sentence (`term` both sides); the
+      API's `kind: Namespace` in YAML stays
+- [ ] Inside their project: lists' crumbs (Projects → p → kind), group header
+      marked system; the project page counts VMs, load balancers, routes,
+      network attachments, config maps; Secrets as the viewer, names and keys
+      only; opening a project selects it, so a create lands there
+- [ ] Rows for what had a count but no row: cm, quota, limits, route, nad
+- [ ] Tests; `deploy/verify-projects.sh` + walk; docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
