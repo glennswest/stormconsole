@@ -40,7 +40,7 @@ What the code **reads at runtime**, one plugin each:
 
 | | | |
 |---|---|---|
-| rustkube :6443 | stormblock :9090 | stormdrive :9092 (every node) |
+| rustkube :6443 | stormblock :9090 | stormdrive :9092 (every member) |
 | stormstorage :9093 | sbregistry :5100 | fastetcd :2379 / :2381 |
 | stormvm :9095 | vmcloud-image-operator :9099 | stormipmi :9097 |
 | stormcast `239.255.42.1:5514` | stormd APIs 9081–9199 | Cilium agent :9879 |
