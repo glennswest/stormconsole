@@ -196,13 +196,18 @@ check "$(code alice -H "X-Storm-Confirm: $OURS_ID" -d "{\"confirm\":\"$WORD\"}" 
 say "a rebalance is the node's ordinary word, a dry run by default"
 check "$(as bob -X POST -H 'content-type: application/json' -d '{"dry_run":true}' "$SBP/slabs/rebalance" | j '"plan" in d')" True "a plan comes back, through the proxy"
 
+say "stopping a rebalance is the guard's, and says what it is"
+check "$(as bob -X DELETE -o /dev/null -w '%{http_code}' -H 'X-Storm-Confirm: rebalance' "$SBP/slabs/rebalance")" 403 "bob: 403"
+check "$(as alice -X DELETE "$SBP/slabs/rebalance" | j 'd["guard"]["guarded"]["what"]')" "stop a rebalance" "alice is asked for the word, named as what it is"
+check "$(as alice -X DELETE -o /dev/null -w '%{http_code}' -H 'X-Storm-Confirm: rebalance' "$SBP/slabs/rebalance")" 404 "with it, the engine answers as alice: no rebalance is running"
+
 say "the page, in Chromium (a real format, a real rebalance)"
 BR=0
 env BLANK="$BLANK" FOREIGN="$FOREIGN" WORD="$WORD" "$HERE/deploy/browser/run.sh" "$W" driveoffer.cjs "$C" || BR=1
 check "$BR" 0 "the walk"
 check "$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["offer"]["state"]')" ours "the engine holds it as ours now"
-check "$(curl -s "${AUTH[@]}" "$EN/drives/$FOREIGN_ID" | j 'd["offer"]["state"]')" foreign "and the one cancelled is untouched"
-check "$(grep -c 'a person formats a drive' "$W/engine.log" || true)" 2 "the engine logged two formats: the admin's seed slab, and alice's"
+check "$(curl -s "${AUTH[@]}" "$EN/drives/$FOREIGN_ID" | j 'd["offer"]["state"]')" ours "and the foreign one, once a person gave the word from its row"
+check "$(grep -c 'a person formats a drive' "$W/engine.log" || true)" 3 "the engine logged three formats: the admin's seed slab, and alice's two; the cancel and the refusals are not among them"
 check "$(curl -s "${AUTH[@]}" "$EN/slabs/rebalance" | j 'd["state"]')" done "the real rebalance ran to its end"
 curl -s "${AUTH[@]}" "$EN/slabs/rebalance" | j '"  rebalance: " + str(d)'
 curl -s "${AUTH[@]}" "$EN/slabs" | j '"  slabs afterwards: " + str([(s["id"][:8], s.get("allocated_slots"), s.get("total_slots")) for s in d["items"]])' 

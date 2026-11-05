@@ -67,4 +67,19 @@ walk('offered drives', async (t) => {
   t.check(await t.until(async () => /Rebalance (running|done): \d+ of \d+ moved/.test(await reb.innerText()), 30000), 'the run reports its progress', await reb.innerText())
   t.check(await t.until(async () => /Rebalance done/.test(await reb.innerText()), 120000), 'and finishes', await reb.innerText())
   await t.shot(page, 'offer-done')
+
+  // From the engine's own list, where any row button goes through api.js: the
+  // gate's word, then the engine's risk, then the format. The dialog is accepted.
+  const row2 = await t.page('alice')
+  row2.answer = WORD
+  const seen = []
+  row2.on('dialog', (d) => seen.push(`${d.type()}: ${d.message()}`))
+  t.check(await t.open(row2, '#/grid?id=sb:engine&rel=drives', /foreign\.img/), 'the engine list shows the drive', (await t.text(row2)).slice(0, 300))
+  const r2 = row2.locator('tr', { hasText: 'foreign.img' }).first()
+  t.check(/offered: holds/.test(await r2.innerText()), 'and the offer', await r2.innerText())
+  await r2.getByRole('button', { name: /actions|more|⋮/i }).first().click().catch(async () => r2.locator('button').last().click())
+  await row2.getByRole('button', { name: /Format as a slab/ }).first().click()
+  t.check(await t.until(async () => seen.some((s) => s.startsWith('confirm') && /power cut/i.test(s)), 15000), "the row's button shows the engine's risk too", seen.join(' | ').slice(0, 400))
+  t.check(seen.some((s) => s.startsWith('prompt')), 'after asking for the word')
+  t.check(await t.until(async () => !(await row2.evaluate(() => fetch('/api/v1/components').then((r) => r.json()))).some((c) => c.label.endsWith('foreign.img') && c.actions.some((a) => a.id === 'format')), 15000), 'and it formats, once both are given')
 })

@@ -82,7 +82,7 @@
         if (r.status >= 500) error += ' The format may still be running: if this drive leaves the list above, it finished.'
         return
       }
-      done = `${d.serial || d.path} is a data slab now.`
+      done = `${d.path || d.label} is a data slab now.`
       asking = null
       risk = ''
       typed = ''
@@ -203,7 +203,7 @@
     {#if risk}
       <p class="risk">{risk}</p>
       <label class="type">
-        Type <strong class="mono">{word}</strong> to format this drive
+        <span>Type <strong class="mono">{word}</strong> to format this drive</span>
         <input bind:value={typed} aria-label="The drive's name, typed" autocomplete="off" spellcheck="false" disabled={busy} />
       </label>
     {/if}

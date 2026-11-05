@@ -210,4 +210,17 @@ console.log(`1,600 drives on ${all.nodes} nodes, ${formatBytes(all.capacity)} ra
   `${byChassis.length} chassis, ${byRack.length} racks, ${all.failing} failing, ${all.degraded} degraded, ${all.rebuilding} rebuilding, ${all.full} full`)
 console.log(`with usage and placement: build ${(t5 - t4).toFixed(1)} ms, ${ps.length} pools`)
 console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toFixed(1)} ms · totals ${(t3 - t2).toFixed(1)} ms`)
+// The engine's row for a drive is not a second drive, and its offer joins on.
+{
+  const m = (label, value) => ({ label, value })
+  const sd = { id: 'drive:a', kind: 'drive', label: 'sdq', detail: '', metrics: [m('serial', 'ZFL1'), m('dev', '/dev/sdq')], relations: [] }
+  const remote = { id: 'drive:@b:x', kind: 'drive', label: 'sdq', detail: '', metrics: [m('serial', 'ZFL1'), m('node', 'b')], relations: [] }
+  const en = { id: 'sb:drive:u1', kind: 'drive', label: '/dev/sdq', metrics: [m('serial', 'ZFL1'), m('path', '/dev/sdq'), m('offer', 'foreign'), m('holds', 'an XFS filesystem'), m('confirm', 'ZFL1')], actions: [] }
+  const { records } = build([sd, remote, en])
+  assert.deepEqual(records.map((r) => r.id), ['drive:a', 'drive:@b:x'])
+  assert.equal(records[0].offer.sentence, 'holds an XFS filesystem')
+  assert.equal(records[1].offer, null, "this node's engine does not answer for another node's drive")
+  assert.ok(passes(records[0], 'offered'))
+  assert.ok(!passes(records[1], 'offered'))
+}
 console.log('PASS')

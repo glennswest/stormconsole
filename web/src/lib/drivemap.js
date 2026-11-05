@@ -110,7 +110,9 @@ export function build(components, extra = {}) {
   const shelves = []
   for (const c of components) {
     byId.set(c.id, c)
-    if (c.kind === 'drive') drives.push(c)
+    // stormdrive's are the drives. The engine's row for a drive it holds has
+    // the same kind and is what it knows about one of them, not another drive.
+    if (c.kind === 'drive' && !c.id.startsWith('sb:drive:')) drives.push(c)
     else if (c.kind === 'shelf') shelves.push(c)
     else if (c.kind === 'drive-use') use.set(metric(c, 'serial'), c)
     else if (c.kind === 'array-member') {
