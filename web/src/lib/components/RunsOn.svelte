@@ -35,7 +35,7 @@
         <span class="mono">{v.runsOn.name}</span>
         <div class="dim mono small">{v.runsOn.id}</div>
         <div class="small"><strong>{b(v.runsOn.allocatedBytes)}</strong> written of {b(v.runsOn.virtualBytes)}{#if v.runsOn.sharedBytes}{' '}<span class="dim">({b(v.runsOn.sharedBytes)} read through from the image)</span>{/if}</div>
-        <div class="dim small">{v.runsOn.nodes.join(', ') || 'node not said'} · {v.runsOn.slabs} {v.runsOn.slabs === 1 ? 'slab' : 'slabs'}{#if v.runsOn.drives.length} · on {v.runsOn.drives.map((d) => d.serial || d.path).join(', ')}{/if} · {v.runsOn.redundancy} · {v.runsOn.health}</div>
+        <div class="dim small">{v.runsOn.nodes.join(', ') || 'node not said'} · {v.runsOn.slabs} {v.runsOn.slabs === 1 ? 'slab' : 'slabs'}{#if v.runsOn.drives.length}{' · '}on {v.runsOn.drives.map((d) => d.serial || d.path).join(', ')}{/if} · {v.runsOn.redundancy} · {v.runsOn.health}</div>
         <div class="dim small">{#if cloned}<span title={cloned}>cloned {ago(cloned)} ago</span>{:else}when it was made: the engine does not keep that yet (stormblock#535){/if}</div>
       </dd>
       <dt>Cloned from</dt>

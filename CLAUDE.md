@@ -2042,7 +2042,19 @@ placement), its `parent` chain, `/digest` (its `seal`: `sha256`, `verdict`, `che
       "newest built, not confirmed running" only without one
 - [x] sb plugin `GET /runs-on`: a volume, its node and drives, what it costs, the sealed image it
       reads through, last verified. Pod page rows; VM page per disk. Words per GLOSSARY (#85)
-- [ ] `deploy/verify-runs-on.sh` real engine; docs, changelog, dist; golden
+- [x] `deploy/verify-runs-on.sh` real engine; docs, changelog, dist; golden
+- Verified with `sc-build deploy/verify-runs-on.sh` (0 failed): stormblock and rustkube from main, stand-ins
+  for stormcentral's record and for an engine slow with a digest. A pod with the kubelet's annotations: its
+  clone by id, bytes as the engine says after a real write through it (1 → 4 MiB), slab, node, drive; the
+  sealed image up its parents, the digest it was sealed with, `intact` and when from the engine's own seal
+  check; stormcentral's record of the image the node named, not the newer one. No annotation: the newest,
+  "not confirmed running". A name stormcentral has not got: said. A volume this engine has not got: that
+  node's console's to say. A VM's disks by owner, not another project's vm1; an empty disk has no image. A
+  6 s digest: answered at once as being read, three opens one read. Also `verify-pod-page.sh`, default `sc-build`
+- Not seen: a real kubelet's annotations (written here as `pod_manager.rs` writes them), a mirror pod's
+  `/pallets` mount (no ublk on a build VM; `select` has a unit test), a cached-digest miss on a real large
+  image, a node with two engines' worth of clones. Blade reruns wait on stormcos#271 (#76)
+- Upstream: stormblock#535 (the seal record and made-at on the volume). A VM disk's clone time waits on it
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
