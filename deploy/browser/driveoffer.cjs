@@ -78,7 +78,7 @@ walk('offered drives', async (t) => {
   const r2 = row2.locator('tr', { hasText: 'foreign.img' }).first()
   t.check(/offered: holds/.test(await r2.innerText()), 'and the offer', await r2.innerText())
   await r2.getByRole('button', { name: /More actions/ }).click()
-  await row2.getByRole('button', { name: /Format as a slab/ }).first().click()
+  await r2.getByRole('menuitem', { name: /Format as a slab/ }).click()
   t.check(await t.until(async () => seen.some((s) => s.startsWith('confirm') && /power cut/i.test(s)), 15000), "the row's button shows the engine's risk too", seen.join(' | ').slice(0, 400))
   t.check(seen.some((s) => s.startsWith('prompt')), 'after asking for the word')
   t.check(await t.until(async () => !(await row2.evaluate(() => fetch('/api/v1/components').then((r) => r.json()))).some((c) => c.label.endsWith('foreign.img') && c.actions.some((a) => a.id === 'format')), 15000), 'and it formats, once both are given')
