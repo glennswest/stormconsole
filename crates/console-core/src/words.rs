@@ -3,9 +3,9 @@
 //! The platform's word for a sealed, immutable image on forge is
 //! "golden", and that word stays in every API, id, kind and field so
 //! automation keeps working. A person reads "registry image": nothing
-//! runs *on* one — a pod, a VM, a boot runs on a copy-on-write clone of
-//! it, its instance — and calling the registry entry by the clone's
-//! job was the confusion. This is the one table that turns the API's
+//! runs *on* one. A pod or service runs in its **container**, a VM on its
+//! **instance** (stormcos docs/GLOSSARY.md, #85), each a copy-on-write
+//! clone of it. This is the one table that turns the API's
 //! token into the page's word, mirrored by `web/src/lib/ui/words.js`
 //! for the tokens the SPA shows itself (kinds, relation and metric
 //! names).

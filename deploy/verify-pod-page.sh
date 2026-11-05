@@ -36,6 +36,7 @@ P=19107
 SC=19108
 
 say "build the SPA from this commit, then the console that embeds it"
+node web/src/lib/imagename.test.mjs
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
@@ -221,7 +222,7 @@ check '[ "$(echo "$D" | q "d[\"containers\"][1][\"digest\"]")" = "$DIGEST" ]' "a
 check '[ "$(echo "$D" | q "d[\"containers\"][0][\"digest\"]")" = "$MDIGEST" ]' "init container's digest"
 check '[ "$(echo "$D" | q "d[\"containers\"][2][\"digest\"]")" = "None" ]' "stormpump:// has no digest"
 check '[ "$(echo "$D" | q "d[\"containers\"][1][\"pullPolicy\"]")" = "IfNotPresent" ]' "pull policy defaulted for a tag"
-check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"name\"]")" = "golden-cilium-abc123def456" ]' "the newest cilium golden from stormcentral"
+check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"name\"]")" = "cilium-abc123def456" ]' "the newest cilium golden from stormcentral"
 check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"builtAt\"]")" = "1790900000" ]' "its built_at"
 check 'echo "$D" | q "d[\"containers\"][2][\"golden\"][\"which\"]" | grep -q "not confirmed running"' "and it says it is the newest, not necessarily the running one"
 check 'echo "$D" | q "[g[\"what\"]+\" \"+g[\"issue\"] for g in d[\"gaps\"]]" | grep -q "image digest rustkube-node#130"' "the stormpump digest gap names rustkube-node#130"

@@ -1952,6 +1952,15 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### Image words and names per the glossary (#85)
+stormcos `docs/GLOSSARY.md`: a pod's or service's clone is its container; instance is a VM's disk. Read from
+stormblock-registry da53e0e: a catalog item's `source` is `repo:tag`, and only then is its `digest` upstream's; a
+component's is its own content digest. Upstream origin of a component: filed
+stormcentral-compliance-operations#219 (missing provenance).
+- [x] Words: SPA, plugin text, docs
+- [x] `imagename.js` + test; the pod row, containers table, Runs on, VM row
+- [ ] `GET /api/plugins/reg/origin`, Made from; rigs: runs-on, pod-page, registry; dist; golden
+
 ### The Update page's pre-pull and images (#62)
 #164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
 offered a rollback of nothing; digest, reference, data volume, hooks and each node's state were not shown; a

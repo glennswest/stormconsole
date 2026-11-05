@@ -183,6 +183,12 @@ say "read-only, and authenticated"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$HOLD")" 401 "no credential: 401"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${AT[@]}" "$HOLD")" 405 "a POST: 405"
 
+say "what an image was made from, from the real catalog (#85)"
+O=$(curl -s "${AT[@]}" "$C/api/plugins/reg/origin?name=$(curl -s "$REG/v1/catalog/images" | j '[i["name"] for i in d["items"] if "stormlb" in i["name"]][0]')"); echo "  $O" | head -c 400; echo
+check "$(echo "$O" | j 'd["found"]')" True "the image is found by its name"
+check "$(echo "$O" | j 'd["upstreamDigest"]')" None "no source: no upstream digest claimed"
+check "$(curl -s "${AT[@]}" "$C/api/plugins/reg/origin?name=nothing-000000000000" | j 'd["found"]')" False "another name: not found"
+
 say "the page, in Chromium"
 df -h "$W" | tail -1
 BR=0

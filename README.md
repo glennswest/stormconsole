@@ -57,7 +57,7 @@ the claim as its consumer.
 
 **Words** (#70). What the platform's APIs call a *golden* — a sealed,
 immutable image on forge — the console calls a **registry image**, and
-the copy-on-write clone a pod, VM or boot runs on is its **instance**.
+what a pod or service runs in is its **container**, and a VM's disk made from an image is its **instance** (stormcos docs/GLOSSARY.md, #85). An image reads `registry/<component>:<version>` plus its digest.
 Only the page's words changed: ids, kinds, relation and metric names, form
 fields and JSON keep `golden`, and the SPA translates the tokens it shows
 (`web/src/lib/ui/words.js`, mirrored by `console_core::words`). The pod
@@ -360,8 +360,9 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   packets/errors/drops, and runs before the previous one
   (rustkube-node#131). Each is read when present and named where it is
   not. The console keeps the last 5 runs per container itself, in memory.
-  Which registry image a node's instance was cloned from is not on the pod, so the page shows the newest
-  stormcentral built for the component and says so. A **terminal** waits
+  Which image a container was cloned from comes from the kubelet (#75); without its word the page shows the
+  newest stormcentral built for the component and says so. What a component's image was made from upstream is
+  not recorded yet: the page says so (stormcentral-compliance-operations#219). A **terminal** waits
   on the kubelet answering exec (rustkube-node#56); **Environment** (#12).
   A VM's traffic counters: stormvm#48.
 - **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node

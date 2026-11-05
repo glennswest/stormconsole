@@ -18,6 +18,8 @@
   import YamlPanel from '../components/YamlPanel.svelte'
   import EventBox from '../components/EventBox.svelte'
   import RunsOn from '../components/RunsOn.svelte'
+  import ImageOrigin from '../components/ImageOrigin.svelte'
+  import { imageLine, registryName, versionOf } from '../imagename.js'
   import CopyButton from '../components/CopyButton.svelte'
   import PodLogs from './PodLogs.svelte'
   import PodStats from './PodStats.svelte'
@@ -26,7 +28,7 @@
   const name = $derived(route.current.params.name)
   const TABS = ['Overview', 'Stats', 'Network', 'Logs', 'Events', 'YAML']
   let tab = $state(TABS.includes(route.current.query.get('tab')) ? route.current.query.get('tab') : 'Overview')
-  // One click to a container's logs, or its previous instance (#167).
+  // One click to a container's logs, or its previous run (#167).
   let logContainer = $state(route.current.query.get('container') || '')
   let logSource = $state(route.current.query.get('source') || 'current')
   function openLogs(container, source = 'current') {
@@ -333,7 +335,7 @@
                   </td>
                   <td class="mono">{resLine(c.resources?.requests) || '—'}</td>
                   <td class="mono">{resLine(c.resources?.limits) || '—'}</td>
-                  <td class="mono img">{c.image}</td>
+                  <td class="mono img">{c.image}{#if versionOf(c)} <span class="dim">{versionOf(c)}</span>{/if}</td>
                   <td class="mono">{#each c.ports as p}<div>{p.containerPort}/{p.protocol}{#if p.name} ({p.name}){/if}{#if p.hostPort} → host {p.hostPort}{/if}</div>{:else}—{/each}</td>
                   <td class="logs">
                     <button class="link" onclick={() => openLogs(c.name)}>Logs</button>
@@ -500,7 +502,7 @@
                 {:else}<span class="dim">not recorded by the node ({gapFor('image last checked')?.issue})</span>{/if}
               </dd>
               {#if c.source === 'stormpump'}
-                <!-- What this container's instance was cloned from (#70). The
+                <!-- The image this container was cloned from (#70, #85). The
                      one place the API's word is shown: the JSON field is
                      `golden`, and someone matching the page to it needs to
                      know that. -->
@@ -509,18 +511,22 @@
                   <span class="info" title={`registry image (golden) — “golden” is the API’s name for it${c.golden?.name ? `; stormcentral’s name for this one is ${c.golden.name}` : ''}`}>ⓘ</span>
                 </dt>
                 <dd>
+                  {#if imageLine(c)}
+                    <span class="mono ref">{imageLine(c).ref}{#if imageLine(c).digest}@{imageLine(c).digest}{/if}</span><CopyButton value={imageLine(c).digest ? `${imageLine(c).ref}@${imageLine(c).digest}` : imageLine(c).ref} label="Copy image" />
+                    {#if !imageLine(c).digest}<div class="dim">its digest is not recorded</div>{/if}
+                  {/if}
                   {#if c.golden?.available}
-                    <span class="mono">{c.golden.component}@{(c.golden.commit || '').slice(0, 12)}</span>
-                    <span class="dim">(sealed digest {c.golden.deviceSha256 ? `sha256:${short(c.golden.deviceSha256)}` : 'not recorded'}, built {builtAt(c.golden).slice(0, 10)}{sourcesLine(c.golden)})</span>
-                    <div class="dim">{c.golden.version || ''} · build {c.golden.buildId || '—'} · by {c.golden.builtBy || '—'}</div>
+                    <div class="dim">{c.golden.component}@{(c.golden.commit || '').slice(0, 12)} · build {c.golden.buildId || '—'} · by {c.golden.builtBy || '—'} · built {builtAt(c.golden).slice(0, 10)}{sourcesLine(c.golden)}</div>
                     <div class="dim">{c.golden.which}</div>
                   {:else}
-                    <span class="dim">{c.golden?.reason || 'unknown'}</span>
+                    <div class="dim">{c.golden?.reason || 'unknown'}</div>
                   {/if}
                 </dd>
+                <dt>Made from</dt>
+                <dd><ImageOrigin name={c.clonedFrom || c.golden?.name || ''} gap="stormcentral-compliance-operations#219" /></dd>
               {/if}
               {#if c.clonedFrom}
-                <dt>The node says</dt><dd class="mono">{c.clonedFrom}{#if c.provenance} <span class="dim">{c.provenance}</span>{/if}</dd>
+                <dt>The node says</dt><dd class="mono"><span title={c.clonedFrom}>{registryName(c.clonedFrom) || c.clonedFrom}</span>{#if c.provenance} <span class="dim">{c.provenance}</span>{/if}</dd>
               {/if}
               {#if c.imageBuild?.version || c.imageBuild?.created}
                 <dt>Image build</dt><dd class="mono">{c.imageBuild.version || ''} {c.imageBuild.created || ''}</dd>
@@ -783,6 +789,7 @@
   .mono { font-family: var(--mono); font-size: var(--sc-t-meta); }
   .dim { color: var(--text-faint); font-size: var(--sc-t-meta); }
   .none { margin: 0; color: var(--text-dim); font-size: var(--sc-t-body); }
+  .ref { overflow-wrap: anywhere; }
   .reason, .stale { font-size: var(--sc-t-meta); color: var(--warn, #d29922); margin: 8px 0 0; }
   .ok { color: var(--ok, #3fb950); }
   .warn { color: var(--warn, #d29922); }

@@ -372,6 +372,29 @@ pub fn for_viewer(h: &Holdings, hidden: Option<&HashSet<String>>) -> Holdings {
     out
 }
 
+/// What the catalog says an image was made from (#85). A `source` is what it came from,
+/// and only then is its `digest` the upstream's: a component's is its own content digest.
+/// Found by its name, never by its component, which has many images.
+pub fn origin(items: &[Value], name: &str) -> Value {
+    let wanted = plain_name(name);
+    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(String::from);
+    match items.iter().find(|i| i.get("name").and_then(Value::as_str).is_some_and(|n| plain_name(n) == wanted)) {
+        None => json!({"found": false}),
+        Some(i) => {
+            let source = s(i, "source");
+            json!({
+                "found": true,
+                "name": s(i, "name"),
+                "component": s(i, "component"),
+                "upstreamDigest": source.as_ref().and(s(i, "digest")),
+                "source": source,
+                "contentDigest": if i.get("source").is_some() { None } else { s(i, "digest") },
+                "releases": i.get("releases").cloned().unwrap_or(json!([])),
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +408,23 @@ mod tests {
     fn with(mut v: Value, extra: Value) -> Value {
         v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
         v
+    }
+
+    #[test]
+    fn what_an_image_was_made_from_is_only_what_the_catalog_says() {
+        let items = [
+            json!({"name": "cilium-abc123def456", "component": "cilium", "source": "quay.io/cilium/cilium:v1.16.3", "digest": "sha256:up"}),
+            json!({"name": "golden-stormlb-aaaaaaaaaaaa", "component": "stormlb", "digest": "sha256:own", "releases": ["12.61"]}),
+        ];
+        let up = origin(&items, "cilium-abc123def456");
+        assert_eq!((up["source"].as_str(), up["upstreamDigest"].as_str()), (Some("quay.io/cilium/cilium:v1.16.3"), Some("sha256:up")));
+        let own = origin(&items, "golden-stormlb-aaaaaaaaaaaa");
+        assert_eq!(own["found"], true);
+        assert!(own["source"].is_null() && own["upstreamDigest"].is_null(), "its own digest is not an upstream's");
+        assert_eq!(own["contentDigest"], "sha256:own");
+        assert_eq!(own["releases"], json!(["12.61"]));
+        assert_eq!(origin(&items, "fstemplate-cilium-abc123def456-raw")["found"], true, "by its plain name");
+        assert_eq!(origin(&items, "cilium-000000000000")["found"], false, "another build of it is not this one");
     }
 
     #[test]

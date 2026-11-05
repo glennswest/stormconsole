@@ -1,7 +1,8 @@
 // What a container or VM disk runs on, in a browser (#75), over deploy/verify-runs-on.sh's
 // real engine and apiserver.
 const { walk } = require('./lib.cjs')
-const { IMG, OLD, ROOT } = process.env
+const { ROOT } = process.env
+const IMAGE = 'registry/app:aaaaaaaaaaaa'
 
 walk('runs-on', async (t) => {
   const page = await t.page('root')
@@ -11,10 +12,13 @@ walk('runs-on', async (t) => {
   t.check(text.includes('ctr-web-app') && text.includes(ROOT), 'the volume, name and id')
   t.check(/written of/.test(text), 'what it wrote of its size', (text.match(/.{0,60}written of.{0,60}/) || [''])[0])
   t.check(/\d+ slabs?/.test(text), 'the slabs')
-  t.check(text.includes(IMG), 'cloned from the sealed image')
+  t.check(text.includes(IMAGE), 'cloned from the sealed image, in the registry form')
+  t.check(!/golden|fstemplate/i.test(text), 'no volume name on the page', (text.match(/.{0,40}(golden|fstemplate).{0,40}/i) || [''])[0])
   t.check(/sha256:[0-9a-f]{64}/.test(text), 'its digest')
   t.check(/intact[\s\S]{0,12}\d+[smhd] ago, this node's copy/i.test(text), 'last verified, intact, this copy', (text.match(/.{0,30}intact.{0,60}/i) || [''])[0])
-  t.check(text.includes(OLD), 'the image the node names')
+  t.check(text.includes(`registry/app:1.0@sha256:${'a'.repeat(64)}`), 'the row leads with name, version and digest', (text.match(/.{0,20}registry\/app:1.{0,30}/) || [''])[0])
+  t.check(/app@aaaa · build/.test(text), 'the commit and build in the detail')
+  t.check(/Made from[\s\S]{0,60}does not list|Made from[\s\S]{0,60}registry/.test(text), 'what it was made from: said, whichever the answer', (text.match(/Made from.{0,80}/) || [''])[0])
   t.check(/app@aaaa/.test(text) && !/app@bbbb/.test(text), "stormcentral's record of that one, not the newest built")
   t.check(/says this container was cloned from/.test(text) && !/not confirmed running/.test(text), 'and not hedged')
   t.check(/cloned \d+[smhd] ago/i.test(text), 'when it was cloned', (text.match(/.{0,40}cloned \d.{0,20}/i) || [''])[0])
@@ -25,7 +29,7 @@ walk('runs-on', async (t) => {
   await page.waitForTimeout(1000)
   text = await t.text(page)
   t.check(/has not said which volume/.test(text), 'says the node has not said')
-  t.check(/app@bbbb/.test(text) && /not confirmed running/.test(text), 'the newest, hedged', (text.match(/.{0,60}not confirmed.{0,40}/) || [''])[0])
+  t.check(text.includes('registry/app:2.0') && /not confirmed running/.test(text), 'the newest, hedged', (text.match(/.{0,60}not confirmed.{0,40}/) || [''])[0])
   await t.shot(page, 'runs-on-quiet')
 
   t.check(await t.open(page, '#/pod/shop/elsewhere', /holds no volume/), 'a volume on another engine: said')
@@ -38,7 +42,8 @@ walk('runs-on', async (t) => {
   t.check(/Each disk's instance/i.test(text), 'a disk is an instance there')
   t.check(text.includes('shop.vm1-data') && !text.includes('lab.vm1-root'), "this machine's, not another project's")
   t.check(/nothing sealed here/.test(text), 'an empty disk says so')
-  t.check(text.includes(IMG), 'the image of the other')
+  t.check(text.includes(IMAGE), 'the image of the other')
+  t.check(!/an instance of a pod|a pod.s instance/i.test(text), 'instance is a VM word')
   t.check(/stormblock#535/.test(text), 'a disk: when it was made is said as not known')
   await t.shot(page, 'runs-on-vm')
 })

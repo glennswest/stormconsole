@@ -20,6 +20,7 @@
   import { ago } from '../ui/time.js'
   import EventBox from '../components/EventBox.svelte'
   import RunsOn from '../components/RunsOn.svelte'
+  import { registryName } from '../imagename.js'
   import CopyButton from '../components/CopyButton.svelte'
   import VmBackup from './VmBackup.svelte'
   import VmKeys from './VmKeys.svelte'
@@ -657,7 +658,7 @@
               {#each vm.images as im (im.disk)}
                 <dt>{im.disk}</dt>
                 <dd>
-                  <span class="mono">{im.source}</span> <span class="dim">{im.kind}</span>
+                  <span class="mono" title={im.source}>{registryName(im.source) || im.source}</span> <span class="dim">{im.kind}</span>
                   <div class="dim mono">
                     {#if im.digest}{im.digest}<CopyButton value={im.digest} label="Copy digest" />{:else}digest not reported{/if}
                   </div>

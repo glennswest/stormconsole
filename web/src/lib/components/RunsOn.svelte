@@ -5,6 +5,7 @@
   import { get } from '../api.js'
   import { ago } from '../ui/time.js'
   import { formatBytes } from '../drivemap.js'
+  import { registryName } from '../imagename.js'
 
   let { query, node = '', word = 'its volume', cloned = '' } = $props()
 
@@ -41,7 +42,7 @@
       <dt>Cloned from</dt>
       <dd>
         {#if v.clonedFrom}
-          <span class="mono">{v.clonedFrom.name}</span>
+          <span class="mono" title={v.clonedFrom.name}>{registryName(v.clonedFrom.name) || v.clonedFrom.name}</span>
           <div class="dim mono small">{#if v.clonedFrom.digest}sha256:{v.clonedFrom.digest}{:else if v.clonedFrom.reading}its digest is being read: open this again shortly{:else}no digest recorded{/if}</div>
         {:else}
           <span class="dim">nothing sealed here: made empty, or its image is gone from this engine</span>

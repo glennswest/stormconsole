@@ -1,8 +1,9 @@
 // What the console calls things, where that differs from the API (#70).
 //
 // The API's word for a sealed image on forge is "golden"; a person reads
-// "registry image" — nothing runs on one, a pod or VM runs on its
-// instance, a copy-on-write clone of it. The token stays in ids, kinds,
+// "registry image" — nothing runs on one. A pod or service runs in its
+// container, a VM on its instance (stormcos docs/GLOSSARY.md, #85), each a
+// copy-on-write clone of it. The token stays in ids, kinds,
 // relation and metric names (automation reads them); this turns it into
 // the page's word wherever the SPA shows one. Exact tokens only: a name
 // such as `golden-stormlb` is data and is never rewritten. Mirrors

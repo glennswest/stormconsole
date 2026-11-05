@@ -135,8 +135,8 @@ class B(BaseHTTPRequestHandler):
 class Sc(B):
     def do_GET(self):
         self.out({"held": [], "goldens": [
-            {"name": "golden-app-bbbbbbbbbbbb", "component": "app", "version": "2.0", "commit": "bbbb", "built_at": 1790900000},
-            {"name": "golden-app-aaaaaaaaaaaa", "component": "app", "version": "1.0", "commit": "aaaa", "built_at": 1790000000},
+            {"name": "golden-app-bbbbbbbbbbbb", "component": "app", "version": "2.0", "commit": "bbbb", "built_at": 1790900000, "device_sha256": "b" * 64},
+            {"name": "golden-app-aaaaaaaaaaaa", "component": "app", "version": "1.0", "commit": "aaaa", "built_at": 1790000000, "device_sha256": "a" * 64},
         ] if "component=app" in self.path else []})
 class Slow(B):
     def do_GET(self):

@@ -180,6 +180,26 @@ async fn holdings_route(
     .into_response()
 }
 
+#[derive(serde::Deserialize)]
+struct OriginQuery {
+    name: String,
+}
+
+/// `GET /origin?name=` (#85): what an image was made from, as the node's catalog says.
+async fn origin_route(
+    axum::extract::State(inner): axum::extract::State<Arc<Inner>>,
+    axum::extract::Query(q): axum::extract::Query<OriginQuery>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match get(&inner, "/v1/catalog/images").await {
+        Ok(v) => {
+            let items = v.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+            axum::Json(holdings::origin(&items, &q.name)).into_response()
+        }
+        Err(e) => axum::Json(serde_json::json!({"found": false, "error": e.to_string()})).into_response(),
+    }
+}
+
 /// A row per repository: the navigator's count, and how many clones nobody holds.
 fn repository_rows(a: &Answer) -> Vec<ComponentSummary> {
     a.holdings
@@ -235,18 +255,18 @@ impl ConsolePlugin for SbregistryPlugin {
                     Field::select("force", "Rebuild if sealed", &["false", "true"]),
                 ],
             )
-            .describe("Seal a registry image — sealed and immutable, what instances are cloned from — from an image pushed to this registry")
+            .describe("Seal a registry image — sealed and immutable, what containers and instances are made from — from an image pushed to this registry")
             .at(&["#/grid?id=reg:registry&rel=goldens"]),
             Creator::form(
                 "reg:clone",
-                "Instance",
+                "Volume from an image",
                 "/api/plugins/reg/proxy/v1/clones",
                 vec![
                     Field::text("golden", "Registry image").hint("registry image name, image ref, digest or template name").required(),
                     Field::text("consumer", "Consumer").hint("optional: what will hold it, to bind in one call"),
                 ],
             )
-            .describe("An instance: a writable copy-on-write clone of a registry image, ready to attach")
+            .describe("A writable volume made from a registry image, ready to attach")
             .at(&["#/grid?id=reg:registry&rel=clones"]),
         ]
     }
@@ -254,6 +274,7 @@ impl ConsolePlugin for SbregistryPlugin {
     fn routes(&self) -> axum::Router {
         axum::Router::new()
             .route("/holdings", axum::routing::get(holdings_route))
+            .route("/origin", axum::routing::get(origin_route))
             .with_state(self.inner.clone())
             .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.base.clone()))
     }

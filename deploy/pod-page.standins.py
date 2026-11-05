@@ -144,7 +144,7 @@ class Central(BaseHTTPRequestHandler):
         goldens = []
         if u.path == "/api/v1/goldens" and comp == "cilium":
             goldens = [
-                {"name": "golden-cilium-abc123def456", "component": "cilium", "version": "1.16.3",
+                {"name": "cilium-abc123def456", "component": "cilium", "version": "1.16.3",
                  "commit": "abc123def4567890", "build_id": "b-42", "built_at": 1790900000,
                  "built_by": "stormcentral", "tar_sha256": "e" * 64, "device_sha256": "f" * 64,
                  "sources": {"cilium": "abc123"}, "releases": ["11.6"]},

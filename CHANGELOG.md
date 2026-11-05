@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Image words and names, per the stormcos glossary (#85)
+- **fix:** "instance" is a VM's disk only. The registry's create entry reads "Volume from an image".
+- **feat:** a pod's image row leads with `registry/<component>:<version>@<digest>`, with commit, build and
+  sources in the detail, and the containers table shows the version. Volume names read in the same form on the
+  Runs on rows and the VM page, with the volume's own name in the tooltip.
+- **feat:** **Made from** on the pod page: the upstream image and its digest where the node's catalog records
+  them (`GET /api/plugins/reg/origin`), and said as not recorded where it does not.
+
 ### 2026-11-05 — The Update page: the pre-pull and each image (#62)
 - **feat:** every image of the target with its digest, reference, data volume, what happens to its data, its
   hooks and each node's state. The images stay on the page after the run ends.

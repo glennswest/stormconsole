@@ -197,14 +197,21 @@ stormd `[process.ui]` style). That would make the console extensible by
 components it has never heard of — same philosophy as stormview's open
 `kind`. Nothing implements it; today every plugin is compiled in.
 
-### Words: registry image and instance (#70)
+### Words: registry image, container and instance (#70, #85)
 
 The platform's word for a sealed, immutable image on forge is *golden*.
-Nothing runs on one: a pod, a VM or a boot runs on a copy-on-write clone
-of it. So the console says **registry image** for the sealed entry and
-**instance** (or "clone of <registry image>") for the clone, and never
-"golden" — except once, in the pod page's tooltip that names the API's
-word for someone matching the page to the JSON.
+Nothing runs on one. By stormcos `docs/GLOSSARY.md`, a pod or service runs in
+its **container** and a VM's disk made from an image is its **instance**, each a
+copy-on-write clone of it. So the console says **registry image** for the sealed
+entry and never "golden", except once, in the pod page's tooltip that names the
+API's word for someone matching the page to the JSON.
+
+An image reads `registry/<component>:<version>@<digest>` (`web/src/lib/imagename.js`):
+the version is the node's word first, then stormcentral's, then the tag in its name.
+A volume's own name stays in the tooltip. **Made from** (`GET /api/plugins/reg/origin`)
+is the catalog's `source` and that source's digest; a component's catalog digest is its
+own, so it is never shown as an upstream's, and the page says the origin is not recorded
+(stormcentral-compliance-operations#219).
 
 Only the visible words changed. Everything automation reads keeps
 `golden`: component ids (`reg:golden:…`, `img:golden:…`), `kind`,

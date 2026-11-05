@@ -28,6 +28,8 @@ REGISTRY = {
     "/v1/catalog/images": {"items": [
         {"name": "img-nats-root", "kind": "golden", "sealed": True, "source": "library/nats:2.10",
          "digest": D, "size": 1073741824, "location": "local", "clones": 1, "clone_names": ["pvc-nats-data"]},
+        {"name": "cilium-abc123def456", "kind": "component", "component": "cilium", "sealed": True, "location": "local",
+         "source": "quay.io/cilium/cilium:v1.16.3", "digest": "sha256:" + "c" * 64},
         {"name": "stormlb-component", "kind": "component", "component": "stormlb", "location": "forge", "sealed": True},
         {"name": "slab-part-a", "kind": "slab_golden", "location": "local", "sealed": True},
         {"name": "blank-1g", "kind": "blank", "location": "local", "sealed": True},
