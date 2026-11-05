@@ -101,9 +101,9 @@ fn main() {
         });
     }
     // Records as /dev/kmsg gives them, with a hole in the sequence.
-    w.kernel_record(b"6,1,500000,-;Linux version 6.17.1-storm\n");
-    w.kernel_record(b"3,2,1500000,-;nvme nvme0: I/O timeout\n");
-    w.kernel_record(b"4,7,2000000,-;a warning from a driver\n");
+    w.kernel_record(b"6,0,500000,-;Linux version 6.17.1-storm\n");
+    w.kernel_record(b"3,1,1500000,-;nvme nvme0: I/O timeout\n");
+    w.kernel_record(b"4,6,2000000,-;a warning from a driver\n");
     w.close();
 }
 RS
@@ -264,16 +264,16 @@ check "$(q "$A/boots?limit=2" '(d["total"], len(d["items"]))')" "(4, 2)" "a limi
 check "$(q "$A/boots/$BOOT1" '(d["refused"], d["exited"], d["started"], d["disk"], d["release"], d["hostname"])')" "(1, 1, 1, 'taken', '12.60', 'node1')" "one boot: its services, disk, release, host"
 check "$(q "$A/boots/$BOOT1" '"Kernel panic" in d["end_detail"] and "Kernel panic" in d["crash"]["manifest"]["panic"]')" True "its panic, from stormpump's real crash collection"
 check "$(q "$A/boots/$INSTALL" 'd["id"]')" "$BOOT2" "stormblock's name for a boot reaches the same boot (an install's link)"
-check "$(q "$A/boots/$BOOT2" '[e["event"] for e in d["timeline"]][:2]')" "['boot', 'phase']" "the timeline, header first"
+check "$(q "$A/boots/$BOOT2" '[e["event"] for e in d["timeline"]][:2]')" "['boot', 'crash']" "the timeline, header first, then the crash it collected"
 check "$(code "$A/boots/nope")" 404 "no such boot 404"
 check "$(code "$A/boots/%2e%2e%2f%2e%2e%2fsecret")" 400 "a traversal in the name 400"
 check "$(code --path-as-is "$A/assets/..%2f..%2fetc%2fpasswd")" 400 "and on another route"
 
 say "kernel logs and crashes"
 K=$(curl -sf "$A/boots/$BOOT1/kernel")
-check "$(echo "$K" | sed -n 1p)" "1 [    0.500000] <6> Linux version 6.17.1-storm" "the log as PID 1 keeps it"
+check "$(echo "$K" | sed -n 1p)" "0 [    0.500000] <6> Linux version 6.17.1-storm" "the log as PID 1 keeps it"
 check "$(echo "$K" | grep -c 'record(s) lost')" 1 "its gap line"
-check "$(curl -sf "$A/boots/$BOOT1/kernel?tail=1")" "7 [    2.000000] <4> a warning from a driver" "?tail= the last lines"
+check "$(curl -sf "$A/boots/$BOOT1/kernel?tail=1")" "6 [    2.000000] <4> a warning from a driver" "?tail= the last lines"
 check "$(curl -si "$A/boots/$BOOT1/kernel?download=true" | grep -ci 'attachment; filename="kernel-')" 1 "?download= a file"
 check "$(code "$A/boots/$ALONE/kernel")" 404 "no kernel log for stormblock's boot alone, 404"
 CD=$(q "$A/crashes" 'd["items"][0]["dir"]')

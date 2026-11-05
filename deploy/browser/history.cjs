@@ -17,7 +17,8 @@ walk('history', async (t) => {
   let text = await t.text(page)
   t.check(/Kept across every install/.test(text), 'it says what this is')
   t.check((await page.locator('table').last().locator('tbody tr').count()) === 4, 'four boots: paired, not six rows', text.slice(0, 500))
-  const row = (id) => page.locator('table tbody tr', { has: page.locator(`a[href*="${id}"]`) }).first()
+  // The boots' table, not the crashes' above it.
+  const row = (id) => page.locator('table').last().locator('tbody tr', { has: page.locator(`a[href*="${id}"]`) }).first()
   t.check(/this boot/.test(await row(BOOT3).innerText()), 'this boot is marked', await row(BOOT3).innerText())
   t.check(/running/.test(await row(BOOT3).innerText()), 'and running')
   t.check(/crashed/.test(await row(BOOT1).innerText()), 'the panicked boot says crashed', await row(BOOT1).innerText())
@@ -28,7 +29,7 @@ walk('history', async (t) => {
 
   // A boot.
   await row(BOOT1).locator(`a[href*="${BOOT1}"]`).first().click()
-  t.check(await t.until(async () => /Timeline/i.test(await t.text(page)) && page.url().includes(BOOT1)), 'a boot opens', page.url())
+  t.check(await t.until(async () => /command line/i.test(await t.text(page))), 'a boot opens', page.url())
   text = await t.text(page)
   t.check(/Kernel panic - not syncing/.test(text), 'with its panic line')
   t.check(/stormdrive/.test(text) && /all-running/.test(text), 'its timeline', text.slice(0, 600))
@@ -56,7 +57,7 @@ walk('history', async (t) => {
   text = await t.text(page)
   t.check(/12\.60/.test(text) && /\/dev\/sda/.test(text) && /taken/.test(text), 'what it put down, over what, on which drive', text.slice(0, 500))
   await page.locator(`a[href*="tab=boots&id=${INSTALL}"]`).first().click()
-  t.check(await t.until(async () => /Timeline/i.test(await t.text(page)) && new RegExp(BOOT2.slice(0, 8)).test(await t.text(page))), 'an install reaches its whole boot', (await t.text(page)).slice(0, 300))
+  t.check(await t.until(async () => /command line/i.test(await t.text(page)) && new RegExp(BOOT2).test(await t.text(page))), 'an install reaches its whole boot', (await t.text(page)).slice(0, 300))
 
   // Drives.
   t.check(await t.open(page, '#/history?tab=drives', /ZC1234/), 'drives list', (await t.text(page)).slice(0, 300))
