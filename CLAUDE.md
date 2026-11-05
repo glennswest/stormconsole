@@ -2000,7 +2000,7 @@ conditions, guest agent.
   container section was read as text; the full-page screenshot stops at the shell's fold
 - A literal env value in the spec is shown, as on the YAML tab; only references are hidden
 
-### Network Policies and Network Endpoints, neutral names (#168)
+### Network Policies and Network Endpoints, neutral names (#168) ✅ 2026-11-05
 Owner 2026-11-05: "Network Policies (No cillium) Network Endpoints (No Cillium), and these
 should come from either cillium or flowsdn". One table, one adapter per network, `from:
 <network>` only as a small detail. Read from flowsdn 0fbbb1c: `flowsdn.io/v1alpha1`
@@ -2014,6 +2014,17 @@ loopback API, so this node's, and `/v1/healthz` `kubernetes.policy.endpoints[]` 
 - [x] `#/network/policies`, `#/network/endpoints`, in the project and cluster-wide; nav and
       titles without the product; `web/src/lib/network.js` + test
 - [x] `deploy/verify-network-pages.sh`, both editions; docs, changelog, dist; golden
+
+- Verified with `sc-build deploy/verify-network-pages.sh` (0 failed): two clusters on real
+  apiservers, cilium's objects on one, flowsdn's and a stand-in agent on the other, one table on
+  both; a viewer in one project; both walks in Chromium, no product name but "from:"; the old
+  lists land here with their project. Also `verify-projects.sh`, `verify-flowsdn.sh`,
+  `verify-vm-policy.sh`, default `sc-build` (457 tests, 0 warnings)
+- Not seen: a real cilium or flowsdn writing these; the objects and answers are in their
+  shapes. The console's ServiceAccount needs list/watch on `flowsdn.io` for #78's list
+- Left with the API's or the older word: the VM page's outside-policy sentences, the Create
+  entries and YAML for CiliumNetworkPolicy; nothing yet makes a Create for a flowsdn policy.
+  The flowsdn plugin is built on every node and is absent by `present()`, as #161 did it
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
