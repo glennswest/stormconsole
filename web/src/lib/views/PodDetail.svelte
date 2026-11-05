@@ -477,7 +477,7 @@
           <div class="image">
             <h3>{c.name}</h3>
             {#if c.instance}
-              <RunsOn query={{ volume: c.instance }} node={pod.metadata.node} word="volume under that id" />
+              <RunsOn query={{ volume: c.instance }} node={pod.metadata.node} word="volume under that id" cloned={c.imageResolved} />
             {:else if c.image?.startsWith('/pallets/')}
               <RunsOn query={{ mounted: c.image }} node={pod.metadata.node} word="volume mounted for this service" />
             {:else if c.reported && c.source === 'stormpump'}

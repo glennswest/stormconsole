@@ -179,9 +179,6 @@ async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
     Ok(v.get("items").and_then(Value::as_array).cloned().unwrap_or_default())
 }
 
-/// `GET /api/plugins/sb/placement` — this node's volumes by the drive they
-/// are on (#29). The engine's error is passed on as the answer's `error`,
-/// so the page can say why a drive shows no volumes.
 /// One value from the engine, with its token, within a budget.
 async fn engine_get(inner: &Inner, path: &str, budget: Duration) -> Result<Value, String> {
     let mut req = inner.client.get(format!("{}{path}", inner.base)).timeout(budget);
@@ -234,6 +231,9 @@ async fn runs_on_route(
     axum::Json(serde_json::json!({"volumes": out})).into_response()
 }
 
+/// `GET /api/plugins/sb/placement` — this node's volumes by the drive they
+/// are on (#29). The engine's error is passed on as the answer's `error`,
+/// so the page can say why a drive shows no volumes.
 async fn placement_route(axum::extract::State(inner): axum::extract::State<Arc<Inner>>) -> axum::response::Response {
     use axum::response::IntoResponse;
     let mut cache = inner.placement.lock().await;

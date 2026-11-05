@@ -1,7 +1,7 @@
 // What a container or VM disk runs on, in a browser (#75), over deploy/verify-runs-on.sh's
 // real engine and apiserver.
 const { walk } = require('./lib.cjs')
-const { IMG, OLD, NEW, ROOT } = process.env
+const { IMG, OLD, ROOT } = process.env
 
 walk('runs-on', async (t) => {
   const page = await t.page('root')
@@ -15,15 +15,17 @@ walk('runs-on', async (t) => {
   t.check(/sha256:[0-9a-f]{64}/.test(text), 'its digest')
   t.check(/intact[\s\S]{0,12}\d+[smhd] ago, this node's copy/i.test(text), 'last verified, intact, this copy', (text.match(/.{0,30}intact.{0,60}/i) || [''])[0])
   t.check(text.includes(OLD), 'the image the node names')
-  t.check(!text.includes(NEW), 'not the newest built')
-  t.check(!/not confirmed running/.test(await page.content()), 'and not hedged')
+  t.check(/app@aaaa/.test(text) && !/app@bbbb/.test(text), "stormcentral's record of that one, not the newest built")
+  t.check(/says this container was cloned from/.test(text) && !/not confirmed running/.test(text), 'and not hedged')
+  t.check(/cloned \d+[smhd] ago/i.test(text), 'when it was cloned', (text.match(/.{0,40}cloned \d.{0,20}/i) || [''])[0])
+  t.check(/MB written of [\d.]+ MB \(/.test(text), 'written, spaced', (text.match(/.{0,20}written of.{0,40}/) || [''])[0])
   await t.shot(page, 'runs-on-pod')
 
   t.check(await t.open(page, '#/pod/shop/quiet', /Images/), 'a container the node said nothing of')
   await page.waitForTimeout(1000)
   text = await t.text(page)
   t.check(/has not said which volume/.test(text), 'says the node has not said')
-  t.check(text.includes(NEW) && /not confirmed running/.test(await page.content()), 'the newest, hedged')
+  t.check(/app@bbbb/.test(text) && /not confirmed running/.test(text), 'the newest, hedged', (text.match(/.{0,60}not confirmed.{0,40}/) || [''])[0])
   await t.shot(page, 'runs-on-quiet')
 
   t.check(await t.open(page, '#/pod/shop/elsewhere', /holds no volume/), 'a volume on another engine: said')
@@ -37,5 +39,6 @@ walk('runs-on', async (t) => {
   t.check(text.includes('shop.vm1-data') && !text.includes('lab.vm1-root'), "this machine's, not another project's")
   t.check(/nothing sealed here/.test(text), 'an empty disk says so')
   t.check(text.includes(IMG), 'the image of the other')
+  t.check(/stormblock#535/.test(text), 'a disk: when it was made is said as not known')
   await t.shot(page, 'runs-on-vm')
 })

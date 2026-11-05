@@ -70,6 +70,7 @@ cat > "$W/sb/stormblock.toml" <<EOF
 listen_addr = "$MGMT"
 data_dir = "$W/sb/data"
 node_name = "verify-runs-on"
+admin_token = "rig-admin-75"
 EOF
 RUST_LOG=stormblock=warn "$SB" --config "$W/sb/stormblock.toml" --device "$W/sb/d1.img" --device "$W/sb/d2.img" \
   --raid raid1 --volume seed:16M --data-dir "$W/sb/data" --no-iscsi \
@@ -107,7 +108,7 @@ EMPTY=$(curl -s -X POST "${AUTH[@]}" "$EN/volumes" -d '{"name":"shop.vm1-data","
 BEFORE=$(curl -s "${AUTH[@]}" "$EN/volumes/$ROOT" | j 'd["allocated_bytes"]')
 # Something written through the clone, so it costs what it was written.
 python3 -c "import json; print(json.dumps({'files':[{'path':'/data.txt','contents':'x'*3000000}]}))" > "$W/files.json"
-curl -s -X POST "${AUTH[@]}" "$EN/volumes/$ROOT/files" -d @"$W/files.json" | head -c 200; echo
+curl -s -X POST -H 'Authorization: Bearer rig-admin-75' -H 'Content-Type: application/json' "$EN/volumes/$ROOT/files" -d @"$W/files.json" | head -c 200; echo
 AFTER=$(curl -s "${AUTH[@]}" "$EN/volumes/$ROOT" | j 'd["allocated_bytes"]')
 echo "  written through the clone: $BEFORE -> $AFTER bytes"
 say "the engine records its seal in the background"
@@ -143,7 +144,7 @@ class Slow(B):
             asked.append(self.path); time.sleep(6); return self.out({"sha256": "f" * 64})
         if self.path == "/asked": return self.out({"asked": len(asked)})
         if self.path.endswith("/volumes"):
-            return self.out([{"id": "img", "name": "big", "sealed": True}, {"id": "c", "name": "clone", "parent": "img"}])
+            return self.out({"items": [{"id": "img", "name": "big", "sealed": True}, {"id": "c", "name": "clone", "parent": "img"}]})
         return self.out({"id": "c", "name": "clone", "parent": "img"})
 threading.Thread(target=ThreadingHTTPServer(("127.0.0.1", sc), Sc).serve_forever, daemon=True).start()
 ThreadingHTTPServer(("127.0.0.1", slow), Slow).serve_forever()
