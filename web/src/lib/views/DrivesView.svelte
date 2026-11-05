@@ -25,7 +25,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
-  import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName } from '../drivemap.js'
+  import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName, shelfKey, enclosures, unreadShelves, unreadShelf } from '../drivemap.js'
 
   const asShelves = $derived(route.current.query.get('group') === 'shelf')
   const asPools = $derived(route.current.query.get('group') === 'pool')
@@ -97,10 +97,12 @@
   const all = $derived(totals(records))
   const shown = $derived(groupBy(records, { by, filter, search }))
   const shownCount = $derived(shown.reduce((n, g) => n + g.drives.length, 0))
-  const chassisCount = $derived(new Set(records.map((d) => d.shelfId || `${d.node}/`)).size)
+  const shelfCount = $derived(new Set(records.map(shelfKey)).size)
+  const boxCount = $derived(enclosures(records))
+  const unread = $derived(unreadShelves(records))
   const pick = $derived(selected ? records.find((d) => d.id === selected) : null)
-  // Within a node or a rack, still one grid per chassis: the bays only mean
-  // something inside their enclosure.
+  // Within a node or a rack, still one grid per shelf: the bays only mean
+  // something inside their shelf.
   const sub = (g) => (by === 'chassis' ? [g] : groupBy(g.drives, { by: 'chassis' }))
 
   async function shelfAction(shelf, a) {
@@ -121,7 +123,7 @@
   <PageHeader
     crumbs={[{ label: 'Hardware' }, { label: asShelves ? 'Shelves' : asPools ? 'Pools' : 'Drives' }]}
     title={asShelves ? 'Shelves' : asPools ? 'Pools' : 'Drives'}
-    count={feed.loaded ? (asShelves ? shelves.length : asPools ? poolRows.length : records.length) : null}
+    count={feed.loaded ? (asShelves ? shelves.length + unread.length : asPools ? poolRows.length : records.length) : null}
   >
     {#snippet status()}
       <span class="fleet" title="Drives enrolled in the storage fleet">
@@ -133,17 +135,15 @@
   {#if !feed.loaded}
     <div class="sc-empty"><p>Connecting to the component feed…</p></div>
   {:else if asShelves}
-    {#if shelves.length === 0}
-      <EmptyState
-        icon="storage"
-        title="No shelves"
-        hint="stormdrive reports no enclosure. Drives attached directly to a controller have no shelf — they are on the Drives page."
-      >
-        {#snippet action()}
-          <a class="sc-back" href="#/drives">See the drives</a>
-        {/snippet}
-      </EmptyState>
-    {:else}
+    {#each unread as u (u.key)}
+      <!-- Drives on a backplane are on a shelf, read or not (#166). -->
+      <p class="unread" data-testid="unread-shelf">
+        {u.node}: {u.drives} {u.drives === 1 ? 'drive' : 'drives'} in the {u.words}. <a href="#/drives">See the drives</a>
+      </p>
+    {/each}
+    {#if shelves.length === 0 && unread.length === 0}
+      <EmptyState icon="storage" title="No shelves" hint="No stormdrive in this cluster reports a drive." />
+    {:else if shelves.length}
       <!-- Expanding a shelf shows its drives, through the has_many edge
            stormdrive already publishes. -->
       <ResourceTable
@@ -211,7 +211,8 @@
     <div class="band">
       <span class="big">{all.drives.toLocaleString()} <small>drives</small></span>
       <span class="big">{all.nodes} <small>node{all.nodes === 1 ? '' : 's'}</small></span>
-      <span class="big">{chassisCount} <small>chassis</small></span>
+      <span class="big">{boxCount} <small>{boxCount === 1 ? 'enclosure' : 'enclosures'}</small></span>
+      <span class="big">{shelfCount} <small>{shelfCount === 1 ? 'shelf' : 'shelves'}</small></span>
       <span class="big">{formatBytes(all.capacity)} <small>raw</small></span>
       {#if all.withUsage}
         <span class="big" title="Of the {all.withUsage} drives whose usage is known">{formatBytes(all.used)} <small>used · {formatBytes(all.left)} left of {formatBytes(all.usageCapacity)}</small></span>
@@ -232,7 +233,7 @@
       </select>
       <label>group by
         <select bind:value={by} aria-label="Group by">
-          <option value="chassis">chassis</option>
+          <option value="chassis">shelf</option>
           <option value="node">node</option>
           <option value="rack">rack</option>
           <option value="set">RAID set</option>
@@ -247,7 +248,7 @@
         <button class:sel={view === 'map'} onclick={() => (view = 'map')}>Map</button>
         <button class:sel={view === 'list'} onclick={() => (view = 'list')}>List</button>
       </span>
-      <span class="hint">{shownCount === records.length ? `${shown.length} ${by === 'chassis' ? 'chassis' : `${by}s`}` : `${shownCount.toLocaleString()} of ${records.length.toLocaleString()}`}</span>
+      <span class="hint">{shownCount === records.length ? `${shown.length} ${by === 'chassis' ? (shown.length === 1 ? 'shelf' : 'shelves') : by === 'set' ? 'RAID sets' : `${by}s`}` : `${shownCount.toLocaleString()} of ${records.length.toLocaleString()}`}</span>
     </div>
 
     {#if view === 'map'}
@@ -272,7 +273,7 @@
       <section class="picked">
         <header>
           <strong>{pick.c.label}</strong>
-          <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ''}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}{pick.hba ? ` · controller ${pick.hba}` : ''}{pick.serial ? ` · ${pick.serial}` : ''}</span>
+          <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ` · ${unreadShelf(pick)}`}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}{pick.hba ? ` · controller ${pick.hba}` : ''}{pick.serial ? ` · ${pick.serial}` : ''}</span>
           <button onclick={() => (selected = null)}>Close</button>
         </header>
         {#if pick.usage}
@@ -504,6 +505,7 @@
   .dim { color: var(--text-dim); font-size: var(--sc-t-meta); }
   .warn { color: var(--warn-strong); }
   .error { color: var(--error); }
+  .unread { margin: 0 0 12px; padding: 7px 12px; font-size: var(--sc-t-meta); color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
   .chassis-row { display: flex; flex-wrap: wrap; gap: 12px; }
   .chassis { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; min-width: 200px; }
   .clabel { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 6px; }

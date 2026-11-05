@@ -248,7 +248,7 @@ const { records } = build(JSON.parse(readFileSync('$W/feed.json', 'utf8')))
 const all = totals(records)
 const chassis = groups(records, { by: 'chassis' }), nodes = groups(records, { by: 'node' }), racks = groups(records, { by: 'rack' })
 const ms = (performance.now() - t0).toFixed(1)
-console.log('  ' + all.drives + ' drives, ' + all.nodes + ' nodes, ' + chassis.length + ' chassis, ' + formatBytes(all.capacity) + ' raw; ' +
+console.log('  ' + all.drives + ' drives, ' + all.nodes + ' nodes, ' + chassis.length + ' shelves, ' + formatBytes(all.capacity) + ' raw; ' +
   'used ' + formatBytes(all.used) + ' of ' + formatBytes(all.slab) + ' in slabs (' + all.withUsage + ' drives with usage)')
 console.log('  failing ' + all.failing + ', degraded ' + all.degraded + ', rebuilding ' + all.rebuilding + ', full ' + all.full + ', hot ' + all.hot)
 console.log('  racks: ' + racks.map((g) => g.label + ' ' + g.drives.length).join(', ') + ' · nodes: ' + nodes.length)

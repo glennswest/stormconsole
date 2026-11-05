@@ -5,6 +5,7 @@
 // merging.
 
 import { sameRelation } from './ui/words.js'
+import { unreadShelfKeys } from './drivemap.js'
 import { DEFAULT_STYLE, styleId } from './ui/styles.js'
 import { get, postJson, reconnectingSocket } from './api.js'
 import { setDefaultTheme } from 'stormview/theme'
@@ -412,14 +413,16 @@ export function idsForRoute(href) {
   }
 
   // The two hardware routes count different things: the shelves page is
-  // a list of enclosures, not of the disks in them.
+  // a list of shelves, not of the disks in them.
   if (path === '#/drives') {
     // Pools are summed from each node's usage, fetched by the page, not
     // carried in the feed: nothing to count here (#29).
     if (q.get('group') === 'pool') return null
     // By kind, not id prefix: other nodes' drives are `drive:@<host>:` (#32).
     const kind = q.get('group') === 'shelf' ? 'shelf' : 'drive'
-    return feed.components.filter((c) => c.kind === kind).map((c) => c.id)
+    const ids = feed.components.filter((c) => c.kind === kind).map((c) => c.id)
+    // A backplane stormdrive has not read is still a shelf (#166).
+    return kind === 'shelf' ? [...ids, ...unreadShelfKeys(feed.components)] : ids
   }
   if (path === '#/nodes') {
     return feed.components.filter((c) => c.kind === 'node').map((c) => c.id).sort()

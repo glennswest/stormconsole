@@ -1071,6 +1071,19 @@ viewer**, not on a console credential, and logs who and which drives. The page
 sends the plan's format where it can: only a format equal to the plan falls back
 if the drive refuses, so the confirmation says what each run would do.
 
+### Enclosures and shelves (#166)
+
+An **enclosure** is the box: a node's chassis, or an external JBOD. A **shelf**
+is a group of drives in one, with a position (internal, front, rear, external,
+stormdrive#65), and one enclosure can hold several. So the band counts a node as
+one enclosure however many shelves it holds, an external shelf as its own, and a
+positionless shelf from an older stormdrive as its own, since all it can be is
+an SES box. Drives on a backplane are never "in no shelf": where stormdrive
+places a drive in none (a RAID controller it has not read, as on an older
+stormdrive), the page makes one group per node and controller, names the
+controller and says the shelf is not read yet. Drives and Shelves both say so,
+and the navigator's Shelves count includes it.
+
 ### Drives at rack scale (#32)
 
  160 drives a node, ~1,600 a rack. The
@@ -1089,10 +1102,10 @@ from its label `topology.storm.io/rack`. The page's model is `web/src/lib/drivem
 (pure; `drivemap.test.mjs` runs it at 10×160 with plain node): it joins
 those by serial and device path (this node's drives only — another node's
 `/dev/sd5` is not this engine's), filters (failing, degraded, rebuilding,
-full ≥ 90%, hot ≥ 50 °C, out of fleet, spares), groups by chassis (a shelf
+full ≥ 90%, hot ≥ 50 °C, out of fleet, spares), groups by shelf (a shelf
 is a node's), node or rack, totals up to EB, and colours a bay by health,
 temperature, wear or usage — no data drawn hatched, never green. The Drives
-page is a map by default: each chassis a grid of its bays (12 across up to
+page is a map by default: each shelf a grid of its bays (12 across up to
 60 bays, 15 above), empty bays kept, rebuilding outlined; a totals band
 whose counts are filters; a list view capped at 200 a group. The live check
 is `deploy/verify-drives.sh`.

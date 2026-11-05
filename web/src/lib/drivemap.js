@@ -146,6 +146,9 @@ export function build(components, extra = {}) {
       rack: rack.get(node) || null,
       shelfId,
       shelfLabel: shelf ? shelf.label : null,
+      // internal, front, rear or external (stormdrive#65); the drive's own,
+      // else its shelf's, else unknown on an older stormdrive.
+      position: metric(c, 'position') || (shelf && metric(shelf, 'position')) || null,
       bay: bayOf(c),
       serial,
       hba: metric(c, 'hba') || null,
@@ -234,9 +237,57 @@ export function groupOf(d, by) {
     return [`${d.node}/`, d.member === 'spare' ? `${d.node} · spares` : `${d.node} · in no RAID set`]
   }
   if (by === 'rack') return [d.rack || '', d.rack ? `rack ${d.rack}` : 'no rack label']
-  // chassis: a shelf is a node's, so two nodes' "shelf 1" are two chassis.
-  const key = d.shelfId || `${d.node}/`
-  return [key, d.shelfLabel ? `${d.shelfLabel} · ${d.node}` : `${d.node} · no enclosure`]
+  // By shelf (still 'chassis' in a stored preference): a shelf is a node's, so
+  // two nodes' "shelf 1" are two groups.
+  if (!d.shelfId) return [shelfKey(d), `${d.node} · ${unreadShelf(d)}`]
+  return [shelfKey(d), d.position ? `${d.shelfLabel} · ${d.position} shelf · ${d.node}` : `${d.shelfLabel} · ${d.node}`]
+}
+
+/// Which shelf a drive is in. A drive stormdrive places in none still sits on
+/// something: one per node and controller, until stormdrive reads it.
+export function shelfKey(d) {
+  return d.shelfId || `${d.node}/${d.hba || ''}`
+}
+
+/// The words for a shelf stormdrive has not read (#166). A drive behind a RAID
+/// controller shows Linux no SES device, so the backplane it sits on is read
+/// from the controller (stormdrive#65), or not yet.
+export function unreadShelf(d) {
+  return `${d.position || 'internal'} shelf${d.hba ? ` behind ${d.hba}` : ''}, not read yet`
+}
+
+/// The shelves stormdrive has not read, with how many drives each holds.
+export function unreadShelves(records) {
+  const out = new Map()
+  for (const d of records) {
+    if (d.shelfId) continue
+    const key = shelfKey(d)
+    if (!out.has(key)) out.set(key, { key, node: d.node, words: unreadShelf(d), drives: 0 })
+    out.get(key).drives++
+  }
+  return [...out.values()].sort((a, b) => a.node.localeCompare(b.node) || a.key.localeCompare(b.key))
+}
+
+/// The same keys straight from the feed, for the navigator's count.
+export function unreadShelfKeys(components) {
+  const keys = new Set()
+  for (const c of components) {
+    if (c.kind !== 'drive' || (c.relations || []).some((r) => r.name === 'shelf')) continue
+    keys.add(`unread:${metric(c, 'node') || 'this node'}/${metric(c, 'hba') || ''}`)
+  }
+  return [...keys]
+}
+
+/// How many enclosures, the boxes the shelves are in. A node's chassis is one,
+/// however many internal, front and rear shelves it holds; an external shelf,
+/// and a shelf with no position from an older stormdrive, is a box of its own.
+export function enclosures(records) {
+  const boxes = new Set()
+  for (const d of records) {
+    const own = d.position === 'external' || (d.shelfId && !d.position)
+    boxes.add(own ? shelfKey(d) : `node:${d.node}`)
+  }
+  return boxes.size
 }
 
 export function totals(list) {

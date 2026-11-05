@@ -30,6 +30,15 @@ walk('one node', async (t) => {
 
   t.check(await t.open(page, '#/drives', /5 drives\s+1 node/), 'Drives: 5 drives on 1 node')
   await none('Drives')
+  // #166: forge1's shape, drives behind a PERC that stormdrive has not read.
+  const drives = await t.text(page)
+  t.check(/1\s*enclosure/i.test(drives) && /1\s*shelf/i.test(drives), 'one enclosure, one shelf', drives.slice(0, 200))
+  t.check(/internal shelf behind PERC H730, not read yet/i.test(drives), 'the group names the controller and says the shelf is not read yet', drives.slice(0, 400))
+  t.check(!/no enclosure|no shelf/i.test(drives), 'and never no enclosure or no shelf')
+  t.check(await t.open(page, '#/drives?group=shelf', /5 drives in the internal shelf behind PERC H730/), 'the Shelves page says the same')
+  t.check(!/no enclosure|no shelf/i.test(await t.text(page)), 'and has no empty state')
+  await t.shot(page, 'onenode-shelves')
+  await t.open(page, '#/drives', /5 drives\s+1 node/)
   await t.shot(page, 'onenode-drives')
 
   t.check(await t.open(page, '#/logs', /mine:/), 'Logs shows this node\'s lines')

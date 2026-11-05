@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Enclosures hold shelves (#166)
+- **fix:** a node with drives on a backplane no longer reads "no enclosure" or
+  "no shelf". Where stormdrive has not read the shelf, the Drives and Shelves
+  pages name the controller and say so: "forge1 · internal shelf behind PERC
+  H730, not read yet". The Shelves count includes it.
+- **feat:** the Drives band counts enclosures (a node's chassis, an external
+  JBOD) and shelves apart, and the page groups "by shelf", with a read shelf's
+  position in its name. The word chassis is gone from the page.
+
 ### 2026-11-05 — A drive format page (#165)
 - **feat:** `#/drives/format` (Hardware → Format): every member's drives by node
   with model, serial/WWN, bay, current block size and PI, what they would become

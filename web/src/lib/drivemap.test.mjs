@@ -2,7 +2,7 @@
 // with plain node — `node web/src/lib/drivemap.test.mjs` — no browser, no
 // bundler. It checks the joins and the grouping and measures them.
 import assert from 'node:assert/strict'
-import { build, groups, setName, totals, heat, cells, columns, parseBytes, formatBytes, passes, pools, noUsage } from './drivemap.js'
+import { build, groups, setName, totals, heat, cells, columns, parseBytes, formatBytes, passes, pools, noUsage, enclosures, unreadShelves, unreadShelfKeys } from './drivemap.js'
 
 function drive(host, i, extra = {}) {
   const local = host === null
@@ -56,6 +56,36 @@ comps.push({ id: 'sb:use:here-SN1', kind: 'drive-use', label: 'here-SN1', metric
 comps.push({ id: 'sb:member:/dev/sd5', kind: 'array-member', label: '/dev/sd5', metrics: [{ label: 'path', value: '/dev/sd5' }, { label: 'state', value: 'rebuilding' }] })
 // Racks from kube node labels.
 for (const h of hosts) comps.push({ id: `k8s:node:${h || 'here'}`, kind: 'k8s-node', label: h || 'here', metrics: [{ label: 'rack', value: ['here', 'storm-1', 'storm-2', 'storm-3', 'storm-4'].includes(h || 'here') ? 'A' : 'B' }] })
+
+// #166: a node's backplane behind a RAID controller is its internal shelf.
+{
+  const d = (id, node, hba, extra = {}) => ({ id, kind: 'drive', label: id, metrics: [{ label: 'node', value: node }, ...(hba ? [{ label: 'hba', value: hba }] : []), { label: 'capacity', value: '1 TB' }, ...(extra.metrics || [])], relations: extra.relations || [] })
+  const forge = build([d('drive:drive:1', 'forge1', 'PERC H730'), d('drive:drive:2', 'forge1', 'PERC H730')]).records
+  const g = groups(forge, { by: 'chassis' })
+  assert.equal(g.length, 1, 'one shelf')
+  assert.equal(g[0].label, 'forge1 · internal shelf behind PERC H730, not read yet')
+  assert.ok(!/no (shelf|enclosure)/.test(g[0].label))
+  assert.equal(enclosures(forge), 1)
+  assert.deepEqual(unreadShelves(forge).map((u) => [u.node, u.drives, u.words]), [['forge1', 2, 'internal shelf behind PERC H730, not read yet']])
+  assert.deepEqual(unreadShelfKeys([d('a', 'forge1', 'PERC H730'), d('b', 'forge1', 'PERC H730')]), ['unread:forge1/PERC H730'])
+
+  // Read through the controller (stormdrive#65): the same box, with a name.
+  const inShelf = (id, s, pos) => d(id, 'n', 'HBA', { relations: [{ name: 'shelf', targets: [s] }], metrics: [{ label: 'position', value: pos }] })
+  const read = build([
+    { id: 'shelf:a', kind: 'shelf', label: 'DELL BP14G', metrics: [{ label: 'position', value: 'internal' }] },
+    { id: 'shelf:b', kind: 'shelf', label: 'DELL rear', metrics: [{ label: 'position', value: 'rear' }] },
+    { id: 'shelf:c', kind: 'shelf', label: 'DS4246', metrics: [{ label: 'position', value: 'external' }] },
+    inShelf('drive:drive:a', 'shelf:a', 'internal'), inShelf('drive:drive:b', 'shelf:b', 'rear'), inShelf('drive:drive:c', 'shelf:c', 'external'),
+  ]).records
+  assert.deepEqual(groups(read, { by: 'chassis' }).map((x) => x.label).sort(), ['DELL BP14G · internal shelf · n', 'DELL rear · rear shelf · n', 'DS4246 · external shelf · n'])
+  assert.equal(enclosures(read), 2, 'the node with two shelves in it, and the JBOD')
+  assert.equal(unreadShelves(read).length, 0)
+
+  // Two controllers are two shelves, in one box.
+  const two = build([d('drive:drive:1', 'n', 'A'), d('drive:drive:2', 'n', 'B')]).records
+  assert.equal(groups(two, { by: 'chassis' }).length, 2)
+  assert.equal(enclosures(two), 1)
+}
 
 const t0 = performance.now()
 const { records } = build(comps)

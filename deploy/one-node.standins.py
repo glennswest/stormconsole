@@ -27,7 +27,7 @@ def card(id, kind, label, detail="", health="ok", metrics=None):
     }
 
 
-DRIVES = [card(f"drive:SN{i}", "drive", f"SN{i}", "ok", metrics={"bay": str(i)}) for i in range(5)]
+DRIVES = [card(f"drive:SN{i}", "drive", f"SN{i}", "ok", metrics={"bay": str(i), "hba": "PERC H730"}) for i in range(5)]
 STORAGE = [
     card("system", "system", "stormstorage", "1 node"),
     card(f"node:{HOST}", "node", HOST, "http://127.0.0.1:9090 · reachable",

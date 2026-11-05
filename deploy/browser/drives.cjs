@@ -8,7 +8,7 @@ walk('drives, pools, shelves', async (t) => {
 
   t.check(await t.open(page, '#/drives', /1,600\s*drives/), 'the map: 1,600 drives', (await main()).slice(0, 200))
   const band = await page.locator('.band').innerText()
-  t.check(/10\s*nodes/.test(band) && /chassis/.test(band) && /raw/.test(band), 'the band: nodes, chassis, raw capacity', band)
+  t.check(/10\s*nodes/.test(band) && /enclosures/.test(band) && /shelves/.test(band) && /raw/.test(band), 'the band: nodes, enclosures, shelves, raw capacity', band)
   t.check(/used .* left of/.test(band), 'and the fleet\'s usage', band)
   t.check((await page.locator('button.bay').count()) > 100, 'bays are drawn', await page.locator('button.bay').count())
   await t.shot(page, 'drives-map')

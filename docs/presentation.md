@@ -94,8 +94,8 @@ them.
   kind, with base lineage, clones, releases, and download progress.
 - **Storage → Volumes.** Only what is attached to something running, with
   its consumer; Unattached apart; delete disabled while in use.
-- **Drives, at rack scale.** Every node's drives as a map: each chassis bay
-  by bay, coloured by health, temperature, wear or usage; grouped by chassis,
+- **Drives, at rack scale.** Every node's drives as a map: each shelf bay
+  by bay, coloured by health, temperature, wear or usage; grouped by shelf,
   node or rack; failing / degraded / rebuilding / draining / full filters;
   totals to EB. Each drive: what is left, its slabs, the volumes on it and
   who uses them, a drain in progress; pools per node, role and tier.
