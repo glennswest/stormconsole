@@ -21,7 +21,6 @@
   import { get, postJson, call } from '../api.js'
   import { noteActivity } from '../stores.svelte.js'
   import PageHeader from '../components/PageHeader.svelte'
-  import EmptyState from '../components/EmptyState.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import { byNode, moving } from '../progress.js'
   import { clusterCard, freeNodes, networkOf } from '../cluster.js'
