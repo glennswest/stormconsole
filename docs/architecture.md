@@ -1049,8 +1049,9 @@ would have the console offering a terminal that dials a stranger.
 
  160 drives a node, ~1,600 a rack. The
 drives plugin (`crates/plugins/stormdrive`) reads this node's stormdrive
-(ids `drive:…`, unchanged) and every other node's: each host the log
-collector has an address for, at :9092, plus `[stormdrive] nodes`. A remote
+(ids `drive:…`, unchanged) and every other member's: each node of this
+cluster with an address (never a machine merely heard on the segment, #161),
+at :9092, plus `[stormdrive] nodes`. A remote
 node's ids are `drive:@<host>:…` (under the plugin's prefix, as the
 registry requires) and its actions go through
 `/api/plugins/drive/node/<host>/proxy`. Every drive and shelf carries a `node` metric; a host with no
@@ -1189,13 +1190,15 @@ timeout). Shapes: flowsdn `docs/agent-api.md`, `crates/flowsdn-agent/src/
 {api,health_api}.rs`. Another node's agent is not reachable, so each node's
 console shows its own; the page says so.
 
-- **Edition first.** `[flowsdn] release_manifest`
-  (`/etc/stormcos/release/manifest.json`) names it: an `edition`/`network`
-  field, else a `<n>-flowsdn` release version, else a `flowsdn` (or
-  cilium) component. A cilium node asks no agent, has no nav item, and its
-  one row says "not this edition". An unreadable manifest plus silence is
-  Unknown with that sentence (a cilium node is silent too); a flowsdn node
-  with no answer is an Error.
+- **Edition first, and only on a flowsdn node (#161).** `[flowsdn]
+  release_manifest` (`/etc/stormcos/release/manifest.json`) names it: an
+  `edition`/`network` field, else a `flowsdn` (or cilium) component, else its
+  version, `<n>-flowsdn` being flowsdn and plain `<n>` cilium. Where the
+  manifest cannot be read (stormcos#786), this node's beacon's release says the
+  same. A cilium node asks no agent and has no card, row, health or navigator
+  item (`ConsolePlugin::present`); the page, opened by hand, says "not this
+  edition". With no word either way, the plugin shows once an agent has
+  answered. A flowsdn node with no answer is an Error.
 - **Polled every 5 s** (`run`), `/v1/healthz` first (it answers only once
   the agent has restored state), then modules, endpoints, IPAM, config, and
   in Kubernetes mode Services, node routes and identities (404 there means
