@@ -1853,6 +1853,24 @@ install_config, handover`); stormpump (`history.rs`, `crash.rs`)
       block, stormpump's `Writer`, stormdrive) + Chromium; the test suite's
       medium; docs, changelog, dist; golden
 
+- Verified with `sc-build deploy/verify-history.sh` (0 failed): system-data
+  written by the real writers from main — stormblock's `/init` block (extracted,
+  `mount` stubbed), stormpump's `Writer` and crash collection (over its library;
+  `stormpump --boots` read the same boots), stormdrive itself for a hardware
+  record. Real consoles: 401 without the token, 200 with it, POST/DELETE 405; four
+  boots as four rows (not seven files), joined by time, the one that never reached
+  PID 1 alone; running / shut down / no timeline / crashed; panic attributed to the
+  right boot; traversals 400; a diskless node and a failed mount said, no card, no
+  nav. Chromium: every tab, a boot, its kernel log (level, search, gap), crash,
+  a drive's findings, hardware; no page errors. Default `sc-build`: 0 warnings.
+  The rig's first runs found the fixtures wrong against the real writers (kmsg
+  starts at seq 0; the crash event comes first); screenshots found the page's
+  title and spacing bugs. `verify-tests.sh`: `node-history` passes on no volume
+- Not seen on a real node: no drive with SMART on a build VM, so `history/drives`
+  is a fixture in stormdrive's Record shape. The medium suite's `node-history`
+  opens the newest record of each part when it runs on a node with system-data
+- Open upstream: stormblock#534 (boot id in the record; pruning counts directories)
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
