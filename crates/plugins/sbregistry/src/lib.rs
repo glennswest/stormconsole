@@ -8,6 +8,7 @@
 //! stormview feed, so its own JSON is mapped here.
 
 pub mod catalog;
+pub mod holdings;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,10 +26,37 @@ struct State {
     components: Vec<ComponentSummary>,
 }
 
+/// What the Registry page asks: this node's engine, with the console's own
+/// credential (#163). Never the browser's.
+struct Engine {
+    base: String,
+    token: Arc<console_core::token::FileToken>,
+    access: Option<Arc<plugin_kubernetes::NamespaceAccess>>,
+}
+
 struct Inner {
     base: String,
     client: reqwest::Client,
     state: RwLock<State>,
+    engine: std::sync::OnceLock<Engine>,
+    /// The last answer and when: the feed and every open page share it.
+    holdings: tokio::sync::Mutex<Option<(std::time::Instant, Arc<Answer>)>>,
+}
+
+/// The holdings, and what kept them from being more.
+#[derive(Default, serde::Serialize)]
+struct Answer {
+    #[serde(flatten)]
+    holdings: holdings::Holdings,
+    /// Why the engine could not be read: then there is nothing to show.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    engine_error: String,
+    /// Why the catalog could not be read: names are worked out from the volumes.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    catalog_note: String,
+    /// Why the machines could not be read: boot clones then look like nobody's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    hosts_note: String,
 }
 
 pub struct SbregistryPlugin {
@@ -41,6 +69,8 @@ impl SbregistryPlugin {
             inner: Arc::new(Inner {
                 base: url.trim_end_matches('/').to_string(),
                 client: reqwest::Client::new(),
+                engine: std::sync::OnceLock::new(),
+                holdings: tokio::sync::Mutex::new(None),
                 state: RwLock::new(State {
                     health: Health::Unknown,
                     detail: "not yet polled".into(),
@@ -49,6 +79,131 @@ impl SbregistryPlugin {
             }),
         }
     }
+}
+
+impl SbregistryPlugin {
+    /// Where the Registry page reads who holds what, and whose projects to hide.
+    pub fn with_engine(self, url: &str, token: Arc<console_core::token::FileToken>, access: Option<Arc<plugin_kubernetes::NamespaceAccess>>) -> Self {
+        let _ = self.inner.engine.set(Engine { base: url.trim_end_matches('/').to_string(), token, access });
+        self
+    }
+}
+
+/// One of the engine's lists, with its token.
+async fn engine_list(inner: &Inner, e: &Engine, path: &str) -> Result<Vec<Value>, String> {
+    let mut req = inner.client.get(format!("{}{path}", e.base)).timeout(Duration::from_secs(15));
+    if let Some(t) = e.token.get() {
+        req = req.bearer_auth(t);
+    }
+    let r = req.send().await.map_err(|e| {
+        use std::error::Error as _;
+        e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+    })?;
+    if !r.status().is_success() {
+        let code = r.status().as_u16();
+        let why = r.json::<Value>().await.ok().and_then(|v| field(&v, &["error"])).unwrap_or_default();
+        return Err(format!("{path} answered {code} {why}").trim().to_string());
+    }
+    let v: Value = r.json().await.map_err(|e| e.to_string())?;
+    Ok(match v {
+        Value::Array(a) => a,
+        v => v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(),
+    })
+}
+
+/// The catalog, with the engine's token where it stays on this machine: a registry
+/// with auth on takes it (stormblock-registry#55), and it goes nowhere else.
+async fn catalog_items(inner: &Inner, e: &Engine) -> Result<Vec<Value>, String> {
+    let mut req = inner.client.get(format!("{}/v1/catalog/images", inner.base)).timeout(Duration::from_secs(15));
+    if console_core::upstream::is_loopback(&inner.base) {
+        if let Some(t) = e.token.get() {
+            req = req.bearer_auth(t);
+        }
+    }
+    let r = req.send().await.map_err(|e| e.to_string())?;
+    if !r.status().is_success() {
+        return Err(format!("the registry's catalog answered {}", r.status().as_u16()));
+    }
+    let v: Value = r.json().await.map_err(|e| e.to_string())?;
+    Ok(v.get("items").and_then(Value::as_array).cloned().unwrap_or_default())
+}
+
+const HOLDINGS_FOR: Duration = Duration::from_secs(10);
+
+async fn read_holdings(inner: &Inner) -> Arc<Answer> {
+    let mut held = inner.holdings.lock().await;
+    if let Some((at, a)) = held.as_ref() {
+        if at.elapsed() < HOLDINGS_FOR {
+            return a.clone();
+        }
+    }
+    let Some(e) = inner.engine.get() else {
+        return Arc::new(Answer { engine_error: "no engine is configured for this console".into(), ..Default::default() });
+    };
+    let mut a = Answer::default();
+    match engine_list(inner, e, "/api/v1/volumes").await {
+        Err(why) => a.engine_error = why,
+        Ok(volumes) => {
+            let catalog = catalog_items(inner, e).await.unwrap_or_else(|why| {
+                a.catalog_note = why;
+                vec![]
+            });
+            let hosts = engine_list(inner, e, "/api/v1/boothost").await.unwrap_or_else(|why| {
+                a.hosts_note = why;
+                vec![]
+            });
+            a.holdings = holdings::build(&volumes, &catalog, &hosts);
+        }
+    }
+    let a = Arc::new(a);
+    *held = Some((std::time::Instant::now(), a.clone()));
+    a
+}
+
+/// `GET /api/plugins/reg/holdings`: repositories, tags and who holds a clone.
+async fn holdings_route(
+    axum::extract::State(inner): axum::extract::State<Arc<Inner>>,
+    viewer: console_core::Viewer,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let a = read_holdings(&inner).await;
+    let hidden = match inner.engine.get().and_then(|e| e.access.as_ref()) {
+        Some(access) => access.hidden(&viewer).await.map(|(h, _)| h),
+        None => None,
+    };
+    axum::Json(serde_json::json!({
+        "holdings": holdings::for_viewer(&a.holdings, hidden.as_ref()),
+        "engine_error": a.engine_error,
+        "catalog_note": a.catalog_note,
+        "hosts_note": a.hosts_note,
+    }))
+    .into_response()
+}
+
+/// A row per repository: the navigator's count, and how many clones nobody holds.
+fn repository_rows(a: &Answer) -> Vec<ComponentSummary> {
+    a.holdings
+        .repositories
+        .iter()
+        .map(|r| {
+            let tags = r.images.len();
+            let mut metrics = vec![Metric::new("tags", tags.to_string()), Metric::new("clones", r.clones.to_string())];
+            if r.orphans > 0 {
+                metrics.push(Metric::new("held by nobody", r.orphans.to_string()).tone("warn"));
+            }
+            ComponentSummary {
+                id: format!("reg:repo:{}", r.name),
+                kind: "repository".into(),
+                label: r.name.clone(),
+                health: Health::Ok,
+                detail: format!("{tags} tag(s), {} clone(s)", r.clones),
+                metrics,
+                actions: vec![],
+                relations: vec![Relation::belongs_to("registry", "reg:registry")],
+                link: Some(format!("#/registry?repo={}", r.name)),
+            }
+        })
+        .collect()
 }
 
 #[async_trait]
@@ -62,7 +217,8 @@ impl ConsolePlugin for SbregistryPlugin {
         // (#19): the catalog first. Clones are volumes, under Storage.
         vec![NavSection::new("Images", 50)
             .admin()
-            .item("Registry images", "#/images")
+            .item("Registry", "#/registry")
+            .item("Catalog", "#/images")
             .item("Pushed images", "#/grid?id=reg:registry&rel=images")
             .item("Pallets", "#/grid?id=reg:registry&rel=pallets")]
     }
@@ -97,6 +253,8 @@ impl ConsolePlugin for SbregistryPlugin {
 
     fn routes(&self) -> axum::Router {
         axum::Router::new()
+            .route("/holdings", axum::routing::get(holdings_route))
+            .with_state(self.inner.clone())
             .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.base.clone()))
     }
 
@@ -149,6 +307,8 @@ async fn items(inner: &Inner, path: &str) -> Vec<Value> {
 }
 
 async fn poll(inner: &Inner) {
+    // The engine's answer, whether or not the registry is up.
+    let repos = if inner.engine.get().is_some() { repository_rows(&*read_holdings(inner).await) } else { vec![] };
     let ready = match get(inner, "/readyz").await {
         Ok(v) => v,
         Err(e) => {
@@ -156,6 +316,7 @@ async fn poll(inner: &Inner) {
             s.health = Health::Error;
             s.detail = format!("unreachable: {e}");
             s.components = vec![registry(Health::Error, &s.detail, vec![], &[])];
+            s.components.extend(repos);
             return;
         }
     };
@@ -220,6 +381,7 @@ async fn poll(inner: &Inner) {
     out.extend(clones);
     out.extend(pallets);
     out.extend(images);
+    out.extend(repos);
 
     let mut s = inner.state.write().await;
     s.health = health;

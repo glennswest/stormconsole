@@ -1182,6 +1182,7 @@ dependencies = [
  "async-trait",
  "axum",
  "console-core",
+ "plugin-kubernetes",
  "reqwest",
  "serde",
  "serde_json",

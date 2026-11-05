@@ -27,6 +27,7 @@
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import HealthView from './lib/views/HealthView.svelte'
   import HistoryView from './lib/views/HistoryView.svelte'
+  import RegistryView from './lib/views/RegistryView.svelte'
   import ImagesView from './lib/views/ImagesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
@@ -57,6 +58,7 @@
     flowsdn: FlowsdnView,
     health: HealthView,
     history: HistoryView,
+    registry: RegistryView,
     images: ImagesView,
     attachclaim: AttachClaim,
   }

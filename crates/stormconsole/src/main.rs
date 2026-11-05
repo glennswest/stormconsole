@@ -201,17 +201,14 @@ async fn main() {
     if let Some(p) = stormstorage {
         plugins.push(p);
     }
+    // A guarded engine answers every read with 401 without its token. Followed, not
+    // read once: the engine mints it at boot, so it may not be there yet (#163).
+    let engine_token = std::sync::Arc::new(match config.stormblock.token_file.as_deref() {
+        Some(f) => console_core::token::FileToken::file(f),
+        None => console_core::token::FileToken::fixed(None),
+    });
     if config.stormblock.enabled {
-        // A guarded engine answers every read with 401 without its token;
-        // an unreadable file is said and the plugin shows the 401 in words.
-        let token = config.stormblock.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                tracing::warn!(file = f, "stormblock token_file unreadable: {e}");
-                None
-            }
-        });
-        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_token(&config.stormblock_url(), token)));
+        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_token(&config.stormblock_url(), engine_token.clone())));
     }
     // The datastore rustkube stands on, so the relation is drawn only
     // when there is an apiserver component to draw it to.
@@ -253,7 +250,10 @@ async fn main() {
         ));
     }
     if config.sbregistry.enabled {
-        plugins.push(Arc::new(plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())));
+        plugins.push(Arc::new(
+            plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())
+                .with_engine(&config.stormblock_url(), engine_token.clone(), namespace_access.clone()),
+        ));
     }
     // Cloud images: what could be goldened, what has been, and where the
     // copies are. Beside sbregistry in the nav, because both answer "where

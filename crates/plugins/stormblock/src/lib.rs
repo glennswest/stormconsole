@@ -33,7 +33,7 @@ struct Inner {
     base: String,
     /// The engine's API token (`<data_dir>/api_token`), when it guards its
     /// API — v18 does, reads included. Held here; the browser never sees it.
-    token: Option<String>,
+    token: Arc<console_core::token::FileToken>,
     client: reqwest::Client,
     state: RwLock<State>,
     /// The last per-drive placement answer and when it was made (#29).
@@ -46,13 +46,13 @@ pub struct StormblockPlugin {
 
 impl StormblockPlugin {
     pub fn new(url: &str) -> Self {
-        Self::with_token(url, None)
+        Self::with_token(url, Arc::new(console_core::token::FileToken::fixed(None)))
     }
 
-    pub fn with_token(url: &str, token: Option<String>) -> Self {
+    pub fn with_token(url: &str, token: Arc<console_core::token::FileToken>) -> Self {
         Self {
             inner: Arc::new(Inner {
-                token: token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
+                token,
                 base: url.trim_end_matches('/').to_string(),
                 client: reqwest::Client::new(),
                 state: RwLock::new(State {
@@ -124,7 +124,7 @@ impl ConsolePlugin for StormblockPlugin {
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
-                console_core::proxy::router_as(self.inner.client.clone(), self.inner.base.clone(), self.inner.token.clone()),
+                console_core::proxy::router_token(self.inner.client.clone(), self.inner.base.clone(), self.inner.token.clone()),
             )
     }
 
@@ -157,7 +157,7 @@ impl ConsolePlugin for StormblockPlugin {
 async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
     let url = format!("{}{path}", inner.base);
     let mut req = inner.client.get(&url).timeout(Duration::from_secs(5));
-    if let Some(t) = &inner.token {
+    if let Some(t) = inner.token.get() {
         req = req.bearer_auth(t);
     }
     let resp = req

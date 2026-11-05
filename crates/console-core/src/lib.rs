@@ -24,6 +24,7 @@ mod probe;
 pub mod proxy;
 mod registry;
 pub mod storage;
+pub mod token;
 pub mod tls;
 pub mod upstream;
 pub mod value;

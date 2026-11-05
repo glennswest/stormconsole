@@ -32,6 +32,8 @@ const routes = [
   { pattern: '#/flowsdn', name: 'flowsdn' },
   // The registry's catalog: goldens, blanks and media are images (#19).
   { pattern: '#/images', name: 'images' },
+  // Repositories, tags, and who holds a clone (#163).
+  { pattern: '#/registry', name: 'registry' },
   { pattern: '#/attach/:ns/:name', name: 'attachclaim' },
   { pattern: '#/node/:host', name: 'nodedetail' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },

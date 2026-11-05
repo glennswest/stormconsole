@@ -425,6 +425,9 @@ export function idsForRoute(href) {
     // A backplane stormdrive has not read is still a shelf (#166).
     return kind === 'shelf' ? [...ids, ...unreadShelfKeys(feed.components)] : ids
   }
+  if (path === '#/registry') {
+    return feed.components.filter((c) => c.kind === 'repository').map((c) => c.id)
+  }
   if (path === '#/nodes') {
     return feed.components.filter((c) => c.kind === 'node').map((c) => c.id).sort()
   }

@@ -58,8 +58,8 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
     await pause(300)
   }
 
-  await visit('#/', 'overview', ['Registry images'], openNav)
-  await visit('#/images', 'images page', ['Registry images', 'Container registry images', 'Component registry images', 'Slab registry images'])
+  await visit('#/', 'overview', ['Registry'], openNav)
+  await visit('#/images', 'images page', ['Catalog', 'Container registry images', 'Component registry images', 'Slab registry images'])
   await visit('#/grid?id=reg:registry&rel=goldens', 'registry relation', ['Registry images', 'nats-2-10-sealed'])
   await visit('#/grid?id=reg:registry&rel=clones', 'instances', ['clone of nats-2-10-sealed'])
   await visit('#/grid?id=img:operator&rel=goldens', 'vm registry images', ['Registry images'])

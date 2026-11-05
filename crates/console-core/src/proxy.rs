@@ -86,7 +86,7 @@ pub async fn forward_as(
 struct Target {
     client: reqwest::Client,
     upstream: String,
-    bearer: Option<String>,
+    bearer: Arc<crate::token::FileToken>,
 }
 
 /// Everything under this router goes to one upstream. Nest it at
@@ -99,7 +99,12 @@ pub fn router(client: reqwest::Client, upstream: String) -> Router {
 pub fn router_as(client: reqwest::Client, upstream: String, bearer: Option<String>) -> Router {
     Router::new()
         .route("/{*path}", any(handler))
-        .with_state(Arc::new(Target { client, upstream, bearer }))
+        .with_state(Arc::new(Target { client, upstream, bearer: Arc::new(crate::token::FileToken::fixed(bearer)) }))
+}
+
+/// [`router_as`], with a bearer kept in a file, read as it is now.
+pub fn router_token(client: reqwest::Client, upstream: String, bearer: Arc<crate::token::FileToken>) -> Router {
+    Router::new().route("/{*path}", any(handler)).with_state(Arc::new(Target { client, upstream, bearer }))
 }
 
 /// Destructive storage goes upstream with the viewer's bearer, not this
@@ -114,7 +119,8 @@ async fn handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let bearer = match crate::storage::upstream_bearer(&method, &original, act.as_deref(), t.bearer.as_deref()) {
+    let own = t.bearer.get();
+    let bearer = match crate::storage::upstream_bearer(&method, &original, act.as_deref(), own.as_deref()) {
         Ok(b) => b,
         Err(refused) => return refused,
     };

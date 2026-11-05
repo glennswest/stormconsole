@@ -52,7 +52,7 @@
 </script>
 
 <div class="sc-page">
-  <PageHeader crumbs={[{ label: 'Images' }, { label: 'Registry images' }]} title="Registry images" count={feed.loaded ? all.length : null} />
+  <PageHeader crumbs={[{ label: 'Images' }, { label: 'Catalog' }]} title="Catalog" count={feed.loaded ? all.length : null} />
 
   <p class="lead">
     Everything a machine, a claim or a service is cloned from — held by the registry, stored as the
