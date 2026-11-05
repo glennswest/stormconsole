@@ -167,7 +167,7 @@ async fn silence_is_an_error_on_a_flowsdn_node_and_not_on_a_node_of_unknown_edit
 async fn a_cilium_node_says_not_this_edition_and_asks_nothing() {
     let (url, _h) = agent(true).await;
     let p = FlowsdnPlugin::new(&url, &manifest(&tmp("cilium"), r#"{"edition":"cilium"}"#), None);
-    assert!(p.nav().is_empty(), "no page on a cilium node");
+    assert!(!p.present(), "no page on a cilium node");
     p.poll().await;
     let s = p.snapshot().await;
     assert!(s.answered.is_none(), "the agent is not asked");

@@ -43,7 +43,7 @@ q() { python3 -c "
 import json
 d=json.load(open('$W/feed.json'))
 print($1)"; }
-node() { # name address
+mknode() { # name address
   k POST /api/v1/nodes "{\"apiVersion\":\"v1\",\"kind\":\"Node\",\"metadata\":{\"name\":\"$1\"}}"
   k PATCH "/api/v1/nodes/$1/status" "{\"status\":{\"addresses\":[{\"type\":\"InternalIP\",\"address\":\"$2\"},{\"type\":\"Hostname\",\"address\":\"$1\"}],\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\"}]}}" application/merge-patch+json
 }
@@ -86,7 +86,7 @@ for x in "Cluster clusters" "ClusterMember clustermembers"; do
         \"subresources\":{\"status\":{}},
         \"schema\":{\"openAPIV3Schema\":{\"type\":\"object\",\"x-kubernetes-preserve-unknown-fields\":true}}}]}}"
 done
-node "$HOST" 127.0.0.2
+mknode "$HOST" 127.0.0.2
 
 say "the segment, the stand-ins, and a console with no release manifest"
 echo 12.61 > "$W/release"
@@ -182,7 +182,7 @@ set -e
 [ $RC -eq 0 ] || FAILED=$((FAILED+1))
 
 say "3. a second Node: a cluster of two, one row per machine"
-node member2 127.0.0.41
+mknode member2 127.0.0.41
 until_true 30 'sum(1 for x in d if x["kind"]=="node")==2 and sum(1 for x in d if x["kind"]=="drive")==10' || true
 check "$(q 'sorted(x["label"] for x in d if x["kind"]=="node")')" "$(python3 -c "print(sorted(['$HOST','member2']))")" "two nodes, by their own names"
 check "$(grep -c 'member2-old' "$W/feed.json" || true)" "0" "its old name is not a third"
