@@ -1880,6 +1880,26 @@ install_config, handover`); stormpump (`history.rs`, `crash.rs`)
   opens the newest record of each part when it runs on a node with system-data
 - Open upstream: stormblock#534 (boot id in the record; pruning counts directories)
 
+### Offered drives, formatted only by a person (#153)
+stormblock#154, decision 3 (owner 2026-10-13: "on auto format, no, since we may
+be doing a test, and a power off could destroy a drive"). Read from stormblock
+main (bcbe3e0d, `mgmt/api/drives.rs`, `drive_offer.rs`, `api/slabs.rs`,
+`serve/api.rs`): `GET /api/v1/drives` carries `offer` (`ours {slabs, volumes}`,
+`blank`, `foreign {holds}`; absent for a drive opened at start) and `confirm` (its
+serial, else its path). `POST /drives/{id}/format {confirm, role?}`: 412 `{error,
+confirm, holds}` without the word, 409 for another format or ours or the system
+disk. The engine reviews it as verb **`destroy`** on resource `drives` (#382).
+`POST /slabs/rebalance {dry_run}` (ordinary), `GET` progress, `DELETE` stops.
+- [ ] storage guard: the format is `destroy` on `drives`, as the engine asks, so
+      it goes as the viewer; stopping a rebalance says what it is
+- [ ] sb plugin: `offer`, `holds`, `confirm`, `serial`, `path` on `sb:drive:`, and
+      a Format action (none on a system disk or a drive of ours)
+- [ ] Drives page: offered drives band and filter, the offer on a picked drive;
+      Format shows the 412's risk, takes the typed serial, one at a time; then a
+      rebalance: dry run, confirm, progress. `web/src/lib/driveoffer.js` + test
+- [ ] `deploy/verify-drive-offer.sh` on a real engine and apiserver + Chromium;
+      docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
