@@ -1946,6 +1946,24 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### An Update page (#164)
+Owner 2026-11-04, on forge1's first update: "update needs a ui as well". Read from
+stormupdate 0d8a85b (`api.rs`, `crd.rs`, README): reads at :9088 are open (`GET
+/api/v1/status` = `{spec, status}`: `phase, message, currentRelease, flavor,
+targetRelease, previousRelease, available[], nodes[], history[], images[]`); writes
+`POST /api/v1/upgrade {release}`, `/pause`, `/resume`, `/rollback` need the update
+token (501 with none set up, 401 wrong, 409 not available). Stormipmi's pattern: admin
+only, the bearer added server-side. No cancel, no refused history, no clock on the
+cluster's message: filed on stormupdate; the console's own clock until then.
+- [ ] `crates/plugins/stormupdate` (name `update`), `[stormupdate] enabled/url/token_file`
+      (not started says so, #60): feed row; `GET /snapshot`; `POST /upgrade|pause|resume|
+      rollback`, admin, recorded to `<data_dir>/update-actions.jsonl` and the log
+- [ ] `#/update` (Compute → Update): running, staged, offered, rolled back from; steps per
+      node with message and time there; images; history; actions that ask first.
+      `web/src/lib/update.js` + test
+- [ ] `deploy/verify-update.sh`: real stormupdate + rustkube; status in its shape; Chromium;
+      docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
