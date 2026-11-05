@@ -1085,6 +1085,30 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### The Update page (#164)
+
+The owner, on forge1's first update: "update needs a ui as well". `crates/plugins/
+stormupdate` (name `update`) and `#/update` (Compute → Update), over stormupdate's API on
+:9088, which any node answers from the cluster's one `ClusterUpdate`.
+
+- **Reads** are open there, and polled every 5 s for the feed row. `GET /api/plugins/
+  update/snapshot` adds this node's engine's `GET /api/v1/releases/generations` for what
+  is staged here, which is per node, and the record below.
+- **Writes** are four named routes, `admin` only, with stormupdate's update token added on
+  the server (`[stormupdate] token_file`, stormcos#789): `upgrade {release}` (nothing
+  else is carried, so `allow_unpublished`, stormcentral's candidate path, cannot be asked
+  for from here), `pause`, `resume`, `rollback`. With no token the console says so and
+  does not call. The page asks before each, in a sentence saying what will happen.
+- **Recorded**: a log line, and `<data_dir>/update-actions.jsonl`, shown on the page,
+  because the `ClusterUpdate` says what happened and not who asked.
+- **The steps** are each node's `phase` (`PrePulling`, `Pending`, `Draining`, `Upgrading`,
+  `Verifying`, `Done`, or off the walk `RollingBack`, `RolledBack`, `Failed`) with `since`,
+  the agent's own message and the gates waited on.
+- **Gaps upstream:** no cancel (stormupdate#36; Pause is what there is, #196). A refused run
+  is not in `history`, and the cluster's `message` has no clock (stormupdate#37): the page
+  says the first and times the message itself from when the console first saw it, a clock
+  that restarts with the console.
+
 ### The Registry page (#163)
 
 Owner: "goldens, and who has clones", in OCI Distribution's words: repository, tag,

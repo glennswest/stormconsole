@@ -1955,13 +1955,13 @@ targetRelease, previousRelease, available[], nodes[], history[], images[]`); wri
 token (501 with none set up, 401 wrong, 409 not available). Stormipmi's pattern: admin
 only, the bearer added server-side. No cancel, no refused history, no clock on the
 cluster's message: filed on stormupdate; the console's own clock until then.
-- [ ] `crates/plugins/stormupdate` (name `update`), `[stormupdate] enabled/url/token_file`
+- [x] `crates/plugins/stormupdate` (name `update`), `[stormupdate] enabled/url/token_file`
       (not started says so, #60): feed row; `GET /snapshot`; `POST /upgrade|pause|resume|
       rollback`, admin, recorded to `<data_dir>/update-actions.jsonl` and the log
-- [ ] `#/update` (Compute → Update): running, staged, offered, rolled back from; steps per
+- [x] `#/update` (Compute → Update): running, staged, offered, rolled back from; steps per
       node with message and time there; images; history; actions that ask first.
       `web/src/lib/update.js` + test
-- [ ] `deploy/verify-update.sh`: real stormupdate + rustkube; status in its shape; Chromium;
+- [x] `deploy/verify-update.sh`: real stormupdate + rustkube; status in its shape; Chromium;
       docs, changelog, dist; golden
 
 ### Phase 4 — fleet/nodes plugin

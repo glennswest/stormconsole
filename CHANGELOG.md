@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The Update page (#164)
+- **feat:** `#/update` (Compute → Update), over stormupdate's API: the release running,
+  staged here, moving to, and rolled back from; what is offered, with notes and what
+  changes; an update's steps per node with its current message and how long it has been
+  there; its images per state; history with each result and why.
+- **feat:** an admin's start, pause, resume and rollback, each asking first and recorded with
+  who (`<data_dir>/update-actions.jsonl`, the log, and on the page). `[stormupdate] enabled /
+  url / token_file`. Cancel waits on stormupdate#36.
+
 ### 2026-11-05 — The Registry page (#163)
 - **feat:** `#/registry` (Images → Registry): every repository with its tags and
   digests, its size and the releases carrying it, and for each who holds a clone: boot

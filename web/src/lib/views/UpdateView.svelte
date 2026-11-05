@@ -78,9 +78,9 @@
     <EmptyState icon="overview" title={data.not_started ? 'stormupdate is not started on this node' : 'stormupdate did not answer'} hint={data.error} />
   {:else if data}
     <section class="band">
-      <div><span class="k">Running</span> <strong class="mono" class:warn={rel.mixed}>{rel.running || '—'}</strong>{#if rel.mixed} <span class="small warn">nodes differ</span>{/if}</div>
+      <div><span class="k">Running</span> <strong class="mono" class:warn={rel.mixed}>{rel.running || '—'}</strong>{#if rel.mixed}<span class="small warn gap">nodes differ</span>{/if}</div>
       {#if rel.target}<div><span class="k">Moving to</span> <strong class="mono">{rel.target}</strong></div>{/if}
-      <div><span class="k">Staged here</span> <strong class="mono">{rel.staged || '—'}</strong>{#if rel.staged && !rel.stagedComplete} <span class="small warn">not whole yet</span>{/if}</div>
+      <div><span class="k">Staged here</span> <strong class="mono">{rel.staged || '—'}</strong>{#if rel.staged && !rel.stagedComplete}<span class="small warn gap">not whole yet</span>{/if}</div>
       {#if rel.previous}<div><span class="k">Before it</span> <strong class="mono">{rel.previous}</strong></div>{/if}
       {#if rel.rolledBackFrom}<div><span class="k">Rolled back from</span> <strong class="mono" class:warn={rel.rolledBackFromNow}>{rel.rolledBackFrom}</strong></div>{/if}
       <div><span class="k">Flavor</span> {st?.flavor || '—'}</div>
@@ -221,6 +221,7 @@
 
 <style>
   .small { font-size: var(--sc-t-meta); }
+  .gap { margin-left: 8px; }
   .dim { color: var(--text-dim); }
   .warn { color: var(--warn-strong); }
   .bad { color: var(--error); }

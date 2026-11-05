@@ -16,13 +16,15 @@ export const STEP_WORDS = {
   Failed: 'Failed',
 }
 
-/// A node's steps, each done, here or still to come. Off the walk (a failure), the
-/// steps it had not reached stay undone and the end says what became of it.
+/// A node's steps, each done, here or still to come. Off the walk (a failure, a
+/// rollback) the walk says nothing true any more, so only where it ended is shown.
 export function nodeSteps(n) {
   const at = STEPS.indexOf(n.phase)
-  const steps = STEPS.map((s, i) => ({ step: s, word: STEP_WORDS[s], state: at < 0 ? 'off' : i < at ? 'done' : i === at ? (s === 'Done' ? 'done' : 'now') : 'todo' }))
-  if (at < 0 && n.phase) steps.push({ step: n.phase, word: STEP_WORDS[n.phase] || n.phase, state: n.phase === 'RolledBack' ? 'warn' : n.phase === 'Failed' ? 'bad' : 'now' })
-  return steps
+  if (at < 0) {
+    if (!n.phase) return []
+    return [{ step: n.phase, word: STEP_WORDS[n.phase] || n.phase, state: n.phase === 'RolledBack' ? 'warn' : n.phase === 'Failed' ? 'bad' : 'now' }]
+  }
+  return STEPS.map((s, i) => ({ step: s, word: STEP_WORDS[s], state: i < at ? 'done' : i === at ? (s === 'Done' ? 'done' : 'now') : 'todo' }))
 }
 
 /// The one line for what a node is doing: the agent's words when it has said any,
