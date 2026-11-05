@@ -1100,8 +1100,9 @@ digest. `#/registry` (Images → Registry), from `GET /api/plugins/reg/holdings`
   or `claims_by_agent`); the owner or consumer the engine was told (Pod, claim, VM,
   a mount as a service, anything else as other); the name, for `disk-<release>` and
   `build-*`, the only two a name decides; attached to something unnamed; else nobody,
-  flagged. The `disk-` and `build-` names are read from stormcentral's use and the
-  page calls them what they are named, so a build under another name reads as nobody.
+  flagged. `disk-<release>` is the name stormcentral gives a release's disk; `build-*`
+  is an assumption, as nothing found in the code names a build's clone, so a build
+  under another name reads as nobody.
 - **A machine's own sealed image is rolled up through**, so a boot clone is under the
   tag the machine was assigned. A clone of a clone says what it came through. A clone
   whose parent is gone is listed apart.

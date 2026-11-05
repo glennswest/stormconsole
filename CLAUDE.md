@@ -1914,7 +1914,7 @@ disk. The engine reviews it as verb **`destroy`** on resource `drives` (#382).
   (the route is checked with none running). On a real node a format needs a
   kubernetes identity, which is #165's open question
 
-### A Registry page: repositories, tags, and who holds a clone (#163)
+### A Registry page: repositories, tags, and who holds a clone (#163) ✅ 2026-11-05
 Owner 2026-11-04/05: "goldens, and who has clones"; "a registry ui with a list of
 images/versions, and who has goldens"; no "golden" where the user reads: repository,
 tag, digest. Read from the code (2026-11-05): engine `GET /api/v1/volumes` (`kind,
@@ -1932,6 +1932,19 @@ are the source; the catalog adds names. No sealed-at in either.
 - [x] `#/registry`: repositories, tags, clones; by holder; filters with counts;
       `web/src/lib/registry.js` + test
 - [x] `deploy/verify-registry.sh`: real engine + registry; docs, changelog, dist; golden
+
+- Verified with `sc-build deploy/verify-registry.sh` (0 failed): stormblock, the registry
+  and rustkube from main. A machine's real boot claim rolled up through its own image to
+  the assigned tag; holders set through the engine's API; a real attach; an orphan; the
+  token appearing after the console started, then the sb proxy 200 with no restart; the
+  registry stopped; alice (no project) told a holder exists and not whose. Chromium: filters
+  with counts, orphans only, By holder for a machine and a pod, no "golden" on the page.
+  Also `verify-pod-page.sh`, `verify-images.sh`, default `sc-build` (446 tests, 0 warnings)
+- Not seen: forge1 itself (not routable from here), so the cause of its 401 is not
+  confirmed; a digest or a release on the page with real data (the rig's images have
+  none, so only the model's test covers them); holder names on real pods, VMs and
+  release disks; `build-*` is an assumption. Registry over TLS is still #104
+- No sealed-at in the engine or the catalog, so the page does not show it
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
