@@ -481,6 +481,14 @@ fn short(s: &str) -> String {
     }
 }
 
+/// The kubelet's start timing as the page reads it: `total` and how many phases.
+fn d_pod_timing(page: &Value) -> Option<String> {
+    let t = page.pointer("/metadata/startTiming").filter(|t| t.is_object())?;
+    let phases = t["phases"].as_array()?;
+    let total = phases.iter().find(|p| p["name"] == "total").map_or("?", |p| p["value"].as_str().unwrap_or("?"));
+    Some(format!("total {total}, {} phases, {} steps · {}", phases.len(), t["steps"].as_array().map_or(0, Vec::len), short(t["raw"].as_str().unwrap_or(""))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,12 +501,4 @@ mod tests {
         assert_eq!(g["spec"]["volumes"][0]["dataVolume"]["name"], "fedora-44-x86_64");
         assert!(g["spec"]["volumes"][1]["cloudInitNoCloud"]["userData"].as_str().unwrap().contains("STORMCONSOLE-BLADE-ADDR"));
     }
-}
-
-/// The kubelet's start timing as the page reads it: `total` and how many phases.
-fn d_pod_timing(page: &Value) -> Option<String> {
-    let t = page.pointer("/metadata/startTiming").filter(|t| t.is_object())?;
-    let phases = t["phases"].as_array()?;
-    let total = phases.iter().find(|p| p["name"] == "total").map_or("?", |p| p["value"].as_str().unwrap_or("?"));
-    Some(format!("total {total}, {} phases, {} steps · {}", phases.len(), t["steps"].as_array().map_or(0, Vec::len), short(t["raw"].as_str().unwrap_or(""))))
 }
