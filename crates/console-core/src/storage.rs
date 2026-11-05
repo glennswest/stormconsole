@@ -206,6 +206,15 @@ fn engine(method: &Method, inner: &str, query: Option<&str>) -> Option<Guarded> 
     let one = singular(resource);
 
     let g = |verb: &str, what: String| Some(Guarded::new(resource, verb, what, target));
+    // Asked the way the engine asks (#382): `destroy`, which only a role
+    // granted all of storage.storm.io holds, so the console cannot say yes to
+    // what the engine would then refuse.
+    if *method == Method::POST && resource == "drives" && matches!(s.get(4..), Some(["format"])) {
+        return g("destroy", "format a drive as a slab".into());
+    }
+    if *method == Method::DELETE && resource == "slabs" && matches!(s.get(3..), Some(["rebalance"])) {
+        return Some(Guarded::new("slabs", "destroy", "stop a rebalance", "rebalance"));
+    }
     if *method == Method::DELETE {
         return match s.get(4..) {
             Some([]) | None if id.is_some() => g("delete", format!("delete a {one}")),
@@ -371,6 +380,17 @@ mod tests {
 
     fn c(m: Method, p: &str) -> Option<Guarded> {
         classify(&m, p, None)
+    }
+
+    #[test]
+    fn an_offered_drives_format_is_asked_as_the_engine_asks() {
+        let g = c(Method::POST, "/api/plugins/sb/proxy/api/v1/drives/0e6b/format").unwrap();
+        assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("drives", "destroy", "0e6b"));
+        // Opening a drive destroys nothing, and a rebalance only moves.
+        assert!(c(Method::POST, "/api/plugins/sb/proxy/api/v1/drives").is_none());
+        assert!(c(Method::POST, "/api/plugins/sb/proxy/api/v1/slabs/rebalance").is_none());
+        let g = c(Method::DELETE, "/api/plugins/sb/proxy/api/v1/slabs/rebalance").unwrap();
+        assert_eq!((g.what.as_str(), g.target.as_str()), ("stop a rebalance", "rebalance"));
     }
 
     #[test]

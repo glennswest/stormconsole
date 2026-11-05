@@ -782,20 +782,78 @@ fn export(v: &Value) -> ComponentSummary {
     }
 }
 
+/// One drive the engine holds, and what it found on it (stormblock#154): ours
+/// (adopted), or blank or foreign, which is an offer only a person may take up.
+/// An engine before that, or a drive opened at start, carries no `offer`.
 fn drive(v: &Value) -> ComponentSummary {
     let id = field(v, &["uuid", "id"]).unwrap_or_default();
+    let label = field(v, &["name", "path", "device", "uuid", "id"]).unwrap_or_default();
+    let offer = v.get("offer").filter(|o| o.is_object());
+    let state = offer.and_then(|o| field(o, &["state"]));
+    let holds = offer.and_then(|o| field(o, &["holds"]));
+    let confirm = field(v, &["confirm"]);
+    let offered = matches!(state.as_deref(), Some("blank" | "foreign"));
+    let system = v.get("system").and_then(Value::as_bool).unwrap_or(false);
+    let mut metrics = vec![Metric::new("capacity", field(v, &["capacity_human"]).unwrap_or_default())];
+    // `serial` is the word the storage guard asks for; without one the drive's
+    // label is its path, which is the word the engine asks for too.
+    if let Some(s) = field(v, &["serial"]) {
+        metrics.push(Metric::new("serial", s));
+    }
+    if let Some(p) = field(v, &["path"]) {
+        metrics.push(Metric::new("path", p));
+    }
+    if let Some(m) = field(v, &["model"]) {
+        metrics.push(Metric::new("model", m));
+    }
+    if let Some(s) = &state {
+        metrics.push(if offered { Metric::new("offer", s.clone()).tone("warn") } else { Metric::new("offer", s.clone()) });
+    }
+    if let Some(h) = &holds {
+        metrics.push(Metric::new("holds", h.clone()));
+    }
+    if state.as_deref() == Some("ours") {
+        for key in ["slabs", "volumes"] {
+            if let Some(n) = offer.and_then(|o| field(o, &[key])) {
+                metrics.push(Metric::new(key, n));
+            }
+        }
+    }
+    if let Some(c) = &confirm {
+        metrics.push(Metric::new("confirm", c.clone()));
+    }
+    // A system disk is refused by the engine; nothing offers what would refuse.
+    let actions = if offered && confirm.is_some() && !system {
+        vec![Action {
+            id: "format".into(),
+            label: "Format as a slab".into(),
+            method: "POST".into(),
+            path: format!("{PROXY}/api/v1/drives/{id}/format"),
+            enabled: true,
+            danger: true,
+            tone: None,
+        }]
+    } else {
+        vec![]
+    };
+    let mut detail = format!(
+        "{}{}",
+        field(v, &["capacity_human"]).unwrap_or_default(),
+        field(v, &["model"]).map(|m| format!(" · {m}")).unwrap_or_default()
+    );
+    match (state.as_deref(), &holds) {
+        (Some("blank"), _) => detail.push_str(" · offered: blank"),
+        (Some("foreign"), Some(h)) => detail.push_str(&format!(" · offered: holds {h}")),
+        _ => {}
+    }
     ComponentSummary {
         id: format!("sb:drive:{id}"),
         kind: "drive".into(),
-        label: field(v, &["name", "path", "device", "uuid", "id"]).unwrap_or_default(),
+        label,
         health: Health::Ok,
-        detail: format!(
-            "{}{}",
-            field(v, &["capacity_human"]).unwrap_or_default(),
-            field(v, &["model"]).map(|m| format!(" · {m}")).unwrap_or_default()
-        ),
-        metrics: vec![Metric::new("capacity", field(v, &["capacity_human"]).unwrap_or_default())],
-        actions: vec![],
+        detail,
+        metrics,
+        actions,
         relations: vec![Relation::belongs_to("engine", "sb:engine")],
         link: None,
     }
@@ -899,6 +957,46 @@ mod tests {
     fn an_older_engine_keeps_every_unsealed_volume_in_volumes() {
         assert_eq!(place(&json!({"id": "a", "sealed": false})), Place::Volume);
         assert_eq!(place(&json!({"id": "a", "sealed": true})), Place::Image);
+    }
+
+    #[test]
+    fn a_drive_is_offered_only_as_the_engine_says() {
+        let metric = |c: &ComponentSummary, l: &str| c.metrics.iter().find(|m| m.label == l).map(|m| m.value.clone());
+        let base = json!({"uuid": "u1", "path": "/dev/sdq", "serial": "ZFL1", "model": "ST2000", "capacity_human": "2 TB"});
+        let with = |extra: Value| {
+            let mut v = base.clone();
+            v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            drive(&v)
+        };
+        // Foreign: what it holds, and a Format that needs the serial.
+        let f = with(json!({"offer": {"state": "foreign", "holds": "an XFS filesystem"}, "confirm": "ZFL1"}));
+        assert_eq!(metric(&f, "offer").as_deref(), Some("foreign"));
+        assert_eq!(metric(&f, "holds").as_deref(), Some("an XFS filesystem"));
+        assert_eq!(metric(&f, "confirm").as_deref(), Some("ZFL1"));
+        assert_eq!(metric(&f, "serial").as_deref(), Some("ZFL1"), "the storage guard's word");
+        assert!(f.detail.contains("offered: holds an XFS filesystem"), "{}", f.detail);
+        assert_eq!(f.actions[0].path, "/api/plugins/sb/proxy/api/v1/drives/u1/format");
+        assert!(f.actions[0].danger);
+        assert!(console_core::storage::classify(&axum::http::Method::POST, &f.actions[0].path, None).is_some(), "the feed strips it for anyone refused");
+        // Blank: offered too.
+        let b = with(json!({"offer": {"state": "blank"}, "confirm": "ZFL1"}));
+        assert_eq!(b.actions.len(), 1);
+        assert!(b.detail.contains("offered: blank"));
+        // Ours: adopted, what is on it, nothing to format.
+        let o = with(json!({"offer": {"state": "ours", "slabs": 2, "volumes": 5}}));
+        assert!(o.actions.is_empty());
+        assert_eq!((metric(&o, "slabs").as_deref(), metric(&o, "volumes").as_deref()), (Some("2"), Some("5")));
+        // Opened at start, or an older engine: no offer, no action.
+        let n = drive(&base);
+        assert!(n.actions.is_empty() && metric(&n, "offer").is_none());
+        // The system disk is refused by the engine, so not offered.
+        let s = with(json!({"offer": {"state": "foreign", "holds": "x"}, "confirm": "ZFL1", "system": true}));
+        assert!(s.actions.is_empty());
+        // No serial: the guard's word is the label, the path, which is the engine's too.
+        let p = drive(&json!({"uuid": "u2", "path": "/tmp/d.img", "serial": "", "offer": {"state": "blank"}, "confirm": "/tmp/d.img"}));
+        assert_eq!(p.label, "/tmp/d.img");
+        assert_eq!(metric(&p, "confirm").as_deref(), Some("/tmp/d.img"));
+        assert!(metric(&p, "serial").is_none());
     }
 
     #[test]

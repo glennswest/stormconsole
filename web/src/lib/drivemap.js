@@ -21,6 +21,8 @@
 //   - `placement`: `/api/plugins/sb/placement` — this node's volumes by the
 //     drive they sit on (stormblock#136), each with its consumer.
 
+import { engineDrives, offerFor } from './driveoffer.js'
+
 const UNITS = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4, PB: 1024 ** 5, EB: 1024 ** 6 }
 
 export function metric(c, label) {
@@ -118,6 +120,7 @@ export function build(components, extra = {}) {
     else if (c.kind === 'k8s-node' && metric(c, 'rack')) rack.set(c.label, metric(c, 'rack'))
   }
   const usageBy = new Map((extra.usage?.drives || []).map((r) => [r.component, r]))
+  const offers = engineDrives(components)
   const onDrive = extra.placement?.drives || {}
   const records = drives.map((c) => {
     const node = metric(c, 'node') || 'this node'
@@ -170,6 +173,9 @@ export function build(components, extra = {}) {
       outOfFleet: detail.includes('out of fleet'),
       spare: /(^|·\s)spare(\s|·|$)/.test(detail),
       failedMark: /(^|·\s)failed(\s|·|$)/.test(detail),
+      // What this node's engine found on it (stormblock#154). The engine is
+      // this node's, so a remote drive is not answered for.
+      offer: local ? offerFor(offers, { serial, dev: metric(c, 'dev') || '' }) : null,
     }
   })
   return { records, shelves, byId }
@@ -185,6 +191,7 @@ export const FILTERS = [
   ['hot', 'Hot (50 °C+)'],
   ['out', 'Out of fleet'],
   ['spare', 'Spares'],
+  ['offered', 'Offered'],
 ]
 
 export function passes(d, filter) {
@@ -197,6 +204,8 @@ export function passes(d, filter) {
       return d.member === 'rebuilding' || d.member === 'degraded'
     case 'draining':
       return !!d.drain && d.drain.state === 'running'
+    case 'offered':
+      return !!d.offer && d.offer.offered
     case 'full':
       return !!d.usage && d.usage.frac >= 0.9
     case 'hot':

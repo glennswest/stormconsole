@@ -25,6 +25,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
+  import OfferedDrives from '../components/OfferedDrives.svelte'
   import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName, shelfKey, enclosures, unreadShelves, unreadShelf } from '../drivemap.js'
 
   const asShelves = $derived(route.current.query.get('group') === 'shelf')
@@ -76,6 +77,8 @@
   let mode = $state(stored('mode', 'health'))
   let view = $state(stored('view', 'map'))
   let selected = $state(null)
+  // The offered drive being asked about (stormblock#154).
+  let asking = $state(null)
   let busy = $state('')
   let showAll = $state({})
   $effect(() => keep('by', by))
@@ -131,6 +134,11 @@
       </span>
     {/snippet}
   </PageHeader>
+
+  {#if feed.loaded && !asShelves && !asPools}
+    <!-- Outside the drive list: an engine can hold a drive no stormdrive reports. -->
+    <OfferedDrives bind:asking />
+  {/if}
 
   {#if !feed.loaded}
     <div class="sc-empty"><p>Connecting to the component feed…</p></div>
@@ -276,6 +284,16 @@
           <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ` · ${unreadShelf(pick)}`}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}{pick.hba ? ` · controller ${pick.hba}` : ''}{pick.serial ? ` · ${pick.serial}` : ''}</span>
           <button onclick={() => (selected = null)}>Close</button>
         </header>
+        {#if pick.offer}
+          <p class="offerline">
+            {#if pick.offer.offered}
+              <span class="warn">Offered: {pick.offer.sentence}.</span> Nothing formats it on its own.
+              {#if pick.offer.action}<button class="danger" onclick={() => (asking = pick.offer)}>Format as a slab…</button>{/if}
+            {:else}
+              <span class="dim">{pick.offer.sentence}.</span>
+            {/if}
+          </p>
+        {/if}
         {#if pick.usage}
           {@const u = pick.usage}
           {@const cap = pick.capacity || u.slab + u.unslabbed}
@@ -532,6 +550,8 @@
   table.pools .n { text-align: right; }
   table.pools td.warn { color: var(--warn-strong); }
   .mono { font-family: var(--mono); font-size: var(--sc-t-meta); }
+  .offerline { margin: 0 0 8px; }
+  .offerline button.danger { margin-left: 8px; color: var(--error); }
   .drain { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0; font-size: var(--sc-t-meta); }
   .pressure { margin-bottom: 10px; }
 </style>

@@ -1,4 +1,5 @@
 // REST + WebSocket helpers. All server communication goes through here.
+import { riskText } from './driveoffer.js'
 
 export async function get(path) {
   const resp = await fetch(path)
@@ -36,6 +37,21 @@ export async function call(method, path, confirmed) {
     const data = await resp.json().catch(() => ({}))
     if (resp.status === 428 && data.guard && confirmed === undefined) {
       return call(method, path, typedConfirm(data.guard))
+    }
+    // An offered drive's format (stormblock#154): the engine wants the same
+    // word in the body and names the risk when it is not there. The word was
+    // just typed; the risk has not been read yet, so it is shown before the
+    // request goes again. The Drives page does this in one step.
+    if (resp.status === 412 && data.confirm && confirmed === data.confirm) {
+      if (!window.confirm(riskText(data.error))) throw new Error('cancelled')
+      const again = await fetch(path, {
+        method: method || 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: confirmed }),
+      })
+      const body = await again.json().catch(() => ({}))
+      if (!again.ok) throw new Error(body.error || `${again.status} ${again.statusText}`)
+      return body
     }
     throw new Error(data.error || `${resp.status} ${resp.statusText}`)
   }
