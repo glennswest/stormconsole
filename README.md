@@ -318,7 +318,7 @@ take `?limit=` (default 200, at most 5000), with `total` beside them.
 A diskless boot answers `available: false` with `no system-data on this node`; a
 list stays a 200 and one record is a 404 saying the same. A boot's two records
 have no shared name today, so they are joined by time and command line (`joined:
-"time"`); a record that names its boot wins (stormblock#).
+"time"`); a record that names its boot wins (stormblock#534).
 
 ## How it ships
 

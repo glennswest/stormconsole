@@ -11,7 +11,7 @@
   `/run/stormblock/system-data`). A diskless boot says "no system-data on this
   node" and has no card or navigator item.
 - **feat:** a boot is one row, stormblock's record joined to PID 1's timeline
-  (stormblock# would name the boot; until then by time and command line, and the
+  (stormblock#534 would name the boot; until then by time and command line, and the
   row says so), with how it ended, time to all running and its services.
 - **feat:** `#/history` (Compute → History): boots with their timeline, slowest
   phases, disk verdict and kernel log (level, search, download); kernel crashes;

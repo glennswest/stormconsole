@@ -1846,7 +1846,7 @@ install_config, handover`); stormpump (`history.rs`, `crash.rs`)
       read-only, bounded, torn last lines skipped, no system-data said
 - [x] A boot is one row: stormblock's flat record paired with stormpump's
       timeline (`boot_id` field or `<id>/stormblock.json` when written; else
-      nearest time, same cmdline); file the missing boot id on stormblock
+      nearest time, same cmdline); filed the missing boot id as stormblock#534
 - [x] `#/history` (Compute → History; off the nav on a diskless node), the node
       page's row; `web/src/lib/history.js` + test
 - [x] Tests; `deploy/verify-history.sh` with the real writers (stormblock's
