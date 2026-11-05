@@ -17,6 +17,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import YamlPanel from '../components/YamlPanel.svelte'
   import EventBox from '../components/EventBox.svelte'
+  import RunsOn from '../components/RunsOn.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import PodLogs from './PodLogs.svelte'
   import PodStats from './PodStats.svelte'
@@ -475,6 +476,13 @@
         {#each pod.containers as c (c.role + c.name)}
           <div class="image">
             <h3>{c.name}</h3>
+            {#if c.instance}
+              <RunsOn query={{ volume: c.instance }} node={pod.metadata.node} word="volume under that id" />
+            {:else if pod.metadata.mirror}
+              <RunsOn query={{ mounted: `/pallets/${pod.metadata.labels?.['storm.io/asset'] || c.image.replace(/^stormpump:\/\//, '').split(/[:/]/)[0]}` }} node={pod.metadata.node} word="volume mounted for this service" />
+            {:else if c.reported && c.source === 'stormpump'}
+              <p class="none">The node has not said which volume this container runs on (rustkube-node#130).</p>
+            {/if}
             <dl>
               <dt>Reference</dt><dd class="mono">{c.image}<CopyButton value={c.image} label="Copy image" /></dd>
               {#if c.runningImage && c.runningImage !== c.image}<dt>Running</dt><dd class="mono">{c.runningImage}</dd>{/if}
@@ -510,6 +518,12 @@
                     <span class="dim">{c.golden?.reason || 'unknown'}</span>
                   {/if}
                 </dd>
+              {/if}
+              {#if c.clonedFrom}
+                <dt>The node says</dt><dd class="mono">{c.clonedFrom}{#if c.provenance} <span class="dim">{c.provenance}</span>{/if}</dd>
+              {/if}
+              {#if c.imageBuild?.version || c.imageBuild?.created}
+                <dt>Image build</dt><dd class="mono">{c.imageBuild.version || ''} {c.imageBuild.created || ''}</dd>
               {/if}
               <dt>Built</dt>
               <dd>

@@ -20,6 +20,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 pub mod placement;
+pub mod runs_on;
 
 const PROXY: &str = "/api/plugins/sb/proxy";
 
@@ -121,6 +122,7 @@ impl ConsolePlugin for StormblockPlugin {
     fn routes(&self) -> axum::Router {
         axum::Router::new()
             .route("/placement", axum::routing::get(placement_route))
+            .route("/runs-on", axum::routing::get(runs_on_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -177,6 +179,49 @@ async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
 /// `GET /api/plugins/sb/placement` — this node's volumes by the drive they
 /// are on (#29). The engine's error is passed on as the answer's `error`,
 /// so the page can say why a drive shows no volumes.
+/// One value from the engine, with its token, within a budget.
+async fn engine_get(inner: &Inner, path: &str, budget: Duration) -> Result<Value, String> {
+    let mut req = inner.client.get(format!("{}{path}", inner.base)).timeout(budget);
+    if let Some(t) = inner.token.get() {
+        req = req.bearer_auth(t);
+    }
+    let r = req.send().await.map_err(|e| e.to_string())?;
+    if !r.status().is_success() {
+        return Err(format!("{path} answered {}", r.status()));
+    }
+    r.json().await.map_err(|e| e.to_string())
+}
+
+/// `GET /runs-on` (#75): see [`runs_on`].
+async fn runs_on_route(
+    axum::extract::State(inner): axum::extract::State<Arc<Inner>>,
+    axum::extract::Query(q): axum::extract::Query<runs_on::Query>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let vols = match list(&inner, "/api/v1/volumes").await {
+        Ok(v) => v,
+        Err(e) => return axum::Json(serde_json::json!({"error": format!("this node's engine did not answer: {e}"), "volumes": []})).into_response(),
+    };
+    let by_id: std::collections::HashMap<&str, &Value> = vols.iter().filter_map(|v| Some((v.get("id")?.as_str()?, v))).collect();
+    let mut out = Vec::new();
+    for v in runs_on::select(&vols, &q).into_iter().take(16) {
+        let id = v.get("id").and_then(Value::as_str).unwrap_or("");
+        // The single GET has the placement; the listing does the rest if it does not answer.
+        let full = engine_get(&inner, &format!("/api/v1/volumes/{id}"), Duration::from_secs(5)).await.unwrap_or_else(|_| v.clone());
+        let image = runs_on::image_of(v, &by_id);
+        let cloned = match image {
+            Some(i) => {
+                let iid = i.get("id").and_then(Value::as_str).unwrap_or("");
+                let digest = engine_get(&inner, &format!("/api/v1/volumes/{iid}/digest"), Duration::from_secs(3)).await.ok();
+                runs_on::cloned_from(i, digest.as_ref())
+            }
+            None => Value::Null,
+        };
+        out.push(serde_json::json!({"runsOn": runs_on::runs_on(&full), "clonedFrom": cloned}));
+    }
+    axum::Json(serde_json::json!({"volumes": out})).into_response()
+}
+
 async fn placement_route(axum::extract::State(inner): axum::extract::State<Arc<Inner>>) -> axum::response::Response {
     use axum::response::IntoResponse;
     let mut cache = inner.placement.lock().await;

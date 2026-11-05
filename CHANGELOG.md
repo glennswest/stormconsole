@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — What a container runs on, and what it was cloned from (#75)
+- **feat:** the pod page, per container, and the VM page, per disk: **Runs on** (the engine volume,
+  bytes written of its size and read through from the image, node, slabs, drives, health),
+  **Cloned from** (the sealed image and its digest) and **Last verified** (what this node's engine last
+  found reading its copy, and when). `GET /api/plugins/sb/runs-on`.
+- **fix:** a container's registry image names what the kubelet says it was cloned from, with
+  stormcentral's record of that one. Before, it was the newest built for the component, which a node on
+  an older release does not run. Without the kubelet's word it still says so.
+
 ### 2026-11-05 — The pod and VM pages against a real node (#76)
 - **fix:** a machine on a host bridge. A real node writes `storm.io/binding: host-bridge`, which the
   console did not know: the VM page said "reach unknown", and the policy check could call a machine

@@ -84,7 +84,8 @@ pub async fn detail(
             if c["source"] == "stormpump" {
                 let image = c["image"].as_str().unwrap_or("");
                 let component = asset.clone().unwrap_or_else(|| golden_component(image));
-                c["golden"] = golden(&inner, &component).await;
+                let running = c["clonedFrom"].as_str().map(String::from);
+                c["golden"] = golden(&inner, &component, running.as_deref()).await;
             }
         }
     }
@@ -162,12 +163,10 @@ pub fn golden_component(image: &str) -> String {
     rest.split(':').next().unwrap_or(rest).to_string()
 }
 
-/// The newest golden stormcentral built for a component.
-///
-/// Labelled as exactly that: nothing on the pod says *which* golden the
-/// node runs (rustkube-node#130), so the page says "the newest built"
-/// rather than claiming it is this one.
-async fn golden(inner: &Inner, component: &str) -> Value {
+/// What stormcentral recorded of the image a container was cloned from, when the kubelet
+/// said which (rustkube-node#130). Only without that word is it the newest built for the
+/// component, and it says so: a node on an older release runs an older one.
+async fn golden(inner: &Inner, component: &str, running: Option<&str>) -> Value {
     let Some(sc) = &inner.stormcentral else {
         return json!({
             "available": false,
@@ -187,11 +186,22 @@ async fn golden(inner: &Inner, component: &str) -> Value {
         return json!({"available": false, "reason": format!("stormcentral answered {}", resp.status())});
     }
     let body: Value = resp.json().await.unwrap_or(Value::Null);
-    match body.pointer("/goldens/0") {
+    let list = body.get("goldens").and_then(Value::as_array).cloned().unwrap_or_default();
+    let (found, which) = match running {
+        Some(name) => match list.iter().find(|g| g.get("name").and_then(Value::as_str) == Some(name)) {
+            Some(g) => (Some(g), "the registry image the node says this container was cloned from".to_string()),
+            None => return json!({
+                "available": false,
+                "reason": format!("the node says {name}, and stormcentral has no record of it"),
+            }),
+        },
+        None => (list.first(), "the newest registry image stormcentral built for this component, not confirmed running: the node did not say which".to_string()),
+    };
+    match found {
         Some(g) => json!({
             "available": true,
             "component": component,
-            "which": "the newest registry image stormcentral built for this component; the node does not report which one its instance was cloned from (rustkube-node#130)",
+            "which": which,
             "name": g.get("name"),
             "version": g.get("version"),
             "commit": g.get("commit"),

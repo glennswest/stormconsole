@@ -166,9 +166,18 @@ pub fn containers(pod: &Value) -> Vec<Value> {
                 .and_then(|a| a.get(&format!("storm.io/image-resolved.{name}")))
                 .cloned()
                 .unwrap_or(Value::Null);
+            // What the kubelet says this container runs on and was cloned from
+            // (rustkube-node#130). A mirror pod has one container and says it of the pod.
+            let note = |k: &str| annotations.and_then(|a| a.get(&format!("storm.io/{k}.{name}"))).and_then(Value::as_str);
+            let pod_note = |k: &str| annotations.and_then(|a| a.get(&format!("storm.io/{k}"))).and_then(Value::as_str);
+            let build = note("image-build").and_then(|b| serde_json::from_str::<Value>(b).ok()).unwrap_or(Value::Null);
             out.push(json!({
                 "name": name,
                 "role": role,
+                "instance": note("instance"),
+                "clonedFrom": note("golden").or(pod_note("golden")),
+                "provenance": pod_note("golden-provenance"),
+                "imageBuild": build,
                 "image": image,
                 "runningImage": running_image,
                 "imageID": image_id,

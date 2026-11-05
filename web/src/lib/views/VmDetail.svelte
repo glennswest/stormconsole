@@ -19,6 +19,7 @@
   import Icon from '../components/Icon.svelte'
   import { ago } from '../ui/time.js'
   import EventBox from '../components/EventBox.svelte'
+  import RunsOn from '../components/RunsOn.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import VmBackup from './VmBackup.svelte'
   import VmKeys from './VmKeys.svelte'
@@ -663,6 +664,10 @@
                 </dd>
               {/each}
             </dl>
+          {/if}
+          {#if vm.running}
+            <h3 class="sub">Each disk's instance</h3>
+            <RunsOn query={{ owner: 'VirtualMachineInstance,VirtualMachine', namespace: ns, name }} node={vm.node} word="disk owned by this machine" />
           {/if}
         </div>
 
