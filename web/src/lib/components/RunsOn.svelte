@@ -10,8 +10,10 @@
 
   let answer = $state(null)
   let error = $state('')
+  // A page reloads its object every few seconds; this asks once per volume.
+  const asking = $derived(new URLSearchParams(query).toString())
   $effect(() => {
-    get(`/api/plugins/sb/runs-on?${new URLSearchParams(query)}`)
+    get(`/api/plugins/sb/runs-on?${asking}`)
       .then((a) => (answer = a))
       .catch((e) => (error = e.message))
   })

@@ -478,8 +478,8 @@
             <h3>{c.name}</h3>
             {#if c.instance}
               <RunsOn query={{ volume: c.instance }} node={pod.metadata.node} word="volume under that id" />
-            {:else if pod.metadata.mirror}
-              <RunsOn query={{ mounted: `/pallets/${pod.metadata.labels?.['storm.io/asset'] || c.image.replace(/^stormpump:\/\//, '').split(/[:/]/)[0]}` }} node={pod.metadata.node} word="volume mounted for this service" />
+            {:else if c.image?.startsWith('/pallets/')}
+              <RunsOn query={{ mounted: c.image }} node={pod.metadata.node} word="volume mounted for this service" />
             {:else if c.reported && c.source === 'stormpump'}
               <p class="none">The node has not said which volume this container runs on (rustkube-node#130).</p>
             {/if}

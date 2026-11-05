@@ -1087,6 +1087,24 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### What a container runs on (#75)
+
+The owner: "nothing uses a golden, everything uses a CoW, but the golden is our registry". The kubelet writes
+`storm.io/instance.<c>` and `storm.io/golden.<c>` per container (rustkube-node#130), and on a mirror pod
+`storm.io/golden`, whose image is `/pallets/<name>`. `GET /api/plugins/sb/runs-on`
+(`stormblock/src/runs_on.rs`) finds the volume on this node's engine by that id, by its owner for a VM's disks,
+or by where it is mounted for a node service, and follows its parents to the sealed image, past a machine's own.
+
+**Last verified is this copy's:** the engine's seal record, `verdict` and `checked_at`. It is only on `/digest`,
+which starts a read of the whole image for every call with nothing cached. So that call has a 3 s budget, the
+engine's read carries on and fills its cache, the image is left alone for five minutes, and the page says the
+digest is being read (stormblock#535 asks for it on the volume itself). The engine is this node's: a container
+on another node is that node's console's to show. Clone time is `storm.io/image-resolved.<c>` for a container,
+and not known for a VM's disk yet.
+
+**Words:** a row says "Runs on", not instance, for a container, as stormcos GLOSSARY has a pod's clone as its
+container (#85); a VM's disk is an instance.
+
 ### Network Policies and Network Endpoints (#168)
 
 The owner: "Network Policies (No cillium) Network Endpoints (No Cillium), and these should come

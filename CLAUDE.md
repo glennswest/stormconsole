@@ -2038,9 +2038,9 @@ rustkube-node#130 is in: `storm.io/instance.<c>` (the engine volume), `storm.io/
 `storm.io/image-resolved.<c>`, `storm.io/image-build.<c>`, and on a mirror pod `storm.io/golden`,
 `storm.io/golden-provenance`. The engine: `GET /api/v1/volumes/{id}` (allocated, shared,
 placement), its `parent` chain, `/digest` (its `seal`: `sha256`, `verdict`, `checked_at`).
-- [ ] `Cloned from` names the image the annotation says, stormcentral's record of that name;
+- [x] `Cloned from` names the image the annotation says, stormcentral's record of that name;
       "newest built, not confirmed running" only without one
-- [ ] sb plugin `GET /runs-on`: a volume, its node and drives, what it costs, the sealed image it
+- [x] sb plugin `GET /runs-on`: a volume, its node and drives, what it costs, the sealed image it
       reads through, last verified. Pod page rows; VM page per disk. Words per GLOSSARY (#85)
 - [ ] `deploy/verify-runs-on.sh` real engine; docs, changelog, dist; golden
 

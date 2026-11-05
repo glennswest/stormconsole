@@ -39,6 +39,8 @@ struct Inner {
     state: RwLock<State>,
     /// The last per-drive placement answer and when it was made (#29).
     placement: tokio::sync::Mutex<Option<(std::time::Instant, Value)>>,
+    /// Images whose digest is being read in the engine (#75).
+    reading: runs_on::Reading,
 }
 
 pub struct StormblockPlugin {
@@ -62,6 +64,7 @@ impl StormblockPlugin {
                     components: vec![],
                 }),
                 placement: tokio::sync::Mutex::new(None),
+                reading: Default::default(),
             }),
         }
     }
@@ -212,7 +215,16 @@ async fn runs_on_route(
         let cloned = match image {
             Some(i) => {
                 let iid = i.get("id").and_then(Value::as_str).unwrap_or("");
-                let digest = engine_get(&inner, &format!("/api/v1/volumes/{iid}/digest"), Duration::from_secs(3)).await.ok();
+                let now = std::time::Instant::now();
+                let digest = if inner.reading.may_ask(iid, now) {
+                    let d = engine_get(&inner, &format!("/api/v1/volumes/{iid}/digest"), Duration::from_secs(3)).await.ok();
+                    if d.is_none() {
+                        inner.reading.started(iid, now);
+                    }
+                    d
+                } else {
+                    None
+                };
                 runs_on::cloned_from(i, digest.as_ref())
             }
             None => Value::Null,

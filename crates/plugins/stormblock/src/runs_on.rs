@@ -9,9 +9,12 @@
 //! **Last verified is this copy's**: the engine's seal record says when it last read
 //! these bytes and what it found. It is only on `/digest`, which reads the whole image
 //! when no digest is cached (stormblock#535), so that call gets a short budget: the
-//! engine's read goes on without it and fills the cache, and the page says so.
+//! engine's read goes on without it and fills the cache, and the page says so. The
+//! engine starts a new read for every such call, so an image that did not answer is
+//! left alone for a while ([`READ_HOLD_OFF`]).
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -26,6 +29,28 @@ pub struct Query {
     pub owner: Option<String>,
     pub namespace: Option<String>,
     pub name: Option<String>,
+}
+
+/// How long an image that did not answer is left alone. Every `/digest` without a cached
+/// answer starts its own whole read in the engine, and a page reloads.
+pub const READ_HOLD_OFF: Duration = Duration::from_secs(300);
+
+/// Images whose digest was asked for and did not come in time.
+#[derive(Default)]
+pub struct Reading(std::sync::Mutex<HashMap<String, Instant>>);
+
+impl Reading {
+    /// Whether to ask the engine about this image now.
+    pub fn may_ask(&self, id: &str, now: Instant) -> bool {
+        let mut held = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        held.retain(|_, at| now.duration_since(*at) < READ_HOLD_OFF);
+        !held.contains_key(id)
+    }
+
+    /// It did not answer in its budget: its read is going on in the engine.
+    pub fn started(&self, id: &str, now: Instant) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), now);
+    }
 }
 
 fn s<'a>(v: &'a Value, k: &str) -> &'a str {
@@ -54,7 +79,11 @@ pub fn select<'a>(volumes: &'a [Value], q: &Query) -> Vec<&'a Value> {
 
 /// The sealed image a volume reads through: its nearest sealed ancestor, past a
 /// machine's own (`hostgolden-…`). `None` for a volume made empty or a parent gone.
+/// A node service runs on the sealed image itself, so that volume is its own answer.
 pub fn image_of<'a>(volume: &'a Value, by_id: &HashMap<&str, &'a Value>) -> Option<&'a Value> {
+    if volume.get("sealed").and_then(Value::as_bool) == Some(true) {
+        return Some(volume);
+    }
     let mut at = volume;
     for _ in 0..64 {
         let parent = by_id.get(at.get("parent").and_then(Value::as_str)?).copied()?;
@@ -153,6 +182,7 @@ mod tests {
         assert_eq!(of("c1"), Some("g"));
         assert_eq!(of("c2"), Some("g"), "through a clone");
         assert_eq!(of("boot"), Some("g"), "past a machine's own");
+        assert_eq!(of("g"), Some("g"), "a sealed volume is its own image");
         assert_eq!(of("e"), None);
         assert_eq!(of("x"), None);
     }
@@ -164,6 +194,17 @@ mod tests {
         assert_eq!((r["allocatedBytes"].as_u64(), r["sharedBytes"].as_u64(), r["slabs"].as_u64()), (Some(7), Some(93), Some(2)));
         assert_eq!(r["nodes"], json!(["n1"]), "one node, however many drives");
         assert_eq!(r["drives"][0]["serial"], "S1");
+    }
+
+    #[test]
+    fn an_image_being_read_is_not_asked_again() {
+        let r = Reading::default();
+        let t = Instant::now();
+        assert!(r.may_ask("g", t));
+        r.started("g", t);
+        assert!(!r.may_ask("g", t + Duration::from_secs(60)), "a second whole read would start");
+        assert!(r.may_ask("other", t + Duration::from_secs(60)));
+        assert!(r.may_ask("g", t + READ_HOLD_OFF), "and it is asked again in time");
     }
 
     #[test]
