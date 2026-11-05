@@ -1769,6 +1769,28 @@ stormcos/stormcentral: `storm-*` (`storm-assets`, `storm-ext4-check`,
   `k8s.cni.cncf.io/network-attachment-definitions` (list, watch). Secrets are
   not on it: asked as the viewer
 
+### A drive format page (#165)
+Owner: "see drives organised and be able to format and monitor from ui";
+progress for 14–20 h formats, a result read back, surviving reload and restart.
+Read from stormdrive v0.39.0 (`src/api/kube.rs`, `format.rs`, `drive.rs`):
+`/apis/storage.storm.io/v1/drives` has `status.{currentFormat, plannedFormat,
+format}`; `/api/v1/drives` has `membership`, `in_use_by`, `activity`,
+`designation`, `format_run.resets`; `POST /api/v1/format` `{drives, block_size,
+protection}` is all-or-nothing, 409 `{error}` saying each refusal; a drive's
+history `log[].action` keeps every run. The record is stormdrive's, persisted,
+so the console holds no state. Formats stay under #82 (storage-admin, as the
+viewer), not the console's credential the issue's first text named.
+- [ ] `GET /api/plugins/drive/formats`, every node: the joined record, why a
+      drive is refused; `GET …/formats/history?node=&id=`
+- [ ] `POST /api/plugins/drive/format`: guarded (#82), a typed phrase checked
+      on the server, one all-or-nothing request per node and format, as the
+      viewer; who and which drives logged
+- [ ] `#/drives/format`: drives by node, refusals, block size and PI, plan and
+      fallbacks; confirmation naming drives; live percent/elapsed/left; result
+      read back; controller resets; history. `driveformat.js` + test
+- [ ] `deploy/verify-drive-format.sh`; docs, changelog, dist
+- [ ] Say on the issue what a node's console needs to let anyone format
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
