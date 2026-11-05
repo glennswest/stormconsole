@@ -283,7 +283,7 @@ export function unreadShelves(records) {
 export function unreadShelfKeys(components) {
   const keys = new Set()
   for (const c of components) {
-    if (c.kind !== 'drive' || (c.relations || []).some((r) => r.name === 'shelf')) continue
+    if (c.kind !== 'drive' || c.id.startsWith('sb:drive:') || (c.relations || []).some((r) => r.name === 'shelf')) continue
     keys.add(`unread:${metric(c, 'node') || 'this node'}/${metric(c, 'hba') || ''}`)
   }
   return [...keys]

@@ -77,7 +77,7 @@ walk('offered drives', async (t) => {
   t.check(await t.open(row2, '#/grid?id=sb:engine&rel=drives', /foreign\.img/), 'the engine list shows the drive', (await t.text(row2)).slice(0, 300))
   const r2 = row2.locator('tr', { hasText: 'foreign.img' }).first()
   t.check(/offered: holds/.test(await r2.innerText()), 'and the offer', await r2.innerText())
-  await r2.getByRole('button', { name: /actions|more|⋮/i }).first().click().catch(async () => r2.locator('button').last().click())
+  await r2.getByRole('button', { name: /More actions/ }).click()
   await row2.getByRole('button', { name: /Format as a slab/ }).first().click()
   t.check(await t.until(async () => seen.some((s) => s.startsWith('confirm') && /power cut/i.test(s)), 15000), "the row's button shows the engine's risk too", seen.join(' | ').slice(0, 400))
   t.check(seen.some((s) => s.startsWith('prompt')), 'after asking for the word')

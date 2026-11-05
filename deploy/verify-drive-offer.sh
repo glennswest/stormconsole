@@ -198,7 +198,7 @@ check "$(as bob -X POST -H 'content-type: application/json' -d '{"dry_run":true}
 
 say "stopping a rebalance is the guard's, and says what it is"
 check "$(as bob -X DELETE -o /dev/null -w '%{http_code}' -H 'X-Storm-Confirm: rebalance' "$SBP/slabs/rebalance")" 403 "bob: 403"
-check "$(as alice -X DELETE "$SBP/slabs/rebalance" | j 'd["guard"]["guarded"]["what"]')" "stop a rebalance" "alice is asked for the word, named as what it is"
+check "$(as alice -X DELETE "$SBP/slabs/rebalance" | j 'd["guard"].get("what") or d["guard"]["guarded"]["what"]')" "stop a rebalance" "alice is asked for the word, named as what it is"
 check "$(as alice -X DELETE -o /dev/null -w '%{http_code}' -H 'X-Storm-Confirm: rebalance' "$SBP/slabs/rebalance")" 404 "with it, the engine answers as alice: no rebalance is running"
 
 say "the page, in Chromium (a real format, a real rebalance)"

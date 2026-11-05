@@ -420,7 +420,8 @@ export function idsForRoute(href) {
     if (q.get('group') === 'pool') return null
     // By kind, not id prefix: other nodes' drives are `drive:@<host>:` (#32).
     const kind = q.get('group') === 'shelf' ? 'shelf' : 'drive'
-    const ids = feed.components.filter((c) => c.kind === kind).map((c) => c.id)
+    // The engine's row for a drive is not another drive (#153).
+    const ids = feed.components.filter((c) => c.kind === kind && !c.id.startsWith('sb:drive:')).map((c) => c.id)
     // A backplane stormdrive has not read is still a shelf (#166).
     return kind === 'shelf' ? [...ids, ...unreadShelfKeys(feed.components)] : ids
   }
