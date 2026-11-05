@@ -40,7 +40,7 @@
       const g = await get(`/api/v1/console/guard?method=POST&path=${encodeURIComponent('/api/plugins/drive/format')}`)
       guard = g.guard
     } catch (e) {
-      guard = { decision: { allowed: false, reason: e.message } }
+      guard = { allowed: false, reason: e.message }
     }
   }
   $effect(() => {
@@ -60,7 +60,7 @@
   const ended = $derived(finished(drives))
   const silent = $derived((data?.nodes || []).filter((n) => !n.ok))
   const noPlans = $derived((data?.nodes || []).filter((n) => n.ok && !n.plans))
-  const allowed = $derived(!!guard?.decision?.allowed)
+  const allowed = $derived(!!guard?.allowed)
   const key = (r) => `${r.node}/${r.id}`
   const selection = $derived(drives.filter((r) => picked[key(r)] && selectable(r)))
   const word = $derived(phrase(selection))
@@ -114,7 +114,7 @@
   {#each silent as n (n.node)}<p class="warn">{n.node}: {n.error}</p>{/each}
   {#each noPlans as n (n.node)}<p class="warn">{n.node}: this stormdrive is older than v0.39.0, so it has no plan and no record of a run to show.</p>{/each}
   {#if guard && !allowed}
-    <p class="note" data-testid="refused">You can follow formats here, and not start one. {guard.decision.reason}.</p>
+    <p class="note" data-testid="refused">You can follow formats here, and not start one. {guard.reason}.</p>
   {/if}
 
   {#if running.length}
