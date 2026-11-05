@@ -193,6 +193,8 @@ fn holder(v: &Value, m: &Machines) -> Holder {
 /// or a content sha (16 hex). Anything else is its own repository, with no tag.
 pub fn from_name(name: &str) -> (String, String) {
     let bare = name.strip_prefix("golden-").unwrap_or(name);
+    // A template's sealed volume: the template is what anyone calls it.
+    let bare = bare.strip_suffix("-sealed").unwrap_or(bare);
     if let Some((repo, tag)) = bare.rsplit_once('-') {
         if !repo.is_empty() && matches!(tag.len(), 12 | 16) && tag.bytes().all(|b| b.is_ascii_hexdigit()) {
             return (repo.to_string(), tag.to_string());
@@ -381,6 +383,7 @@ mod tests {
         assert_eq!(from_name("stormlb-aaaaaaaaaaaa"), ("stormlb".into(), "aaaaaaaaaaaa".into()));
         assert_eq!(from_name("fedora-base-0123456789abcdef"), ("fedora-base".into(), "0123456789abcdef".into()));
         assert_eq!(from_name("pvc-256M"), ("pvc-256M".into(), String::new()));
+        assert_eq!(from_name("pvc-256M-sealed"), ("pvc-256M".into(), String::new()));
         assert_eq!(from_name("img-3f9a0c1d2e4b-root"), ("img-3f9a0c1d2e4b-root".into(), String::new()));
         assert_eq!(from_catalog(&json!({"source": "forge:5000/library/nats:2.10"}), "img-x"), ("forge:5000/library/nats".into(), "2.10".into()));
         assert_eq!(from_catalog(&json!({"source": "forge:5000/library/nats"}), "img-x"), ("forge:5000/library/nats".into(), String::new()));

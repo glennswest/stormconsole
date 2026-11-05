@@ -79,13 +79,16 @@ for _ in $(seq 600); do curl -s -o /dev/null "$EN/health" && break; sleep 0.1; d
 TOKEN=$(cat "$W/sb/data/api_token")
 AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
 j() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1]))" "$1"; }
-tmpl() { curl -s -m 300 -X POST "${AUTH[@]}" "$EN/fstemplates" -d "{\"name\":\"$1\",\"size\":\"64M\"}" | j 'd["template"]["id"]'; }
 vid() { j 'd.get("volume_id") or d.get("id") or d["volume"]["id"]'; }
-clone() { curl -s -X POST "${AUTH[@]}" "$EN/fstemplates/$1/clone" -d "{\"name\":\"$2\"}" | vid; }
+# A component's image as a release lays it: a volume under that name, sealed.
+image() { local id; id=$(curl -s -X POST "${AUTH[@]}" "$EN/volumes" -d "{\"name\":\"$1\",\"size\":\"64M\"}" | vid)
+  curl -s -o /dev/null -X POST "${AUTH[@]}" "$EN/volumes/$id/seal"; echo "$id"; }
+clone() { curl -s -X POST "${AUTH[@]}" "$EN/volumes/$1/clone" -d "{\"name\":\"$2\"}" | vid; }
 own() { curl -s -o /dev/null -w '' -X PUT "${AUTH[@]}" "$EN/volumes/$1/owner" -d "{\"owner\":{\"kind\":\"$2\",\"namespace\":\"$3\",\"name\":\"$4\"}}"; }
 
 say "two tags of one repository, a blank, and every kind of holder"
-A=$(tmpl golden-stormlb-aaaaaaaaaaaa); B=$(tmpl stormlb-bbbbbbbbbbbb); tmpl pvc-64M >/dev/null
+A=$(image golden-stormlb-aaaaaaaaaaaa); B=$(image stormlb-bbbbbbbbbbbb)
+curl -s -m 300 -o /dev/null -X POST "${AUTH[@]}" "$EN/fstemplates" -d '{"name":"pvc-64M","size":"64M"}'
 P1=$(clone "$A" pod-root); own "$P1" Pod shop web
 C1=$(clone "$A" pvc-db); own "$C1" PersistentVolumeClaim shop db
 V1=$(clone "$A" vm-root); own "$V1" VirtualMachineInstance lab vm1
@@ -93,11 +96,11 @@ clone "$A" disk-12.61 >/dev/null
 clone "$A" build-77 >/dev/null
 clone "$A" clone-lost >/dev/null
 T1=$(clone "$A" attached-1)
-curl -s -X POST "${AUTH[@]}" "$EN/volumes/$T1/attach" -d '{"transport":"nvme-tcp"}' | j '"  attached: " + str(d.get("nqn") or d)[:70]'
+curl -s -X POST "${AUTH[@]}" "$EN/volumes/$T1/attach" -d '{"transport":"nvme-tcp","host_nqn":"nqn.2026-11.lo.test:client"}' | j '"  attached: " + str(d.get("nqn") or d)[:70]'
 clone "$B" pod-b >/dev/null
-AID=$(curl -s "${AUTH[@]}" "$EN/volumes" | python3 -c "import json,sys; print(next(v['id'] for v in json.load(sys.stdin)['items'] if v['name']=='golden-stormlb-aaaaaaaaaaaa'))")
+AID=$A
 say "a machine, assigned that image, makes a real boot claim"
-curl -s -X POST "${AUTH[@]}" "$EN/synonyms" -d "{\"namespace\":\"boothost\",\"name\":\"r230\",\"target\":\"$AID\"}" | head -c 200; echo
+curl -s -X POST "${AUTH[@]}" "$EN/synonyms" -d "{\"namespace\":\"boothost\",\"name\":\"r230\",\"volume\":\"$AID\"}" | head -c 200; echo
 curl -s -X POST -H 'Content-Type: application/json' "$EN/synonyms/boothost/r230/claim" -d '{"mac":"aa:bb:cc:dd:ee:ff"}' | head -c 300; echo
 curl -s "${AUTH[@]}" "$EN/boothost" | j '"  machines: " + str([(h["name"], (h.get("last_claim") or {}).get("clone_name")) for h in d["items"]])'
 
