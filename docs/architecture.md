@@ -182,7 +182,7 @@ platform. The authorization model, in the order it runs:
    file. Without `ca_file` the zero-config loopback default is the one
    unchecked case: the console warns at start and the card says
    "certificate not verified" until stormcos sets the file (stormcos#76).
-5. **Honesty.** What is withheld is counted and named ("4 namespaces you
+5. **Honesty.** What is withheld is counted and named ("4 projects you
    cannot view"), because a short list with no explanation reads as a
    broken console. An apiserver that cannot be asked hides nothing and
    says so: an unreachable authorizer must not quietly become a permissive
@@ -527,7 +527,7 @@ client cert from config. rustkube is kube-wire-compatible (core v1,
 apps/v1, batch/v1, RBAC, CRDs, watch streams with bookmarks), so the client
 is a thin typed layer over the standard REST paths.
 
-- **Watch-backed cache** (`cache::RESOURCES`): list+watch on namespaces,
+- **Watch-backed cache** (`cache::RESOURCES`): list+watch on namespaces, config maps, routes, network attachments,
   nodes, pods, deployments, statefulsets, daemonsets, jobs, cronjobs,
   services, PVCs, configmaps, network policies, resource quotas, limit
   ranges, and — optional, synced empty when not served — PVs, storage
@@ -539,7 +539,7 @@ is a thin typed layer over the standard REST paths.
 - **Project views**: the Project selector scopes every namespaced page; a
   project's page (`#/k8s/ns/<name>`, the API's word in the path) — inventory whose
   every count is a link, quota, limit ranges, events, YAML, and the
-  Project tab (§Projects).
+  Access tab (§Projects).
 - **Actions** (as the viewer): delete a pod, delete any object through
   `DELETE /api/plugins/k8s/raw/{/api|/apis…}`, import YAML (`/apply`,
   always into a project), edit an object (`PUT /object/{kind}/{key}`,
@@ -1352,12 +1352,27 @@ over stormcluster's `GET /api/v1/operations/{id}`, polled every 3 s, and
 any operation in the list opens it with **Progress**.
 `deploy/verify-cluster.sh` is the live check.
 
-### Projects (#28)
+### Projects (#28, #162)
 
- A project is a namespace with an owner, served by
+A project **is** a namespace: one object, one page, one word. `#/projects`
+lists every one the apiserver lists for the viewer, the system ones marked and
+filterable, each with what it holds; `#/k8s/ns` redirects there, and the page
+says "project" wherever a namespace is meant (`term` turns the feed's
+`namespace` relation and `k8s-ns` kind into the word; the API's own words stay
+in ids, paths, `?ns=`, config keys and YAML). Everything namespaced is shown
+inside its project: a list's crumbs when one is selected, a Project column and
+a header per project when not. The project page counts machines, load
+balancers (Services of that type), routes, network attachments and config
+maps with the rest of its inventory, and lists Secrets through `GET
+/projects/{p}/secrets`: **as the viewer, never cached, names and keys only**,
+so the console's credential needs no right to read them and a role without it
+sees a sentence. Opening a project selects it, so a create from its page lands
+there, and choosing another in the masthead moves the page.
+
+A project with an owner is served by
 rustkube as `project.openshift.io/v1` (rustkube#97). `kubernetes/src/
 projects.rs` asks everything **as the viewer**: `GET /projects` (the
-viewer's projects; system namespaces only for `admin`, separately),
+viewer's projects, and the system ones it lists for them, separately),
 `POST /projects` (a `ProjectRequest` — the apiserver annotates the requester
 and binds them `admin`; on an apiserver without the API, a Namespace with
 the same annotations), `GET|DELETE /projects/{p}` (ownership, members,
@@ -1391,7 +1406,7 @@ endpoints, the exception disappears on its own.
 **System projects** — `default`, `openshift`, `kube-*`, `openshift-*`, the
 platform's own (`storm-*`, `cilium`, `cilium-secrets`) and `[kubernetes]
 system_namespaces` (default none, a trailing `*` matches a prefix) — are
-marked on the one Projects page: not in the viewer's list, not a create
+marked on the one Projects page, and are not a create
 target (`/apply` refuses them except for `admin`, VM create always), not
 deleted or isolated from the console. **Every create targets a project**:
 `Creator.project` makes the dialog show a project picker with New project
@@ -1399,7 +1414,7 @@ inline (suggested `<user>-work`, `<user>-vms` for machines). The picker's
 default is set once per opening and is never an override: a reload of the
 project list fills it only while it is empty or names a project that has
 gone, so a New project choice and its typed name stay (#56). YAML goes to
-`/apply?project=`, and a namespaced document that names no namespace goes
+`/apply?project=`, and a namespaced document that names none goes
 there — never to `default`, which is refused with a sentence when nothing
 was chosen. The masthead selector is a **Project** selector. Lists always
 show the Project column on namespaced rows and group by project when they

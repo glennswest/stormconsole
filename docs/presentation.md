@@ -73,11 +73,12 @@ them.
 
 ## What it does today — workloads
 
-- **Projects first.** A project is a namespace with an owner (rustkube's
-  `project.openshift.io`). Selector, New project, members (admin/edit/view),
+- **Projects first.** A project is a namespace: one page, one word, the
+  platform's marked system (rustkube's `project.openshift.io`). Selector, New
+  project, members (admin/edit/view),
   **Isolate** (NetworkPolicies), delete. Every create asks which project;
   nothing lands in `default`.
-- **Kubernetes.** 23 kinds watched: workloads, services, claims, policies,
+- **Kubernetes.** 25 kinds watched: workloads, services, routes, claims, policies,
   Cilium; the Cluster section (nodes, PVs, storage classes,
   CRDs, cluster roles). YAML import and edit. All **as the viewer** — RBAC
   decides.

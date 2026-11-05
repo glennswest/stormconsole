@@ -3,6 +3,30 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Projects and namespaces are one thing (#162)
+- **feat:** one page: `#/projects` lists every project the apiserver lists for
+  the viewer, system ones marked and filterable, each with what it holds.
+  `#/k8s/ns` redirects there; `Cluster → Namespaces` and the bare Namespace
+  creator are gone (New project makes the namespace, as `oc new-project` does).
+- **feat:** one word: "project" wherever the page meant a namespace (selector,
+  Create, YAML import, columns, kinds, sentences from the console). The API's
+  words stay in ids, paths, `?ns=`, config keys and YAML.
+- **feat:** `storm-*`, `cilium` and `cilium-secrets` are system projects, built
+  in. `[kubernetes] system_namespaces` now defaults to none and takes `prefix-*`.
+  `GET /projects` gives each viewer the system ones the apiserver lists for
+  them, not only a console `admin`.
+- **feat:** everything namespaced is inside its project: lists read Projects ›
+  project › kind, with a Project column and a header per project when several
+  (the system ones marked). The project page counts machines, load balancers,
+  routes and network attachments too, and lists Secrets (`GET
+  /projects/{p}/secrets`: as the viewer, never cached, names and keys only).
+  Opening a project selects it, and the masthead moves the page. Its Project
+  tab is now Access.
+- **feat:** watched and listed: Routes (`route.openshift.io`), network
+  attachments (`k8s.cni.cncf.io`, optional). **fix:** config maps, quotas and
+  limit ranges had a count on the project page that led to an empty list; they
+  have rows.
+
 ### 2026-11-05 — No machine but this cluster's (#161)
 - **fix:** a single node read as broken for other machines' sake. Every host
   heard on the log group was counted as a node of this console's: forge1, one
