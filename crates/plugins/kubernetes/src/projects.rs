@@ -12,9 +12,10 @@
 //! a namespace — so the console still works against a plain apiserver; the
 //! answer says which it is.
 //!
-//! **System namespaces** (`default`, `openshift`, `kube-*`, `openshift-*`,
-//! and `[kubernetes] system_namespaces`) are never a project: not listed as
-//! one, never a create target. They are the admin section's.
+//! A project **is** a namespace (#162): one object, one list, one word.
+//! **System projects** (`default`, `openshift`, `kube-*`, `openshift-*`,
+//! `storm-*`, `cilium`, `cilium-secrets` and `[kubernetes] system_namespaces`)
+//! are marked as such and are never a create target.
 //!
 //! **Isolation** is two NetworkPolicies, named so they can be found and
 //! removed as one: `storm-isolate` lets every pod (and VM) in the namespace
@@ -133,7 +134,7 @@ pub fn binding(ns: &str, who: &str, role: &str) -> Result<Value, String> {
     }
     let who = who.trim();
     if who.is_empty() {
-        return Err("who? A user name, or system:serviceaccount:<namespace>:<name>".into());
+        return Err("who? A user name, or system:serviceaccount:<project>:<name>".into());
     }
     let subject = match who.strip_prefix("system:serviceaccount:").and_then(|r| r.split_once(':')) {
         Some((sns, name)) => json!({"kind": "ServiceAccount", "name": name, "namespace": sns}),
@@ -296,8 +297,10 @@ fn with_isolation(mut r: Value, iso: &BTreeMap<String, bool>) -> Value {
     r
 }
 
-/// The viewer's projects, and — for somebody who may see them — the system
-/// namespaces, separately.
+/// The projects the apiserver lists for this viewer: `projects` their own,
+/// `system` the platform's, marked apart. Everything is on one page (#162),
+/// so what a person sees is what the apiserver says they may, whatever their
+/// console role.
 pub(crate) async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     let iso = isolation_state(&inner).await;
@@ -328,13 +331,46 @@ pub(crate) async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Res
     Json(json!({
         "served": served,
         "projects": projects,
-        // Only for somebody who may change them; everybody else is never
-        // offered one, so there is no reason to list them.
-        "system": if viewer.has_role("admin") { json!(system) } else { json!([]) },
+        "system": system,
         "suggested": suggest(viewer.user.as_deref().unwrap_or("my"), "work"),
         "write": viewer.may_write(),
     }))
     .into_response()
+}
+
+/// A Secret as a row: its name, type and the names of its keys. Never a
+/// value, and not the annotations, where `kubectl apply` keeps a whole copy.
+pub fn secret_row(o: &Value) -> Value {
+    let mut keys: Vec<&str> = o["data"].as_object().map(|d| d.keys().map(String::as_str).collect()).unwrap_or_default();
+    keys.sort_unstable();
+    json!({
+        "name": o.pointer("/metadata/name").and_then(Value::as_str).unwrap_or_default(),
+        "type": o["type"].as_str().unwrap_or("Opaque"),
+        "keys": keys,
+        "created": o.pointer("/metadata/creationTimestamp").and_then(Value::as_str),
+    })
+}
+
+/// A project's Secrets, asked of the apiserver **as the viewer** and never
+/// cached (#162): whether a person sees them is the apiserver's answer, and
+/// the console's own credential needs no right to read them. A refusal is an
+/// answer the page shows, not a failure.
+pub(crate) async fn secrets(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
+    if let Some(refusal) = crate::refuse_hidden(&inner, &viewer, &name).await {
+        return refusal;
+    }
+    let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
+    match client.get_as(&format!("/api/v1/namespaces/{name}/secrets"), viewer.token.as_deref()).await {
+        Ok(list) => {
+            let mut rows: Vec<Value> = list["items"].as_array().into_iter().flatten().map(secret_row).collect();
+            rows.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+            Json(json!({"secrets": rows})).into_response()
+        }
+        Err(crate::RkError::Status(s)) if s.as_u16() == 403 => {
+            Json(json!({"secrets": [], "refused": "Your role in this project does not include reading its secrets."})).into_response()
+        }
+        Err(e) => err(StatusCode::BAD_GATEWAY, format!("could not list secrets: {e}")),
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -356,7 +392,7 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
         return err(StatusCode::BAD_REQUEST, e);
     }
     if inner.access.is_system(&name) {
-        return err(StatusCode::BAD_REQUEST, format!("{name} is a system namespace, not a project name"));
+        return err(StatusCode::BAD_REQUEST, format!("{name} is a system project's name: choose another"));
     }
     let token = viewer.token.as_deref();
     let mut req = json!({
@@ -392,7 +428,7 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
     let ns = json!({"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": name, "annotations": annotations}});
     match client.post_json_as("/api/v1/namespaces", &ns, token).await {
         Ok((s, _)) if s.is_success() => Json(json!({
-            "message": format!("namespace {name} created — this apiserver serves no projects, so nobody was made its admin"),
+            "message": format!("project {name} created — this apiserver serves no project API, so nobody was made its admin"),
             "name": name,
         }))
         .into_response(),
@@ -406,7 +442,7 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
 pub(crate) async fn remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
     let Some(client) = &inner.client else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
     if inner.access.is_system(&name) {
-        return err(StatusCode::FORBIDDEN, format!("{name} is a system namespace and is not deleted from here"));
+        return err(StatusCode::FORBIDDEN, format!("{name} is a system project and is not deleted from here"));
     }
     let token = viewer.token.as_deref();
     let status = match client.delete(&format!("{API}/projects/{name}"), token).await {
@@ -524,7 +560,7 @@ pub(crate) async fn isolate(
         return r;
     }
     if inner.access.is_system(&name) {
-        return err(StatusCode::FORBIDDEN, format!("{name} is a system namespace; isolating it would cut the system off"));
+        return err(StatusCode::FORBIDDEN, format!("{name} is a system project; isolating it would cut the system off"));
     }
     let token = viewer.token.as_deref();
     let base = format!("{NETPOL}/namespaces/{name}/networkpolicies");
@@ -665,12 +701,29 @@ mod tests {
     }
 
     #[test]
+    fn a_secret_row_carries_no_value() {
+        let r = secret_row(&json!({
+            "metadata": {"name": "db", "creationTimestamp": "2026-11-05T00:00:00Z",
+                "annotations": {"kubectl.kubernetes.io/last-applied-configuration": "hunter2"}},
+            "type": "kubernetes.io/basic-auth",
+            "data": {"username": "YWRtaW4=", "password": "aHVudGVyMg=="},
+        }));
+        assert_eq!(r["keys"], json!(["password", "username"]));
+        assert_eq!(r["type"], "kubernetes.io/basic-auth");
+        let text = r.to_string();
+        assert!(!text.contains("hunter2") && !text.contains("aHVudGVyMg") && !text.contains("YWRtaW4"), "{text}");
+    }
+
+    #[test]
     fn system_namespaces_are_never_projects() {
-        let extra = vec!["cilium".to_string()];
-        for ns in ["default", "kube-system", "kube-node-lease", "openshift", "openshift-infra", "cilium"] {
+        let extra = vec!["lab".to_string(), "perf-*".to_string()];
+        for ns in [
+            "default", "kube-system", "kube-node-lease", "openshift", "openshift-infra", "cilium", "cilium-secrets",
+            "storm-assets", "storm-ext4-check", "lab", "perf-1",
+        ] {
             assert!(crate::authz::is_system_namespace(ns, &extra), "{ns}");
         }
-        for ns in ["gw-work", "web", "defaults", "kubefoo"] {
+        for ns in ["gw-work", "web", "defaults", "kubefoo", "stormy", "ciliumx", "labs", "perf"] {
             assert!(!crate::authz::is_system_namespace(ns, &extra), "{ns}");
         }
     }

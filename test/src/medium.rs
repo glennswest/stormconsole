@@ -287,7 +287,7 @@ async fn vm_system_namespace(ctx: &Ctx, feed: &[Value]) -> Outcome {
     }
     let form = json!({"name": ctx.env.name("vm"), "golden": "none", "namespace": "default"});
     match ctx.console.call(Method::POST, "/api/plugins/vm/create", Some(("application/json", form.to_string())), true).await {
-        Ok(a) if a.status == 400 && a.text.contains("system namespace") => Outcome::Pass("400: default is a system namespace".into()),
+        Ok(a) if a.status == 400 && a.text.contains("system project") => Outcome::Pass("400: default is a system project".into()),
         Ok(a) => Outcome::Fail(format!("HTTP {}: {}", a.status, body(&a))),
         Err(e) => Outcome::Fail(e),
     }

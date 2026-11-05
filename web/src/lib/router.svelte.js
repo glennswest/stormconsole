@@ -33,11 +33,22 @@ const routes = [
   // One pod, all of it (#69).
   { pattern: '#/pod/:ns/:name', name: 'poddetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },
-  // A namespace is a place, not a row: it has a page of its own, and it
-  // is matched before the generic kind list because it is longer.
-  { pattern: '#/k8s/ns/:name', name: 'namespace' },
+  // A project is a place, not a row: it has a page of its own, and it is
+  // matched before the generic kind list because it is longer. The path is
+  // the API's word, as in `#/k8s/pod`; the page's word is project (#162).
+  { pattern: '#/k8s/ns/:name', name: 'project' },
   { pattern: '#/k8s/:kind', name: 'k8slist' },
 ]
+
+// Where a page went. A project is a namespace, so the list of namespaces is
+// the Projects page (#162); an old link lands there.
+const MOVED = { '#/k8s/ns': '#/projects' }
+
+function follow() {
+  const to = MOVED[(location.hash || '').split('?')[0]]
+  if (to) location.replace(to)
+  return !!to
+}
 
 function match(hash) {
   if (!hash || hash === '#') hash = '#/'
@@ -61,10 +72,11 @@ function match(hash) {
   return { name: 'overview', params: {}, query: new URLSearchParams() }
 }
 
+follow()
 export const route = $state({ current: match(location.hash) })
 
 window.addEventListener('hashchange', () => {
-  route.current = match(location.hash)
+  if (!follow()) route.current = match(location.hash)
 })
 
 export function navigate(hash) {

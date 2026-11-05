@@ -22,8 +22,8 @@ export const nav = $state({
   sections: [],
 })
 
-// The namespace selector — the project selector: '' means all
-// namespaces.
+// The project selector: '' means all projects. A project is a namespace
+// (#162), and the API's word stays in this file's names and the `?ns=` link.
 //
 // It is a *dimension*, not a menu item (#5): it scopes every namespaced
 // view, it says nothing about the cluster-scoped ones, and it travels in
@@ -33,8 +33,8 @@ export const nav = $state({
 export const k8sns = $state({ selected: readStored() })
 
 // The viewer's projects (#28), as the apiserver answers them for this
-// viewer: `list` is theirs, `system` the system namespaces (administrators
-// only), `suggested` a name for a first one. Loaded once and reloaded after
+// viewer: `list` is theirs, `system` the platform's, on the same page and
+// marked (#162), `suggested` a name for a first one. Loaded once and reloaded after
 // anything that creates or deletes one.
 export const projects = $state({ loaded: false, served: true, list: [], system: [], suggested: '', write: false, error: '' })
 

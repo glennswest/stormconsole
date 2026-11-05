@@ -28,7 +28,7 @@
   import { term } from '../ui/words.js'
   import StatusPill from './StatusPill.svelte'
   import EventBox from './EventBox.svelte'
-  import { noteActivity } from '../stores.svelte.js'
+  import { noteActivity, projects } from '../stores.svelte.js'
   import Icon from './Icon.svelte'
   import ResourceTable from './ResourceTable.svelte'
   import CopyButton from './CopyButton.svelte'
@@ -462,6 +462,7 @@
             <td colspan={ncols}>
               {#if placement(row, 'namespace')}
                 <a href={`#/k8s/ns/${encodeURIComponent(placement(row, 'namespace'))}`}>{placement(row, 'namespace')}</a>
+                {#if projects.system.some((p) => p.name === placement(row, 'namespace'))}<span class="sys">system</span>{/if}
               {:else}
                 <span class="dim">no project</span>
               {/if}
@@ -749,6 +750,7 @@
 
   .name { font-weight: 500; }
   .status { width: 110px; }
+  .sys { margin-left: 6px; font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 400; color: var(--text-faint); }
   .kind { color: var(--text-dim); font-size: var(--sc-t-meta); white-space: nowrap; }
   .sc-notice {
     display: flex; align-items: center; gap: 10px; justify-content: space-between;

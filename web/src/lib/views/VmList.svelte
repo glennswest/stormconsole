@@ -35,7 +35,9 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Workloads' }, { label: 'Virtual machines' }]}
+    crumbs={k8sns.selected
+      ? [{ label: 'Projects', href: '#/projects' }, { label: k8sns.selected, href: `#/k8s/ns/${encodeURIComponent(k8sns.selected)}` }, { label: 'Virtual machines' }]
+      : [{ label: 'Workloads' }, { label: 'Virtual machines' }]}
     title="Virtual machines"
     scope={k8sns.selected ? `in ${k8sns.selected}` : ''}
     count={feed.loaded ? all.length : null}
@@ -55,7 +57,7 @@
       hint={plugin?.detail?.includes('not installed')
         ? 'The kubevirt.io resources are not installed on this cluster, so nothing here can carry a VM. They arrive with stormpump’s manifest set.'
         : k8sns.selected
-          ? 'Nothing runs in the selected namespace. Switch namespaces in the masthead, or create a VM here.'
+          ? 'Nothing runs in the selected project. Switch projects in the masthead, or create a VM here.'
           : 'This cluster can run VMs and none has been created. A VM here is a VirtualMachineInstance the kubelet reconciles; create one from a registry image.'}
     >
       {#snippet action()}

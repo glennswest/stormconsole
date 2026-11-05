@@ -54,7 +54,9 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Cluster' }, { label: 'Events' }]}
+    crumbs={k8sns.selected
+      ? [{ label: 'Projects', href: '#/projects' }, { label: k8sns.selected, href: `#/k8s/ns/${encodeURIComponent(k8sns.selected)}` }, { label: 'Events' }]
+      : [{ label: 'Observe' }, { label: 'Events' }]}
     title="Events"
     scope={k8sns.selected ? `in ${k8sns.selected}` : ''}
     count={loaded && !error ? all.length : null}
@@ -110,7 +112,7 @@
               <th class="w-type">Type</th>
               <th>Reason</th>
               <th>Object</th>
-              <th class="w-ns">Namespace</th>
+              <th class="w-ns">Project</th>
               <th>Message</th>
               <th class="w-n">Count</th>
             </tr>

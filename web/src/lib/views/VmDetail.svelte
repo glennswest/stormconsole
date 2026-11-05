@@ -423,8 +423,9 @@
 <div class="sc-page">
   <PageHeader
     crumbs={[
-      { label: 'Workloads' },
-      { label: 'Virtual machines', href: '#/vms' },
+      { label: 'Projects', href: '#/projects' },
+      { label: ns, href: `#/k8s/ns/${encodeURIComponent(ns)}` },
+      { label: 'Virtual machines', href: `#/vms?ns=${encodeURIComponent(ns)}` },
       { label: name },
     ]}
     title={name}

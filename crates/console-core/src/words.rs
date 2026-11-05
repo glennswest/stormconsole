@@ -17,6 +17,11 @@ pub fn term(token: &str) -> &str {
         "goldens" => "registry images",
         "slab_golden" => "slab registry image",
         "slab_goldens" => "slab registry images",
+        // A project is a namespace (#162): one word on the page, while the
+        // API and the feed's ids keep theirs.
+        "namespace" => "project",
+        "namespaces" => "projects",
+        "k8s-ns" => "project",
         other => other,
     }
 }
@@ -33,5 +38,7 @@ mod tests {
         // A name is data, not a word to translate.
         assert_eq!(term("golden-stormlb"), "golden-stormlb");
         assert_eq!(term("clone"), "clone");
+        assert_eq!(term("namespace"), "project");
+        assert_eq!(term("k8s-ns"), "project");
     }
 }

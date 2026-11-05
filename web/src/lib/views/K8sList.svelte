@@ -70,7 +70,9 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: section }, { label: title }]}
+    crumbs={scoped
+      ? [{ label: 'Projects', href: '#/projects' }, { label: k8sns.selected, href: `#/k8s/ns/${encodeURIComponent(k8sns.selected)}` }, { label: title }]
+      : [{ label: section }, { label: title }]}
     {title}
     scope={scoped ? `in ${k8sns.selected}` : clusterScoped ? 'cluster-scoped' : ''}
     count={feed.loaded ? all.length : null}
@@ -94,7 +96,7 @@
       icon="inbox"
       title="No {title.toLowerCase()}{scoped ? ` in ${k8sns.selected}` : ''}"
       hint={scoped
-        ? 'Nothing of this kind exists in the selected namespace. Switch namespaces in the masthead, or create one.'
+        ? 'Nothing of this kind exists in the selected project. Switch projects in the masthead, or create one.'
         : 'Nothing of this kind exists in the cluster yet.'}
     >
       {#snippet action()}

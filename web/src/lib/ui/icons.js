@@ -47,7 +47,7 @@ const RULES = [
   [/deploy|statefulset|daemonset|job|workload|replica/i, 'workload'],
   [/polic/i, 'policy'],
   [/service|route|ingress|endpoint/i, 'service'],
-  [/network|cilium|cni|identit/i, 'network'],
+  [/network|cilium|cni|identit|route/i, 'network'],
   [/volume|slab|array|disk|drive|storage|pvc|export|lun/i, 'storage'],
   [/image|golden|clone|pallet|registry/i, 'image'],
   [/namespace|project|cluster/i, 'cluster'],

@@ -1,10 +1,12 @@
 <script>
-  // Projects: the top of the console (#28). The viewer's own — the ones the
-  // apiserver says they are in — each with who asked for it and whether it
-  // is fenced off, and a New project form. System namespaces are not here;
-  // they are the Cluster section's.
+  // Projects: the top of the console (#28), and the one list of them (#162).
+  // A project is a namespace, so everything the apiserver lists for this
+  // viewer is here: their own first, the platform's marked system, each with
+  // who asked for it, what it holds and whether it is fenced off. New project
+  // makes the namespace, as `oc new-project` does.
   import { route } from '../router.svelte.js'
-  import { projects, loadProjects, newProject, selectNamespace, noteActivity } from '../stores.svelte.js'
+  import { feed, projects, loadProjects, newProject, selectNamespace, noteActivity } from '../stores.svelte.js'
+  import { filterProjects, holdsLine, projectRows } from '../projects.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
 
@@ -12,6 +14,11 @@
   let busy = $state(false)
   let error = $state('')
   let asking = $state(route.current.query.get('new') === '1')
+  let show = $state(['mine', 'system'].includes(route.current.query.get('show')) ? route.current.query.get('show') : 'all')
+  let search = $state('')
+
+  const rows = $derived(projectRows(projects.list, projects.system, feed.components))
+  const seen = $derived(filterProjects(rows, show, search))
 
   $effect(() => {
     loadProjects()
@@ -38,16 +45,14 @@
 </script>
 
 <div class="sc-page">
-  <PageHeader crumbs={[{ label: 'Projects' }]} title="Projects" count={projects.loaded ? projects.list.length : null}>
+  <PageHeader crumbs={[{ label: 'Projects' }]} title="Projects" count={projects.loaded ? rows.length : null}>
     {#snippet actions()}
       {#if projects.write && !asking}<button class="sc-primary" onclick={() => (asking = true)}>New project</button>{/if}
     {/snippet}
   </PageHeader>
 
   <p class="lead">
-    A project is a namespace of your own: your machines, pods and claims go in one, never beside the
-    system's objects. You are its admin, and you decide who else is in it.
-    {#if !projects.served}This apiserver serves no projects, so these are its namespaces.{/if}
+    A project is a namespace, the same object under one name. Pods, machines, claims, services and whatever else belongs to a namespace are in one. Make your own for your work: you are its admin, and you decide who else is in it. Those marked system are the platform's. {#if !projects.served}This apiserver serves no project API, so a new project has no admin until you add one.{/if}
   </p>
 
   {#if error || projects.error}<p class="error">{error || projects.error}</p>{/if}
@@ -67,27 +72,42 @@
     </section>
   {/if}
 
-  {#if projects.loaded && !projects.list.length && !asking}
+  {#if projects.loaded && !rows.length && !asking}
     <EmptyState icon="cluster" title="No projects yet"
       hint="Create one for your machines and pods — every create in the console asks which project it goes in.">
       {#snippet action()}
         {#if projects.write}<button class="sc-primary" onclick={() => (asking = true)}>New project</button>{/if}
       {/snippet}
     </EmptyState>
-  {:else if projects.list.length}
+  {:else if rows.length}
+    <div class="filters">
+      <input bind:value={search} placeholder="Search projects" aria-label="Search projects" />
+      {#if projects.system.length}
+        <select bind:value={show} aria-label="Which projects">
+          <option value="all">All projects</option>
+          <option value="mine">Not system</option>
+          <option value="system">System</option>
+        </select>
+      {/if}
+      <span class="dim">{seen.length === rows.length ? `${rows.length} projects` : `${seen.length} of ${rows.length}`}</span>
+    </div>
     <table class="projects">
-      <thead><tr><th>Project</th><th>Requested by</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Project</th><th>Holds</th><th>Requested by</th><th>Status</th><th></th></tr></thead>
       <tbody>
-        {#each projects.list as p (p.name)}
-          <tr>
+        {#each seen as p (p.name)}
+          <tr class:system={p.system}>
             <td>
               <a href={`#/k8s/ns/${encodeURIComponent(p.name)}`}>{p.name}</a>
               {#if p.displayName}<span class="dim"> · {p.displayName}</span>{/if}
               {#if p.description}<div class="dim">{p.description}</div>{/if}
             </td>
+            <td class="holds">{holdsLine(p.holds)}</td>
             <td>{p.requester || '—'}</td>
             <td>{p.phase || '—'}</td>
-            <td>{#if p.isolated}<span class="badge" title={p.dns ? 'isolated, DNS allowed' : 'isolated, no DNS'}>isolated</span>{/if}</td>
+            <td>
+              {#if p.system}<span class="badge sys" title="The platform's own: nothing is created here from the console">system</span>{/if}
+              {#if p.isolated}<span class="badge" title={p.dns ? 'isolated, DNS allowed' : 'isolated, no DNS'}>isolated</span>{/if}
+            </td>
           </tr>
         {/each}
       </tbody>
@@ -107,5 +127,9 @@
   table.projects td { padding: 8px 12px; font-size: var(--sc-t-body); vertical-align: top; }
   table.projects tr + tr > td { border-top: 1px solid var(--sc-hairline); }
   .dim { color: var(--text-dim); font-size: var(--sc-t-meta); }
+  .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .filters input { width: 240px; }
+  .holds { color: var(--text-dim); white-space: nowrap; }
+  .badge.sys { border-color: var(--border); color: var(--text-faint); }
   .badge { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: var(--radius-sm); border: 1px solid var(--accent); color: var(--accent); }
 </style>

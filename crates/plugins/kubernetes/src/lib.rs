@@ -181,13 +181,16 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item_at("StatefulSets", "#/k8s/sts", 30)
                 .item_at("DaemonSets", "#/k8s/ds", 40)
                 .item_at("Jobs", "#/k8s/job", 50)
-                .item_at("CronJobs", "#/k8s/cronjob", 60),
+                .item_at("CronJobs", "#/k8s/cronjob", 60)
+                .item_at("Config maps", "#/k8s/cm", 70),
             // Diagnosis, all of it. A person reaching for Cilium
             // identities, endpoints and clusterwide policies is asking why
             // something cannot be reached, not shipping a workload (#16).
             NavSection::new("Networking", 25)
                 .admin()
                 .item("Services", "#/k8s/svc")
+                .item("Routes", "#/k8s/route")
+                .item("Network attachments", "#/k8s/nad")
                 .item("Network policies", "#/k8s/netpol")
                 .item("Cilium policies", "#/k8s/cnp")
                 .item("Clusterwide policies", "#/k8s/ccnp")
@@ -196,13 +199,11 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("Identities", "#/k8s/cid"),
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
             NavSection::new("Observe", 30).admin().item("Events", "#/k8s/events"),
-            // What no project owns (#28): the cluster's own objects, and
-            // every namespace including the system's, kept apart from
-            // anybody's work.
+            // What no project owns (#28): the cluster-scoped kinds. A
+            // namespace is not one of them: it is a project (#162).
             NavSection::new("Cluster", 60)
                 .admin()
                 .item("Nodes", "#/k8s/node")
-                .item("Namespaces", "#/k8s/ns")
                 .item("Persistent volumes", "#/k8s/pv")
                 .item("Storage classes", "#/k8s/sc")
                 .item("Custom resources", "#/k8s/crd")
@@ -230,6 +231,7 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/apply", post(apply_yaml))
             .route("/projects", get(projects::list).post(projects::create))
             .route("/projects/{name}", get(projects::detail).delete(projects::remove))
+            .route("/projects/{name}/secrets", get(projects::secrets))
             .route("/projects/{name}/members", post(projects::add_member))
             .route("/projects/{name}/members/{binding}", delete(projects::remove_member))
             .route("/projects/{name}/isolate", post(projects::isolate).delete(projects::unisolate))
@@ -434,7 +436,7 @@ async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Respo
     hidden.contains(ns).then(|| {
         (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": format!("no namespace {ns}")})),
+            Json(json!({"error": format!("no project {ns}")})),
         )
             .into_response()
     })
@@ -481,7 +483,7 @@ async fn namespace_detail(
         return refusal;
     }
     let Some(object) = inner.store.object("ns", &ns).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no namespace {ns}")})))
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no project {ns}")})))
             .into_response();
     };
     let mut inventory = Vec::new();
@@ -494,6 +496,19 @@ async fn namespace_detail(
             "href": format!("#/k8s/{}?ns={}", spec.kind, ns),
         }));
     }
+    // A load balancer is a Service of that type: its own line, because it is
+    // the one a person looks for (#162).
+    let balancers = objects_in(&inner, "svc", &ns)
+        .await
+        .iter()
+        .filter(|s| s.pointer("/spec/type").and_then(Value::as_str) == Some("LoadBalancer"))
+        .count();
+    inventory.push(json!({
+        "kind": "lb",
+        "title": "Load balancers",
+        "count": balancers,
+        "href": format!("#/k8s/svc?ns={ns}"),
+    }));
     let quotas: Vec<Value> = objects_in(&inner, "quota", &ns).await;
     let limits: Vec<Value> = objects_in(&inner, "limits", &ns).await;
     let events = match &inner.client {
@@ -508,6 +523,7 @@ async fn namespace_detail(
     };
     Json(json!({
         "name": ns,
+        "system": inner.access.is_system(&ns),
         "phase": object.pointer("/status/phase").and_then(Value::as_str).unwrap_or("Active"),
         "created": object.pointer("/metadata/creationTimestamp").and_then(Value::as_str).unwrap_or(""),
         "labels": object.pointer("/metadata/labels").cloned().unwrap_or(json!({})),
@@ -829,13 +845,13 @@ async fn apply_yaml(
             if inner.access.is_system(ns) && !viewer.has_role("admin") {
                 failed = true;
                 results.push(json!({"kind": kind, "name": name, "error": format!(
-                    "{ns} is a system namespace: workloads go in a project. Choose one, or create one"
+                    "{ns} is a system project: workloads go in one of your own. Choose one, or create one"
                 )}));
                 continue;
             }
             if refuse_hidden(&inner, &viewer, ns).await.is_some() {
                 failed = true;
-                results.push(json!({"kind": kind, "name": name, "error": format!("no namespace {ns}")}));
+                results.push(json!({"kind": kind, "name": name, "error": format!("no project {ns}")}));
                 continue;
             }
         }
@@ -998,7 +1014,10 @@ mod tests {
         assert_eq!(by("pod")["href"], "#/k8s/pod");
         assert_eq!(by("node")["namespaced"], false);
         assert_eq!(by("ns")["namespaced"], false);
-        assert_eq!(by("ns")["inventory"], false, "a namespace is not in its own inventory");
+        assert_eq!(by("ns")["title"], "Projects", "one word (#162)");
+        assert_eq!(by("route")["inventory"], true);
+        assert_eq!(by("nad")["inventory"], true);
+        assert_eq!(by("ns")["inventory"], false, "a project is not in its own inventory");
         assert_eq!(by("cnp")["namespaced"], true);
         assert_eq!(by("ccnp")["namespaced"], false);
         assert_eq!(by("quota")["inventory"], true);

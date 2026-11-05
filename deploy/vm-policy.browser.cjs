@@ -21,7 +21,7 @@ function check(ok, what, extra = '') {
 
   // The project card: the badge, and the exception beside it.
   await page.goto(`${BASE}/#/k8s/ns/shop`)
-  await page.locator('nav.tabs button', { hasText: 'Project' }).click()
+  await page.locator('nav.tabs button', { hasText: 'Access' }).click()
   await page.getByText('Network isolation').waitFor({ timeout: 15000 })
   await page.getByText('which isolation does not reach').waitFor({ timeout: 10000 })
   const card = await page.locator('.card', { hasText: 'Network isolation' }).innerText()

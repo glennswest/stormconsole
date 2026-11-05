@@ -4,7 +4,7 @@
   // project's `view` member sees the members and cannot change them — the
   // apiserver's RBAC answers, and this page shows the answer.
   import { get, call, postJson } from '../api.js'
-  import { noteActivity, loadProjects } from '../stores.svelte.js'
+  import { noteActivity, loadProjects, k8sns, selectNamespace } from '../stores.svelte.js'
 
   let { name } = $props()
 
@@ -64,6 +64,7 @@
     if (prompt(`Deleting ${name} deletes everything in it — machines, pods, claims. Type its name to confirm.`) !== name) return
     await run('Delete project', () => call('DELETE', base))
     await loadProjects()
+    if (k8sns.selected === name) selectNamespace('')
     location.hash = '#/projects'
   }
 </script>
@@ -83,7 +84,7 @@
         <dt>Status</dt><dd>{p.phase || '—'}</dd>
       </dl>
       {#if p.system}
-        <p class="note">A system namespace: the cluster's own, not somebody's project. Nothing is created here from the console.</p>
+        <p class="note">A system project: the platform's own, not somebody's work. Nothing is created here from the console.</p>
       {/if}
     </div>
 
@@ -139,7 +140,7 @@
     {/if}
     {#if data.write}
       <div class="row add">
-        <input bind:value={who} placeholder="user, or system:serviceaccount:<ns>:<name>" aria-label="Member" />
+        <input bind:value={who} placeholder="user, or system:serviceaccount:<project>:<name>" aria-label="Member" />
         <select bind:value={role} aria-label="Role">
           {#each data.roles as r}<option value={r}>{r}</option>{/each}
         </select>
@@ -152,7 +153,7 @@
   {#if data.write && !p.system}
     <section class="card danger-zone">
       <h2>Delete project</h2>
-      <p class="dim">Deletes the namespace and everything in it.</p>
+      <p class="dim">Deletes the project and everything in it.</p>
       <button class="danger" disabled={busy} onclick={remove}>Delete {name}</button>
     </section>
   {/if}

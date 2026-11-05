@@ -487,7 +487,7 @@ fn visible_to(id: &str, hidden: &std::collections::HashSet<String>) -> bool {
 async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
     let (hidden, _) = inner.access.as_ref()?.hidden(viewer).await?;
     hidden.contains(ns).then(|| {
-        (StatusCode::NOT_FOUND, Json(json!({"error": format!("no namespace {ns}")}))).into_response()
+        (StatusCode::NOT_FOUND, Json(json!({"error": format!("no project {ns}")}))).into_response()
     })
 }
 

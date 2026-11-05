@@ -1,13 +1,14 @@
 <script>
-  // A namespace is a place, and this is the page for it (#6).
+  // A project is a place, and this is the page for it (#6, #162). A project
+  // is a namespace: this is everything in one.
   //
   // The property that makes it navigation rather than a summary: **every
   // count is a link**. You land here, see it holds 7 pods, click 7, and
-  // you are in the pod list already filtered to this namespace. Without
+  // you are in the pod list already filtered to this project. Without
   // that, "what is running in kube-system" means leaving for the workload
   // list and filtering by eye, which is what it meant before.
   import { route } from '../router.svelte.js'
-  import { feed, selectNamespace, creatorsFor } from '../stores.svelte.js'
+  import { feed, selectNamespace, idsForRoute } from '../stores.svelte.js'
   import { get, timeAgo } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
@@ -15,12 +16,11 @@
   import YamlPanel from '../components/YamlPanel.svelte'
   import ResourceTable from '../components/ResourceTable.svelte'
   import CreateMenu from '../components/CreateMenu.svelte'
-  import Icon from '../components/Icon.svelte'
   import { call } from '../api.js'
   import ProjectPanel from './ProjectPanel.svelte'
 
   const name = $derived(route.current.params.name)
-  const TABS = ['Overview', 'Project', 'Resources', 'Events', 'YAML']
+  const TABS = ['Overview', 'Access', 'Resources', 'Events', 'YAML']
   let tab = $state('Overview')
 
   let data = $state(null)
@@ -31,7 +31,7 @@
   const resolveId = (id) => feed.components.find((c) => c.id === id)
   const invoke = (a) => call(a.method, a.path)
 
-  // Everything the feed holds in this namespace — the Resources tab, from
+  // Everything the feed holds in this project — the Resources tab, from
   // the same components the lists are drawn from.
   const contents = $derived(
     feed.components
@@ -43,13 +43,27 @@
       .sort()
   )
 
-  const populated = $derived((data?.inventory || []).filter((i) => i.count > 0))
-  const empties = $derived((data?.inventory || []).filter((i) => i.count === 0))
+  // The kubernetes plugin's kinds, and machines, which are another plugin's.
+  const inventory = $derived([
+    { kind: 'vm', title: 'Virtual machines', count: (idsForRoute(`#/vms?ns=${encodeURIComponent(name)}`) || []).filter((id) => /^vm:(machine|instance):/.test(id)).length, href: `#/vms?ns=${encodeURIComponent(name)}` },
+    ...(data?.inventory || []),
+  ])
+  const populated = $derived(inventory.filter((i) => i.count > 0))
+  const empties = $derived(inventory.filter((i) => i.count === 0))
 
-  // Annotations that answer "what is this namespace and whose is it" get a
-  // line of their own; the rest stay a list. The keys are the project API's,
-  // because a project and a namespace are the same object and those are the
-  // names already written on it.
+  // Asked as the viewer and never cached: a person sees what their role lets
+  // them, names and keys only (#162).
+  let secrets = $state(null)
+  async function loadSecrets(ns) {
+    try {
+      secrets = await get(`/api/plugins/k8s/projects/${encodeURIComponent(ns)}/secrets`)
+    } catch (e) {
+      secrets = { secrets: [], refused: e.message }
+    }
+  }
+
+  // Annotations that answer "what is this project and whose is it" get a
+  // line of their own; the rest stay a list. The keys are the project API's.
   const DESCRIBED = {
     'openshift.io/display-name': 'Display name',
     'openshift.io/description': 'Description',
@@ -69,6 +83,9 @@
     error = ''
     try {
       data = await get(`/api/plugins/k8s/namespaces/${encodeURIComponent(ns)}`)
+      // Opening a project is being in it: a create from here lands here.
+      selectNamespace(ns)
+      loadSecrets(ns)
     } catch (e) {
       error = e.message
       data = null
@@ -83,18 +100,15 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Administration' }, { label: 'Namespaces', href: '#/k8s/ns' }, { label: name }]}
+    crumbs={[{ label: 'Projects', href: '#/projects' }, { label: name }]}
     title={name}
-    scope={data?.created ? `created ${timeAgo(data.created)}` : ''}
+    scope={[data?.system ? 'system project' : '', data?.created ? `created ${timeAgo(data.created)}` : ''].filter(Boolean).join(' · ')}
   >
     {#snippet status()}
       {#if component}<StatusPill health={component.health} />{/if}
     {/snippet}
     {#snippet actions()}
-      <button onclick={() => { selectNamespace(name); location.hash = '#/k8s/pod' }}>
-        <Icon name="filter" size={13} /> Work in this namespace
-      </button>
-      <CreateMenu at={`#/k8s/ns/${name}`} primary={true} />
+      {#if !data?.system}<CreateMenu at={`#/k8s/ns/${name}`} primary={true} />{/if}
     {/snippet}
   </PageHeader>
 
@@ -103,15 +117,15 @@
   {:else if error}
     <EmptyState
       icon="cluster"
-      title="This namespace cannot be read"
+      title="This project cannot be read"
       hint="The kubernetes plugin returned: {error}"
     >
       {#snippet action()}
-        <a class="sc-back" href="#/k8s/ns">Back to namespaces</a>
+        <a class="sc-back" href="#/projects">Back to projects</a>
       {/snippet}
     </EmptyState>
   {:else}
-    <nav class="tabs" aria-label="Namespace sections">
+    <nav class="tabs" aria-label="Project sections">
       {#each TABS as t}
         <button class:active={tab === t} aria-current={tab === t ? 'page' : undefined} onclick={() => (tab = t)}>
           {t}
@@ -125,7 +139,7 @@
         <div class="card inventory">
           <h2>Inventory</h2>
           {#if populated.length === 0}
-            <p class="none">Nothing has been created in this namespace yet.</p>
+            <p class="none">Nothing has been created in this project yet.</p>
           {:else}
             <ul class="counts">
               {#each populated as i (i.kind)}
@@ -151,7 +165,7 @@
             <!-- "No quota" is an answer, and a useful one: it means
                  nothing here is bounded. -->
             <p class="none">
-              No resource quota. Nothing limits what this namespace may consume.
+              No resource quota. Nothing limits what this project may consume.
             </p>
           {:else}
             {#each data.quotas as q (q.name)}
@@ -180,6 +194,26 @@
         </div>
 
         <div class="card">
+          <h2>Secrets</h2>
+          {#if !secrets}
+            <p class="none">Loading…</p>
+          {:else if secrets.refused}
+            <p class="none">{secrets.refused}</p>
+          {:else if !secrets.secrets.length}
+            <p class="none">No secrets.</p>
+          {:else}
+            <table class="secrets">
+              <thead><tr><th>Name</th><th>Type</th><th>Keys</th></tr></thead>
+              <tbody>
+                {#each secrets.secrets as s (s.name)}
+                  <tr><td class="mono">{s.name}</td><td class="mono">{s.type}</td><td class="mono">{s.keys.join(', ') || '—'}</td></tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
+
+        <div class="card">
           <h2>Labels</h2>
           {#if Object.keys(data.labels || {}).length === 0}
             <p class="none">No labels.</p>
@@ -194,10 +228,10 @@
 
         <!--
           Annotations, which is where the descriptive fields actually live.
-          A namespace's labels never carried who asked for it or what it is
+          A project's labels never carried who asked for it or what it is
           for; `openshift.io/requester` and `openshift.io/description` are
           annotations, and so is anything an operator adds to explain a
-          namespace to the next person. They were fetched with the object
+          project to the next person. They were fetched with the object
           and thrown away.
 
           `described` are the ones worth a line of their own, promoted out
@@ -219,17 +253,17 @@
           {/if}
         </div>
       </section>
-    {:else if tab === 'Project'}
+    {:else if tab === 'Access'}
       <ProjectPanel {name} />
     {:else if tab === 'Resources'}
       {#if contents.length === 0}
         <EmptyState
           icon="inbox"
           title="Nothing in {name}"
-          hint="No object in the feed belongs to this namespace yet."
+          hint="No object in the feed belongs to this project yet."
         >
           {#snippet action()}
-            <CreateMenu at={`#/k8s/ns/${name}`} primary={true} />
+            {#if !data.system}<CreateMenu at={`#/k8s/ns/${name}`} primary={true} />{/if}
           {/snippet}
         </EmptyState>
       {:else}
@@ -266,7 +300,7 @@
     {:else}
       <YamlPanel
         yaml={data.yaml}
-        label="Namespace {name}"
+        label="Project {name}"
         savePath={`/api/plugins/k8s/object/ns/${encodeURIComponent(name)}`}
       />
     {/if}

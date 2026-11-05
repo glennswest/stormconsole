@@ -162,8 +162,8 @@ pub fn note(hidden: usize, source: Source) -> String {
         Source::Unavailable => {
             "the apiserver could not be asked what you may see".to_string()
         }
-        _ if hidden == 1 => "1 namespace you cannot view".to_string(),
-        _ => format!("{hidden} namespaces you cannot view"),
+        _ if hidden == 1 => "1 project you cannot view".to_string(),
+        _ => format!("{hidden} projects you cannot view"),
     }
 }
 
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn the_note_counts_and_says_when_it_could_not_ask() {
-        assert_eq!(note(1, Source::Listed), "1 namespace you cannot view");
+        assert_eq!(note(1, Source::Listed), "1 project you cannot view");
         assert_eq!(note(3, Source::Probed), "3 namespaces you cannot view");
         assert_eq!(
             note(0, Source::Unavailable),
@@ -242,15 +242,24 @@ pub struct NamespaceAccess {
     system: std::sync::RwLock<Vec<String>>,
 }
 
-/// Namespaces the system owns (#28): rustkube's reserved set for projects
-/// (`default`, `openshift`, `kube-*`, `openshift-*`), plus `extra`. User
-/// workloads are never created in one, and "My projects" never lists one.
+/// Projects the system owns (#28, #162): rustkube's reserved set
+/// (`default`, `openshift`, `kube-*`, `openshift-*`), the platform's own
+/// (`storm-*`, which stormcos and stormcentral make for their work, and
+/// `cilium`, `cilium-secrets`), and `extra`, where a trailing `*` matches a
+/// prefix. User workloads are never created in one, and the Projects page
+/// marks each.
 pub fn is_system_namespace(ns: &str, extra: &[String]) -> bool {
     ns == "default"
         || ns == "openshift"
+        || ns == "cilium"
+        || ns == "cilium-secrets"
         || ns.starts_with("kube-")
         || ns.starts_with("openshift-")
-        || extra.iter().any(|e| e == ns)
+        || ns.starts_with("storm-")
+        || extra.iter().any(|e| match e.strip_suffix('*') {
+            Some(prefix) => ns.starts_with(prefix),
+            None => e == ns,
+        })
 }
 
 /// What a viewer may not see: the namespaces, and the line to say about
@@ -263,7 +272,7 @@ impl NamespaceAccess {
             conn,
             store,
             authz: Authorizer::default(),
-            system: std::sync::RwLock::new(vec!["cilium".into()]),
+            system: std::sync::RwLock::new(vec![]),
         })
     }
 

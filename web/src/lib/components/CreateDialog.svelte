@@ -60,7 +60,7 @@
     lists = l
   }
 
-  // Which project it goes in (#28). Every namespaced create asks, and
+  // Which project it goes in (#28). Every create of a project's kind asks, and
   // nothing lands in `default` by omission. With no projects yet, the
   // dialog starts on "New project" with a name already suggested.
   //
@@ -201,7 +201,7 @@
             </label>
           {/if}
           <span class="fhint">
-            {c.mode === 'yaml' ? 'A document that names no namespace goes here. ' : ''}System namespaces are not a target.
+            {c.mode === 'yaml' ? 'A document that names no project goes here. ' : ''}System projects are not a target.
           </span>
         </div>
       {/if}

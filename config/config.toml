@@ -63,10 +63,11 @@ enabled = true
 # token_file = "/etc/stormcert/stormconsole.token"  # or from a file, re-read when stormcert renews it
 # ca_file = "/etc/stormcert/ca.crt"       # check the apiserver against this CA only
 # insecure_skip_tls_verify = true         # a configured server is verified unless set; not with ca_file
-# Namespaces that hold the system's own things and are never a project:
-# not offered as a create target, not in "My projects". default, openshift,
-# kube-* and openshift-* always are.
-# system_namespaces = ["cilium"]
+# Projects (namespaces) that hold the system's own things: marked system on
+# the Projects page and never a create target. default, openshift, kube-*,
+# openshift-*, storm-*, cilium and cilium-secrets always are; a trailing *
+# matches a prefix.
+# system_namespaces = ["perf-*"]
 
 [fleet]
 enabled = true

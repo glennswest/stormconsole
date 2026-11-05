@@ -457,6 +457,45 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
     }
 
     // The class a claim names, or the cluster's default when it names none.
+    // What a project holds that had a count on its page and no row (#162).
+    for (key, obj) in of("cm") {
+        let (_, name) = split_key(key);
+        let n = obj.get("data").and_then(Value::as_object).map_or(0, |d| d.len());
+        let mut c = base("cm", key, name, Health::Ok, format!("{n} keys"));
+        c.relations.extend(ns_relation(key));
+        out.push(c);
+    }
+    for (kind, what) in [("quota", "resource quota"), ("limits", "limit range")] {
+        for key in of(kind).keys() {
+            let (_, name) = split_key(key);
+            let mut c = base(kind, key, name, Health::Ok, what.to_string());
+            c.relations.extend(ns_relation(key));
+            out.push(c);
+        }
+    }
+    for (key, obj) in of("route") {
+        let (ns, name) = split_key(key);
+        let host = s(obj, "/spec/host").unwrap_or("-");
+        let target = s(obj, "/spec/to/name").unwrap_or("-");
+        let mut c = base("route", key, name, Health::Ok, format!("{host} → {target}"));
+        c.relations.extend(ns_relation(key));
+        if let Some(ns) = ns.filter(|ns| of("svc").contains_key(&format!("{ns}/{target}"))) {
+            c.relations.push(Relation::has_one("service", format!("k8s:svc:{ns}/{target}")));
+        }
+        out.push(c);
+    }
+    for (key, obj) in of("nad") {
+        let (_, name) = split_key(key);
+        // The attachment's CNI config is a JSON document in a string.
+        let cni = s(obj, "/spec/config")
+            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+            .and_then(|v| v["type"].as_str().map(str::to_string))
+            .unwrap_or_else(|| "-".to_string());
+        let mut c = base("nad", key, name, Health::Ok, format!("CNI {cni}"));
+        c.relations.extend(ns_relation(key));
+        out.push(c);
+    }
+
     let default_class = of("sc")
         .iter()
         .find(|(_, o)| {
@@ -1350,6 +1389,29 @@ mod tests {
         assert!(ns.relations.iter().any(|r| r.name == "pods"));
         // A namespace opens its own page, not a generic grid (#6).
         assert_eq!(ns.link.as_deref(), Some("#/k8s/ns/default"));
+    }
+
+    #[test]
+    fn what_a_project_holds_has_a_row() {
+        let mut snap: HashMap<&'static str, HashMap<String, Value>> = HashMap::new();
+        snap.insert("cm", HashMap::from([("web/conf".to_string(), json!({"data": {"a": "1", "b": "2"}}))]));
+        snap.insert("svc", HashMap::from([("web/front".to_string(), json!({"spec": {"type": "LoadBalancer"}}))]));
+        snap.insert("route", HashMap::from([(
+            "web/www".to_string(),
+            json!({"spec": {"host": "www.example.lo", "to": {"kind": "Service", "name": "front"}}}),
+        )]));
+        snap.insert("nad", HashMap::from([("web/lan".to_string(), json!({"spec": {"config": "{\"type\":\"macvlan\"}"}}))]));
+        let out = map(&snap, None);
+        let find = |id: &str| out.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("{id}"));
+        assert_eq!(find("k8s:cm:web/conf").detail, "2 keys");
+        assert_eq!(find("k8s:route:web/www").detail, "www.example.lo → front");
+        assert_eq!(find("k8s:nad:web/lan").detail, "CNI macvlan");
+        for id in ["k8s:cm:web/conf", "k8s:route:web/www", "k8s:nad:web/lan"] {
+            let r = find(id).relations.iter().find(|r| r.name == "namespace").expect("in its project");
+            assert_eq!(r.targets, vec!["k8s:ns:web"]);
+        }
+        let svc = find("k8s:route:web/www").relations.iter().find(|r| r.name == "service").unwrap();
+        assert_eq!(svc.targets, vec!["k8s:svc:web/front"]);
     }
 
     #[test]

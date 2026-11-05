@@ -82,7 +82,7 @@ pub fn target(doc: &Value, project: Option<&str>) -> Result<(String, String, Str
             .and_then(Value::as_str)
             .filter(|n| !n.is_empty())
             .or(project)
-            .ok_or_else(|| format!("{kind} {name} names no namespace, and no project was chosen"))?;
+            .ok_or_else(|| format!("{kind} {name} names no project, and none was chosen"))?;
         format!("{base}/namespaces/{ns}/{}", plural(kind))
     };
     Ok((kind.to_string(), name.to_string(), path))
@@ -105,10 +105,10 @@ pub fn creators() -> Vec<Creator> {
                 Field::text("description", "Description"),
             ],
         )
-        .describe("A namespace of your own, with you as its admin — where your VMs, pods and claims go")
+        .describe("Your own place, with you as its admin — where your VMs, pods and claims go")
         .at(&["*"]),
         Creator::yaml("k8s:yaml", "Import YAML", APPLY, IMPORT)
-            .describe("Any resources, one or more documents — like oc apply -f. A document that names no namespace goes in the project chosen here")
+            .describe("Any resources, one or more documents — like oc apply -f. A document that names none goes in the project chosen here")
             .in_project()
             .at(&["*"]),
         Creator::yaml("k8s:pod", "Pod", APPLY, POD).in_project().at(&["#/k8s/pod"]),
@@ -119,9 +119,6 @@ pub fn creators() -> Vec<Creator> {
         Creator::yaml("k8s:cronjob", "CronJob", APPLY, CRONJOB).in_project().at(&["#/k8s/cronjob"]),
         Creator::yaml("k8s:svc", "Service", APPLY, SERVICE).in_project().at(&["#/k8s/svc"]),
         Creator::yaml("k8s:pvc", "PersistentVolumeClaim", APPLY, PVC).in_project().at(&["#/k8s/pvc"]),
-        Creator::yaml("k8s:ns", "Namespace", APPLY, NAMESPACE)
-            .describe("A bare namespace, for administrators. Somebody's own work goes in a project")
-            .at(&["#/k8s/ns"]),
         Creator::yaml("k8s:netpol", "NetworkPolicy", APPLY, NETPOL).in_project().at(&["#/k8s/netpol"]),
         Creator::yaml("k8s:cnp", "CiliumNetworkPolicy", APPLY, CNP).in_project().at(&["#/k8s/cnp"]),
         Creator::yaml("k8s:ccnp", "CiliumClusterwideNetworkPolicy", APPLY, CCNP).at(&["#/k8s/ccnp"]),
@@ -152,7 +149,6 @@ const CNP: &str = "apiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata
 
 const CCNP: &str = "apiVersion: cilium.io/v2\nkind: CiliumClusterwideNetworkPolicy\nmetadata:\n  name: default-deny-ingress\nspec:\n  endpointSelector: {}\n  ingress:\n    - fromEndpoints:\n        - {}\n";
 
-const NAMESPACE: &str = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: example\n";
 
 #[cfg(test)]
 mod tests {

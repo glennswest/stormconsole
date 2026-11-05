@@ -178,7 +178,7 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Workloads' }, { label: 'Pods', href: `#/k8s/pod?ns=${encodeURIComponent(ns)}` }, { label: ns, href: `#/k8s/ns/${encodeURIComponent(ns)}` }, { label: name }]}
+    crumbs={[{ label: 'Projects', href: '#/projects' }, { label: ns, href: `#/k8s/ns/${encodeURIComponent(ns)}` }, { label: 'Pods', href: `#/k8s/pod?ns=${encodeURIComponent(ns)}` }, { label: name }]}
     title={name}
     scope={pod?.metadata?.created ? `created ${ago(pod.metadata.created)} ago` : ''}
   >

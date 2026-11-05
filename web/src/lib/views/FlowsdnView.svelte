@@ -154,8 +154,8 @@
             </select>
           </label>
         {/if}
-        <label>Namespace
-          <select bind:value={ns} aria-label="Namespace">
+        <label>Project
+          <select bind:value={ns} aria-label="Project">
             <option value="">all</option>
             {#each namespaces as n}<option value={n}>{n}</option>{/each}
           </select>

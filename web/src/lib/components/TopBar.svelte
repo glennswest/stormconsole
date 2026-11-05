@@ -30,7 +30,7 @@
       .catch(() => {})
   })
 
-  // The namespaces this viewer may see — the feed is already
+  // The projects this viewer may see — the feed is already
   // authorization-filtered on the server, so this list *is* the answer,
   // not a display of a longer one.
   let namespaces = $derived(
@@ -41,14 +41,14 @@
   )
 
   // Projects are the top of the console (#28): the selector lists the
-  // viewer's own, with the system namespaces apart and only for
-  // administrators. Until the list arrives, the feed's namespaces stand in.
+  // viewer's own, with the system ones apart. Until the list arrives, the
+  // feed's stand in.
   $effect(() => {
     if (!projects.loaded) loadProjects()
   })
   const mine = $derived(projects.loaded && !projects.error ? projects.list.map((p) => p.name) : namespaces)
   const systemNs = $derived(projects.loaded && !projects.error ? projects.system.map((p) => p.name) : [])
-  // A selection that is neither — a link to somebody else's namespace —
+  // A selection that is neither — a link to somebody else's project —
   // stays visible rather than silently reading as "all".
   const stray = $derived(k8sns.selected && !mine.includes(k8sns.selected) && !systemNs.includes(k8sns.selected) ? k8sns.selected : '')
 
@@ -58,6 +58,11 @@
       return
     }
     selectNamespace(v)
+    // On a project's page the page follows: the selector is which project
+    // you are in (#162).
+    if (route.current.name === 'project') {
+      location.hash = v ? `#/k8s/ns/${encodeURIComponent(v)}` : '#/projects'
+    }
   }
 
   // Whether the selector applies to what is on screen. On a cluster-scoped
@@ -66,7 +71,7 @@
   // `route.current` is read first so the derivation re-runs on every
   // navigation; `location.hash` is not reactive on its own.
   let hash = $derived(route.current && location.hash)
-  let applies = $derived(routeTakesNamespace(hash) || route.current.name === 'overview')
+  let applies = $derived(routeTakesNamespace(hash) || ['overview', 'project'].includes(route.current.name))
 
   let hiddenNote = $derived(access.plugins?.k8s?.note || '')
 
@@ -117,8 +122,8 @@
         id="ns-pick"
         value={k8sns.selected}
         title={applies
-          ? 'Scopes every namespaced view'
-          : 'This page is cluster-scoped — the selection applies to the next namespaced page you open'}
+          ? 'Scopes every list of what a project holds'
+          : 'This page is cluster-scoped — the selection applies to the next project page you open'}
         onchange={(e) => {
           pick(e.target.value)
           // "New project…" is an action, not a selection.

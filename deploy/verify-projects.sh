@@ -24,6 +24,7 @@ P=19102
 
 say "build the console"
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
+node web/src/lib/projects.test.mjs
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
@@ -85,6 +86,16 @@ k POST /apis/storage.k8s.io/v1/storageclasses '{"apiVersion":"storage.k8s.io/v1"
   "metadata":{"name":"stormblock","annotations":{"storageclass.kubernetes.io/is-default-class":"true"}},
   "provisioner":"stormblock.storm.io","volumeBindingMode":"WaitForFirstConsumer","reclaimPolicy":"Delete"}'
 k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"cilium"}}'
+# What stormcos and stormcentral make for their own work, and a Multus CRD.
+k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"cilium-secrets"}}'
+k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"storm-assets"}}'
+k POST /apis/apiextensions.k8s.io/v1/customresourcedefinitions '{
+  "apiVersion":"apiextensions.k8s.io/v1","kind":"CustomResourceDefinition",
+  "metadata":{"name":"network-attachment-definitions.k8s.cni.cncf.io"},
+  "spec":{"group":"k8s.cni.cncf.io","scope":"Namespaced",
+    "names":{"kind":"NetworkAttachmentDefinition","plural":"network-attachment-definitions","singular":"network-attachment-definition"},
+    "versions":[{"name":"v1","served":true,"storage":true,
+      "schema":{"openAPIV3Schema":{"type":"object","x-kubernetes-preserve-unknown-fields":true}}}]}}'
 sleep 2
 
 say "a console: its own credential is the admin's; three users, each with their own identity"
@@ -285,9 +296,37 @@ for s in secs:
     if s["label"] in ("Home", "Cluster", "Compute"):
         print("   ", s["label"], s.get("kind"), [i["label"] for i in s["items"]])'
 
-say "7b. the pages in a browser (#58)"
+say "7a. what a project holds (#162), and the platform's marked system"
 RC=0
-deploy/browser/run.sh "$W" projects.cjs "http://127.0.0.1:$P" || RC=1
+k POST /api/v1/namespaces/alice-work/configmaps '{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"app-conf"},"data":{"a":"1"}}'
+k POST /api/v1/namespaces/alice-work/secrets '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db-pass"},"type":"Opaque","data":{"password":"aHVudGVyMg=="}}'
+k POST /api/v1/namespaces/alice-work/services '{"apiVersion":"v1","kind":"Service","metadata":{"name":"front"},"spec":{"type":"LoadBalancer","ports":[{"port":80}]}}'
+k POST /apis/k8s.cni.cncf.io/v1/namespaces/alice-work/network-attachment-definitions '{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"lan"},"spec":{"config":"{\"type\":\"macvlan\"}"}}'
+ROUTE_SERVED=0
+if curl -sfk -o /dev/null -X POST "$API/apis/route.openshift.io/v1/namespaces/alice-work/routes" -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' \
+  -d '{"apiVersion":"route.openshift.io/v1","kind":"Route","metadata":{"name":"www"},"spec":{"host":"www.example.lo","to":{"kind":"Service","name":"front"}}}'; then ROUTE_SERVED=1; fi
+echo "  rustkube $RUSTKUBE_VER serves Routes: $ROUTE_SERVED"
+sleep 6
+want() { # what, python expression over the answer d, then the path
+  if curl -sf -b "$W/jar.$WHO" "http://127.0.0.1:$P$3" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if ($2) else 1)"; then echo "  ok   $1"; else echo "  FAIL $1"; RC=1; fi
+}
+as root
+want "storm-assets, cilium-secrets, cilium, kube-system, default are system" 'set(["storm-assets","cilium-secrets","cilium","kube-system","default"]) <= {p["name"] for p in d["system"]} and all(p["system"] for p in d["system"])' /api/plugins/k8s/projects
+want "and none of them is listed among the others" 'not {"storm-assets","cilium-secrets"} & {p["name"] for p in d["projects"]}' /api/plugins/k8s/projects
+want "storm-assets' page says system" 'd["system"] is True' /api/plugins/k8s/namespaces/storm-assets
+want "alice-work's does not" 'd["system"] is False' /api/plugins/k8s/namespaces/alice-work
+want "its inventory has load balancers: 1" 'any(i["kind"]=="lb" and i["count"]==1 for i in d["inventory"])' /api/plugins/k8s/namespaces/alice-work
+want "and network attachments: 1" 'any(i["kind"]=="nad" and i["count"]==1 for i in d["inventory"])' /api/plugins/k8s/namespaces/alice-work
+want "the feed has the config map, in its project" 'any(c["id"]=="k8s:cm:alice-work/app-conf" and any(r["name"]=="namespace" and r["targets"]==["k8s:ns:alice-work"] for r in c["relations"]) for c in d)' /api/v1/components
+want "a secret: name and keys, no value" 'any(s["name"]=="db-pass" and s["keys"]==["password"] for s in d["secrets"]) and "aHVudGVy" not in json.dumps(d)' /api/plugins/k8s/projects/alice-work/secrets
+as alice
+printf 'alice, a pod into storm-assets: '; yaml "$POD" '?project=storm-assets'
+printf 'alice, a project named storm-mine: '; c POST /api/plugins/k8s/projects '{"name":"storm-mine"}'
+printf 'alice, a project she does not see, its secrets: '; c GET /api/plugins/k8s/projects/storm-assets/secrets
+printf 'bob, secrets of alice-work: '; WHO=bob; c GET /api/plugins/k8s/projects/alice-work/secrets; WHO=alice
+
+say "7b. the pages in a browser (#58)"
+deploy/browser/run.sh "$W" projects.cjs "http://127.0.0.1:$P" ROUTE_SERVED=$ROUTE_SERVED || RC=1
 
 say "8. delete"
 as alice

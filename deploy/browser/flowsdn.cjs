@@ -18,9 +18,9 @@ walk('flowsdn', async (t) => {
   await t.shot(page, 'flowsdn-endpoints')
 
   // The filters.
-  await page.locator('select[aria-label="Namespace"]').selectOption('lab')
+  await page.locator('select[aria-label="Project"]').selectOption('lab')
   t.check(await t.until(async () => (await page.locator('table tbody tr').count()) === 1), 'namespace lab: one row')
-  await page.locator('select[aria-label="Namespace"]').selectOption('')
+  await page.locator('select[aria-label="Project"]').selectOption('')
   await page.locator('input[aria-label="Search"]').fill('f00d::a05:0:0:7')
   t.check(await t.until(async () => (await page.locator('table tbody tr').count()) === 1), 'search by IPv6 address: one row')
   await page.locator('input[aria-label="Search"]').fill('')

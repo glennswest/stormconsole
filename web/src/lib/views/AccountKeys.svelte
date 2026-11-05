@@ -81,7 +81,7 @@
     Every machine you create gets these keys, for its default user and root, unless you untick them
     on the create form. They are kept as the Secret
     {#if data}<span class="mono">{data.secret}</span> in <span class="mono">{data.home}</span>{/if},
-    and a machine in another namespace gets a copy there.
+    and a machine in another project gets a copy there.
   </p>
 
   {#if data}

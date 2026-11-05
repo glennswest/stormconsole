@@ -12,6 +12,11 @@ const TERMS = {
   goldens: 'registry images',
   slab_golden: 'slab registry image',
   slab_goldens: 'slab registry images',
+  // A project is a namespace (#162): one word on the page, while the API and
+  // the feed's ids keep theirs.
+  namespace: 'project',
+  namespaces: 'projects',
+  'k8s-ns': 'project',
 }
 
 export function term(token) {

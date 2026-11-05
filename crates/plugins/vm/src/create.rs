@@ -540,7 +540,7 @@ pub async fn create(
         warn!(namespace = ns, "vm create refused: a system namespace");
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("{ns} is a system namespace: machines go in a project. Choose one, or create one")})),
+            Json(json!({"error": format!("{ns} is a system project: machines go in one of your own. Choose one, or create one")})),
         )
             .into_response();
     }

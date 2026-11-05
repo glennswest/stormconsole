@@ -11,7 +11,7 @@
   import LogsView from './lib/views/LogsView.svelte'
   import K8sList from './lib/views/K8sList.svelte'
   import K8sEvents from './lib/views/K8sEvents.svelte'
-  import NamespaceDetail from './lib/views/NamespaceDetail.svelte'
+  import ProjectDetail from './lib/views/ProjectDetail.svelte'
   import DrivesView from './lib/views/DrivesView.svelte'
   import NodeDetail from './lib/views/NodeDetail.svelte'
   import NodesView from './lib/views/NodesView.svelte'
@@ -39,7 +39,7 @@
     logs: LogsView,
     k8slist: K8sList,
     k8sevents: K8sEvents,
-    namespace: NamespaceDetail,
+    project: ProjectDetail,
     drives: DrivesView,
     nodes: NodesView,
     nodedetail: NodeDetail,

@@ -86,7 +86,7 @@ const fn crd(
 }
 
 pub const RESOURCES: &[ResourceSpec] = &[
-    cluster("ns", "Namespace", "Namespaces", "/api/v1/namespaces"),
+    cluster("ns", "Namespace", "Projects", "/api/v1/namespaces"),
     cluster("node", "Node", "Nodes", "/api/v1/nodes"),
     ns_scoped("pod", "Pod", "Pods", "/api/v1/pods"),
     ns_scoped("deploy", "Deployment", "Deployments", "/apis/apps/v1/deployments"),
@@ -96,7 +96,7 @@ pub const RESOURCES: &[ResourceSpec] = &[
     ns_scoped("cronjob", "CronJob", "CronJobs", "/apis/batch/v1/cronjobs"),
     ns_scoped("svc", "Service", "Services", "/api/v1/services"),
     ns_scoped("pvc", "PersistentVolumeClaim", "PersistentVolumeClaims", "/api/v1/persistentvolumeclaims"),
-    ns_scoped("cm", "ConfigMap", "ConfigMaps", "/api/v1/configmaps"),
+    ns_scoped("cm", "ConfigMap", "Config maps", "/api/v1/configmaps"),
     ns_scoped("netpol", "NetworkPolicy", "Network policies", "/apis/networking.k8s.io/v1/networkpolicies"),
     // A namespace's limits — what it may use, and what it is using. Both
     // are usually absent, and "no quota" is an answer worth showing
@@ -118,6 +118,16 @@ pub const RESOURCES: &[ResourceSpec] = &[
         false,
     ),
     crd("crole", "ClusterRole", "Cluster roles", "/apis/rbac.authorization.k8s.io/v1/clusterroles", false),
+    // Attached to a project like everything else (#162). rustkube serves
+    // Routes; a network attachment is there where Multus's CRD is.
+    crd("route", "Route", "Routes", "/apis/route.openshift.io/v1/routes", true),
+    crd(
+        "nad",
+        "NetworkAttachmentDefinition",
+        "Network attachments",
+        "/apis/k8s.cni.cncf.io/v1/network-attachment-definitions",
+        true,
+    ),
     crd("cep", "CiliumEndpoint", "Cilium endpoints", "/apis/cilium.io/v2/ciliumendpoints", true),
     crd("cn", "CiliumNode", "Cilium nodes", "/apis/cilium.io/v2/ciliumnodes", false),
     crd("cid", "CiliumIdentity", "Cilium identities", "/apis/cilium.io/v2/ciliumidentities", false),

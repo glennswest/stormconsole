@@ -39,7 +39,7 @@
 
 <div class="sc-page">
   <PageHeader
-    crumbs={[{ label: 'Storage' }, { label: 'PVCs', href: '#/k8s/pvc' }, { label: claim }]}
+    crumbs={[{ label: 'Projects', href: '#/projects' }, { label: ns, href: `#/k8s/ns/${encodeURIComponent(ns)}` }, { label: 'PVCs', href: `#/k8s/pvc?ns=${encodeURIComponent(ns)}` }, { label: claim }]}
     title={`Attach ${claim}`}
     scope={`in ${ns}`}
   />

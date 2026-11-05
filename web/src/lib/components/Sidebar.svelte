@@ -11,7 +11,11 @@
   let current = $state(location.hash || '#/')
   window.addEventListener('hashchange', () => (current = location.hash || '#/'))
 
-  const isActive = (href) => current === href || (href !== '#/' && current.startsWith(href))
+  // A project's page is under the Projects item, though its path is the API's.
+  const isActive = (href) =>
+    current === href ||
+    (href !== '#/' && current.startsWith(href)) ||
+    (href === '#/projects' && current.startsWith('#/k8s/ns/'))
 </script>
 
 <aside class:collapsed={!prefs.navOpen}>
