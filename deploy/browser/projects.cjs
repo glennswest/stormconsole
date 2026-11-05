@@ -54,6 +54,7 @@ walk('projects', async (t) => {
 
   // #162 --------------------------------------------------------------------
   // alice's project page holds everything in it, and opening it is being in it.
+  await page.goto(`${t.BASE}/#/projects`) // the same hash again would stay on its tab
   t.check(await t.open(page, '#/k8s/ns/alice-work', /Inventory/), 'the project page opens on its inventory')
   const inv = page.locator('.card.inventory')
   const invText = () => inv.innerText()
