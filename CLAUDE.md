@@ -2032,6 +2032,18 @@ loopback API, so this node's, and `/v1/healthz` `kubernetes.policy.endpoints[]` 
   entries and YAML for CiliumNetworkPolicy; nothing yet makes a Create for a flowsdn policy.
   The flowsdn plugin is built on every node and is absent by `present()`, as #161 did it
 
+### What a container runs on, and what it was cloned from (#75)
+Owner on #69: "nothing uses a golden, everything uses a CoW, but the golden is our registry".
+rustkube-node#130 is in: `storm.io/instance.<c>` (the engine volume), `storm.io/golden.<c>`,
+`storm.io/image-resolved.<c>`, `storm.io/image-build.<c>`, and on a mirror pod `storm.io/golden`,
+`storm.io/golden-provenance`. The engine: `GET /api/v1/volumes/{id}` (allocated, shared,
+placement), its `parent` chain, `/digest` (its `seal`: `sha256`, `verdict`, `checked_at`).
+- [ ] `Cloned from` names the image the annotation says, stormcentral's record of that name;
+      "newest built, not confirmed running" only without one
+- [ ] sb plugin `GET /runs-on`: a volume, its node and drives, what it costs, the sealed image it
+      reads through, last verified. Pod page rows; VM page per disk. Words per GLOSSARY (#85)
+- [ ] `deploy/verify-runs-on.sh` real engine; docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
