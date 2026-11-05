@@ -223,7 +223,7 @@ check '[ "$(echo "$D" | q "d[\"containers\"][2][\"digest\"]")" = "None" ]' "stor
 check '[ "$(echo "$D" | q "d[\"containers\"][1][\"pullPolicy\"]")" = "IfNotPresent" ]' "pull policy defaulted for a tag"
 check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"name\"]")" = "golden-cilium-abc123def456" ]' "the newest cilium golden from stormcentral"
 check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"builtAt\"]")" = "1790900000" ]' "its built_at"
-check 'echo "$D" | q "d[\"containers\"][2][\"golden\"][\"which\"]" | grep -q "does not report which"' "and it says it is the newest, not necessarily the running one"
+check 'echo "$D" | q "d[\"containers\"][2][\"golden\"][\"which\"]" | grep -q "not confirmed running"' "and it says it is the newest, not necessarily the running one"
 check 'echo "$D" | q "[g[\"what\"]+\" \"+g[\"issue\"] for g in d[\"gaps\"]]" | grep -q "image digest rustkube-node#130"' "the stormpump digest gap names rustkube-node#130"
 check '! echo "$D" | q "[g[\"what\"] for g in d[\"gaps\"]]" | grep -q "interface detail"' "the CNI wrote its account (#167), so interface detail is not a gap"
 check 'echo "$D" | has "d[\"network\"][\"podIPs\"] == [\"10.244.0.15\", \"fd00:10:244::f\"]"' "both pod addresses"
