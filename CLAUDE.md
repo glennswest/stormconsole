@@ -1976,7 +1976,7 @@ cluster's message: filed on stormupdate; the console's own clock until then.
   engine in the rig). Real node: actions wait on stormcos#789
 - Upstream: stormupdate#36 (cancel, #196 here), stormupdate#37 (refused in history, a clock)
 
-### Pod and VM detail at describe / inspect depth (#167)
+### Pod and VM detail at describe / inspect depth (#167) ✅ 2026-11-05
 Owner 2026-11-05: "match the info that docker/podman has, oc describe pod xyzzy gives lots
 of info". Most is here since #69, #124. Still missing, read from the code: working
 directory, env (a secret's reference, never its value), envFrom, each container's mounts,
@@ -1988,6 +1988,17 @@ conditions, guest agent.
 - [x] `pod.rs`: the above, tested; page: container detail, start timing, attachments, log links
 - [x] `vm/facts.rs`: domain and guest agent; page cards; what the node does not report, named
 - [x] `verify-pod-page.sh`, `verify-vm-net.sh` extended, Chromium; docs, changelog, dist; golden
+
+- Verified with `sc-build deploy/verify-pod-page.sh` (0 failed; real fastetcd + rustkube, a
+  stand-in kubelet, a real Secret and NAD) and `deploy/verify-vm-net.sh` (0 failed), default
+  `sc-build` (453 tests, 0 warnings). Chromium read command, env, references, mounts, security
+  context, timing, tolerations, attachments, one-click logs and Previous; the Secret's value
+  and its base64 are nowhere in the page's text or HTML. The VM's domain and agent card,
+  and the agent said as not reported. The walk found `ago` not imported on the VM page
+- Not seen: a real kubelet's or guest agent's answers (rustkube-node#322 for the agent); a real
+  `storm.io/start-timing` is the format from `start_timing.rs`, with a written value. The Each
+  container section was read as text; the full-page screenshot stops at the shell's fold
+- A literal env value in the spec is shown, as on the YAML tab; only references are hidden
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
