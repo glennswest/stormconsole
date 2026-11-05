@@ -206,6 +206,10 @@ pub fn from_name(name: &str) -> (String, String) {
 /// The repository and tag the catalog's item says. A `source` is `repo:tag`.
 fn from_catalog(item: &Value, name: &str) -> (String, String) {
     let (by_name, name_tag) = from_name(name);
+    // A component's image: the catalog says whose, its name says which build.
+    if let Some(c) = field(item, &["component"]) {
+        return (c, name_tag);
+    }
     if let Some(src) = field(item, &["source"]) {
         // The last `:` past the last `/`, so a registry's port is not a tag.
         let tail = src.rsplit('/').next().unwrap_or(&src);
@@ -215,7 +219,7 @@ fn from_catalog(item: &Value, name: &str) -> (String, String) {
         }
         return (src, name_tag);
     }
-    (field(item, &["component"]).unwrap_or(by_name), name_tag)
+    (by_name, name_tag)
 }
 
 pub fn build(volumes: &[Value], catalog: &[Value], hosts: &[Value]) -> Holdings {
@@ -388,6 +392,7 @@ mod tests {
         assert_eq!(from_catalog(&json!({"source": "forge:5000/library/nats:2.10"}), "img-x"), ("forge:5000/library/nats".into(), "2.10".into()));
         assert_eq!(from_catalog(&json!({"source": "forge:5000/library/nats"}), "img-x"), ("forge:5000/library/nats".into(), String::new()));
         assert_eq!(from_catalog(&json!({"component": "stormlb"}), "golden-stormlb-aaaaaaaaaaaa"), ("stormlb".into(), "aaaaaaaaaaaa".into()));
+        assert_eq!(from_catalog(&json!({"component": "stormlb", "source": "template:x"}), "golden-stormlb-aaaaaaaaaaaa-sealed"), ("stormlb".into(), "aaaaaaaaaaaa".into()), "whatever its source");
     }
 
     #[test]

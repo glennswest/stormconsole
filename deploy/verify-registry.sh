@@ -146,19 +146,20 @@ check "$(curl -s "${AT[@]}" "$HOLD" | j 'd["engine_error"]')" "" "the token appe
 check "$(curl -s -o /dev/null -w '%{http_code}' "${AT[@]}" "$C/api/plugins/sb/proxy/api/v1/volumes")" 200 "the sb proxy that answered 401 on forge1 answers too, the browser holding no token"
 
 say "who holds what"
+curl -s "${AT[@]}" "$HOLD" | j '"  repositories: " + str([(r["name"], [i.get("tag","") for i in r["images"]]) for r in d["holdings"]["repositories"]])'
 Q() { curl -s "${AT[@]}" "$HOLD" | python3 -c "import json,sys
 d=json.load(sys.stdin)['holdings']
 repo={r['name']:r for r in d['repositories']}
 tag={i.get('tag',''):i for r in d['repositories'] for i in r['images']}
 c={c['name']:c for r in d['repositories'] for i in r['images'] for c in i['clones']}
 print($1)"; }
-check "$(Q 'sorted(i["tag"] for i in repo["stormlb"]["images"])')" "['aaaaaaaaaaaa', 'bbbbbbbbbbbb']" "both name forms are one repository, two tags"
-check "$(Q 'c["pod-root"]["holder"]["kind"], c["pod-root"]["holder"]["namespace"], c["pod-root"]["holder"]["name"]')" "('pod', 'shop', 'web')" "a pod"
+check "$(Q 'sorted(i.get("tag","") for i in repo["stormlb"]["images"])')" "['aaaaaaaaaaaa', 'bbbbbbbbbbbb']" "both name forms are one repository, two tags"
+check "$(Q 'c["pod-root"]["holder"]["kind"], c["pod-root"]["holder"]["namespace"], c["pod-root"]["holder"]["name"]')" "pod shop web" "a pod"
 check "$(Q 'c["pvc-db"]["holder"]["kind"]')" claim "a claim"
 check "$(Q 'c["vm-root"]["holder"]["kind"]')" vm "a VM"
-check "$(Q 'c["disk-12.61"]["holder"]["kind"], c["disk-12.61"]["holder"]["name"]')" "('release-disk', '12.61')" "a release disk"
+check "$(Q 'c["disk-12.61"]["holder"]["kind"], c["disk-12.61"]["holder"]["name"]')" "release-disk 12.61" "a release disk"
 check "$(Q 'c["build-77"]["holder"]["kind"]')" build "a build"
-check "$(Q 'c["attached-1"]["holder"]["kind"], c["attached-1"]["in_use"]')" "('attached', True)" "attached, with nothing named"
+check "$(Q 'c["attached-1"]["holder"]["kind"], c["attached-1"]["in_use"]')" "attached True" "attached, with nothing named"
 check "$(Q 'c["clone-lost"]["holder"]["kind"]')" nobody "and an orphan, flagged"
 check "$(Q 'd["orphans"] >= 1')" True "counted"
 check "$(Q '[(x["holder"]["name"], x["holder"]["detail"], x["holder"]["claimed_at"] > 0) for x in c.values() if x["holder"]["kind"]=="boot-host"]')" "[('r230', 'aa:bb:cc:dd:ee:ff', True)]" "a real boot claim: the machine, its MAC, when"
@@ -167,7 +168,7 @@ check "$(Q 'any("hostgolden" in i["name"] or "host" in i["repository"] for r in 
 check "$(curl -s "${AT[@]}" "$C/api/v1/components" | j 'sum(1 for c in d if c["kind"]=="repository") >= 2')" True "a feed row per repository, for the navigator"
 
 say "the catalog adds what the engine cannot say, and the page stands without it"
-check "$(Q 'tag["aaaaaaaaaaaa"]["kind"], c["pod-root"]["holder"]["name"]')" "('component', 'web')" "the catalog's kind beside the engine's holder"
+check "$(Q 'tag["aaaaaaaaaaaa"]["kind"], c["pod-root"]["holder"]["name"]')" "component web" "the catalog's kind beside the engine's holder"
 Q 'tag["aaaaaaaaaaaa"].get("digest"), tag["aaaaaaaaaaaa"]["releases"]' | sed 's/^/  digest, releases as the catalog says: /'
 kill "$REG_PID"; sleep 11
 check "$(curl -s "${AT[@]}" "$HOLD" | j 'bool(d["catalog_note"]) and len(d["holdings"]["repositories"]) >= 2')" True "registry gone: said, and the engine's answer still shown"
