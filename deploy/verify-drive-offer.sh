@@ -112,7 +112,19 @@ OURS_ID=$(did "$OURS"); BLANK_ID=$(did "$BLANK"); FOREIGN_ID=$(did "$FOREIGN")
 WORD=$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["confirm"]'); echo "  the word: $WORD"
 echo "  a slab on the first, and data on it, as the admin"
 curl -s -X POST "${ROOT[@]}" "$EN/drives/$OURS_ID/format" -d "{\"confirm\":\"$WORD\"}" | j '"  slab " + str(d.get("id") or d.get("uuid") or d)[:60]'
-curl -s -m 300 -X POST "${AUTH[@]}" "$EN/fstemplates" -d '{"name":"pvc-256M","size":"256M"}' | j '"  template " + str((d.get("template") or d).get("state") or d)[:80]'
+# A mirrored clone, so its extents can move (a single-copy volume stays on its
+# drive, #153), with enough in it to stand out from the mean once a slab is added.
+T=$(curl -s -m 300 -X POST "${AUTH[@]}" "$EN/fstemplates" -d '{"name":"mirrored","size":"1G","redundancy":"mirror"}')
+TID=$(j 'd["template"]["id"]' <<<"$T"); echo "  template $(j 'd["template"]["state"]' <<<"$T")"
+V=$(curl -s -X POST "${AUTH[@]}" "$EN/fstemplates/$TID/clone" -d '{"name":"data"}')
+VID=$(j 'd.get("volume_id") or d.get("id") or d["volume"]["id"]' <<<"$V"); echo "  clone $VID"
+head -c 1048576 /dev/urandom | base64 -w0 > "$W/mib.b64"
+for i in $(seq 240); do
+  printf '{"files":[{"path":"/f%d","contents_base64":"%s"}]}' "$i" "$(cat "$W/mib.b64")" > "$W/f.json"
+  curl -s -o "$W/f.out" -w '%{http_code}\n' -X POST "${ROOT[@]}" --data-binary @"$W/f.json" "$EN/volumes/$VID/files"
+done | sort | uniq -c | sed 's/^/  wrote: /'
+head -c 300 "$W/f.out"; echo
+curl -s "${AUTH[@]}" "$EN/slabs" | j '"  slabs: " + str([(s["id"][:8], s.get("allocated_slots"), s.get("total_slots")) for s in d["items"]])'
 
 say "a stand-in stormdrive listing the same files"
 python3 "$HERE/deploy/drive-offer.standin.py" 19154 "$OURS" "$BLANK" "$FOREIGN" >/dev/null 2>&1 &
@@ -178,7 +190,8 @@ check "$(j '"power cut" in d["error"] and "erases what it holds" in d["error"] a
 check "$(code alice "${HDR[@]}" -d '{"confirm":"nope"}' "$FMT")" 412 "the wrong word in the body: 412"
 check "$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["offer"]["state"]')" blank "still blank"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${AUTH[@]}" -d "{\"confirm\":\"$WORD\"}" "$EN/drives/$BLANK_ID/format")" 401 "the node token alone cannot format at the engine: it is the viewer's bearer that does"
-check "$(code alice -H "X-Storm-Confirm: $WORD" -d "{\"confirm\":\"$WORD\"}" "$SBP/drives/$OURS_ID/format")" 409 "a drive of ours: 409, not reformatted"
+# Offered no longer, so the gate's word is the object's id (no card carries the action).
+check "$(code alice -H "X-Storm-Confirm: $OURS_ID" -d "{\"confirm\":\"$WORD\"}" "$SBP/drives/$OURS_ID/format")" 409 "a drive of ours: the engine's 409, not reformatted"
 
 say "a rebalance is the node's ordinary word, a dry run by default"
 check "$(as bob -X POST -H 'content-type: application/json' -d '{"dry_run":true}' "$SBP/slabs/rebalance" | j '"plan" in d')" True "a plan comes back, through the proxy"
@@ -191,7 +204,8 @@ check "$(curl -s "${AUTH[@]}" "$EN/drives/$BLANK_ID" | j 'd["offer"]["state"]')"
 check "$(curl -s "${AUTH[@]}" "$EN/drives/$FOREIGN_ID" | j 'd["offer"]["state"]')" foreign "and the one cancelled is untouched"
 check "$(grep -c 'a person formats a drive' "$W/engine.log" || true)" 2 "the engine logged two formats: the admin's seed slab, and alice's"
 check "$(curl -s "${AUTH[@]}" "$EN/slabs/rebalance" | j 'd["state"]')" done "the real rebalance ran to its end"
-echo '--- the slabs afterwards'; curl -s "${AUTH[@]}" "$EN/slabs" | j '[(s.get("id","")[:8], s.get("role"), s.get("used_slots"), s.get("total_slots")) for s in d.get("items",[])]' || true
+curl -s "${AUTH[@]}" "$EN/slabs/rebalance" | j '"  rebalance: " + str(d)'
+curl -s "${AUTH[@]}" "$EN/slabs" | j '"  slabs afterwards: " + str([(s["id"][:8], s.get("allocated_slots"), s.get("total_slots")) for s in d["items"]])' 
 
 tar czf "$HERE/offer-shots.tgz" -C "$W" shots 2>/dev/null || true
 echo; echo "verify-drive-offer: $FAILED failed"
