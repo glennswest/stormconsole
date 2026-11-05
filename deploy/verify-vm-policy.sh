@@ -186,7 +186,7 @@ check "$(curl -sf "$C/api/plugins/vm/vms/shop/pod" | py 'import json,sys; print(
 
 say "Playwright and a headless Chromium"
 mkdir -p "$W/pw"
-(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
+(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1.55.0 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
 cp deploy/vm-policy.browser.cjs "$W/pw/"
 set +e

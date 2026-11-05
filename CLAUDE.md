@@ -1923,15 +1923,15 @@ namespace`), `GET /api/v1/boothost` (`assignment.target`, `last_claim`, aliases)
 registry `GET /v1/catalog/images` (`component, source, digest, releases, location`;
 `golden-<component>-<tag>` or `<component>-<tag>`, the tag a build id). Engine reads
 are the source; the catalog adds names. No sealed-at in either.
-- [ ] `console_core` token file re-read when it changes (the 401: the console read it
+- [x] `console_core` token file re-read when it changes (the 401: the console read it
       once, at start); sb proxy and poll use it
-- [ ] reg plugin `holdings.rs` (pure): images by repository, each clone's holder (boot
+- [x] reg plugin `holdings.rs` (pure): images by repository, each clone's holder (boot
       host, pod, claim, VM, service, release disk, build, attached, nobody);
       `GET /api/plugins/reg/holdings`, another project's holder withheld; a feed row
       per repository with orphans; nav Images → Registry, `#/images` → Catalog
-- [ ] `#/registry`: repositories, tags, clones; by holder; filters with counts;
+- [x] `#/registry`: repositories, tags, clones; by holder; filters with counts;
       `web/src/lib/registry.js` + test
-- [ ] `deploy/verify-registry.sh`: real engine + registry; docs, changelog, dist; golden
+- [x] `deploy/verify-registry.sh`: real engine + registry; docs, changelog, dist; golden
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

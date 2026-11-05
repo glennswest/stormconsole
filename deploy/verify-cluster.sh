@@ -271,7 +271,7 @@ check $([ "$code" = 400 ]; echo $?) "a form not seeded here is refused before an
 
 say "4. the browser: root forms storm and joins b2; alice is refused; a release"
 mkdir -p "$W/pw"
-(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
+(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1.55.0 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
 cp deploy/cluster.browser.cjs "$W/pw/"
 set +e

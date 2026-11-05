@@ -116,7 +116,7 @@
                         <td class="kind" class:warn={c.holder.kind === 'nobody'}>{holderWord(c.holder.kind)}</td>
                         <td>
                           {#if c.holder.kind === 'nobody'}<span class="dim">{c.holder.detail}</span>
-                          {:else}{holderName(c.holder)}{#if c.holder.detail} <span class="dim small">{c.holder.detail}</span>{/if}{#if c.holder.claimed_at} <span class="dim small">claimed {claimed(c.holder.claimed_at)}</span>{/if}{/if}
+                          {:else}{holderName(c.holder)}{#if c.holder.detail}<span class="dim small gap">{c.holder.detail}</span>{/if}{#if c.holder.claimed_at}<span class="dim small gap">claimed {claimed(c.holder.claimed_at)}</span>{/if}{/if}
                         </td>
                         <td class="mono">{c.name}{#if c.via?.length} <span class="dim">through {c.via.join(', ')}</span>{/if}</td>
                         <td class="num">{bytes(c.allocated_bytes)}</td>
@@ -143,7 +143,7 @@
               {#each rows as c (c.id)}
                 <tr class:alert={c.holder.kind === 'nobody'}>
                   <td class="kind" class:warn={c.holder.kind === 'nobody'}>{holderWord(c.holder.kind)}</td>
-                  <td>{#if c.holder.kind === 'nobody'}<span class="dim">{c.holder.detail}</span>{:else}{holderName(c.holder)}{#if c.holder.detail} <span class="dim small">{c.holder.detail}</span>{/if}{#if c.holder.claimed_at} <span class="dim small">claimed {claimed(c.holder.claimed_at)}</span>{/if}{/if}</td>
+                  <td>{#if c.holder.kind === 'nobody'}<span class="dim">{c.holder.detail}</span>{:else}{holderName(c.holder)}{#if c.holder.detail}<span class="dim small gap">{c.holder.detail}</span>{/if}{#if c.holder.claimed_at}<span class="dim small gap">claimed {claimed(c.holder.claimed_at)}</span>{/if}{/if}</td>
                   <td>{#if c.image}<a class="mono" href={link({ repo: c.image.repository })}>{ref(c.image)}</a>{:else}<span class="warn small">its parent is gone from the engine</span>{/if}</td>
                   <td class="mono dim">{shortDigest(c.image?.digest)}</td>
                   <td class="mono">{c.name}</td>
@@ -160,6 +160,7 @@
 
 <style>
   .small { font-size: var(--sc-t-meta); }
+  .gap { margin-left: 8px; }
   .dim { color: var(--text-dim); }
   .warn { color: var(--warn-strong); }
   .bad { color: var(--error); }

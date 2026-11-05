@@ -1085,6 +1085,34 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### The Registry page (#163)
+
+Owner: "goldens, and who has clones", in OCI Distribution's words: repository, tag,
+digest. `#/registry` (Images → Registry), from `GET /api/plugins/reg/holdings`
+(`crates/plugins/sbregistry/src/holdings.rs`, no I/O in it):
+
+- **The engine is the source:** `GET /api/v1/volumes` and `/api/v1/boothost`, with the
+  console's own engine token, never the browser's. The registry's catalog adds the
+  repository, digest and releases; without it the page says so and works names out
+  from the volume (`golden-<component>-<tag>`, `<component>-<tag>`, a template's
+  `fstemplate-<name>-raw` or `<name>-sealed`). Answers are shared for 10 s.
+- **Who holds a clone**, first answer wins: a machine's boot claim (`last_claim.clone`
+  or `claims_by_agent`); the owner or consumer the engine was told (Pod, claim, VM,
+  a mount as a service, anything else as other); the name, for `disk-<release>` and
+  `build-*`, the only two a name decides; attached to something unnamed; else nobody,
+  flagged. The `disk-` and `build-` names are read from stormcentral's use and the
+  page calls them what they are named, so a build under another name reads as nobody.
+- **A machine's own sealed image is rolled up through**, so a boot clone is under the
+  tag the machine was assigned. A clone of a clone says what it came through. A clone
+  whose parent is gone is listed apart.
+- **Another project's holder** is counted and not named, and the clone's own name goes
+  with it, because a claim's volume is named after the claim.
+- **The token is followed** (`console_core::token::FileToken`): the console used to
+  read it once at start, so one that started before the engine minted it answered 401
+  until restarted. The sb proxy and poll use it too.
+- A feed row per repository (`reg:repo:`) is the navigator's count. Neither source says
+  when an image was sealed, so the page does not either.
+
 ### Offered drives (#153)
 
 The other kind of format. `#/drives/format` (#165) is stormdrive's low-level one:

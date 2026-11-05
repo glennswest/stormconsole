@@ -3,6 +3,21 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The Registry page (#163)
+- **feat:** `#/registry` (Images → Registry): every repository with its tags and
+  digests, its size and the releases carrying it, and for each who holds a clone: boot
+  host (machine, MAC, last claim), pod, claim, VM, service, release disk, build,
+  attached, or nobody, flagged. Space each clone uses beyond the image. A By holder view
+  answers which tag a machine or pod runs on. Filters by holder with counts, search, and
+  repositories counted in the navigator. The word on the page is registry's, not golden.
+- **feat:** `GET /api/plugins/reg/holdings`, with the console's own engine credential;
+  a holder in a project the viewer may not see is counted and not named.
+- **fix:** the engine's token is followed, not read once at start, so a console started
+  before the engine minted it no longer answers 401 until restarted.
+- **change:** Images → Registry images is now Images → Catalog.
+- **test:** Playwright is pinned in the rigs (1.55.0): npm's latest asked for a
+  `playwright-core` it does not have, and `run.sh` now says when an install fails.
+
 ### 2026-11-05 — Offered drives, formatted only by a person (#153)
 - **feat:** the Drives page lists the drives this node's engine holds and is not
   using (stormblock#154): blank, or foreign with what it holds. A picked drive and

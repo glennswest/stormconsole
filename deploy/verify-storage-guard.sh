@@ -261,7 +261,7 @@ check "a refusal line for bob" grep -q 'storage: refused' "$W/c.log"
 
 say "the browser: what alice and bob see and do"
 mkdir -p "$W/pw"
-(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
+(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1.55.0 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
 cp deploy/storage-guard.browser.cjs "$W/pw/"
 N1=$(formats_as $D1 "$ALICE")

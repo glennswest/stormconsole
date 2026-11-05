@@ -284,7 +284,7 @@ check 'curl -s "$C/api/v1/components" | python3 -c "import json,sys; c=[x for x 
 
 say "Playwright and a headless Chromium"
 mkdir -p "$W/pw" "$OUT/shots"
-(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
+(cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1.55.0 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
 cp deploy/pod-page.browser.cjs deploy/words.browser.cjs "$W/pw/"
 set +e
