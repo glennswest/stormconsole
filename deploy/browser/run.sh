@@ -11,8 +11,9 @@ W=$1; WALK=$2; CONSOLE=$3; shift 3
 HERE=$(cd "$(dirname "$0")" && pwd)
 if [ ! -d "$W/pw/node_modules/playwright" ]; then
   mkdir -p "$W/pw"
-  (cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >/dev/null 2>&1 \
-    && npx playwright install chromium-headless-shell >/dev/null 2>&1)
+  # Said when it fails: a walk that never ran must not read as one that failed.
+  (cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1 >"$W/pw.log" 2>&1 \
+    && npx playwright install chromium-headless-shell >>"$W/pw.log" 2>&1) || { echo "Playwright did not install:"; tail -5 "$W/pw.log"; exit 1; }
 fi
 cp "$HERE"/*.cjs "$W/pw/"
 mkdir -p "$W/shots"

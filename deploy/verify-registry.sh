@@ -35,8 +35,13 @@ for r in rustkube stormblock stormblock-registry; do git clone -q --depth 1 "htt
 (cd "$W/rustkube" && CARGO_TARGET_DIR="$W/k-target" cargo build -q --bin kube-apiserver)
 (cd "$W/stormblock" && CARGO_TARGET_DIR="$W/sb-target" cargo build -q --release --bin stormblock)
 (cd "$W/stormblock-registry" && CARGO_TARGET_DIR="$W/reg-target" cargo build -q)
-KA="$W/k-target/debug/kube-apiserver"; SB="$W/sb-target/release/stormblock"
-REGBIN=$(find "$W/reg-target/debug" -maxdepth 1 -type f -perm -u+x \( -name sbregistry -o -name stormblock-registry \) | head -1)
+# The binaries, then the room their builds took: Chromium needs some.
+mkdir -p "$W/bin"
+cp "$W/k-target/debug/kube-apiserver" "$W/sb-target/release/stormblock" "$W/bin/"
+cp "$(find "$W/reg-target/debug" -maxdepth 1 -type f -perm -u+x \( -name sbregistry -o -name stormblock-registry \) | head -1)" "$W/bin/sbregistry"
+rm -rf "$W"/*-target "$W/rustkube" "$W/stormblock" "$W/stormblock-registry"
+df -h "$W" | tail -1
+KA="$W/bin/kube-apiserver"; SB="$W/bin/stormblock"; REGBIN="$W/bin/sbregistry"
 
 say "the apiserver, signed tokens"
 (cd "$W"
@@ -179,6 +184,7 @@ check "$(curl -s -o /dev/null -w '%{http_code}' "$HOLD")" 401 "no credential: 40
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${AT[@]}" "$HOLD")" 405 "a POST: 405"
 
 say "the page, in Chromium"
+df -h "$W" | tail -1
 BR=0
 env BARE=http://127.0.0.1:19164 "$HERE/deploy/browser/run.sh" "$W" registry.cjs "$C" || BR=1
 check "$BR" 0 "the walk"
