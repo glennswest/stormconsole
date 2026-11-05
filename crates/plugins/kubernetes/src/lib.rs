@@ -1080,10 +1080,10 @@ mod path_tests {
             {"type": "Hostname", "address": "storm-94a281"},
             {"type": "ExternalIP", "address": "10.0.0.1"},
         ]}});
-        let m = member("storm-94a281", &node);
+        let m = crate::member("storm-94a281", &node);
         assert_eq!(m.name, "storm-94a281");
         assert_eq!(m.addrs, ["192.168.31.203", "10.0.0.1"]);
-        assert!(member("bare", &serde_json::json!({})).addrs.is_empty());
+        assert!(crate::member("bare", &serde_json::json!({})).addrs.is_empty());
     }
 }
 
