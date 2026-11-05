@@ -169,7 +169,13 @@ check "$(as a root "$API/snapshot" | j '[(r["user"], r["action"], r.get("release
 check "$(grep -c 'update: acted through stormupdate' "$W/a.log")" 4 "and in the log"
 sleep 5
 echo "  what the real controller made of it: $(curl -s "$SU/api/v1/status" | j 'd["status"].get("phase"), d["status"].get("message")' | cut -c1-200)"
-check "$(as a root "$API/snapshot" | j 'd["update"]["status"].get("message")')" "$(curl -s "$SU/api/v1/status" | j 'd["status"].get("message")')" "the page's message is stormupdate's"
+# The console polls every 5 s and the controller moves on: agreed within a few polls.
+same=no
+for _ in $(seq 15); do
+  [ "$(as a root "$API/snapshot" | j 'd["update"]["status"].get("message")')" = "$(curl -s "$SU/api/v1/status" | j 'd["status"].get("message")')" ] && { same=yes; break; }
+  sleep 2
+done
+check "$same" yes "the page's message is stormupdate's"
 
 say "stormupdate off: said in words, and started again with its controller off"
 kill "$SU_PID"; sleep 7

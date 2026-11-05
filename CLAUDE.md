@@ -1946,7 +1946,7 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
-### An Update page (#164)
+### An Update page (#164) ✅ 2026-11-05
 Owner 2026-11-04, on forge1's first update: "update needs a ui as well". Read from
 stormupdate 0d8a85b (`api.rs`, `crd.rs`, README): reads at :9088 are open (`GET
 /api/v1/status` = `{spec, status}`: `phase, message, currentRelease, flavor,
@@ -1963,6 +1963,18 @@ cluster's message: filed on stormupdate; the console's own clock until then.
       `web/src/lib/update.js` + test
 - [x] `deploy/verify-update.sh`: real stormupdate + rustkube; status in its shape; Chromium;
       docs, changelog, dist; golden
+
+- Verified with `sc-build deploy/verify-update.sh` (0 failed): stormupdate and rustkube from
+  main. Its controller made the ClusterUpdate, read a stand-in catalog, offered 12.61, and
+  after a start through the console went to "pre-pulling the images of 12.61". Reader and
+  operator 403, no token 501 with no call made, wrong token 401, a release not offered 409,
+  each in words; the spec as the real API wrote it, `allow_unpublished` not carried. Chromium
+  over the states: offered, dismissing sends nothing, in progress, refused, rolled back.
+  Also `verify-not-started.sh`, `verify-one-node.sh`, default `sc-build` (449 tests, 0 warnings)
+- Not seen: a real walk. The node steps were written into the status in stormupdate's shape,
+  because a real one needs agents that reboot. "Staged here" against a real engine (no
+  engine in the rig). Real node: actions wait on stormcos#789
+- Upstream: stormupdate#36 (cancel, #196 here), stormupdate#37 (refused in history, a clock)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
