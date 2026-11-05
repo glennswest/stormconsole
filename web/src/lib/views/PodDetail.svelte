@@ -25,7 +25,27 @@
   const name = $derived(route.current.params.name)
   const TABS = ['Overview', 'Stats', 'Network', 'Logs', 'Events', 'YAML']
   let tab = $state(TABS.includes(route.current.query.get('tab')) ? route.current.query.get('tab') : 'Overview')
-  const logContainer = route.current.query.get('container') || ''
+  // One click to a container's logs, or its previous instance (#167).
+  let logContainer = $state(route.current.query.get('container') || '')
+  let logSource = $state(route.current.query.get('source') || 'current')
+  function openLogs(container, source = 'current') {
+    logContainer = container
+    logSource = source
+    tab = 'Logs'
+  }
+  /// One line per env var: what `describe` prints.
+  function envLine(e) {
+    if (e.from === 'secret') return `from Secret ${e.ref}, key ${e.key}${e.optional ? ' (optional)' : ''}: value not shown`
+    if (e.from === 'configMap') return `from ConfigMap ${e.ref}, key ${e.key}${e.optional ? ' (optional)' : ''}`
+    if (e.from === 'field') return `from the pod: ${e.ref}`
+    if (e.from === 'resource') return `from its resources: ${e.ref}`
+    return e.value
+  }
+  /// Where a container's image is in the registry: its digest, else its repository.
+  function registryHref(c) {
+    const repo = c.digest || c.image.replace(/^stormpump:\/\//, '').split('@')[0].split(':')[0]
+    return `#/registry?${new URLSearchParams({ search: repo })}`
+  }
 
   let pod = $state(null)
   let yaml = $state('')
@@ -218,11 +238,18 @@
             <dd class="mono">{#if pod.metadata.node}<a href={`#/grid?id=k8s:node:${encodeURIComponent(pod.metadata.node)}`}>{pod.metadata.node}</a>{:else}not scheduled{/if}</dd>
             <dt>Pod IP</dt>
             <dd class="mono">{#each pod.network.podIPs as ip (ip)}<div>{ip}<CopyButton value={ip} label="Copy address" /></div>{:else}{pod.network.hostNetwork ? 'the node’s (host network)' : '—'}{/each}</dd>
+            <dt>Host IP</dt><dd class="mono">{pod.network.hostIP || '—'}{#if pod.network.hostNetwork} <span class="dim">(host network)</span>{/if}</dd>
+            <dt>Created</dt><dd title={pod.metadata.created}>{pod.metadata.created ? `${ago(pod.metadata.created)} ago` : '—'}</dd>
             <dt>Started</dt><dd>{pod.metadata.startTime ? `${ago(pod.metadata.startTime)} ago` : '—'}</dd>
             <dt>QoS</dt><dd>{pod.metadata.qosClass}</dd>
             <dt>Priority</dt><dd>{pod.metadata.priority ?? '—'}{#if pod.metadata.priorityClassName} · {pod.metadata.priorityClassName}{/if}</dd>
             <dt>Service account</dt><dd class="mono">{pod.metadata.serviceAccount || '—'}</dd>
             <dt>Restart policy</dt><dd>{pod.metadata.restartPolicy}</dd>
+            {#if Object.keys(pod.metadata.nodeSelector || {}).length}<dt>Node selector</dt><dd class="mono">{Object.entries(pod.metadata.nodeSelector).map(([k, v]) => `${k}=${v}`).join(', ')}</dd>{/if}
+            {#if pod.metadata.tolerations?.length}
+              <dt>Tolerations</dt>
+              <dd class="mono">{#each pod.metadata.tolerations as t, i (i)}<div>{t.key || '(all)'}{t.operator === 'Exists' ? ' exists' : t.value ? `=${t.value}` : ''}{t.effect ? `:${t.effect}` : ''}{t.tolerationSeconds != null ? ` for ${t.tolerationSeconds}s` : ''}</div>{/each}</dd>
+            {/if}
             <dt>Owned by</dt>
             <dd>
               {#each pod.owners as o, i (i)}
@@ -307,13 +334,73 @@
                   <td class="mono">{resLine(c.resources?.limits) || '—'}</td>
                   <td class="mono img">{c.image}</td>
                   <td class="mono">{#each c.ports as p}<div>{p.containerPort}/{p.protocol}{#if p.name} ({p.name}){/if}{#if p.hostPort} → host {p.hostPort}{/if}</div>{:else}—{/each}</td>
-                  <td><button class="link" onclick={() => (tab = 'Logs')}>Logs</button></td>
+                  <td class="logs">
+                    <button class="link" onclick={() => openLogs(c.name)}>Logs</button>
+                    {#if c.restartCount > 0}<button class="link" onclick={() => openLogs(c.name, 'previous')}>Previous</button>{/if}
+                  </td>
                 </tr>
               {/each}
             </tbody>
           </table>
         </div>
       </section>
+
+      <section class="card wide" aria-label="Each container">
+        <h2>Each container</h2>
+        {#each pod.containers as c (c.role + c.name)}
+          <details class="ctr" open={pod.containers.length <= 3}>
+            <summary><span class="mono">{c.name}</span>{#if c.role !== 'container'} <span class="tag">{c.role}</span>{/if} <span class="dim">{c.reported ? stateLine(c.state) : 'not reported yet'}</span></summary>
+            <dl>
+              <dt>Image</dt>
+              <dd class="mono">{c.image}{#if c.digest} <span class="dim" title={c.digest}>@{c.digest.slice(0, 19)}</span>{/if} <a class="nomono" href={registryHref(c)}>in the registry</a></dd>
+              <dt>Command</dt><dd class="mono">{c.command?.length ? c.command.join(' ') : 'the image’s own'}</dd>
+              <dt>Arguments</dt><dd class="mono">{c.args?.length ? c.args.join(' ') : '—'}</dd>
+              <dt>Working directory</dt><dd class="mono">{c.workingDir || 'the image’s own'}</dd>
+              {#if c.containerID}<dt>Container ID</dt><dd class="mono">{c.containerID}</dd>{/if}
+              {#if c.state?.startedAt}<dt>Started</dt><dd title={c.state.startedAt}>{ago(c.state.startedAt)} ago</dd>{/if}
+              {#if c.state?.finishedAt}<dt>Finished</dt><dd title={c.state.finishedAt}>{ago(c.state.finishedAt)} ago</dd>{/if}
+              {#if c.state?.exitCode != null}<dt>Exit code</dt><dd class:warn={c.state.exitCode !== 0}>{c.state.exitCode}</dd>{/if}
+              {#if c.securityContext && Object.keys(c.securityContext).length}<dt>Security</dt><dd class="mono">{Object.entries(c.securityContext).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ')}</dd>{/if}
+            </dl>
+            <h3>Environment</h3>
+            {#if c.env.length || c.envFrom.length}
+              <table class="env">
+                <tbody>
+                  {#each c.envFrom as e, i (i)}
+                    <tr><td class="mono">{e.prefix ? `${e.prefix}*` : '*'}</td><td>every key of {e.from === 'secret' ? 'Secret' : 'ConfigMap'} {e.ref}{e.from === 'secret' ? ': values not shown' : ''}</td></tr>
+                  {/each}
+                  {#each c.env as e (e.name)}
+                    <tr><td class="mono">{e.name}</td><td class:mono={!e.from} class:dim={e.from}>{envLine(e)}</td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}<p class="none">None set in the spec.</p>{/if}
+            <h3>Mounts</h3>
+            {#if c.mounts.length}
+              <table class="env">
+                <tbody>
+                  {#each c.mounts as m (m.path)}
+                    {@const v = (pod.volumes || []).find((x) => x.name === m.volume)}
+                    <tr><td class="mono">{m.path}{#if m.subPath} <span class="dim">({m.subPath})</span>{/if}</td><td>{m.volume}{#if v} <span class="dim">{v.type}{v.source ? ` ${v.source}` : ''}</span>{/if}{#if m.readOnly} <span class="tag">read-only</span>{/if}</td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}<p class="none">Nothing mounted.</p>{/if}
+          </details>
+        {/each}
+      </section>
+
+      {#if pod.metadata.startTiming}
+        {@const t = pod.metadata.startTiming}
+        <section class="card wide" aria-label="Start timing">
+          <h2>How it started <span class="dim">— the kubelet’s account</span></h2>
+          <div class="timing">{#each t.phases as p (p.name)}<div class:total={p.name === 'total'}><span class="dim">{p.name}</span> <span class="mono">{p.value}</span></div>{/each}</div>
+          {#if t.counts.length}<p class="dim">{t.counts.map((c) => `${c.name} ${c.value}`).join(' · ')}</p>{/if}
+          {#if t.steps.length}
+            <details><summary class="dim">Inside those</summary><div class="timing">{#each t.steps as p (p.name)}<div><span class="dim">{p.name}</span> <span class="mono">{p.value}</span></div>{/each}</div></details>
+          {/if}
+        </section>
+      {/if}
 
       <section class="card wide">
         <h2>Probes</h2>
@@ -500,6 +587,27 @@
         </div>
       </section>
 
+      {#if pod.network.attachments?.length}
+        <section class="card wide" aria-label="Attachments">
+          <h2>Networks it asked for</h2>
+          <table>
+            <thead><tr><th>Network</th><th>Project</th><th>Type</th><th>Interface</th><th>Addresses</th><th>Attached</th></tr></thead>
+            <tbody>
+              {#each pod.network.attachments as a (a.namespace + a.name)}
+                <tr>
+                  <td>{#if a.id}<a href={`#/grid?id=${encodeURIComponent(a.id)}`}>{a.name}</a>{:else}{a.name}{/if}{#if !a.exists} <span class="warn">no such network</span>{/if}</td>
+                  <td>{#if a.inProject}<span class="dim">this one</span>{:else}<a href={`#/k8s/ns/${encodeURIComponent(a.namespace)}`}>{a.namespace}</a>{/if}</td>
+                  <td>{a.type || '—'}</td>
+                  <td class="mono">{a.interface || '—'}</td>
+                  <td class="mono">{(a.ips || []).join(', ') || '—'}</td>
+                  <td class:ok={a.attached} class:warn={!a.attached}>{a.attached ? 'yes' : 'not reported'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </section>
+      {/if}
+
       <section class="card wide">
         <h2>Interfaces</h2>
         {#if pod.network.interfaces.length}
@@ -589,7 +697,9 @@
     {:else if tab === 'Stats'}
       <PodStats {base} containers={pod.containers} />
     {:else if tab === 'Logs'}
-      <PodLogs {ns} {name} containers={pod.containers} keep={pod.keptRuns} initial={logContainer} />
+      {#key logContainer + logSource}
+        <PodLogs {ns} {name} containers={pod.containers} keep={pod.keptRuns} initial={logContainer} initialSource={logSource} />
+      {/key}
     {:else if tab === 'Events'}
       <section class="card">
         <h2>Events <span class="dim">— followed every 5 s</span></h2>
@@ -628,6 +738,16 @@
 </div>
 
 <style>
+  .ctr { border-top: 1px solid var(--sc-hairline); padding: 8px 0; }
+  .ctr summary { cursor: pointer; }
+  .ctr h3 { font-size: var(--sc-t-meta); color: var(--text-faint); margin: 10px 0 4px; }
+  .ctr dl { margin-top: 8px; }
+  table.env td:first-child { white-space: nowrap; padding-right: 16px; width: 1%; }
+  table.env td { overflow-wrap: anywhere; }
+  .nomono { font-family: var(--font, inherit); margin-left: 8px; }
+  .timing { display: flex; gap: 6px 18px; flex-wrap: wrap; }
+  .timing .total { font-weight: 600; }
+  td.logs button + button { margin-left: 8px; }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
   .tabs button {
     background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;

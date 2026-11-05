@@ -1976,6 +1976,19 @@ cluster's message: filed on stormupdate; the console's own clock until then.
   engine in the rig). Real node: actions wait on stormcos#789
 - Upstream: stormupdate#36 (cancel, #196 here), stormupdate#37 (refused in history, a clock)
 
+### Pod and VM detail at describe / inspect depth (#167)
+Owner 2026-11-05: "match the info that docker/podman has, oc describe pod xyzzy gives lots
+of info". Most is here since #69, #124. Still missing, read from the code: working
+directory, env (a secret's reference, never its value), envFrom, each container's mounts,
+security context; node selector, tolerations, created and host IP on the card;
+`storm.io/start-timing` (rustkube-node `start_timing.rs`: `name=duration` pairs); the
+network attachments asked for (`k8s.v1.cni.cncf.io/networks`) and their NADs; logs of one
+container and its previous instance in one click; a link to the registry. VMs: domain,
+conditions, guest agent.
+- [ ] `pod.rs`: the above, tested; page: container detail, start timing, attachments, log links
+- [ ] `vm/facts.rs`: domain and guest agent; page cards; what the node does not report, named
+- [ ] `verify-pod-page.sh`, `verify-vm-net.sh` extended, Chromium; docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

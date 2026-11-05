@@ -46,6 +46,55 @@ pub fn metadata(machine: Option<&Value>, instance: Option<&Value>) -> Value {
     })
 }
 
+/// What `virsh dominfo` would say, from the spec and the running instance: the domain
+/// asked for and the state it is in, with when it entered each phase.
+pub fn domain(machine: Option<&Value>, instance: Option<&Value>) -> Value {
+    let spec = instance
+        .and_then(|v| v.pointer("/spec/domain"))
+        .or_else(|| machine.and_then(|m| m.pointer("/spec/template/spec/domain")));
+    let at = |p: &str| spec.and_then(|d| d.pointer(p)).cloned().unwrap_or(Value::Null);
+    let status = instance.and_then(|v| v.get("status"));
+    json!({
+        "printable": machine.and_then(|m| m.pointer("/status/printableStatus")).cloned().unwrap_or(Value::Null),
+        "phase": status.and_then(|s| s.get("phase")).cloned().unwrap_or(Value::Null),
+        "transitions": status.and_then(|s| s.get("phaseTransitionTimestamps")).cloned().unwrap_or(json!([])),
+        "machineType": at("/machine/type"),
+        "cpuModel": at("/cpu/model"),
+        "sockets": at("/cpu/sockets"),
+        "threads": at("/cpu/threads"),
+        "firmware": at("/firmware"),
+        "qos": status.and_then(|s| s.get("qosClass")).cloned().unwrap_or(Value::Null),
+    })
+}
+
+/// The guest agent: KubeVirt's `AgentConnected` condition and `guestOSInfo`, and an
+/// interface whose address came from it. A node that says none of these has told the
+/// console nothing, which is not the same as there being no agent.
+pub fn guest_agent(instance: Option<&Value>) -> Value {
+    let status = instance.and_then(|v| v.get("status"));
+    let condition = status
+        .and_then(|s| s.get("conditions"))
+        .and_then(Value::as_array)
+        .and_then(|c| c.iter().find(|c| c.get("type").and_then(Value::as_str) == Some("AgentConnected")));
+    let os = status.and_then(|s| s.get("guestOSInfo")).filter(|o| o.as_object().is_some_and(|m| !m.is_empty()));
+    let from_agent = status
+        .and_then(|s| s.get("interfaces"))
+        .and_then(Value::as_array)
+        .is_some_and(|i| i.iter().any(|n| n.get("infoSource").and_then(Value::as_str).is_some_and(|s| s.contains("guest-agent"))));
+    let connected = match condition.and_then(|c| c.get("status")).and_then(Value::as_str) {
+        Some(s) => Some(s == "True"),
+        None if os.is_some() || from_agent => Some(true),
+        None => None,
+    };
+    json!({
+        "connected": connected,
+        "since": condition.and_then(|c| c.get("lastTransitionTime")).cloned().unwrap_or(Value::Null),
+        "reason": condition.and_then(|c| c.get("message").or_else(|| c.get("reason"))).cloned().unwrap_or(Value::Null),
+        "os": os.cloned().unwrap_or(Value::Null),
+        "addressesFromAgent": from_agent,
+    })
+}
+
 /// Each disk's source image, and its digest where the reference carries
 /// one.
 pub fn images(spec: &Value) -> Vec<Value> {
@@ -93,6 +142,32 @@ pub fn gaps(images: &[Value]) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_domain_and_the_agent_say_what_they_know() {
+        let vmi = json!({"spec": {"domain": {"machine": {"type": "q35"}, "cpu": {"model": "host-passthrough", "sockets": 2}, "firmware": {"bootloader": {"efi": {}}}}},
+            "status": {"phase": "Running", "qosClass": "Burstable", "phaseTransitionTimestamps": [{"phase": "Running", "phaseTransitionTimestamp": "2026-11-05T00:00:00Z"}],
+              "conditions": [{"type": "AgentConnected", "status": "True", "lastTransitionTime": "2026-11-05T00:01:00Z"}],
+              "guestOSInfo": {"prettyName": "Fedora 44", "kernelRelease": "6.17"}, "interfaces": []}});
+        let d = domain(None, Some(&vmi));
+        assert_eq!((d["machineType"].as_str(), d["cpuModel"].as_str(), d["sockets"].as_u64()), (Some("q35"), Some("host-passthrough"), Some(2)));
+        assert_eq!(d["transitions"][0]["phase"], "Running");
+        let g = guest_agent(Some(&vmi));
+        assert_eq!((g["connected"].as_bool(), g["os"]["prettyName"].as_str()), (Some(true), Some("Fedora 44")));
+        // A stopped machine still says what its definition asks for.
+        let vm = json!({"spec": {"template": {"spec": {"domain": {"machine": {"type": "pc"}}}}}, "status": {"printableStatus": "Stopped"}});
+        let d = domain(Some(&vm), None);
+        assert_eq!((d["machineType"].as_str(), d["printable"].as_str(), d["phase"].as_str()), (Some("pc"), Some("Stopped"), None));
+        // Said to be down, and not said at all, are different answers.
+        let down = json!({"status": {"conditions": [{"type": "AgentConnected", "status": "False", "message": "no socket"}]}});
+        assert_eq!((guest_agent(Some(&down))["connected"].as_bool(), guest_agent(Some(&down))["reason"].as_str()), (Some(false), Some("no socket")));
+        assert!(guest_agent(Some(&json!({"status": {}})))["connected"].is_null());
+        assert!(guest_agent(None)["connected"].is_null());
+        // An address that came from the agent says it is there.
+        let via = json!({"status": {"interfaces": [{"infoSource": "domain, guest-agent"}]}});
+        assert_eq!(guest_agent(Some(&via))["connected"].as_bool(), Some(true));
+    }
+
 
     #[test]
     fn the_instance_wins_and_last_applied_is_dropped() {

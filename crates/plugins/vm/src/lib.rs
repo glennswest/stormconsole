@@ -1052,6 +1052,8 @@ async fn detail(
         "policy": policy(&inner, &viewer, &ns, machine.as_ref(), instance.as_ref()).await,
         // The same questions the pod page answers (#69).
         "metadata": facts::metadata(machine.as_ref(), instance.as_ref()),
+        "domain": facts::domain(machine.as_ref(), instance.as_ref()),
+        "guestAgent": facts::guest_agent(instance.as_ref()),
         "images": images,
         "gaps": facts::gaps(&images),
         "yaml": yaml,

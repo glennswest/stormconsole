@@ -97,12 +97,24 @@ k POST /apis/apps/v1/namespaces/shop/replicasets "{\"apiVersion\":\"apps/v1\",\"
 RUID=$(curl -sk "$API/apis/apps/v1/namespaces/shop/replicasets/web-7d9f" -H "Authorization: Bearer $ADMIN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["metadata"]["uid"])')
 k POST /api/v1/namespaces/shop/pods "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",
   \"metadata\":{\"name\":\"web-1\",\"labels\":{\"app\":\"web\",\"tier\":\"frontend\"},
-    \"annotations\":{\"note\":\"the pod page check\"},
+    \"annotations\":{\"note\":\"the pod page check\",
+      \"storm.io/start-timing\":\"scheduled=2.0ms wait=1.1s image=900ms volumes=12ms sandbox=40ms sandbox/cni=30ms volume/data=12ms containers=80ms container/app=70ms report=3.0ms total=1.3s attempts=1 workers=1/4 pending=2\",
+      \"k8s.v1.cni.cncf.io/networks\":\"storage@net1, other/fast\",
+      \"k8s.v1.cni.cncf.io/network-status\":\"[{\\\"name\\\":\\\"shop/storage\\\",\\\"interface\\\":\\\"net1\\\",\\\"ips\\\":[\\\"10.5.0.2\\\"]}]\"},
     \"ownerReferences\":[{\"apiVersion\":\"apps/v1\",\"kind\":\"ReplicaSet\",\"name\":\"web-7d9f\",\"uid\":\"$RUID\",\"controller\":true}]},
   \"spec\":{\"nodeName\":\"n1\",\"serviceAccountName\":\"default\",\"priority\":0,
+    \"nodeSelector\":{\"disk\":\"nvme\"},
+    \"tolerations\":[{\"key\":\"dedicated\",\"operator\":\"Equal\",\"value\":\"web\",\"effect\":\"NoSchedule\"},{\"key\":\"gone\",\"operator\":\"Exists\",\"tolerationSeconds\":30}],
     \"initContainers\":[{\"name\":\"migrate\",\"image\":\"reg.g8.lo/shop/migrate:2.1\"}],
     \"containers\":[
       {\"name\":\"app\",\"image\":\"reg.g8.lo/shop/web:2.1\",\"ports\":[{\"name\":\"http\",\"containerPort\":8080}],
+       \"command\":[\"/bin/web\",\"--serve\"],\"args\":[\"--port\",\"8080\"],\"workingDir\":\"/srv/web\",
+       \"securityContext\":{\"runAsUser\":1000,\"readOnlyRootFilesystem\":true},
+       \"env\":[{\"name\":\"MODE\",\"value\":\"fast\"},
+         {\"name\":\"DB_PASSWORD\",\"valueFrom\":{\"secretKeyRef\":{\"name\":\"web-secret\",\"key\":\"password\"}}},
+         {\"name\":\"FLAG\",\"valueFrom\":{\"configMapKeyRef\":{\"name\":\"web-cfg\",\"key\":\"flag\"}}},
+         {\"name\":\"NODE\",\"valueFrom\":{\"fieldRef\":{\"fieldPath\":\"spec.nodeName\"}}}],
+       \"envFrom\":[{\"secretRef\":{\"name\":\"web-secret\"},\"prefix\":\"S_\"}],
        \"resources\":{\"requests\":{\"cpu\":\"100m\",\"memory\":\"64Mi\"},\"limits\":{\"memory\":\"256Mi\"}},
        \"livenessProbe\":{\"httpGet\":{\"path\":\"/healthz\",\"port\":8080},\"periodSeconds\":5},
        \"readinessProbe\":{\"tcpSocket\":{\"port\":\"http\"},\"failureThreshold\":1},
@@ -111,6 +123,14 @@ k POST /api/v1/namespaces/shop/pods "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",
     \"volumes\":[{\"name\":\"data\",\"persistentVolumeClaim\":{\"claimName\":\"web-data\"}},
                  {\"name\":\"cfg\",\"configMap\":{\"name\":\"web-cfg\"}},{\"name\":\"scratch\",\"emptyDir\":{}}],
     \"dnsPolicy\":\"ClusterFirst\",\"dnsConfig\":{\"searches\":[\"shop.svc.cluster.local\"],\"options\":[{\"name\":\"ndots\",\"value\":\"2\"}]}}}"
+say "the Secret behind its env, whose value must never reach the page, and a network in the project (#167)"
+k POST /api/v1/namespaces/shop/secrets '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"web-secret"},"stringData":{"password":"never-on-the-page-167"},"data":{"password":"bmV2ZXItb24tdGhlLXBhZ2UtMTY3"}}'
+k POST /apis/apiextensions.k8s.io/v1/customresourcedefinitions '{"apiVersion":"apiextensions.k8s.io/v1","kind":"CustomResourceDefinition","metadata":{"name":"network-attachment-definitions.k8s.cni.cncf.io"},
+  "spec":{"group":"k8s.cni.cncf.io","scope":"Namespaced","names":{"plural":"network-attachment-definitions","singular":"network-attachment-definition","kind":"NetworkAttachmentDefinition","shortNames":["net-attach-def"]},
+  "versions":[{"name":"v1","served":true,"storage":true,"schema":{"openAPIV3Schema":{"type":"object","x-kubernetes-preserve-unknown-fields":true}}}]}}'
+sleep 1
+k POST /apis/k8s.cni.cncf.io/v1/namespaces/shop/network-attachment-definitions '{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"storage"},"spec":{"config":"{\"cniVersion\":\"1.0.0\",\"type\":\"macvlan\"}"}}'
+
 say "a bound claim behind the pod's data volume, and the kubelet's events (#124)"
 k POST /api/v1/persistentvolumes '{"apiVersion":"v1","kind":"PersistentVolume","metadata":{"name":"pvc-web-data"},
   "spec":{"capacity":{"storage":"10Gi"},"accessModes":["ReadWriteOnce"],"persistentVolumeReclaimPolicy":"Delete","storageClassName":"stormblock",

@@ -180,6 +180,11 @@ pub fn containers(pod: &Value) -> Vec<Value> {
                 "ports": ports,
                 "command": c.get("command").cloned().unwrap_or(Value::Null),
                 "args": c.get("args").cloned().unwrap_or(Value::Null),
+                "workingDir": c.get("workingDir").cloned().unwrap_or(Value::Null),
+                "env": env_of(c),
+                "envFrom": env_from_of(c),
+                "mounts": mounts_of(c),
+                "securityContext": c.get("securityContext").cloned().unwrap_or(Value::Null),
                 "resources": c.get("resources").cloned().unwrap_or(json!({})),
                 "probes": probes_of(c),
                 "ready": st.and_then(|v| v.get("ready")).and_then(Value::as_bool).unwrap_or(false),
@@ -193,6 +198,139 @@ pub fn containers(pod: &Value) -> Vec<Value> {
         }
     }
     out
+}
+
+/// A container's environment, as `describe` prints it. A value in the spec is shown:
+/// it is the pod's own text, on its YAML tab too. One from a Secret or a ConfigMap is
+/// shown as the reference and never fetched, so a secret's value is not on this page.
+pub fn env_of(container: &Value) -> Vec<Value> {
+    let mut out = Vec::new();
+    for e in container.get("env").and_then(Value::as_array).into_iter().flatten() {
+        let name = s(e, "/name");
+        let from = e.get("valueFrom");
+        let reference = |ptr: &str| from.and_then(|f| f.pointer(ptr));
+        let row = if let Some(r) = reference("/secretKeyRef") {
+            json!({"name": name, "from": "secret", "ref": s(r, "/name"), "key": s(r, "/key"), "optional": r.get("optional")})
+        } else if let Some(r) = reference("/configMapKeyRef") {
+            json!({"name": name, "from": "configMap", "ref": s(r, "/name"), "key": s(r, "/key"), "optional": r.get("optional")})
+        } else if let Some(r) = reference("/fieldRef") {
+            json!({"name": name, "from": "field", "ref": s(r, "/fieldPath")})
+        } else if let Some(r) = reference("/resourceFieldRef") {
+            json!({"name": name, "from": "resource", "ref": s(r, "/resource")})
+        } else {
+            json!({"name": name, "value": e.get("value").and_then(Value::as_str).unwrap_or("")})
+        };
+        out.push(row);
+    }
+    out
+}
+
+/// Whole Secrets and ConfigMaps a container takes its environment from.
+pub fn env_from_of(container: &Value) -> Vec<Value> {
+    let mut out = Vec::new();
+    for e in container.get("envFrom").and_then(Value::as_array).into_iter().flatten() {
+        let prefix = s(e, "/prefix");
+        if let Some(r) = e.get("secretRef") {
+            out.push(json!({"from": "secret", "ref": s(r, "/name"), "prefix": prefix}));
+        } else if let Some(r) = e.get("configMapRef") {
+            out.push(json!({"from": "configMap", "ref": s(r, "/name"), "prefix": prefix}));
+        }
+    }
+    out
+}
+
+/// Where each volume appears in a container.
+pub fn mounts_of(container: &Value) -> Vec<Value> {
+    container
+        .get("volumeMounts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|m| {
+            json!({
+                "volume": s(m, "/name"),
+                "path": s(m, "/mountPath"),
+                "readOnly": m.get("readOnly").and_then(Value::as_bool).unwrap_or(false),
+                "subPath": s(m, "/subPath"),
+                "propagation": s(m, "/mountPropagation"),
+            })
+        })
+        .collect()
+}
+
+/// The kubelet's account of the start: `storm.io/start-timing`, `name=duration` pairs
+/// (rustkube-node `start_timing.rs`). The phases are one list; `sandbox/cni`,
+/// `volume/data` and the like say what is inside them; `workers=1/4` and its like are
+/// counts of what it queued behind. A word it does not know is kept, as a step.
+pub fn start_timing(pod: &Value) -> Value {
+    let Some(raw) = pod.pointer("/metadata/annotations/storm.io~1start-timing").and_then(Value::as_str) else {
+        return Value::Null;
+    };
+    let (mut phases, mut steps, mut counts) = (Vec::new(), Vec::new(), Vec::new());
+    for pair in raw.split_whitespace() {
+        let Some((k, v)) = pair.split_once('=') else { continue };
+        let row = json!({"name": k, "value": v});
+        if matches!(k, "attempts" | "workers" | "pending") {
+            counts.push(row);
+        } else if k.contains('/') {
+            steps.push(row);
+        } else {
+            phases.push(row);
+        }
+    }
+    json!({"raw": raw, "phases": phases, "steps": steps, "counts": counts})
+}
+
+/// The networks a pod asked to be attached to, beyond the default, and whether each
+/// exists: `k8s.v1.cni.cncf.io/networks` is `a,other/b` or a JSON list of
+/// `{name, namespace, interface}`. A network in the pod's own project is the project's;
+/// one named from another is said so. What it got is `network-status`, joined by name.
+pub fn attachments(snap: &Snapshot, ns: &str, pod: &Value) -> Vec<Value> {
+    let Some(raw) = pod.pointer("/metadata/annotations/k8s.v1.cni.cncf.io~1networks").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    let asked: Vec<(String, String, String)> = match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Array(a)) => a
+            .iter()
+            .map(|n| {
+                let namespace = s(n, "/namespace");
+                (if namespace.is_empty() { ns.to_string() } else { namespace.to_string() }, s(n, "/name").to_string(), s(n, "/interface").to_string())
+            })
+            .collect(),
+        _ => raw
+            .split(',')
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(|n| {
+                // `ns/name@interface`, ns and interface optional.
+                let (n, iface) = n.split_once('@').unwrap_or((n, ""));
+                let (namespace, name) = n.split_once('/').unwrap_or((ns, n));
+                (namespace.to_string(), name.to_string(), iface.to_string())
+            })
+            .collect(),
+    };
+    let status = network_status(pod);
+    let got = status.as_array().cloned().unwrap_or_default();
+    asked
+        .into_iter()
+        .map(|(namespace, name, iface)| {
+            let key = format!("{namespace}/{name}");
+            let nad = snap.get("nad").and_then(|m| m.get(&key));
+            let config = nad.and_then(|n| n.pointer("/spec/config")).and_then(Value::as_str).and_then(|c| serde_json::from_str::<Value>(c).ok());
+            let on = got.iter().find(|g| s(g, "/name") == key || s(g, "/name") == name);
+            json!({
+                "name": name,
+                "namespace": namespace,
+                "inProject": namespace == ns,
+                "interface": on.map(|g| s(g, "/interface").to_string()).filter(|i| !i.is_empty()).unwrap_or(iface),
+                "exists": nad.is_some(),
+                "type": config.as_ref().map(|c| s(c, "/type").to_string()).unwrap_or_default(),
+                "id": nad.map(|_| format!("k8s:nad:{key}")),
+                "ips": on.and_then(|g| g.get("ips")).cloned().unwrap_or(json!([])),
+                "attached": on.is_some(),
+            })
+        })
+        .collect()
 }
 
 /// The pod's addresses, every one of them.
@@ -418,6 +556,10 @@ pub fn metadata(pod: &Value) -> Value {
         "priorityClassName": pod.pointer("/spec/priorityClassName").cloned().unwrap_or(Value::Null),
         "restartPolicy": pod.pointer("/spec/restartPolicy").and_then(Value::as_str).unwrap_or("Always"),
         "qosClass": qos_class(pod),
+        "nodeSelector": pod.pointer("/spec/nodeSelector").cloned().unwrap_or(json!({})),
+        "tolerations": pod.pointer("/spec/tolerations").cloned().unwrap_or(json!([])),
+        "dnsPolicy": pod.pointer("/spec/dnsPolicy").cloned().unwrap_or(Value::Null),
+        "startTiming": start_timing(pod),
         "startTime": pod.pointer("/status/startTime").cloned().unwrap_or(Value::Null),
         "phase": s(pod, "/status/phase"),
         "reason": pod.pointer("/status/reason").cloned().unwrap_or(Value::Null),
@@ -656,6 +798,7 @@ pub fn detail(snap: &Snapshot, ns: &str, pod: &Value) -> Value {
             "services": services(snap, ns, pod),
             "cilium": cilium(snap, &key),
             "interfaces": network_status(pod),
+            "attachments": attachments(snap, ns, pod),
         },
         "volumes": volumes(snap, ns, pod),
         "gaps": gaps(pod, &containers),
@@ -777,6 +920,64 @@ fn parse_labels(s: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_secrets_value_is_a_reference_and_nothing_else() {
+        let c = json!({"env": [
+            {"name": "MODE", "value": "fast"},
+            {"name": "PASSWORD", "valueFrom": {"secretKeyRef": {"name": "db", "key": "password"}}},
+            {"name": "CFG", "valueFrom": {"configMapKeyRef": {"name": "conf", "key": "a", "optional": true}}},
+            {"name": "NODE", "valueFrom": {"fieldRef": {"fieldPath": "spec.nodeName"}}},
+            {"name": "CPUS", "valueFrom": {"resourceFieldRef": {"resource": "limits.cpu"}}},
+        ], "envFrom": [{"secretRef": {"name": "all"}, "prefix": "X_"}, {"configMapRef": {"name": "conf"}}],
+           "volumeMounts": [{"name": "data", "mountPath": "/data", "readOnly": true, "subPath": "a"}]});
+        let e = env_of(&c);
+        assert_eq!(e[0]["value"], "fast");
+        assert_eq!((e[1]["from"].as_str(), e[1]["ref"].as_str(), e[1]["key"].as_str()), (Some("secret"), Some("db"), Some("password")));
+        assert!(e[1].get("value").is_none(), "no value for a reference");
+        assert_eq!((e[2]["from"].as_str(), e[2]["optional"].as_bool()), (Some("configMap"), Some(true)));
+        assert_eq!(e[3]["ref"], "spec.nodeName");
+        assert_eq!(e[4]["from"], "resource");
+        let f = env_from_of(&c);
+        assert_eq!((f[0]["from"].as_str(), f[0]["prefix"].as_str()), (Some("secret"), Some("X_")));
+        assert_eq!(f[1]["from"], "configMap");
+        let m = mounts_of(&c);
+        assert_eq!((m[0]["path"].as_str(), m[0]["readOnly"].as_bool(), m[0]["subPath"].as_str()), (Some("/data"), Some(true), Some("a")));
+        assert!(env_of(&json!({})).is_empty() && mounts_of(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn the_kubelets_start_timing_reads_as_its_phases() {
+        let pod = json!({"metadata": {"annotations": {"storm.io/start-timing":
+            "scheduled=2.0ms wait=1.1s image=900ms sandbox=40ms sandbox/cni=30ms volume/data=12ms total=1.3s attempts=1 workers=1/4 pending=2 odd"}}});
+        let t = start_timing(&pod);
+        let names = |k: &str| t[k].as_array().unwrap().iter().map(|r| r["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(names("phases"), ["scheduled", "wait", "image", "sandbox", "total"]);
+        assert_eq!(names("steps"), ["sandbox/cni", "volume/data"]);
+        assert_eq!(names("counts"), ["attempts", "workers", "pending"]);
+        assert_eq!(t["phases"][4]["value"], "1.3s");
+        assert_eq!(start_timing(&json!({})), Value::Null, "a pod started before it, or another kubelet");
+    }
+
+    #[test]
+    fn attachments_say_where_each_network_is() {
+        let mut snap = Snapshot::default();
+        let mut nads = HashMap::new();
+        nads.insert("shop/storage".to_string(), json!({"spec": {"config": "{\"type\":\"macvlan\"}"}}));
+        snap.insert("nad", nads);
+        let pod = |networks: &str, status: &str| json!({"metadata": {"annotations": {
+            "k8s.v1.cni.cncf.io/networks": networks, "k8s.v1.cni.cncf.io/network-status": status}}});
+        let a = attachments(&snap, "shop", &pod("storage@net1, other/fast", r#"[{"name":"shop/storage","interface":"net1","ips":["10.5.0.2"]}]"#));
+        assert_eq!(a.len(), 2);
+        assert_eq!((a[0]["namespace"].as_str(), a[0]["inProject"].as_bool(), a[0]["exists"].as_bool()), (Some("shop"), Some(true), Some(true)));
+        assert_eq!((a[0]["type"].as_str(), a[0]["interface"].as_str(), a[0]["attached"].as_bool()), (Some("macvlan"), Some("net1"), Some(true)));
+        assert_eq!(a[0]["ips"][0], "10.5.0.2");
+        assert_eq!((a[1]["namespace"].as_str(), a[1]["inProject"].as_bool(), a[1]["exists"].as_bool()), (Some("other"), Some(false), Some(false)));
+        let j = attachments(&snap, "shop", &pod(r#"[{"name":"storage","interface":"data0"}]"#, "[]"));
+        assert_eq!((j[0]["interface"].as_str(), j[0]["attached"].as_bool()), (Some("data0"), Some(false)));
+        assert!(attachments(&snap, "shop", &json!({})).is_empty());
+    }
+
 
     fn snap_with(kind: &'static str, items: Vec<(&str, Value)>) -> Snapshot {
         let mut snap = Snapshot::new();

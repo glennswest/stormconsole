@@ -480,9 +480,43 @@
             <dt>Memory</dt><dd class="mono">{vm.memory || '—'}</dd>
             <dt>Definition</dt>
             <dd>{vm.hasDefinition ? 'a VirtualMachine defines it' : 'an instance applied on its own'}</dd>
+            {#if vm.domain?.printable}<dt>Status</dt><dd>{vm.domain.printable}</dd>{/if}
+            {#if vm.domain?.machineType}<dt>Machine type</dt><dd class="mono">{vm.domain.machineType}</dd>{/if}
+            {#if vm.domain?.cpuModel}<dt>CPU model</dt><dd class="mono">{vm.domain.cpuModel}</dd>{/if}
+            {#if vm.domain?.sockets}<dt>Sockets</dt><dd class="mono">{vm.domain.sockets}</dd>{/if}
+            {#if vm.domain?.firmware?.bootloader}<dt>Firmware</dt><dd class="mono">{Object.keys(vm.domain.firmware.bootloader).join(', ')}</dd>{/if}
+            {#if vm.domain?.qos}<dt>QoS</dt><dd>{vm.domain.qos}</dd>{/if}
           </dl>
           {#if vm.reason}
             <p class="reason">{vm.reason}</p>
+          {/if}
+          {#if vm.domain?.transitions?.length}
+            <h3 class="sub">How it got here</h3>
+            <ul class="rows">
+              {#each vm.domain.transitions as t, i (i)}
+                <li><span>{t.phase}</span> <span class="dim" title={t.phaseTransitionTimestamp}>{t.phaseTransitionTimestamp ? `${ago(t.phaseTransitionTimestamp)} ago` : ''}</span></li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+
+        <div class="card" aria-label="Guest agent">
+          <h2>Guest agent</h2>
+          {#if !vm.running}
+            <p class="none">The machine is not running.</p>
+          {:else if vm.guestAgent?.connected === null || vm.guestAgent?.connected === undefined}
+            <p class="none">This node does not report the guest agent, so whether one is running is not known here (rustkube-node#322).</p>
+          {:else}
+            <p class:ok={vm.guestAgent.connected} class:warn={!vm.guestAgent.connected}>
+              {vm.guestAgent.connected ? 'Connected' : 'Not connected'}{#if vm.guestAgent.since} <span class="dim" title={vm.guestAgent.since}>{ago(vm.guestAgent.since)} ago</span>{/if}
+            </p>
+            {#if vm.guestAgent.reason && !vm.guestAgent.connected}<p class="reason">{vm.guestAgent.reason}</p>{/if}
+            {#if vm.guestAgent.addressesFromAgent}<p class="dim">Addresses on this page come from it.</p>{/if}
+            {#if vm.guestAgent.os}
+              <dl>
+                {#each Object.entries(vm.guestAgent.os).filter(([, v]) => v) as [k, v] (k)}<dt>{k}</dt><dd class="mono">{v}</dd>{/each}
+              </dl>
+            {/if}
           {/if}
         </div>
 
@@ -896,6 +930,9 @@
     color: var(--text-faint);
   }
   .note.warn { color: var(--warn-strong); }
+  h3.sub { font-size: var(--sc-t-meta); color: var(--text-faint); margin: 10px 0 4px; }
+  p.ok { color: var(--ok); }
+  p.warn { color: var(--warn-strong); }
 
   .card.wide { grid-column: 1 / -1; }
   table.nets { width: 100%; border-collapse: collapse; }

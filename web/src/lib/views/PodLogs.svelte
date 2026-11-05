@@ -11,7 +11,7 @@
   import { onDestroy, untrack } from 'svelte'
   import { ago } from '../ui/time.js'
 
-  let { ns, name, containers = [], keep = 5, initial = '' } = $props()
+  let { ns, name, containers = [], keep = 5, initial = '', initialSource = 'current' } = $props()
 
   const MAX_LINES = 5000
   const TAIL = 1000
@@ -21,7 +21,7 @@
   let container = $state(
     untrack(() => initial || containers.find((c) => c.role === 'container')?.name || containers[0]?.name || '')
   )
-  let source = $state('current')
+  let source = $state(untrack(() => initialSource))
   let follow = $state(true)
   let paused = $state(false)
   let wrap = $state(true)
