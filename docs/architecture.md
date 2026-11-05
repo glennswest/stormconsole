@@ -27,7 +27,7 @@ not an installer; a console that is only an installer is abandoned the day
 the cluster exists.
 
 The *shape* is the familiar operator-console one: left navigation grouped
-by domain, a namespace (project) selector scoping the workload pages, list
+by domain, a project selector scoping the workload pages, list
 pages with filters, detail pages with tabs (Details / YAML / Events /
 Logs), an Overview that shows cluster health at a glance, and a plugin
 mechanism so components ship their own console surface instead of the
@@ -225,7 +225,7 @@ Svelte 5 + Vite, `stormview` npm package, embedded in the binary
 (rust-embed) like stormd's SPA — no node at runtime. The app shell owns:
 hash router, login (stormview `LoginPanel`, session cookies), theme picker,
 nav rendered from the nav feed, and a **Project selector** in the masthead
-(the viewer's projects, system namespaces apart for administrators; the
+(the viewer's projects, the system ones apart; the
 selection scopes namespaced views, travels in the URL as `?ns=` and
 persists per browser — §Projects).
 
@@ -536,8 +536,8 @@ is a thin typed layer over the standard REST paths.
   instantly and emits the plugin's components slice (pods and workloads
   with `belongs_to` namespace edges, `has_many` pod edges, health derived
   from status/conditions). ReplicaSets are not watched.
-- **Namespace views**: the Project selector scopes every namespaced page; a
-  namespace's page (`#/k8s/ns/<name>`) is the project's — inventory whose
+- **Project views**: the Project selector scopes every namespaced page; a
+  project's page (`#/k8s/ns/<name>`, the API's word in the path) — inventory whose
   every count is a link, quota, limit ranges, events, YAML, and the
   Project tab (§Projects).
 - **Actions** (as the viewer): delete a pod, delete any object through
@@ -1388,9 +1388,10 @@ namespace's NetworkPolicies and CiliumNetworkPolicies and the clusterwide
 ones, read as the viewer). When stormvm#16 lands and machines become
 endpoints, the exception disappears on its own.
 
-**System namespaces** — `default`, `openshift`, `kube-*`, `openshift-*`,
-and `[kubernetes] system_namespaces` (default `["cilium"]`, the node's
-services) — are never a project: not in the viewer's list, not a create
+**System projects** — `default`, `openshift`, `kube-*`, `openshift-*`, the
+platform's own (`storm-*`, `cilium`, `cilium-secrets`) and `[kubernetes]
+system_namespaces` (default none, a trailing `*` matches a prefix) — are
+marked on the one Projects page: not in the viewer's list, not a create
 target (`/apply` refuses them except for `admin`, VM create always), not
 deleted or isolated from the console. **Every create targets a project**:
 `Creator.project` makes the dialog show a project picker with New project
@@ -1401,9 +1402,9 @@ gone, so a New project choice and its typed name stay (#56). YAML goes to
 `/apply?project=`, and a namespaced document that names no namespace goes
 there — never to `default`, which is refused with a sentence when nothing
 was chosen. The masthead selector is a **Project** selector. Lists always
-show the Namespace column on namespaced rows and group by project when they
+show the Project column on namespaced rows and group by project when they
 span several. The **Cluster** admin section holds what no project owns —
-Nodes, all Namespaces, PersistentVolumes, StorageClasses, CRDs,
+Nodes, PersistentVolumes, StorageClasses, CRDs,
 ClusterRoles, all now watched (optional kinds). The fleet's "Node services"
 left the navigator: a node's daemons are on its page, and to the cluster
 they are the mirror pods in kube-system. A claim Pending under a class with

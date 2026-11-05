@@ -78,7 +78,7 @@ them.
   **Isolate** (NetworkPolicies), delete. Every create asks which project;
   nothing lands in `default`.
 - **Kubernetes.** 23 kinds watched: workloads, services, claims, policies,
-  Cilium; the Cluster section (nodes, namespaces, PVs, storage classes,
+  Cilium; the Cluster section (nodes, PVs, storage classes,
   CRDs, cluster roles). YAML import and edit. All **as the viewer** — RBAC
   decides.
 - **Virtual machines.** KubeVirt objects. Create from a golden, lifecycle
