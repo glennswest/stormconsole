@@ -1085,6 +1085,38 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### Offered drives (#153)
+
+The other kind of format. `#/drives/format` (#165) is stormdrive's low-level one:
+block size and PI, hours long, many drives. This one is the engine's: it makes a
+drive already open in the engine into a slab, a single drive at a time.
+stormblock#154, the owner's decision 3: "on auto format, no, since we may be doing
+a test, and a power off could destroy a drive".
+
+- **What is shown.** `GET /api/v1/drives` carries `offer` (`ours {slabs, volumes}`,
+  `blank`, `foreign {holds}`, and nothing for a drive opened at start) and `confirm`,
+  the word a format needs: the serial, else the path. The `sb:drive:` row carries them
+  as metrics, and the page lists every blank or foreign one above the drive map, so an
+  engine's drive that no stormdrive reports is shown too. A picked drive joins on by
+  serial, then path, on this node only: another node's engine is not asked.
+- **Two locks, both on the server.** The console's storage gate (#82) asks the
+  apiserver as the viewer, the verb the engine will ask (`destroy` on `drives`, #382),
+  and wants the word in `X-Storm-Confirm`. The engine reviews the same bearer and wants
+  the word in the body. Without it, it answers 412 naming the drive, what goes and the
+  power-cut risk, and touches nothing: that is how the page gets the sentence, so the
+  gate logs a line for reading the risk as well as for the format. The engine's log
+  says "a person formats a drive" only for a format.
+- **The action.** The Format action is on the `sb:drive:` row, so the feed strips it
+  for anyone refused, and no drive of ours or system disk carries it. A row's generic
+  button goes through `api.js`: the gate's word, then the risk, then the format.
+- **A rebalance after.** A new slab fills only as writes land on it, and nothing moves
+  extents by itself (decision 3). After a format the page plans one (`POST
+  /api/v1/slabs/rebalance {dry_run: true}`), says what would move, runs it on a press
+  and follows `GET`; `DELETE` stops it (destructive at the engine, so behind the gate).
+  The dry run and the run are ordinary, on the console's engine token.
+- **Slow formats.** The proxy gives up at 30 s and the format goes on; the page says
+  so, and the offered list is the engine's answer.
+
 ### Drives at rack scale (#32)
 
  160 drives a node, ~1,600 a rack. The

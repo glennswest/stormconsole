@@ -1890,11 +1890,11 @@ serial, else its path). `POST /drives/{id}/format {confirm, role?}`: 412 `{error
 confirm, holds}` without the word, 409 for another format or ours or the system
 disk. The engine reviews it as verb **`destroy`** on resource `drives` (#382).
 `POST /slabs/rebalance {dry_run}` (ordinary), `GET` progress, `DELETE` stops.
-- [ ] storage guard: the format is `destroy` on `drives`, as the engine asks, so
+- [x] storage guard: the format is `destroy` on `drives`, as the engine asks, so
       it goes as the viewer; stopping a rebalance says what it is
-- [ ] sb plugin: `offer`, `holds`, `confirm`, `serial`, `path` on `sb:drive:`, and
+- [x] sb plugin: `offer`, `holds`, `confirm`, `serial`, `path` on `sb:drive:`, and
       a Format action (none on a system disk or a drive of ours)
-- [ ] Drives page: offered drives band and filter, the offer on a picked drive;
+- [x] Drives page: offered drives band and filter, the offer on a picked drive;
       Format shows the 412's risk, takes the typed serial, one at a time; then a
       rebalance: dry run, confirm, progress. `web/src/lib/driveoffer.js` + test
 - [ ] `deploy/verify-drive-offer.sh` on a real engine and apiserver + Chromium;

@@ -3,6 +3,20 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Offered drives, formatted only by a person (#153)
+- **feat:** the Drives page lists the drives this node's engine holds and is not
+  using (stormblock#154): blank, or foreign with what it holds. A picked drive and
+  the engine's own rows say the same, and "Offered" is a filter.
+- **feat:** Format as a slab shows the engine's risk (what goes, and that a power
+  cut leaves the drive unusable) and takes the drive's serial, typed, before
+  anything is sent. One at a time, storage-admins only, as the viewer. Then a
+  rebalance onto it: a dry run, then the real run with its progress.
+- **fix:** the storage guard treats this format as destructive, asked as the engine
+  asks (`destroy` on `drives`); before, it would have gone on the console's own token
+  and been refused. Stopping a rebalance says that, not "delete a slab".
+- **fix:** the engine's row for a drive no longer counts as a second drive on the
+  Drives page and in the navigator's count.
+
 ### 2026-11-05 — The other style is VMFocus (#151)
 - **fix:** the masthead's second style is **VMFocus** (id `vmfocus`), not a
   trademark name. A choice stored as `esxi` opens in it and is saved under the
