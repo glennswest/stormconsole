@@ -250,8 +250,8 @@ pub fn build(volumes: &[Value], catalog: &[Value], hosts: &[Value]) -> Holdings 
                 digest: item.and_then(|i| field(i, &["digest"])).unwrap_or_default(),
                 kind: item.and_then(|i| field(i, &["kind"])).or_else(|| field(v, &["kind"])).unwrap_or_default(),
                 namespace: field(v, &["namespace"]).unwrap_or_default(),
-                virtual_size_bytes: u64_field(v, &["virtual_size_bytes"]).unwrap_or(0),
-                allocated_bytes: u64_field(v, &["allocated_bytes"]).unwrap_or(0),
+                virtual_size_bytes: u64_field(v, "virtual_size_bytes").unwrap_or(0),
+                allocated_bytes: u64_field(v, "allocated_bytes").unwrap_or(0),
                 releases: item
                     .and_then(|i| i.get("releases"))
                     .and_then(Value::as_array)
@@ -302,8 +302,8 @@ pub fn build(volumes: &[Value], catalog: &[Value], hosts: &[Value]) -> Holdings 
         let c = Clone_ {
             holder: holder(v, &m),
             name: field(v, &["name"]).unwrap_or_else(|| id.clone()),
-            allocated_bytes: u64_field(v, &["allocated_bytes"]).unwrap_or(0),
-            virtual_size_bytes: u64_field(v, &["virtual_size_bytes"]).unwrap_or(0),
+            allocated_bytes: u64_field(v, "allocated_bytes").unwrap_or(0),
+            virtual_size_bytes: u64_field(v, "virtual_size_bytes").unwrap_or(0),
             in_use: v.get("in_use").and_then(Value::as_bool).unwrap_or(false),
             via,
             id,

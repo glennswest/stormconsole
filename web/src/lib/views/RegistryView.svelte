@@ -99,14 +99,13 @@
           {#each r.images as i (i.id)}
             <div class="image">
               <div class="head">
-                <strong class="mono">{i.tag || '(no tag)'}</strong>
+                <strong class="mono" title="the engine's volume: {i.name}">{i.tag || '(no tag)'}</strong>
                 <span class="tagk">{imageKind(i.kind)}</span>
                 {#if i.digest}<span class="mono dim" title={i.digest}>{shortDigest(i.digest)}</span> <CopyButton value={i.digest} />{/if}
                 <span class="dim small">{bytes(i.virtual_size_bytes)}, {bytes(i.allocated_bytes)} used</span>
                 {#if i.releases?.length}<span class="small">in {i.releases.join(', ')}</span>{/if}
-                {#if i.base}<span class="dim small">built on {i.base}</span>{/if}
+                {#if i.base}<span class="dim small">built on {i.base.replace(/^golden-/, '')}</span>{/if}
                 {#if i.built_on_it}<span class="dim small">{i.built_on_it} built on it</span>{/if}
-                <span class="dim small volume" title="the engine's volume">{i.name}</span>
               </div>
               {#if i.clones.length}
                 <table>
@@ -183,7 +182,6 @@
   h2 { font-size: var(--sc-t-body); margin: 0; font-weight: 600; }
   .image { border-top: 1px solid var(--sc-hairline); padding: 8px 0; min-width: 0; }
   .head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
-  .volume { margin-left: auto; }
   .tagk { font-size: var(--sc-t-eyebrow); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); white-space: nowrap; }
   .none { margin: 0; }
   .table-wrap { overflow-x: auto; }
