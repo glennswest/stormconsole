@@ -1780,16 +1780,31 @@ protection}` is all-or-nothing, 409 `{error}` saying each refusal; a drive's
 history `log[].action` keeps every run. The record is stormdrive's, persisted,
 so the console holds no state. Formats stay under #82 (storage-admin, as the
 viewer), not the console's credential the issue's first text named.
-- [ ] `GET /api/plugins/drive/formats`, every node: the joined record, why a
+- [x] `GET /api/plugins/drive/formats`, every node: the joined record, why a
       drive is refused; `GET …/formats/history?node=&id=`
-- [ ] `POST /api/plugins/drive/format`: guarded (#82), a typed phrase checked
+- [x] `POST /api/plugins/drive/format`: guarded (#82), a typed phrase checked
       on the server, one all-or-nothing request per node and format, as the
       viewer; who and which drives logged
-- [ ] `#/drives/format`: drives by node, refusals, block size and PI, plan and
+- [x] `#/drives/format`: drives by node, refusals, block size and PI, plan and
       fallbacks; confirmation naming drives; live percent/elapsed/left; result
       read back; controller resets; history. `driveformat.js` + test
-- [ ] `deploy/verify-drive-format.sh`; docs, changelog, dist
-- [ ] Say on the issue what a node's console needs to let anyone format
+- [x] `deploy/verify-drive-format.sh`; docs, changelog, dist
+- [ ] A node's console has no sign-in with a kubernetes identity: owner's decision
+- Verified with `sc-build deploy/verify-drive-format.sh` (0 failed): real
+  apiserver and storage roles, stand-in stormdrives in v0.39.0's shapes on a
+  clock, Chromium. viewer, no-identity admin and nobody refused, none of it
+  reaching a stormdrive; refusals said; plan and fallbacks; the typed phrase on
+  the server; one request for three drives carrying alice's bearer; percent,
+  elapsed, left; a reload and a console restart mid-run; read-back, fallback,
+  mismatch; history; another node. Screenshots read. Also `verify-storage-guard.sh`
+  and the default `sc-build`. The walk found two page bugs (guard's flat answer,
+  the phrase's layout)
+- Not done on a real drive or real stormdrive: no drive to format on a build VM
+- **Open: who can start one on a real node.** A 12.61 console has auth off or the
+  node bearer, neither a kubernetes identity, so #82 refuses every format there
+  ("nobody is signed in"). `install_token_file` would give one (stormcos#256) and
+  turns auth on, which waits on stormcentral#807. Following a format works
+  regardless, however it was started. Asked on the issue
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
