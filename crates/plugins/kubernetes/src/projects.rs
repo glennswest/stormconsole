@@ -632,7 +632,7 @@ mod tests {
             " Except 2 machines — vm1 and vm2 — behind the hypervisor's NAT, which isolation does \
              not reach (stormvm#16)"
         );
-        let one = outside_of(&[vmi("lan", "bridge")], None);
+        let one = outside_of(&[vmi("lan", "host-bridge")], None);
         assert_eq!(exception(&one), " Except 1 machine — lan — outside the pod network, which isolation does not reach");
         // Once stormvm#16 lands the exception disappears on its own.
         assert_eq!(exception(&outside_of(&[vmi("ok", "passt")], None)), "");

@@ -1005,8 +1005,10 @@ read the way stormvm reads it: `storm.io/bridge.<iface>`, then
 name — `pod` with the binding on the interface (`masquerade` by default,
 `bridge`, `passt`) or `multus`. What the node *did* is `status.interfaces[]`
 as rustkube-node writes it: `mac`, `ipAddress`/`ipAddresses` (guest agent,
-else the node's neighbour table) and `storm.io/binding` — `bridge` for a
-tap on a real bridge, `user` for qemu's NAT inside the hypervisor. Each row
+else the node's neighbour table) and `storm.io/binding` — `host-bridge` for a
+tap on one of the node's bridges, `bridge`, `masquerade` or `passt` for the pod network, as stormvm
+names them (a node from before `host-bridge` wrote `bridge` for both, and then what was asked for
+tells them apart, #76), and `user` for qemu's NAT inside the hypervisor. Each row
 carries a `reach` verdict (`reachable`, `nat`, `none` = no address yet,
 `pending` = not reported, `stopped`) and a sentence. A spec asking for the
 pod network that runs as `user` says so and names stormvm#16, so "pod" never
