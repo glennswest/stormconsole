@@ -28,9 +28,9 @@ walk('one node', async (t) => {
   t.check(!/stormstorage/.test(nodes), 'and no second row for the engine')
   await t.shot(page, 'onenode-nodes')
 
-  t.check(await t.open(page, '#/drives', /SN4/), 'Drives shows this node\'s')
-  const drives = await none('Drives')
-  t.check(/\b5\b/.test(drives) && !/\b6 nodes\b/.test(drives), '5 drives, on this node', drives.slice(0, 300))
+  t.check(await t.open(page, '#/drives', /5 drives\s+1 node/), 'Drives: 5 drives on 1 node')
+  await none('Drives')
+  await t.shot(page, 'onenode-drives')
 
   t.check(await t.open(page, '#/logs', /mine:/), 'Logs shows this node\'s lines')
   await t.pause(2500)
