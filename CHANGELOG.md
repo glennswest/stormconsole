@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The other style is VMFocus (#151)
+- **fix:** the masthead's second style is **VMFocus** (id `vmfocus`), not a
+  trademark name. A choice stored as `esxi` opens in it and is saved under the
+  new id. console.css's comments describe both layouts in their own terms.
+
 ### 2026-11-05 — The node's record of itself (#121)
 - **feat:** `GET /api/v1/history`: system-data read-only, authenticated like the
   rest of :9094 — `/boots`, `/boots/{id}`, `/boots/{id}/kernel` (`?tail=`,

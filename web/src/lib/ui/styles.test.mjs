@@ -5,12 +5,14 @@ import { STYLES, DEFAULT_STYLE, styleId } from './styles.js'
 assert.equal(DEFAULT_STYLE, 'containerfocus')
 assert.ok(STYLES.some((s) => s.id === DEFAULT_STYLE), 'the default is a style')
 assert.equal(STYLES.find((s) => s.id === 'containerfocus').label, 'ContainerFocus')
+assert.equal(STYLES.find((s) => s.id === 'vmfocus').label, 'VMFocus')
 // A choice stored before the rename opens in the renamed style.
 assert.equal(styleId('openshift'), 'containerfocus')
+assert.equal(styleId('esxi'), 'vmfocus')
 // Known ids are themselves; anything else is the default.
 for (const s of STYLES) assert.equal(styleId(s.id), s.id)
 assert.equal(styleId(undefined), DEFAULT_STYLE)
 assert.equal(styleId('nonsense'), DEFAULT_STYLE)
 // No style is labelled with another company's product name.
-for (const s of STYLES) assert.ok(!/openshift/i.test(s.label + s.id), s.label)
+for (const s of STYLES) assert.ok(!/openshift|esxi|vmware/i.test(s.label + s.id), s.label)
 console.log('styles: PASS')

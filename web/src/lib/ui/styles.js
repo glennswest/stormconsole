@@ -6,14 +6,14 @@
 
 export const STYLES = [
   { id: 'containerfocus', label: 'ContainerFocus' },
-  { id: 'esxi', label: 'ESXi' },
+  { id: 'vmfocus', label: 'VMFocus' },
 ]
 
 export const DEFAULT_STYLE = 'containerfocus'
 
 // Ids a style used to have. A choice stored under an old id opens in the
 // style it became, so a rename never loses anyone's setting.
-const RENAMED = { openshift: 'containerfocus' }
+const RENAMED = { openshift: 'containerfocus', esxi: 'vmfocus' }
 
 /// The style a stored (or chosen) id means: itself when known, what it
 /// was renamed to, else the default.

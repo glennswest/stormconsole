@@ -5,8 +5,8 @@
 #
 # The pure model (`styles.test.mjs`), a grep of the built SPA for the old
 # label, and a real console with its SPA built from this commit, walked in
-# headless Chromium: ContainerFocus offered and the default, a stored
-# `openshift` choice opening in it, nothing visible naming OpenShift.
+# headless Chromium: ContainerFocus (the default) and VMFocus offered, stored
+# `openshift` and `esxi` choices opening in them, no trademark name visible.
 set -euo pipefail
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-styles.XXXXXX")
 cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$W"; }
@@ -20,8 +20,10 @@ if node web/src/lib/ui/styles.test.mjs; then check 0 0 "styles.test.mjs"; else c
 
 say "build the SPA from this commit, then the console that embeds it"
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
-check "$(grep -c "'OpenShift'\|\"OpenShift\"" web/dist/assets/*.js | awk -F: '{s+=$2} END {print s+0}')" 0 "the built SPA carries no OpenShift label"
-check "$(grep -o 'ContainerFocus' web/dist/assets/*.js | wc -l | tr -d ' ' | sed 's/^[1-9][0-9]*$/yes/')" yes "and carries ContainerFocus"
+check "$(grep -c "'OpenShift'\|\"OpenShift\"\|'ESXi'\|\"ESXi\"" web/dist/assets/*.js | awk -F: '{s+=$2} END {print s+0}')" 0 "the built SPA carries neither old label"
+check "$(cat web/dist/assets/*.css | grep -c 'data-style=.\?esxi')" 0 "and no CSS for the old id"
+check "$(grep -o 'ContainerFocus' web/dist/assets/*.js | wc -l | tr -d ' ' | sed 's/^[1-9][0-9]*$/yes/')" yes "it carries ContainerFocus"
+check "$(grep -o 'VMFocus' web/dist/assets/*.js | wc -l | tr -d ' ' | sed 's/^[1-9][0-9]*$/yes/')" yes "and VMFocus"
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 P=19166; C=http://127.0.0.1:$P

@@ -260,10 +260,11 @@ the chosen style.
   accent rail on the active nav item, 4px radii, sentence case throughout,
   rows separated by hairlines. Called `openshift` before #151: a choice
   stored under that id opens in this style (`web/src/lib/ui/styles.js`).
-- **`esxi`** — the ESXi host client (VMware Clarity). Compact density (5px
+- **`vmfocus`** — built around machines. Compact density (5px
   rows, 212px navigator, 18px page title, 40px header), a dark teal
   header, 2px radii, zebra-striped tables, uppercase action labels. The
-  whole navigator tree fits on one screen, which is the point.
+  whole navigator tree fits on one screen, which is the point. Called `esxi`
+  before #151: a choice stored under that id opens in this style.
 
 Everything density-dependent reads from a token (`--sc-row-py`,
 `--sc-nav-py`, `--sc-nav-font`, `--sc-gutter`, `--sc-zebra`,

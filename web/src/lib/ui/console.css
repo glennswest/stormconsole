@@ -20,8 +20,8 @@
                  density, a near-black masthead over a panel-coloured
                  navigator, an accent rail on the active nav item, softly
                  rounded corners, sentence case throughout.
-     esxi      — the ESXi host client (VMware Clarity). Compact density, a
-                 dark teal header, a tighter navigator tree, square
+     vmfocus   — built around machines, as many on a screen as fit.
+                 Compact density, a dark teal header, a tighter navigator tree, square
                  corners, zebra-striped tables, uppercase button labels.
 
    Rules that hold in both:
@@ -75,11 +75,11 @@
   --sc-btn-weight: 500;
 }
 
-/* ------------------------------------------------------------ style: esxi
-   Clarity is square and dense: 2px corners, compact rows, zebra striping,
+/* ------------------------------------------------------------ style: vmfocus
+   Square and dense: 2px corners, compact rows, zebra striping,
    uppercase actions, and a dark teal header rather than a neutral one. */
 
-[data-style='esxi'] {
+[data-style='vmfocus'] {
   --radius: 2px;
   --radius-sm: 2px;
   --nav-h: 40px;
@@ -265,7 +265,7 @@ select { padding-right: 24px; }
 .sc-seg button[aria-pressed='true'] { background: var(--nav-active); color: var(--text); }
 
 /* Buttons: quiet by default, one primary per view. Case and tracking
-   come from the style — Clarity shouts its actions, PatternFly does not. */
+   come from the style — vmfocus shouts its actions, containerfocus does not. */
 button {
   border-color: var(--border-strong);
   background: var(--panel);
@@ -333,7 +333,7 @@ a.sc-btn:hover {
 .sc-status.error { color: var(--error); }
 .sc-status.idle, .sc-status.unknown { color: var(--text-faint); }
 
-/* ESXi's capacity bar: label, used/total, and a filled track. */
+/* A capacity bar: label, used/total, and a filled track. */
 .sc-meter { display: grid; gap: 4px; min-width: 0; }
 .sc-meter-top {
   display: flex;
@@ -422,17 +422,17 @@ a.sc-btn:hover {
 /* --------------------------------------------------------- style detail
    What the tokens cannot express on their own. */
 
-/* Clarity draws a table as a bordered grid with striped rows; PatternFly
+/* vmfocus draws a table as a bordered grid with striped rows; containerfocus
    draws it as rows separated by hairlines. */
-[data-style='esxi'] .sc-empty { border-radius: 0; }
+[data-style='vmfocus'] .sc-empty { border-radius: 0; }
 
-/* The segmented control is a single square unit in Clarity. */
-[data-style='esxi'] .sc-seg { border-radius: 0; }
-[data-style='esxi'] .sc-seg button { text-transform: none; letter-spacing: 0; }
+/* The segmented control is a single square unit in vmfocus. */
+[data-style='vmfocus'] .sc-seg { border-radius: 0; }
+[data-style='vmfocus'] .sc-seg button { text-transform: none; letter-spacing: 0; }
 
-/* Counters are pills in PatternFly and square chips in Clarity. */
-[data-style='esxi'] .sc-count { border-radius: 2px; }
+/* Counters are pills in containerfocus and square chips in vmfocus. */
+[data-style='vmfocus'] .sc-count { border-radius: 2px; }
 
 /* The page header rule sits tight to the title in the compact style. */
-[data-style='esxi'] .sc-pagehead { padding-bottom: 10px; margin-bottom: 10px; }
-[data-style='esxi'] .sc-crumbs { margin-bottom: 4px; }
+[data-style='vmfocus'] .sc-pagehead { padding-bottom: 10px; margin-bottom: 10px; }
+[data-style='vmfocus'] .sc-crumbs { margin-bottom: 4px; }

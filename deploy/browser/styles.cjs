@@ -1,5 +1,5 @@
-// The masthead's style selector (#151): ContainerFocus, no trademark names,
-// and a choice stored before the rename still opens in its style.
+// The masthead's style selector (#151): ContainerFocus and VMFocus, no
+// trademark names, and a choice stored before a rename still opens in its style.
 const { walk } = require('./lib.cjs')
 
 const KEY = 'stormconsole-style'
@@ -13,8 +13,7 @@ walk('styles', async (t) => {
 
   // A first visit: the default.
   const labels = await picker(page).locator('option').allInnerTexts()
-  t.check(labels.includes('ContainerFocus'), 'the selector offers ContainerFocus', labels.join(', '))
-  t.check(!labels.some((l) => /openshift/i.test(l)), 'and not OpenShift', labels.join(', '))
+  t.check(labels.join(', ') === 'ContainerFocus, VMFocus', 'the selector offers ContainerFocus and VMFocus', labels.join(', '))
   t.check((await style(page)) === 'containerfocus', 'a first visit opens in containerfocus', await style(page))
   t.check((await picker(page).inputValue()) === 'containerfocus', 'and the selector says so')
   await t.shot(page, 'style-default')
@@ -30,17 +29,29 @@ walk('styles', async (t) => {
   const masthead = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--nav-h').trim())
   t.check(masthead === '48px', "with containerfocus's proportions", masthead)
 
-  // The other style still switches and comes back.
-  const other = (await picker(page).locator('option').evaluateAll((os) => os.map((o) => o.value))).find((v) => v !== 'containerfocus')
-  await picker(page).selectOption(other)
-  t.check((await style(page)) === other, `switching to ${other} works`, await style(page))
+  // The same for the other style's old id.
+  await page.evaluate((k) => localStorage.setItem(k, JSON.stringify('esxi')), KEY)
   await page.reload()
   await t.until(async () => (await picker(page).count()) > 0)
-  t.check((await style(page)) === other, `${other} is kept across a reload`)
+  t.check((await style(page)) === 'vmfocus', 'a stored "esxi" opens in vmfocus', await style(page))
+  t.check((await picker(page).inputValue()) === 'vmfocus', 'the selector reads VMFocus')
+  t.check((await page.evaluate((k) => localStorage.getItem(k), KEY)) === '"vmfocus"', 'and the stored choice is rewritten')
+  const header = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--nav-h').trim())
+  t.check(header === '40px', "with vmfocus's proportions, so the CSS moved with the id", header)
+  await t.shot(page, 'style-vmfocus')
+
+  // It switches, and comes back.
+  await picker(page).selectOption('containerfocus')
+  t.check((await style(page)) === 'containerfocus', 'switching to containerfocus works', await style(page))
+  await picker(page).selectOption('vmfocus')
+  t.check((await style(page)) === 'vmfocus', 'switching to vmfocus works', await style(page))
+  await page.reload()
+  await t.until(async () => (await picker(page).count()) > 0)
+  t.check((await style(page)) === 'vmfocus', 'vmfocus is kept across a reload')
   await picker(page).selectOption('containerfocus')
   t.check((await style(page)) === 'containerfocus', 'and back to containerfocus')
 
-  // Nothing a person can read on the page names OpenShift: text, titles,
+  // Nothing a person can read on the page names either: text, titles,
   // labels, placeholders, options.
   const words = await page.evaluate(() => {
     const out = [document.body.innerText, document.title]
@@ -50,6 +61,6 @@ walk('styles', async (t) => {
     }
     return out.join('\n')
   })
-  const hit = words.split('\n').filter((l) => /openshift/i.test(l))
-  t.check(hit.length === 0, 'no visible "OpenShift" on the overview', hit.join(' | '))
+  const hit = words.split('\n').filter((l) => /openshift|esxi|vmware/i.test(l))
+  t.check(hit.length === 0, 'no visible trademark name on the overview', hit.join(' | '))
 })
