@@ -3,6 +3,26 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — No machine but this cluster's (#161)
+- **fix:** a single node read as broken for other machines' sake. Every host
+  heard on the log group was counted as a node of this console's: forge1, one
+  healthy node, showed 123 drives on 6 nodes, degraded and failed. Node and
+  drive totals, health, logs and drill-downs now cover the apiserver's Node
+  objects and this node (`plugin_logs::scope`). With no apiserver answer, that
+  is this node alone. Other machines are refused by the node proxies.
+- **fix:** one row per machine: names heard from one address merge under the
+  member's, and stormstorage's numbers are on the node's row. Its own row is
+  `storage node`, so it no longer counts as a second node.
+- **fix:** no flowsdn plugin card, row, health or navigator item on a cilium
+  node (`ConsolePlugin::present`). The console's unit does not bind the release
+  volume, so every node's edition read as unknown: the edition now also comes
+  from the manifest's version and from this node's beacon's release flavour.
+- **fix:** `cluster:peer:*` left the feed. The Cluster page shows the members
+  (a single node: itself) and names other machines only in Form and Join, free
+  ones only, with a peer's network from its release flavour.
+- **test:** `deploy/verify-one-node.sh` and `deploy/browser/onenode.cjs`.
+- **docs:** README, architecture.
+
 ### 2026-10-14 — stormview pinned to a rev (#120)
 - **build:** `stormview` is pinned by `rev` (5ea5e60, the commit the lock
   already had) instead of `branch = "main"`: stormcentral's golden builds

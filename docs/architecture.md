@@ -739,12 +739,26 @@ deleted.
 
 ### fleet (nodes)
 
-There is no fleet-inventory service, by design: **nodes announce themselves
-by existing** on the multicast group. The fleet plugin's node list is the
-log collector's host list (a `LogHosts` handle shared from the logs
-plugin), with recency as health — heard in the last two minutes is ok,
-ten is a warning, longer is an error — and each node card links to the
-logs filtered to it.
+**The nodes are this cluster's (#161):** the apiserver's Node objects and this
+node, from the `Membership` the kubernetes plugin answers. The stormcast group
+is a segment's, so it carries other clusters' machines too. They are never
+counted, listed or rolled into health, and a single node's list is itself.
+
+`plugin_logs::scope` is the one rule. `Scope::build` takes this node's name,
+the members and the hosts heard; a host counts if it is a member or this node,
+or is heard from one's address (a line from before a hostname was set, or one
+kept under its sender's address), and then it is that member. `LogHosts` and
+every log read go through it, so fleet, drives, the drill-down, `/events`,
+`/summary` and `/stream` agree, and a machine outside it cannot be reached
+through the node proxies. The ring still stores what it hears: membership
+changes, and a read rule follows that without rewriting anything. Other
+clusters' lines do take ring space.
+
+Each row is a node with recency as health, from the group: heard in the last
+two minutes is ok, ten is a warning, longer is an error; a member not heard
+yet is idle. It carries its beacon's facts and stormstorage's numbers for that
+machine. stormstorage's own rows are `storage node`, not `node`, so a machine
+is counted once.
 
 This node's **services** are its stormd instances, discovered by probing
 the StormCOS port layout on loopback (`[fleet] stormd_ports`: control
@@ -796,7 +810,7 @@ Both daemons serve the stormview components feed themselves, so neither is
 mapped: poll `GET {url}/api/v1/components`, re-prefix ids and relation
 targets, route actions through the plugin's proxy, and take health and
 detail from the upstream's own `system` card. stormstorage is a plain
-`FeedPlugin` (`storage:…`, every 3 s). stormdrive is fleet-wide
+`FeedPlugin` (`storage:…`, every 3 s). stormdrive is cluster-wide
 (`DrivesPlugin`, every 5 s): this node's feed as `drive:…` and every other
 node's as `drive:@<host>:…` with its own proxy — §Drives at rack scale.
 
@@ -1257,10 +1271,16 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
 stormcluster runs on every node and any one answers for the cluster. Its
 stormview feed comes in as `cluster:system` (the cluster: name, masters,
 workers, seed; or "<node> (SNO)"), `cluster:member:<node>` (role, state,
-address, hardware, the cluster CA on the seed), `cluster:peer:<node>`
-(discovered and not a member: release, edition, hardware, or "beacon only")
-and `cluster:op:<id>` (the last five operations). The feed is the
+address, hardware, the cluster CA on the seed), and `cluster:op:<id>` (the last five operations). The feed is the
 read-only view: it carries no actions (stormcluster#12).
+
+stormcluster's `peer:<node>` rows stay out of the console's feed
+(`without_peers`, #161): a peer is a machine this cluster could take, not one
+of its own. The page reads them through the proxy for the step that takes one.
+Form and Join offer free nodes only (`web/src/lib/cluster.js`: a single node
+in no other cluster, heard lately, stormcluster running, not a laptop, not
+this one), with the network from the release flavour rather than what it
+announced.
 
 **Changes are objects (#88).** stormcluster's lifecycle API is
 `cluster.storm.io/v1alpha1` `Cluster` and `ClusterMember` (cluster-scoped,
@@ -1308,8 +1328,8 @@ stormcluster's API is served over TLS only (https)…"), and a connection
 that fails says its whole cause (`invalid peer certificate: UnknownIssuer`).
 
 `#/cluster` (Cluster → Membership): the cluster (and its `Cluster`
-object's status), then Members, the nodes asked for that are not members
-yet, the nodes discovered, and Operations with their steps. Every change
+object's status), then Members (a single node's is itself), the nodes asked
+for that are not members yet, and Operations with their steps. Every change
 first asks for the plan and shows stormcluster's steps, suggested names and
 warnings in a dialog; nothing is written until **Write it**. A release or a
 dissolve also says the data is erased and needs the node's (or cluster's)
