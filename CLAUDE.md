@@ -1689,7 +1689,7 @@ stormcentral#571: golden builds refuse a git dependency not pinned to a
   on 416d163 — the lock as edited is what cargo resolves, all tests pass
 - To move stormview forward: bump the `rev` and the lock's source together
 
-### No machine but this cluster's (#161)
+### No machine but this cluster's (#161) ✅ 2026-11-05
 Owner on forge1 (a single-node cilium node, 2026-11-05): it read as broken
 when it is healthy. Other machines heard on the group were counted as its
 nodes and drives and rolled into its health. "It should only show other
@@ -1700,21 +1700,35 @@ row has kind `node`; the console's unit does not mount
 `/etc/stormcos/release`, so every node's edition is Unknown and a cilium
 node shows flowsdn `unknown`; that manifest has no `edition` key anyway, only
 `version` (`12.61` or `12.61-flowsdn`) and components.
-- [ ] `console_core::members` + `KubernetesPlugin::membership()`: the
+- [x] `console_core::members` + `KubernetesPlugin::membership()`: the
       apiserver's Node objects, names and addresses
-- [ ] `plugin_logs::scope`: one rule. `LogHosts` (so fleet and drives), log
+- [x] `plugin_logs::scope`: one rule. `LogHosts` (so fleet and drives), log
       reads, the summary and the live tail admit only members and this node;
       rows with one address merge; a member not heard yet still has a row
-- [ ] Nodes page: one row per host, stormstorage's numbers on it, its own
+- [x] Nodes page: one row per host, stormstorage's numbers on it, its own
       row is `storage node`
-- [ ] flowsdn: `ConsolePlugin::present()`; edition from the manifest, else
+- [x] flowsdn: `ConsolePlugin::present()`; edition from the manifest, else
       this node's beacon's release flavour; off the feed and navigator
       unless the node is flowsdn or an agent answers
-- [ ] Cluster: `cluster:peer:*` out of the feed; the page shows members
+- [x] Cluster: `cluster:peer:*` out of the feed; the page shows members
       (an SNO: itself); others only in Form/Join, free nodes only; a peer's
       network from its release flavour
-- [ ] Filed: stormcos (mount the release volume), stormcluster (peer network)
-- [ ] `deploy/verify-one-node.sh`; rigs, docs, changelog, dist; golden
+- [x] Filed: stormcos (mount the release volume), stormcluster (peer network)
+- [x] `deploy/verify-one-node.sh`; rigs, docs, changelog, dist; golden
+- Verified with `sc-build deploy/verify-one-node.sh` (0 failed): real fastetcd
+  + rustkube + console with its SPA, stand-ins for stormdrive, stormstorage
+  and stormcluster, other machines' lines and beacons from their own addresses
+  on lo, no release manifest. One node, its 5 drives, its logs; no other
+  machine in the feed, logs, summary or live tail, nor on any page in Chromium;
+  404/403 on a drill-down to one; flowsdn gone on 12.61 and an error on
+  12.61-flowsdn; free nodes only in the form; a second Node adds a row and its
+  drives, and removing it takes them away. Also passing: default `sc-build`,
+  `verify-cluster.sh`, `verify-flowsdn.sh`, `verify-drives.sh`,
+  `verify-logs-full.sh` (its first run failed "the ring was reopened": no
+  I/O error happened within the window, and the rerun passed; not filed)
+- Not seen on forge1 itself: stand-ins for its daemons. Other clusters' lines
+  still take ring space (read-time rule, so membership changes need no rewrite)
+- Filed: stormcos#786 (release volume), stormcluster#81 (peer network)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
