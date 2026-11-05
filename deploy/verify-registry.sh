@@ -79,7 +79,12 @@ for _ in $(seq 600); do curl -s -o /dev/null "$EN/health" && break; sleep 0.1; d
 TOKEN=$(cat "$W/sb/data/api_token")
 AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
 j() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1]))" "$1"; }
-vid() { j 'd.get("volume_id") or d.get("id") or d["volume"]["id"]'; }
+vid() { python3 -c "
+import json,sys
+t=sys.stdin.read(); d=json.loads(t)
+i=d.get('volume_id') or d.get('id') or (d.get('volume') or {}).get('id')
+if not i: sys.exit('the engine said: '+t[:400])
+print(i)"; }
 # A component's image as a release lays it: a volume under that name, sealed.
 image() { local id; id=$(curl -s -X POST "${AUTH[@]}" "$EN/volumes" -d "{\"name\":\"$1\",\"size\":\"64M\"}" | vid)
   curl -s -o /dev/null -X POST "${AUTH[@]}" "$EN/volumes/$id/seal"; echo "$id"; }
