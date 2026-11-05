@@ -1827,6 +1827,32 @@ relation, and the page names the controller and says the shelf is not read yet.
 - Not seen on forge1, nor a read shelf (`through`) in a browser: stand-ins' shelves
   carry no position
 
+### The node's record of itself: History API and page (#121)
+stormcos#456. system-data is at `/run/stormblock/system-data` in the console's
+unit (`sbrun`, also `/system-data`, stormcos#525); absent on a diskless boot.
+Read from the writers (2026-11-05), which differ from the issue's text:
+stormblock (`build-stormblock-initramfs.sh`) writes **flat**
+`history/boots/<ts>.json` and `history/installs/<ts>.json` (`<ts>` =
+`YYYYMMDDTHHMMSSZ`, no boot id; `at, release, tag, cmdline, local_disk,
+install_config, handover`); stormpump (`history.rs`, `crash.rs`)
+`history/boots/<boot_id>/stormpump.jsonl` (`boot` header with `wall_unix`, then
+`t_ms, event, name, ms, detail`), `logs/kernel/<boot_id>.log`,
+`logs/kernel/crash/<dir>/{manifest.json,dmesg.txt,…}`; stormdrive
+`history/drives/<key>/<YYYY-MM>.jsonl`, `<key>/log/<YYYY-MM>.jsonl`,
+`<key>/summary.json`, `assets/<ts>-<boot_id>.json`.
+- [ ] `crates/plugins/history` (name `history`), `[history] enabled/system_data`;
+      a plugin may serve the node API (`/api/v1/<name>`): lists and one record
+      for installs, boots, drives, assets, a boot's kernel log and crash files;
+      read-only, bounded, torn last lines skipped, no system-data said
+- [ ] A boot is one row: stormblock's flat record paired with stormpump's
+      timeline (`boot_id` field or `<id>/stormblock.json` when written; else
+      nearest time, same cmdline); file the missing boot id on stormblock
+- [ ] `#/history` (Compute → History; off the nav on a diskless node), the node
+      page's row; `web/src/lib/history.js` + test
+- [ ] Tests; `deploy/verify-history.sh` with the real writers (stormblock's
+      block, stormpump's `Writer`, stormdrive) + Chromium; the test suite's
+      medium; docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
