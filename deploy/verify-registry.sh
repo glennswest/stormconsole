@@ -85,9 +85,9 @@ t=sys.stdin.read(); d=json.loads(t)
 i=d.get('volume_id') or d.get('id') or (d.get('volume') or {}).get('id')
 if not i: sys.exit('the engine said: '+t[:400])
 print(i)"; }
-# A component's image as a release lays it: a volume under that name, sealed.
-image() { local id; id=$(curl -s -X POST "${AUTH[@]}" "$EN/volumes" -d "{\"name\":\"$1\",\"size\":\"64M\"}" | vid)
-  curl -s -o /dev/null -X POST "${AUTH[@]}" "$EN/volumes/$id/seal" -d '{"force":true}'; echo "$id"; }
+# A sealed volume with a filesystem, under the name a component's image has: the
+# engine's own way to make one here. (Its name gains -sealed, which is read through.)
+image() { curl -s -m 300 -X POST "${AUTH[@]}" "$EN/fstemplates" -d "{\"name\":\"$1\",\"size\":\"64M\"}" | j 'd["template"]["sealed_volume_id"]'; }
 clone() { curl -s -X POST "${AUTH[@]}" "$EN/volumes/$1/clone" -d "{\"name\":\"$2\"}" | vid; }
 own() { curl -s -o /dev/null -w '' -X PUT "${AUTH[@]}" "$EN/volumes/$1/owner" -d "{\"owner\":{\"kind\":\"$2\",\"namespace\":\"$3\",\"name\":\"$4\"}}"; }
 
