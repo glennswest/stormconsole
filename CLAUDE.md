@@ -1570,9 +1570,13 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       and a bridged VM with its address and serial log answered. Found: the node writes
       `host-bridge`, which the console did not know, so the page said "reach unknown" and
       could call a machine on a host bridge inside policy
-- [ ] the console reads stormvm's bindings: `host-bridge` is the host's bridge; `bridge`,
-      `masquerade`, `passt` are the pod network; `user` is the NAT. Rerun on the current
-      release, with #167's depth added to the suite; record each answer on #76; file differences
+- [x] the console reads stormvm's bindings: `host-bridge` is the host's bridge; `bridge`,
+      `masquerade`, `passt` are the pod network; `user` is the NAT (`verify-vm-net.sh`,
+      `verify-vm-policy.sh`, default `sc-build`). The suite reads #167's depth too
+- [ ] rerun on a pvetest machine: **blocked on stormcos#271** (2026-11-05). Run 8d592fb2b3 errored
+      fetching its image, and stormcentral now refuses runs on pvetest1 and pvetest2 until a
+      probe fetches a test image from forge. Then: `stormcentral test run stormconsole blade
+      --tag pvetest1`, record each answer on #76, file differences, close #76
 
 ### The ring's hold-off from the end of the work (#154)
 The golden's `cargo test --release --target musl` failed
