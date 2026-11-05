@@ -2000,6 +2000,21 @@ conditions, guest agent.
   container section was read as text; the full-page screenshot stops at the shell's fold
 - A literal env value in the spec is shown, as on the YAML tab; only references are hidden
 
+### Network Policies and Network Endpoints, neutral names (#168)
+Owner 2026-11-05: "Network Policies (No cillium) Network Endpoints (No Cillium), and these
+should come from either cillium or flowsdn". One table, one adapter per network, `from:
+<network>` only as a small detail. Read from flowsdn 0fbbb1c: `flowsdn.io/v1alpha1`
+FlowsdnNetworkPolicy, FlowsdnClusterwideNetworkPolicy, FlowsdnEndpoint, FlowsdnIdentity have
+Cilium's schemas ("change the API group and the kind"); the agent's endpoints are on its
+loopback API, so this node's, and `/v1/healthz` `kubernetes.policy.endpoints[]` carries
+`ingress-enforced`, `egress-enforced`. Kubernetes NetworkPolicy is on both.
+- [ ] kubernetes: `netview.rs` (pure) policies and endpoints; watches fsep, fsid, fsnp, fscnp;
+      `GET /api/plugins/k8s/network/{policies,endpoints}`, another project's withheld
+- [ ] flowsdn: `GET /api/plugins/flowsdn/network-endpoints`, the same row
+- [ ] `#/network/policies`, `#/network/endpoints`, in the project and cluster-wide; nav and
+      titles without the product; `web/src/lib/network.js` + test
+- [ ] `deploy/verify-network-pages.sh`, both editions; docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
