@@ -475,7 +475,7 @@ impl Store {
     fn row(&self, f: &Found) -> BootRow {
         let header = f.header();
         let rec = f.flat.as_ref().map(|(_, v)| v);
-        let events = |kind: &str| f.timeline.iter().filter(|e| e["event"] == kind);
+        let events = |kind: &'static str| f.timeline.iter().filter(move |e| e["event"] == kind);
         let crashed = events("crashed").next_back().map(|e| string(e, "detail").unwrap_or_default());
         let shutdown = events("shutdown").next_back().map(|e| string(e, "detail").unwrap_or_default());
         let current = f.dir.is_some() && f.dir == self.boot_id;
@@ -708,7 +708,8 @@ fn drive_row(dir: &Path, key: &str) -> DriveRow {
     let months = months(&d);
     let last = months.iter().find_map(|m| {
         let (text, _) = tail(&d.join(m), LAST_RECORD_MAX).ok()?;
-        json_lines(&text).next_back()
+        let newest = json_lines(&text).next_back();
+        newest
     });
     let last = last.unwrap_or(Value::Null);
     DriveRow {
