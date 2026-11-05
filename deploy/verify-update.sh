@@ -92,10 +92,11 @@ EOF
 stormupdate true
 for _ in $(seq 60); do curl -sf -o /dev/null "$SU/healthz" && break; sleep 0.5; done
 j() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1]))" "$1"; }
-for _ in $(seq 40); do [ "$(curl -s -o /dev/null -w '%{http_code}' "$SU/api/v1/status")" = 200 ] && break; sleep 1; done
-curl -s "$SU/api/v1/status" | head -c 500; echo
+offered() { curl -s "$SU/api/v1/status" | python3 -c "import json,sys; d=json.load(sys.stdin); print(any(a['version']=='12.61' for a in d.get('status',{}).get('available',[])))" 2>/dev/null || echo False; }
+for _ in $(seq 45); do [ "$(offered)" = True ] && break; sleep 1; done
+curl -s "$SU/api/v1/status" | head -c 700; echo
 tail -3 "$W/stormupdate.log" | cut -c1-240
-REAL_AVAILABLE=$(curl -s "$SU/api/v1/status" | python3 -c "import json,sys; d=json.load(sys.stdin); print(any(a['version']=='12.61' for a in d.get('status',{}).get('available',[])))" 2>/dev/null || echo False)
+REAL_AVAILABLE=$(offered)
 echo "  the real controller offered 12.61: $REAL_AVAILABLE"
 
 setstatus() { # python expression, as a dict, for status
@@ -141,8 +142,8 @@ say "reads: the console says what stormupdate says"
 sleep 6
 check "$(as a reader "$API/snapshot" | j 'd["update"]["status"]["currentRelease"] or d["update"]["status"]["nodes"][0]["release"]')" 12.58 "a reader reads the running release"
 check "$(as a reader "$API/snapshot" | j '"12.61" in [a["version"] for a in d["update"]["status"]["available"]]')" True "and what is offered"
-check "$(as a reader "$API/snapshot" | j 'd["admin"], d["can_write"]')" "False True" "not an admin; the node can write"
-check "$(as b root "http://127.0.0.1:19175/api/plugins/update/snapshot" | j 'd["admin"], d["can_write"]')" "True False" "with no token: said before anyone asks"
+check "$(as a reader "$API/snapshot" | j 'd["admin"], d["can_write"]')" "(False, True)" "not an admin; the node can write"
+check "$(as b root "http://127.0.0.1:19175/api/plugins/update/snapshot" | j 'd["admin"], d["can_write"]')" "(True, False)" "with no token: said before anyone asks"
 check "$(curl -s -H 'Authorization: Bearer own-164' "$C/api/v1/components" | j '[c["health"] for c in d if c["id"]=="update:cluster"]')" "['ok']" "a feed row"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$API/snapshot")" 401 "no credential: 401"
 
@@ -153,13 +154,13 @@ check "$(code a ops -d "$BODY" "$API/upgrade")" 403 "an operator: 403"
 check "$(as a ops -X POST -H 'content-type: application/json' -d "$BODY" "$API/upgrade" | j '"administrator" in d["error"]')" True "saying why"
 check "$(spec 'd["spec"].get("desiredRelease")')" None "nothing reached the ClusterUpdate"
 B=http://127.0.0.1:19175/api/plugins/update; CC=http://127.0.0.1:19176/api/plugins/update
-check "$(code b root -d "$BODY" "$B/upgrade")" 501 "an admin on a console with no token: stormupdate's 501"
+check "$(code b root -d "$BODY" "$B/upgrade")" 501 "an admin on a console with no token: 501, without asking stormupdate"
 check "$(as b root -X POST -H 'content-type: application/json' -d "$BODY" "$B/upgrade" | j '"not set up" in d["error"]')" True "in words"
 check "$(code c root -d "$BODY" "$CC/upgrade")" 401 "a wrong token: 401"
 check "$(as c root -X POST -H 'content-type: application/json' -d "$BODY" "$CC/upgrade" | j '"refused the console" in d["error"]')" True "in words"
 check "$(code a root -d '{"release":"13.99"}' "$API/upgrade")" 409 "a release not offered: stormupdate's 409"
 check "$(code a root -d '{"release":"12.61","allow_unpublished":true}' "$API/upgrade")" 200 "an extra field is not carried"
-check "$(spec 'd["spec"]["desiredRelease"], d["spec"].get("allowUnpublished", False), d["spec"].get("attempt") is not None')" "12.61 False True" "the real API set the spec, published only"
+check "$(spec 'd["spec"]["desiredRelease"], d["spec"].get("allowUnpublished", False), d["spec"].get("attempt") is not None')" "('12.61', False, True)" "the real API set the spec, published only"
 check "$(code a root "$API/pause")" 200 "pause"
 check "$(spec 'd["spec"]["paused"]')" True "  set"
 check "$(code a root "$API/resume")" 200 "resume"

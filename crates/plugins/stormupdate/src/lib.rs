@@ -299,10 +299,14 @@ async fn act(State(inner): State<Arc<Inner>>, viewer: Viewer, what: &'static str
         return (StatusCode::FORBIDDEN, Json(json!({"error": format!("{who} is not an administrator: updating the cluster needs the admin role")}))).into_response();
     }
     let release = body.as_ref().and_then(|b| b["release"].as_str()).unwrap_or("").to_string();
-    let mut req = inner.client.post(format!("{}{path}", inner.base)).timeout(Duration::from_secs(30));
-    if let Some(t) = inner.token.get() {
-        req = req.bearer_auth(t);
-    }
+    let Some(token) = inner.token.get() else {
+        let error = "update actions are not set up on this node: the console holds no update token (stormcos#789)".to_string();
+        record(&inner.record, &json!({
+            "at": Utc::now().to_rfc3339(), "user": who, "action": what, "release": release, "ok": false, "code": 501, "error": error,
+        }));
+        return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": error }))).into_response();
+    };
+    let mut req = inner.client.post(format!("{}{path}", inner.base)).timeout(Duration::from_secs(30)).bearer_auth(token);
     if let Some(b) = &body {
         req = req.json(b);
     }
@@ -316,7 +320,7 @@ async fn act(State(inner): State<Arc<Inner>>, viewer: Viewer, what: &'static str
     let error = answer.get("error").and_then(Value::as_str).unwrap_or("").to_string();
     let error = match code.as_u16() {
         // In words: nothing here is the person's fault, and it says what to do.
-        501 => format!("update actions are not set up on this node (stormcos#789): {error}"),
+        501 => format!("stormupdate has no update token set up on this node: {error}"),
         401 => format!("stormupdate refused the console's update token: {error}"),
         _ => error,
     };

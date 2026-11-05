@@ -52,6 +52,11 @@ exports.walk = (name, fn) => {
         page.answer = undefined
         page.on('dialog', (d) => {
           if (d.type() === 'prompt') return page.answer === undefined ? d.dismiss() : d.accept(page.answer)
+          // A walk that wants to say no to the next question.
+          if (page.refuseNext) {
+            page.refuseNext = false
+            return d.dismiss()
+          }
           return d.accept()
         })
         if (user) {

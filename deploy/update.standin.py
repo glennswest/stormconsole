@@ -21,7 +21,7 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split("?")[0]
         if p == "/api/v1/releases":
-            body, code = RELEASES, 200
+            body, code = {"releases": RELEASES}, 200
         elif p.startswith("/api/v1/releases/"):
             v = p.rsplit("/", 1)[-1]
             r = next((x for x in RELEASES if x["version"] == v), None)

@@ -24,7 +24,7 @@ walk(`update (${PHASE})`, async (t) => {
     t.check(/administrator/.test(await t.text(ro)), 'and is told whose it is')
 
     // Dismissing the question sends nothing.
-    page.once('dialog', (d) => d.dismiss())
+    page.refuseNext = true
     await page.getByRole('button', { name: 'Update to 12.61' }).click()
     await t.pause(800)
     t.check(!/start 12\.61/.test(await t.text(page)), 'dismissed, nothing is asked of stormupdate')
