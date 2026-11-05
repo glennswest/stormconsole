@@ -225,7 +225,7 @@ check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"name\"]")" = "gold
 check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"builtAt\"]")" = "1790900000" ]' "its built_at"
 check 'echo "$D" | q "d[\"containers\"][2][\"golden\"][\"which\"]" | grep -q "does not report which"' "and it says it is the newest, not necessarily the running one"
 check 'echo "$D" | q "[g[\"what\"]+\" \"+g[\"issue\"] for g in d[\"gaps\"]]" | grep -q "image digest rustkube-node#130"' "the stormpump digest gap names rustkube-node#130"
-check 'echo "$D" | q "[g[\"what\"]+\" \"+g[\"issue\"] for g in d[\"gaps\"]]" | grep -q "interface detail rustkube-node#131"' "the interface gap names rustkube-node#131"
+check '! echo "$D" | q "[g[\"what\"] for g in d[\"gaps\"]]" | grep -q "interface detail"' "the CNI wrote its account (#167), so interface detail is not a gap"
 check 'echo "$D" | has "d[\"network\"][\"podIPs\"] == [\"10.244.0.15\", \"fd00:10:244::f\"]"' "both pod addresses"
 check 'echo "$D" | has "[s[\"name\"] for s in d[\"network\"][\"services\"]] == [\"web\"]"' "the Service that selects it, not db"
 check '[ "$(echo "$D" | q "d[\"network\"][\"services\"][0][\"endpoints\"][\"thisPod\"]")" = "ready" ]' "and its Endpoints list this pod as ready"

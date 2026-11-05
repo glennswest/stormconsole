@@ -381,7 +381,7 @@
                 <tbody>
                   {#each c.mounts as m (m.path)}
                     {@const v = (pod.volumes || []).find((x) => x.name === m.volume)}
-                    <tr><td class="mono">{m.path}{#if m.subPath} <span class="dim">({m.subPath})</span>{/if}</td><td>{m.volume}{#if v} <span class="dim">{v.type}{v.source ? ` ${v.source}` : ''}</span>{/if}{#if m.readOnly} <span class="tag">read-only</span>{/if}</td></tr>
+                    <tr><td class="mono">{m.path}{#if m.subPath} <span class="dim">({m.subPath})</span>{/if}</td><td>{m.volume}{#if v} <span class="dim">{v.kind}{v.source ? ` ${v.source}` : ''}</span>{/if}{#if m.readOnly} <span class="tag">read-only</span>{/if}</td></tr>
                   {/each}
                 </tbody>
               </table>

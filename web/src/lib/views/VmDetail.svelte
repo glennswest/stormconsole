@@ -17,6 +17,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import YamlPanel from '../components/YamlPanel.svelte'
   import Icon from '../components/Icon.svelte'
+  import { ago } from '../ui/time.js'
   import EventBox from '../components/EventBox.svelte'
   import CopyButton from '../components/CopyButton.svelte'
   import VmBackup from './VmBackup.svelte'
