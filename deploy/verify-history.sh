@@ -162,7 +162,7 @@ sleep 5
 kill "$DRIVE_PID" 2>/dev/null || true
 REAL_ASSET=$(ls "$SD"/assets/*.json 2>/dev/null | tail -1 || true)
 check "$([ -n "$REAL_ASSET" ] && echo yes || tail -5 "$W/stormdrive.log")" yes "the real stormdrive wrote a hardware record"
-REAL_DRIVES=$(ls "$SD/history/drives" 2>/dev/null | wc -l)
+REAL_DRIVES=$(find "$SD/history/drives" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l || true)
 echo "  the real stormdrive wrote history for $REAL_DRIVES drives on this VM"
 
 say "a drive with a past, in stormdrive's Record shape (a VM's disk has no SMART to grow), and an older hardware record"
