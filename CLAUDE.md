@@ -1566,11 +1566,13 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       its address on stormbr0, its image, counters (stormvm#48 expected),
       the serial log through the console's door
 - [x] the suite: `test/src/blade.rs` (ea59a2c; builds, 4 tests, clippy clean)
-- [ ] run on pvetest1: **queued** as run 7cbe40706a behind pvetest1's valve
-      (closed by the master 2026-10-11: "tonight: no tests of paused
-      projects; the build for 12.15 goes first"). When it has run: `stormcentral
-      test show 7cbe40706a`, record what each answered on #76, file
-      differences on rustkube-node / stormvm, close #76
+- [x] first run on pvetest1 (7cbe40706a, an old console): cilium's addresses, digests, logs
+      and a bridged VM with its address and serial log answered. Found: the node writes
+      `host-bridge`, which the console did not know, so the page said "reach unknown" and
+      could call a machine on a host bridge inside policy
+- [ ] the console reads stormvm's bindings: `host-bridge` is the host's bridge; `bridge`,
+      `masquerade`, `passt` are the pod network; `user` is the NAT. Rerun on the current
+      release, with #167's depth added to the suite; record each answer on #76; file differences
 
 ### The ring's hold-off from the end of the work (#154)
 The golden's `cargo test --release --target musl` failed

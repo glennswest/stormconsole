@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The pod and VM pages against a real node (#76)
+- **fix:** a machine on a host bridge. A real node writes `storm.io/binding: host-bridge`, which the
+  console did not know: the VM page said "reach unknown", and the policy check could call a machine
+  on a host bridge inside network policy. `host-bridge` is the node's bridge; `bridge`, `masquerade`
+  and `passt` are the pod network, as stormvm names them; a `bridge` from an older node is a host
+  bridge when the annotation asked for one.
+- **test:** the `blade` suite also reads the start timing, env and mounts of a real pod and a real
+  machine's domain and guest agent (#167).
+
 ### 2026-11-05 — Network Policies and Network Endpoints (#168)
 - **feat:** `#/network/policies` and `#/network/endpoints` (Networking), in the project picked or
   across every project: one table whichever pod network this is, with no product name but a

@@ -228,7 +228,20 @@ pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Opt
                     ),
                 })
             }
-            Some("bridge") => {
+            // The node's own bridge. `bridge` is the pod network's binding (stormvm docs/
+            // network.md), except from a node before `host-bridge`, which wrote it for
+            // both: the annotation that asked for a host bridge tells them apart. A
+            // machine must not read as inside policy when it is not (#51, #76).
+            Some("host-bridge") => {
+                return Some(Outside {
+                    why: "bridge",
+                    sentence: format!(
+                        "interface {name} is on a host bridge, outside the pod network: no \
+                         policy and no project isolation reaches it"
+                    ),
+                })
+            }
+            Some("bridge") if asked_host_bridge(vmi, name) => {
                 return Some(Outside {
                     why: "bridge",
                     sentence: format!(
@@ -253,6 +266,12 @@ pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Opt
         }
     }
     None
+}
+
+/// Was this interface asked to be on a host bridge? stormvm's annotation.
+fn asked_host_bridge(vmi: &Value, iface: &str) -> bool {
+    let notes = vmi.pointer("/metadata/annotations").and_then(Value::as_object);
+    notes.is_some_and(|a| a.contains_key(&format!("storm.io/bridge.{iface}")) || a.contains_key("storm.io/bridge"))
 }
 
 /// A machine outside policy: `why` is `nat`, `bridge` or `no-endpoint`.
@@ -423,8 +442,24 @@ mod tests {
         // Even with an endpoint recorded under its name: the binding wins.
         let ceps = HashMap::from([("shop/vm1".to_string(), json!({}))]);
         assert_eq!(outside_policy(&vmi(json!([{"name": "default", "storm.io/binding": "user"}])), Some(&ceps)).unwrap().why, "nat");
-        let o = outside_policy(&vmi(json!([{"name": "lan", "storm.io/binding": "bridge"}])), None).unwrap();
-        assert_eq!(o.why, "bridge");
+        let o = outside_policy(&vmi(json!([{"name": "lan", "storm.io/binding": "host-bridge"}])), None).unwrap();
+        assert_eq!(o.why, "bridge", "what a real node writes (#76)");
+    }
+
+    /// `bridge` is the pod network's binding. A node from before `host-bridge` wrote it for
+    /// a host bridge too, and then the annotation that asked for one says so.
+    #[test]
+    fn bridge_is_the_pod_network_unless_a_host_bridge_was_asked_for() {
+        let pod = vmi(json!([{"name": "default", "storm.io/binding": "bridge"}]));
+        assert!(outside_policy(&pod, None).is_none());
+        let mut old = pod.clone();
+        old["metadata"]["annotations"] = json!({"storm.io/bridge": "stormbr0"});
+        assert_eq!(outside_policy(&old, None).unwrap().why, "bridge");
+        let mut one = pod.clone();
+        one["metadata"]["annotations"] = json!({"storm.io/bridge.default": "stormbr0"});
+        assert_eq!(outside_policy(&one, None).unwrap().why, "bridge");
+        let masq = vmi(json!([{"name": "default", "storm.io/binding": "masquerade"}]));
+        assert!(outside_policy(&masq, None).is_none());
     }
 
     #[test]

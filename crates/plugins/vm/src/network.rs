@@ -17,7 +17,8 @@
 //! What the node did is `status.interfaces[]` as rustkube-node writes it:
 //! `mac`, `ipAddress`, `ipAddresses` (from the guest agent, or the node's
 //! neighbour table for a guest without one) and `storm.io/binding`, which
-//! is `bridge` (a tap on a real bridge), `user` (the NAT) or `passt`.
+//! is `host-bridge` (a tap on one of the node's bridges), `bridge`, `masquerade` or
+//! `passt` (the pod network), or `user` (the NAT).
 
 use serde_json::{json, Value};
 
@@ -123,14 +124,17 @@ fn verdict(asked: Option<&Asked>, running: bool, status: Option<&Value>) -> (&'s
              once the guest has spoken on the network"
                 .into(),
         ),
-        "bridge" => (
+        // A tap on one of the node's own bridges. stormvm names it `host-bridge`, and
+        // `bridge` on the pod network (stormvm docs/network.md); a node from before that
+        // wrote `bridge` for both, which what was asked for tells apart. Seen on pvetest1 (#76).
+        "host-bridge" | "bridge" if binding == "host-bridge" || asked.is_some_and(|a| a.network == "bridge") => (
             "reachable",
             match asked.filter(|a| a.network == "bridge") {
                 Some(a) => format!("on host bridge {}: reachable from that segment", a.target),
-                None => "on a bridge: reachable from that segment".into(),
+                None => "on a host bridge: reachable from that segment".into(),
             },
         ),
-        "passt" => ("reachable", "on the pod network".into()),
+        "bridge" | "masquerade" | "passt" => ("reachable", "on the pod network".into()),
         _ => ("unknown", "the node did not say how this interface is attached".into()),
     }
 }
@@ -181,6 +185,27 @@ pub fn interfaces(spec: &Value, metas: &[Option<&Value>], instance: Option<&Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What pvetest1's node wrote for a machine on stormbr0 (#76), which read "reach
+    /// unknown", and what each of stormvm's bindings means.
+    #[test]
+    fn every_binding_stormvm_names_has_an_answer() {
+        let st = |b: &str| json!({"ipAddress": "192.168.16.116", "storm.io/binding": b});
+        let host = Asked { network: "bridge".into(), target: "stormbr0".into(), binding: String::new() };
+        let pod = Asked { network: "pod".into(), target: String::new(), binding: "bridge".into() };
+        let v = verdict(Some(&host), true, Some(&st("host-bridge")));
+        assert_eq!(v.0, "reachable");
+        assert!(v.1.contains("host bridge stormbr0"), "{}", v.1);
+        assert_eq!(verdict(None, true, Some(&st("host-bridge"))).0, "reachable");
+        // `bridge`: the pod network; from an older node, a host bridge if one was asked for.
+        assert!(verdict(Some(&pod), true, Some(&st("bridge"))).1.contains("pod network"));
+        assert!(verdict(Some(&host), true, Some(&st("bridge"))).1.contains("host bridge stormbr0"));
+        assert!(verdict(None, true, Some(&st("masquerade"))).1.contains("pod network"));
+        assert!(verdict(None, true, Some(&st("passt"))).1.contains("pod network"));
+        assert_eq!(verdict(None, true, Some(&st("user"))).0, "nat");
+        assert_eq!(verdict(None, true, Some(&st("something-new"))).0, "unknown");
+    }
+
 
     fn vmi(annotations: Value, iface: Value, status: Value) -> Value {
         json!({

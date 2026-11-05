@@ -106,7 +106,7 @@ vmi() { # ns, name, labels, annotations, spec, binding, address
     application/merge-patch+json
 }
 vmi shop nat '{"app":"web"}' '{}' "$(spec ', "masquerade": {}')" user 10.155.0.15
-vmi shop lan '{}' '{"storm.io/bridge":"stormbr0"}' "$(spec '')" bridge 192.168.8.61
+vmi shop lan '{}' '{"storm.io/bridge":"stormbr0"}' "$(spec '')" host-bridge 192.168.8.61
 vmi shop pod '{}' '{}' "$(spec ', "passt": {}')" passt 10.1.0.4
 vmi shop ghost '{}' '{}' "$(spec ', "passt": {}')" passt 10.1.0.5
 vmi lab nat2 '{}' '{}' "$(spec ', "masquerade": {}')" user 10.155.0.16

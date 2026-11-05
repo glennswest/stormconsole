@@ -233,6 +233,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
                 // Asked for the pod network, got a NAT: say both halves.
                 "user" if i["askedNetwork"] == "pod" => ("NAT, not pod".to_string(), "warn"),
                 "user" => ("NAT".to_string(), "warn"),
+                "host-bridge" => ("host bridge".to_string(), "ok"),
                 "bridge" => ("bridge".to_string(), "ok"),
                 other => (other.to_string(), "muted"),
             };

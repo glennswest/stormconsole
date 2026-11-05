@@ -179,6 +179,34 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
         Err(e) => r.record("cilium-stats", Outcome::Fail(e), 0, None),
     };
 
+    // What #167 added: read off a real pod, in a real kubelet's words.
+    let timing = d_pod_timing(&d);
+    r.record(
+        "cilium-start-timing",
+        match timing {
+            Some(t) => Outcome::Pass(t),
+            None => Outcome::Skip("no storm.io/start-timing on this pod: a static or mirror pod, or a kubelet before it".into()),
+        },
+        0,
+        None,
+    );
+    let refs = containers.iter().flat_map(|c| c["env"].as_array().cloned().unwrap_or_default()).filter(|e| e["from"] == "secret").collect::<Vec<_>>();
+    let leaked = refs.iter().any(|e| e.get("value").is_some());
+    let envs: usize = containers.iter().map(|c| c["env"].as_array().map_or(0, Vec::len)).sum();
+    let mounts: usize = containers.iter().map(|c| c["mounts"].as_array().map_or(0, Vec::len)).sum();
+    r.record(
+        "cilium-env-mounts",
+        if leaked {
+            Outcome::Fail("a secret reference carries a value".into())
+        } else if envs + mounts == 0 {
+            Outcome::Skip("this pod declares no env or mounts, or this console predates them".into())
+        } else {
+            Outcome::Pass(format!("{envs} env, {} from a Secret with no value; {mounts} mounts", refs.len()))
+        },
+        0,
+        None,
+    );
+
     // Logs: the current run of the agent container, and the previous one —
     // or the node's own words for why there is none.
     let main = containers
@@ -204,6 +232,11 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
             }
             Ok(a) if a.status >= 400 && restarts == 0 => {
                 r.record("cilium-logs-previous", Outcome::Pass(format!("no restart, and the node says so: {}", short(&a.text))), 0, None)
+            }
+            // Seen on pvetest1 (#76): the node kept the run from before its reboot, and its
+            // count started again. Not the page's to judge, and the logs are there.
+            Ok(a) if a.status == 200 => {
+                r.record("cilium-logs-previous", Outcome::Skip(format!("{cn} restartCount 0, and the node still has an earlier run: {}", short(&a.text))), 0, None)
             }
             Ok(a) => r.record(
                 "cilium-logs-previous",
@@ -366,9 +399,30 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
     );
     r.record(
         "vm-address",
-        if addressed && i["did"] == "bridge" { Outcome::Pass(said) } else { Outcome::Fail(said) },
+        if addressed && matches!(i["did"].as_str(), Some("host-bridge" | "bridge")) && i["reach"] == "reachable" { Outcome::Pass(said) } else { Outcome::Fail(said) },
         t.elapsed().as_millis(),
         Some(json!({"interface": i})),
+    );
+
+    // The domain and the guest agent (#167): what a real node writes.
+    r.record(
+        "vm-domain",
+        if d["domain"].is_object() {
+            Outcome::Pass(format!("machine {} · cpu {} · qos {} · {} phase changes", d["domain"]["machineType"], d["domain"]["cpuModel"], d["domain"]["qos"], d["domain"]["transitions"].as_array().map_or(0, Vec::len)))
+        } else {
+            Outcome::Fail("this console's page has no domain".into())
+        },
+        0,
+        None,
+    );
+    r.record(
+        "vm-guest-agent",
+        match d["guestAgent"]["connected"].as_bool() {
+            Some(c) => Outcome::Pass(format!("connected {c} · os {}", d["guestAgent"]["os"])),
+            None => Outcome::Skip("the node does not report the guest agent (rustkube-node#322)".into()),
+        },
+        0,
+        None,
     );
 
     // Its image.
@@ -439,4 +493,12 @@ mod tests {
         assert_eq!(g["spec"]["volumes"][0]["dataVolume"]["name"], "fedora-44-x86_64");
         assert!(g["spec"]["volumes"][1]["cloudInitNoCloud"]["userData"].as_str().unwrap().contains("STORMCONSOLE-BLADE-ADDR"));
     }
+}
+
+/// The kubelet's start timing as the page reads it: `total` and how many phases.
+fn d_pod_timing(page: &Value) -> Option<String> {
+    let t = page.pointer("/metadata/startTiming").filter(|t| t.is_object())?;
+    let phases = t["phases"].as_array()?;
+    let total = phases.iter().find(|p| p["name"] == "total").map_or("?", |p| p["value"].as_str().unwrap_or("?"));
+    Some(format!("total {total}, {} phases, {} steps · {}", phases.len(), t["steps"].as_array().map_or(0, Vec::len), short(t["raw"].as_str().unwrap_or(""))))
 }
