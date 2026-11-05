@@ -188,13 +188,19 @@ fn holder(v: &Value, m: &Machines) -> Holder {
     Holder { kind: "nobody".into(), detail: detail.into(), ..Default::default() }
 }
 
+/// A template's volume by the template's name, which is what anyone calls it:
+/// the engine names it `fstemplate-<name>-raw` or `<name>-sealed`.
+fn plain_name(name: &str) -> &str {
+    let n = name.strip_prefix("fstemplate-").unwrap_or(name);
+    n.strip_suffix("-raw").or_else(|| n.strip_suffix("-sealed")).unwrap_or(n)
+}
+
 /// The repository and tag a volume's name says, for a component's image:
 /// `golden-<component>-<tag>` or `<component>-<tag>`, the tag a build id (12 hex)
 /// or a content sha (16 hex). Anything else is its own repository, with no tag.
 pub fn from_name(name: &str) -> (String, String) {
-    let bare = name.strip_prefix("golden-").unwrap_or(name);
-    // A template's sealed volume: the template is what anyone calls it.
-    let bare = bare.strip_suffix("-sealed").unwrap_or(bare);
+    let plain = plain_name(name);
+    let bare = plain.strip_prefix("golden-").unwrap_or(plain);
     if let Some((repo, tag)) = bare.rsplit_once('-') {
         if !repo.is_empty() && matches!(tag.len(), 12 | 16) && tag.bytes().all(|b| b.is_ascii_hexdigit()) {
             return (repo.to_string(), tag.to_string());
@@ -239,7 +245,7 @@ pub fn build(volumes: &[Value], catalog: &[Value], hosts: &[Value]) -> Holdings 
             continue;
         }
         let name = field(v, &["name"]).unwrap_or_else(|| id.clone());
-        let item = cat_by_id.get(&id).or_else(|| cat_by_name.get(&name)).copied();
+        let item = cat_by_id.get(&id).or_else(|| cat_by_name.get(plain_name(&name))).copied();
         let (repository, tag) = item.map_or_else(|| from_name(&name), |i| from_catalog(i, &name));
         let base = field(v, &["parent"])
             .and_then(|p| by_id.get(&p).copied())
@@ -388,6 +394,8 @@ mod tests {
         assert_eq!(from_name("fedora-base-0123456789abcdef"), ("fedora-base".into(), "0123456789abcdef".into()));
         assert_eq!(from_name("pvc-256M"), ("pvc-256M".into(), String::new()));
         assert_eq!(from_name("pvc-256M-sealed"), ("pvc-256M".into(), String::new()));
+        assert_eq!(from_name("fstemplate-pvc-64M-raw"), ("pvc-64M".into(), String::new()));
+        assert_eq!(from_name("fstemplate-golden-stormlb-aaaaaaaaaaaa-raw"), ("stormlb".into(), "aaaaaaaaaaaa".into()));
         assert_eq!(from_name("img-3f9a0c1d2e4b-root"), ("img-3f9a0c1d2e4b-root".into(), String::new()));
         assert_eq!(from_catalog(&json!({"source": "forge:5000/library/nats:2.10"}), "img-x"), ("forge:5000/library/nats".into(), "2.10".into()));
         assert_eq!(from_catalog(&json!({"source": "forge:5000/library/nats"}), "img-x"), ("forge:5000/library/nats".into(), String::new()));
