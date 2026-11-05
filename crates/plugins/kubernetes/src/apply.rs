@@ -119,7 +119,7 @@ pub fn creators() -> Vec<Creator> {
         Creator::yaml("k8s:cronjob", "CronJob", APPLY, CRONJOB).in_project().at(&["#/k8s/cronjob"]),
         Creator::yaml("k8s:svc", "Service", APPLY, SERVICE).in_project().at(&["#/k8s/svc"]),
         Creator::yaml("k8s:pvc", "PersistentVolumeClaim", APPLY, PVC).in_project().at(&["#/k8s/pvc"]),
-        Creator::yaml("k8s:netpol", "NetworkPolicy", APPLY, NETPOL).in_project().at(&["#/k8s/netpol"]),
+        Creator::yaml("k8s:netpol", "NetworkPolicy", APPLY, NETPOL).in_project().at(&["#/k8s/netpol", "#/network/policies"]),
         Creator::yaml("k8s:cnp", "CiliumNetworkPolicy", APPLY, CNP).in_project().at(&["#/k8s/cnp"]),
         Creator::yaml("k8s:ccnp", "CiliumClusterwideNetworkPolicy", APPLY, CCNP).at(&["#/k8s/ccnp"]),
     ]

@@ -328,6 +328,9 @@ pub struct Healthz {
     pub message: String,
     /// Present only in Kubernetes mode.
     pub kubernetes: Option<KubeHealth>,
+    /// What the policy thread last programmed, per endpoint id: enforcing in, out
+    /// (`kubernetes.policy.endpoints[]`, flowsdn#292).
+    pub enforcing: Vec<(u64, bool, bool)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -351,6 +354,19 @@ impl Healthz {
                 direct_routes: k.get("auto-direct-node-routes").and_then(Value::as_bool),
                 service_lb: k.get("service-lb").and_then(Value::as_bool),
             }),
+            enforcing: v
+                .pointer("/kubernetes/policy/endpoints")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|e| {
+                    Some((
+                        e.get("id")?.as_u64()?,
+                        e.get("ingress-enforced").and_then(Value::as_bool).unwrap_or(false),
+                        e.get("egress-enforced").and_then(Value::as_bool).unwrap_or(false),
+                    ))
+                })
+                .collect(),
         }
     }
 }

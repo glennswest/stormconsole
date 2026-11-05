@@ -428,6 +428,15 @@ export function idsForRoute(href) {
   if (path === '#/registry') {
     return feed.components.filter((c) => c.kind === 'repository').map((c) => c.id)
   }
+  // Whichever network wrote them (#168).
+  if (path === '#/network/policies') {
+    const ids = feed.components.filter((c) => /^k8s:(netpol|cnp|ccnp|fsnp|fscnp):/.test(c.id)).map((c) => c.id)
+    return ns ? ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`)) : ids
+  }
+  if (path === '#/network/endpoints') {
+    const ids = feed.components.filter((c) => /^k8s:cep:|^flowsdn:endpoint/.test(c.id)).map((c) => c.id)
+    return ns ? ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`)) : ids
+  }
   if (path === '#/nodes') {
     return feed.components.filter((c) => c.kind === 'node').map((c) => c.id).sort()
   }

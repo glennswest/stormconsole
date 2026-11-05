@@ -14,6 +14,9 @@ const routes = [
   { pattern: '#/nodes', name: 'nodes' },
   // Every API on this node, its state and latency (#123).
   { pattern: '#/health', name: 'health' },
+  // Whichever network this cluster runs (#168).
+  { pattern: '#/network/policies', name: 'networkpolicies' },
+  { pattern: '#/network/endpoints', name: 'networkendpoints' },
   // What the cluster runs, an update's steps, history (#164).
   { pattern: '#/update', name: 'update' },
   // This node's boots, installs, drives and hardware, kept across installs
@@ -51,7 +54,14 @@ const routes = [
 
 // Where a page went. A project is a namespace, so the list of namespaces is
 // the Projects page (#162); an old link lands there.
-const MOVED = { '#/k8s/ns': '#/projects' }
+const MOVED = {
+  '#/k8s/ns': '#/projects',
+  // One page for each, whichever network this is (#168).
+  '#/k8s/netpol': '#/network/policies',
+  '#/k8s/cnp': '#/network/policies',
+  '#/k8s/ccnp': '#/network/policies',
+  '#/k8s/cep': '#/network/endpoints',
+}
 
 function follow() {
   const to = MOVED[(location.hash || '').split('?')[0]]

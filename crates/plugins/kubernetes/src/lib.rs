@@ -15,6 +15,7 @@ pub mod cache;
 pub mod client;
 mod components;
 pub mod network;
+mod netview;
 pub mod logruns;
 pub mod objevents;
 pub mod pod;
@@ -191,11 +192,9 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("Services", "#/k8s/svc")
                 .item("Routes", "#/k8s/route")
                 .item("Network attachments", "#/k8s/nad")
-                .item("Network policies", "#/k8s/netpol")
-                .item("Cilium policies", "#/k8s/cnp")
-                .item("Clusterwide policies", "#/k8s/ccnp")
-                .item("Cilium endpoints", "#/k8s/cep")
-                .item("Cilium nodes", "#/k8s/cn")
+                .item("Network Policies", "#/network/policies")
+                .item("Network Endpoints", "#/network/endpoints")
+                .item("Network nodes", "#/k8s/cn")
                 .item("Identities", "#/k8s/cid"),
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
             NavSection::new("Observe", 30).admin().item("Events", "#/k8s/events"),
@@ -218,6 +217,8 @@ impl ConsolePlugin for KubernetesPlugin {
     fn routes(&self) -> Router {
         Router::new()
             .route("/kinds", get(kinds))
+            .route("/network/policies", get(network_policies))
+            .route("/network/endpoints", get(network_endpoints))
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/pods/{ns}/{name}", get(podpage::detail))
             .route("/pods/{ns}/{name}/log", get(podpage::log))
@@ -431,6 +432,20 @@ impl ConsolePlugin for KubernetesPlugin {
 /// concerned. Returning 403 would confirm it is there, so a hidden
 /// namespace answers exactly as an absent one does — which is also what
 /// keeps a plugin route from being a way around the filtered feed.
+/// `GET /network/policies` (#168): whichever network this is, one row shape.
+async fn network_policies(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    let hidden = inner.access.hidden(&viewer).await.map(|(h, _)| h);
+    let snap = inner.store.snapshot().await;
+    Json(json!({"network": netview::network_of(&snap), "items": netview::policies(&snap, hidden.as_ref())})).into_response()
+}
+
+/// `GET /network/endpoints` (#168).
+async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    let hidden = inner.access.hidden(&viewer).await.map(|(h, _)| h);
+    let snap = inner.store.snapshot().await;
+    Json(json!({"network": netview::network_of(&snap), "items": netview::endpoints(&snap, hidden.as_ref())})).into_response()
+}
+
 async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
     let (hidden, _) = inner.access.hidden(viewer).await?;
     hidden.contains(ns).then(|| {

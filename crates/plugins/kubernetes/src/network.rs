@@ -115,7 +115,7 @@ pub fn selecting_labels(snap: &Snapshot, ns: &str, labels: &HashMap<String, Stri
 /// here: a half-evaluated selector would silently claim a policy applies
 /// when it does not, which is worse than the honest gap — so a policy
 /// carrying one is reported as selecting nothing rather than guessed at.
-fn selects(policy: &Value, labels: &HashMap<String, String>) -> bool {
+pub(crate) fn selects(policy: &Value, labels: &HashMap<String, String>) -> bool {
     let selectors = [
         policy.pointer("/spec/endpointSelector"),
         policy.pointer("/spec/podSelector"),

@@ -525,6 +525,7 @@ impl ConsolePlugin for FlowsdnPlugin {
     fn routes(&self) -> Router {
         Router::new()
             .route("/snapshot", get(snapshot))
+            .route("/network-endpoints", get(network_endpoints))
             .route("/endpoint/{id}", get(endpoint))
             .route("/state/{table}", get(state))
             .with_state(self.inner.clone())
@@ -591,6 +592,59 @@ async fn snapshot(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
         "note": note,
         "tables": STATE_TABLES,
         "flows": "flowsdn has no Hubble observer yet, so there are no flows to show (flowsdn#293)",
+    }))
+    .into_response()
+}
+
+/// One endpoint as the neutral Network Endpoints page shows it (#168): the same row the
+/// kubernetes plugin makes from a network's objects. Whether a direction is enforced is
+/// what the policy thread last programmed, and not said until it has.
+pub fn network_row(s: &Snapshot, e: &Endpoint) -> Value {
+    let enforcing = s.healthz.as_ref().and_then(|h| h.enforcing.iter().find(|x| x.0 == e.id));
+    let labels = e.identity.and_then(|i| {
+        s.identities.as_ref()?.iter().find(|x| x.get("id").and_then(Value::as_u64) == Some(i))?.get("labels")?.as_array().map(|l| {
+            l.iter().filter_map(Value::as_str).filter(|x| !x.contains("io.kubernetes.pod.namespace")).map(|x| x.trim_start_matches("k8s:")).collect::<Vec<_>>().join(", ")
+        })
+    });
+    let vm = e.workloads.iter().any(|w| w.contains("VirtualMachine"));
+    let (ns, name) = (&e.namespace, &e.pod);
+    json!({
+        "id": format!("{NAME}:endpoint:{}", e.id),
+        "kind": if vm { "VM" } else { "Pod" },
+        "project": ns,
+        "name": name,
+        "href": if vm { format!("#/vm/{ns}/{name}") } else { format!("#/pod/{ns}/{name}") },
+        "ips": e.ipv4.iter().chain(e.ipv6.iter()).collect::<Vec<_>>(),
+        "node": e.node,
+        "identity": e.identity,
+        "identityLabels": labels.unwrap_or_default(),
+        "ingress": enforcing.map(|x| x.1),
+        "egress": enforcing.map(|x| x.2),
+        "state": e.state,
+        "ready": e.ready,
+        "from": NAME,
+    })
+}
+
+/// `GET /network-endpoints`: nothing on a node of the other network, and this node's on
+/// its own, since the agent's API is its loopback.
+async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    use std::sync::atomic::Ordering;
+    if !inner.present.load(Ordering::Relaxed) {
+        return Json(json!({"network": "", "items": [], "scope": ""})).into_response();
+    }
+    let s = inner.snap.read().await.clone();
+    let hidden = inner.hidden(&viewer).await.map(|(h, _)| h);
+    let items: Vec<Value> = s
+        .endpoints
+        .iter()
+        .filter(|e| hidden.as_ref().is_none_or(|h| !h.contains(&e.namespace)))
+        .map(|e| network_row(&s, e))
+        .collect();
+    Json(json!({
+        "network": NAME,
+        "items": items,
+        "scope": format!("This node's endpoints ({}): each node's agent answers for its own.", s.node()),
     }))
     .into_response()
 }

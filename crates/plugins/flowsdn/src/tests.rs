@@ -243,3 +243,23 @@ fn it_shows_on_a_flowsdn_node_and_nowhere_else() {
     assert!(!shows(&u, false), "nothing said and nothing answering: a cilium node looks like this");
     assert!(shows(&u, true), "only a flowsdn node has an agent");
 }
+
+#[test]
+fn a_network_row_says_what_was_programmed() {
+    let mut s = Snapshot::new("http://x", Edition::Flowsdn("t".into()));
+    s.healthz = Some(Healthz::from_agent(&json!({"agent": {"state": "Ok"}, "kubernetes": {"state": "Ok", "policy": {"endpoints": [
+        {"id": 42, "pod": "shop/web-1", "ingress-enforced": true, "egress-enforced": false, "entries": 3}]}}})));
+    s.identities = Some(vec![json!({"id": 7, "labels": ["k8s:app=web", "k8s:io.kubernetes.pod.namespace=shop"]})]);
+    let e = Endpoint { id: 42, namespace: "shop".into(), pod: "web-1".into(), node: "n1".into(), state: "ready".into(), ready: true,
+        ipv4: vec!["10.1.0.5".into()], ipv6: vec!["fd00::5".into()], identity: Some(7), ..Default::default() };
+    let r = network_row(&s, &e);
+    assert_eq!((r["kind"].as_str(), r["href"].as_str(), r["from"].as_str()), (Some("Pod"), Some("#/pod/shop/web-1"), Some("flowsdn")));
+    assert_eq!(r["ips"], json!(["10.1.0.5", "fd00::5"]));
+    assert_eq!((r["ingress"].as_bool(), r["egress"].as_bool()), (Some(true), Some(false)));
+    assert_eq!(r["identityLabels"], "app=web");
+    // Not programmed yet: not said, which is not "no".
+    let other = Endpoint { id: 9, namespace: "shop".into(), pod: "new".into(), workloads: vec!["VirtualMachineInstance vm1".into()], ..Default::default() };
+    let r = network_row(&s, &other);
+    assert!(r["ingress"].is_null());
+    assert_eq!((r["kind"].as_str(), r["href"].as_str()), (Some("VM"), Some("#/vm/shop/new")));
+}

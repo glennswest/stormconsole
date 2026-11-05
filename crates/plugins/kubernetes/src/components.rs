@@ -817,6 +817,25 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
         policy_ids.push(c.id.clone());
         out.push(c);
     }
+    // flowsdn's own objects, the same shapes (#168). Rows, for a policy's YAML and delete;
+    // the network's card below is decided by what this node runs.
+    for (key, obj) in of("fsnp") {
+        let (ns, name) = split_key(key);
+        let mut c = base("fsnp", key, name, Health::Ok, policy_summary(obj));
+        if let Some(r) = ns_relation(key) {
+            c.relations.push(r);
+        }
+        c.actions.push(delete_action(&format!(
+            "/apis/flowsdn.io/v1alpha1/namespaces/{}/flowsdnnetworkpolicies/{name}",
+            ns.unwrap_or("default")
+        )));
+        out.push(c);
+    }
+    for (key, obj) in of("fscnp") {
+        let mut c = base("fscnp", key, key, Health::Ok, format!("clusterwide · {}", policy_summary(obj)));
+        c.actions.push(delete_action(&format!("/apis/flowsdn.io/v1alpha1/flowsdnclusterwidenetworkpolicies/{key}")));
+        out.push(c);
+    }
     for (key, obj) in of("netpol") {
         let (ns, name) = split_key(key);
         let mut c = base("netpol", key, name, Health::Ok, policy_summary(obj));
@@ -845,7 +864,7 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
     }
     let eps = endpoint_ids.len();
     let (mut health, mut detail) = if eps == 0 && node_ids.is_empty() {
-        (Health::Idle, "no Cilium objects — agent not running or CRDs not installed".to_string())
+        (Health::Idle, "no network objects: its agent is not running, or its CRDs are not installed".to_string())
     } else if eps > 0 && ready == 0 {
         (Health::Error, format!("0/{eps} endpoints ready"))
     } else if ready < eps {
@@ -870,7 +889,7 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
     let mut c = base(
         "cilium",
         "cilium",
-        "Cilium",
+        "Pod network",
         health,
         format!(
             "{detail} · {} identities · {} nodes · {} policies",

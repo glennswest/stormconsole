@@ -27,6 +27,7 @@
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import HealthView from './lib/views/HealthView.svelte'
   import HistoryView from './lib/views/HistoryView.svelte'
+  import NetworkView from './lib/views/NetworkView.svelte'
   import UpdateView from './lib/views/UpdateView.svelte'
   import RegistryView from './lib/views/RegistryView.svelte'
   import ImagesView from './lib/views/ImagesView.svelte'
@@ -59,6 +60,8 @@
     flowsdn: FlowsdnView,
     health: HealthView,
     history: HistoryView,
+    networkpolicies: NetworkView,
+    networkendpoints: NetworkView,
     update: UpdateView,
     registry: RegistryView,
     images: ImagesView,
