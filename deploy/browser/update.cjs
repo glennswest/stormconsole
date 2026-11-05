@@ -24,13 +24,16 @@ walk(`update (${PHASE})`, async (t) => {
     t.check(/administrator/.test(await t.text(ro)), 'and is told whose it is')
 
     // Dismissing the question sends nothing.
+    const asked = page.locator('section[aria-label="Asked here"] tbody tr')
+    const before = await asked.count()
     page.refuseNext = true
     await page.getByRole('button', { name: 'Update to 12.61' }).click()
-    await t.pause(800)
-    t.check(!/start 12\.61/.test(await t.text(page)), 'dismissed, nothing is asked of stormupdate')
+    await t.pause(1500)
+    t.check((await asked.count()) === before, 'dismissed, nothing is asked of stormupdate', `${before} then ${await asked.count()}`)
     // Accepting does.
     await page.getByRole('button', { name: 'Update to 12.61' }).click()
-    t.check(await has(/Asked on this console[\s\S]*root[\s\S]*start 12\.61[\s\S]*done/i), 'accepted: it is done and recorded, with who', (await t.text(page)).slice(-300))
+    t.check(await t.until(async () => (await asked.count()) === before + 1), 'accepted, one more act', `${before} then ${await asked.count()}`)
+    t.check(/root\s+start 12\.61\s+done/.test(await asked.first().innerText()), 'done and recorded, with who', await asked.first().innerText())
     await t.shot(page, 'update-asked')
   }
 
