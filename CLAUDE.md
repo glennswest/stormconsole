@@ -1806,6 +1806,20 @@ viewer), not the console's credential the issue's first text named.
   turns auth on, which waits on stormcentral#807. Following a format works
   regardless, however it was started. Asked on the issue
 
+### Enclosures hold shelves; a backplane is never "no shelf" (#166)
+Owner (2026-11-05): "You can have shelfs in enclosures is fine". Enclosure: the
+box (the node's chassis, or an external JBOD). Shelf: a drive group in one, with
+a position. forge1 (R6415) is one enclosure holding one internal shelf, 4 bays
+behind a PERC H730. stormdrive#65 reads such a shelf through the controller
+(`position`, `through`); until a node's stormdrive does, its drives have no shelf
+relation, and the page names the controller and says the shelf is not read yet.
+- [ ] drivemap: `position`, `shelfKey`, the group's words, `enclosures`,
+      `unreadShelves`; one shelf per node and controller; test
+- [ ] Drives: enclosures and shelves in the band, "group by shelf"; Shelves
+      page and its nav count name the unread ones; nothing says "no enclosure"
+- [ ] `verify-one-node.sh` as forge1's shape; `verify-drives.sh`; docs,
+      changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
