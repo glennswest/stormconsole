@@ -166,7 +166,7 @@ mod tests {
     fn namespaced_goes_to_the_project_never_default_and_plurals_are_right() {
         let d = parse_documents("apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: i\n").unwrap();
         assert_eq!(target(&d[0], Some("gw-work")).unwrap().2, "/apis/networking.k8s.io/v1/namespaces/gw-work/ingresses");
-        assert!(target(&d[0], None).unwrap_err().contains("no project was chosen"), "not default by omission");
+        assert!(target(&d[0], None).unwrap_err().contains("names no project"), "not default by omission");
         let d = parse_documents("apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n  namespace: kube-system\n").unwrap();
         assert_eq!(target(&d[0], None).unwrap().2, "/api/v1/namespaces/kube-system/pods");
     }

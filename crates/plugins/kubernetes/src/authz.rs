@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn the_note_counts_and_says_when_it_could_not_ask() {
         assert_eq!(note(1, Source::Listed), "1 project you cannot view");
-        assert_eq!(note(3, Source::Probed), "3 namespaces you cannot view");
+        assert_eq!(note(3, Source::Probed), "3 projects you cannot view");
         assert_eq!(
             note(0, Source::Unavailable),
             "the apiserver could not be asked what you may see"
