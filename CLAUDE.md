@@ -1959,7 +1959,7 @@ component's is its own content digest. Upstream origin of a component: filed
 stormcentral-compliance-operations#219 (missing provenance).
 - [x] Words: SPA, plugin text, docs
 - [x] `imagename.js` + test; the pod row, containers table, Runs on, VM row
-- [ ] `GET /api/plugins/reg/origin`, Made from; rigs: runs-on, pod-page, registry; dist; golden
+- [x] `GET /api/plugins/reg/origin`, Made from; rigs: runs-on, pod-page, registry; dist; golden
 
 ### The Update page's pre-pull and images (#62)
 #164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
