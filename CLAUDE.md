@@ -2403,6 +2403,11 @@ Read from the sources (2026-11-06): stormvm has the split; the standalone cadvis
 - Not seen: a real node (a node's root cgroup having io.stat is what the Node tab rests on), a real SMART counter
 - Left: pods and containers on a real node wait on rustkube-node#323; drive operations and non-NVMe bytes on stormdrive#120, whose names are proposed; volume bytes on stormblock#536. Cgroup rows by path are not shown: they can't be limited to a project
 
+### A Boot and flow-over page (#271)
+Read from stormpump f8d74d4 (`history.rs`: `CLOCK_BOOTTIME` ms, a `pid1` event per start, `phase` with `ms`, `started`, `all-running`) and stormblock a7027db (open `/api/v1/health`: `flow_over_remaining`, absent with no flow-over; `flow_over` flattened with `eta_seconds`; `flow_over_stalled`; `slabs`). `mb_per_s` there is the average since it began, so the sparkline comes from byte deltas.
+- [ ] `web/src/lib/boot.js` + test: the story and the states; `#/boot` outside the shell, its own dark palette; nav beside History
+- [ ] `verify-history.sh`: real writers for the timeline, a real engine for no flow-over, a stand-in in `flowprogress.rs`'s shape for a running one (a real one needs an appliance); screenshots at 1920x1080; docs; dist; image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
