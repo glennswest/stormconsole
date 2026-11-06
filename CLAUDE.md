@@ -2279,9 +2279,16 @@ no stormipmi. A recorded location wins over a hand-set label (`location::plan`, 
 is at 9198. :9102 is TLS only (stormcluster#5), and a node has `[stormcluster]`'s pair today and no `[node_tls]` yet
 (stormcos#371), so the probe uses #89's files. Its proxy is reads only: `/api/v1/record` and `/api/v1/node/*` are between
 stormclusters, and this client holds the console's certificate.
-- [ ] `NODE_PORTS`, the test both ways; `Dial::tls_only`, `[stormcluster]`'s for 9102; a refusal said, not "quiet"
-- [ ] The proxy to 9102: GET of `plugin_stormcluster::forwardable` only
-- [ ] `deploy/verify-node-ports.sh`: real stormcluster and stormd; docs, changelog, dist unchanged; close; golden
+- [x] `NODE_PORTS`, the test both ways; `Dial::tls_only`, `[stormcluster]`'s for 9102; a refusal said, not "quiet"
+- [x] The proxy to 9102: GET of `plugin_stormcluster::forwardable` only
+- [x] `deploy/verify-node-ports.sh`: real stormcluster and stormd; docs, changelog; close; golden
+- Verified with `sc-build deploy/verify-node-ports.sh` (0 failed): stormcluster aed1bf0 on :9102 (TLS) and stormd 86dc90a on 8269,
+  9189 and 9191, an openssl node CA and a stranger's. With `[stormcluster]`'s pair and with `[node_tls]`'s alone, all four read. No
+  certificates: its 403 "TLS only" on the page, not quiet; the CA alone: its 401; another CA: `UnknownIssuer`, proxy 502; stopped:
+  quiet. GET/PUT record, POST node verb and POST to a read path stopped here. Chromium on the read and refused pages. Also
+  `verify-stormd-tls.sh` and the default `sc-build`
+- Not seen: a real node, nor another node's stormcluster (its certificate must name the address the console heard it from)
+- Left: services in the registry in neither list: #238
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
