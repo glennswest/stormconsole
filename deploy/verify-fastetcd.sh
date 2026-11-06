@@ -84,7 +84,7 @@ check "$(comps 'sorted(c["label"] for c in mem)')" "['f1', 'f2', 'f3']" "named"
 LEADER=$(ctl endpoint status -w json | python3 -c 'import json,sys; r=[e for e in json.load(sys.stdin) if e["Status"]["leader"]==e["Status"]["header"]["member_id"]]; print(r[0]["Endpoint"].rsplit(":",1)[1])')
 LN=f$(( (LEADER - 24100) / 10 ))
 echo "  etcdctl says the leader is $LN"
-comps 'mem[0]["metrics"]' | cut -c1-400 | sed 's/^/  /'
+check "$(comps 'sorted(c["health"] for c in mem)')" "['ok', 'ok', 'ok']" "every running member reads healthy, URL or none (fastetcd#187)"
 contains "$(comps '[c["label"] for c in mem if "leader" in (c.get("detail","")+str(c.get("metrics",""))).lower().replace("no leader","") and "leader" in c.get("detail","").lower()]')" "$LN" "the leader marked, the one etcdctl names"
 comps 's.get("detail")' | cut -c1-320 | sed 's/^/  store: /'
 REV=$(ETCDCTL_API=3 "$CTL" --endpoints "$EP" endpoint status -w json | j 'd[0]["Status"]["header"]["revision"]')
@@ -160,29 +160,36 @@ tar czf "$HERE/fe-shots.tgz" -C "$W" shots 2>/dev/null || true
 say "a member lost, and the leader lost"
 kill "$PID3"; sleep 8
 comps '[(c["label"],c["health"]) for c in mem]' | sed 's/^/  /'
-check "$(comps '[c["health"] for c in mem if c["label"]=="f3"][0]')" error "a dead member is an error"
-check "$(comps 's.get("health") in ("warn","error")')" True "the store says so"
-comps 's.get("health"), s.get("detail")' | cut -c1-300 | sed 's/^/  /'
+check "$(comps '[c["health"] for c in mem if c["label"]=="f3"][0]')" error "the dead member is an error"
+contains "$(comps '[c["detail"] for c in mem if c["label"]=="f3"][0]')" "raft port" "saying why"
+check "$(comps '[c["health"] for c in mem if c["label"]=="f2"][0]')" ok "and its neighbour is not"
+check "$(comps 's.get("health")')" warn "the store warns: it still has its quorum"
+contains "$(comps 's.get("detail")')" "1 of 3 members not answering" "and says so"
+ctl put /with-two ok >/dev/null; check "$(ctl get --print-value-only /with-two)" ok "and still takes writes"
 
 say "NOSPACE: fill a small quota, then disarm through the console"
 Q=19165
 "$FE" --name n1 --data-dir "$W/n" --listen-client-urls http://127.0.0.1:24200 --advertise-client-urls http://127.0.0.1:24200 --listen-peer-urls http://127.0.0.1:24201 --listen-metrics-url 127.0.0.1:24202 \
-  --quota-backend-bytes 33554432 --space-check-interval-secs 1 --space-high-water-percent 90 --space-alarm-percent 95 --space-clear-percent 10 > "$W/n.log" 2>&1 &
+  --quota-backend-bytes 268435456 --space-check-interval-secs 1 --space-high-water-percent 94 --space-alarm-percent 95 --space-clear-percent 70 > "$W/n.log" 2>&1 &
 nctl() { ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24200 "$@"; }
 for _ in $(seq 60); do nctl put /ready 1 >/dev/null 2>&1 && break; sleep 0.5; done
 console $Q http://127.0.0.1:24200 http://127.0.0.1:24202
 head -c 700000 /dev/urandom | base64 -w0 > "$W/big"
-for i in $(seq 80); do nctl put /big/$i < "$W/big" >/dev/null 2>&1 || { echo "  put $i refused"; break; }; sleep 0.2; done
+du -sh "$W/n" | sed 's/^/  data directory before: /'
+for i in $(seq 600); do nctl put /big/$i < "$W/big" >/dev/null 2>&1 || { echo "  put $i refused"; break; }; done
+du -sh "$W/n" | sed 's/^/  data directory full: /'
 nctl alarm list | sed 's/^/  etcdctl: /'
 sleep 7
 check "$(comps 's.get("health")' $Q)" error "the store is in error"
-contains "$(comps 's.get("detail")' $Q)" NOSPACE "and names NOSPACE"
+contains "$(comps 's.get("detail")' $Q)" "alarm NOSPACE" "and names NOSPACE"
 DIS=$(comps '[a["path"] for a in s["actions"] if "disarm" in a["path"]][0]' $Q)
 contains "$DIS" "alarm=NOSPACE" "Disarm offered"
 contains "$(nctl put /refused x 2>&1 || true)" "no space" "a write is refused"
 nctl del --prefix /big/ >/dev/null
 curl -s -o /dev/null -b "$W/root$Q.jar" -X POST "http://127.0.0.1:$Q/api/plugins/etcd/compact?revision=$(nctl endpoint status -w json | j 'd[0]["Status"]["header"]["revision"]')"
 curl -s -o /dev/null -b "$W/root$Q.jar" -X POST "http://127.0.0.1:$Q/api/plugins/etcd/defragment"
+du -sh "$W/n" | sed 's/^/  data directory dug out: /'
+sleep 3
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/root$Q.jar" -X POST "http://127.0.0.1:$Q$DIS")" 200 "disarm through the console"
 check "$(nctl alarm list | wc -l)" 0 "etcdctl: no alarm"
 check "$(nctl put /after ok 2>&1)" OK "writes again"

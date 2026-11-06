@@ -176,6 +176,59 @@ fn with_the_gateway_every_member_is_a_row_and_the_leader_is_marked() {
 }
 
 #[test]
+fn a_running_member_with_no_client_url_is_not_called_not_started() {
+    let mut s = gateway(vec![]);
+    s.members[1].client_urls.clear();
+    s.members[2].client_urls.clear();
+    s.members[2].name.clear();
+    let (health, _, rows) = build(&s, None);
+    assert!(matches!(health, Health::Ok));
+    let row = |id: &str| rows.iter().find(|c| c.id == member_id(id)).unwrap();
+    assert!(matches!(row("b2").health, Health::Ok), "{}", row("b2").detail);
+    assert!(row("b2").actions.is_empty(), "no URL to defragment through");
+    assert!(matches!(row("c3").health, Health::Warn));
+    assert!(row("c3").detail.contains("not started"));
+}
+
+#[test]
+fn a_member_whose_raft_port_refuses_is_said() {
+    let mut s = gateway(vec![]);
+    s.silent = vec!["b2".into()];
+    let (health, detail, rows) = build(&s, None);
+    assert!(matches!(health, Health::Warn));
+    assert!(detail.contains("1 of 3 members not answering"), "{detail}");
+    let row = rows.iter().find(|c| c.id == member_id("b2")).unwrap();
+    assert!(matches!(row.health, Health::Error));
+    assert!(row.detail.contains("raft port"));
+}
+
+#[tokio::test]
+async fn silent_means_the_port_refuses_and_never_asks_about_itself() {
+    let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let down = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let down_port = down.local_addr().unwrap().port();
+    drop(down);
+    let mem = |id: &str, port: u16| Member {
+        id: id.into(),
+        name: id.into(),
+        peer_urls: vec![format!("http://127.0.0.1:{port}")],
+        client_urls: vec![],
+        is_learner: false,
+    };
+    let members = vec![mem("me", down_port), mem("up", up.local_addr().unwrap().port()), mem("down", down_port)];
+    assert_eq!(silent_members(&members, "me").await, vec!["down".to_string()]);
+}
+
+#[test]
+fn an_alarm_with_an_unhealthy_answer_says_the_alarm() {
+    let mut s = gateway(vec![Alarm { member_id: "a1".into(), alarm: "NOSPACE".into() }]);
+    s.alive = Some(false);
+    let (health, detail, _) = build(&s, None);
+    assert!(matches!(health, Health::Error));
+    assert!(detail.contains("alarm NOSPACE — writes are refused"), "{detail}");
+}
+
+#[test]
 fn an_alarm_lands_on_its_member_with_a_way_to_disarm_it() {
     let (h, _, cs) = build(&gateway(vec![Alarm { member_id: "b2".into(), alarm: "CORRUPT".into() }]), None);
     assert_eq!(h, Health::Error);

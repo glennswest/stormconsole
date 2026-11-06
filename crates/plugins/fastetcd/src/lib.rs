@@ -204,6 +204,8 @@ struct Seen {
     members: Vec<Member>,
     alarms: Vec<Alarm>,
     gateway_err: Option<GwError>,
+    /// Members whose raft port refuses this node. MemberList says who should be there and nothing about who is.
+    silent: Vec<String>,
     objects: Option<u64>,
     rates: Vec<(&'static str, f64)>,
 }
@@ -224,6 +226,7 @@ async fn poll(inner: &Inner) {
             gateway_err: Some(GwError::Failed(e)),
             objects: None,
             rates: vec![],
+            silent: vec![],
         };
         let (health, detail, components) = build(&seen, inner.serves.as_deref());
         let mut st = inner.state.write().await;
@@ -256,6 +259,9 @@ async fn poll(inner: &Inner) {
     } else {
         (vec![], vec![])
     };
+
+    let me = status.as_ref().map(|s| s.member_id.clone()).unwrap_or_default();
+    let silent = silent_members(&members, &me).await;
 
     let mut st = inner.state.write().await;
     // Rates from counter deltas, when there are counters to take them from.
@@ -298,6 +304,7 @@ async fn poll(inner: &Inner) {
         status,
         members,
         alarms,
+        silent,
         gateway_err,
         objects,
         rates,
@@ -363,6 +370,22 @@ fn member_id(id: &str) -> String {
 }
 
 /// The whole mapping, pure so it can be tested on what a poll saw.
+/// The members whose raft port does not take a connection. A port rather than a client's `/health`, because the raft
+/// port is what every member has and every member must be able to reach, and fastetcd reports a client URL only for
+/// the member answering (fastetcd#187). A connection and nothing sent, so TLS on the port makes no difference.
+async fn silent_members(members: &[Member], me: &str) -> Vec<String> {
+    let probes = members.iter().filter(|m| m.id != me).filter_map(|m| {
+        let url = reqwest::Url::parse(m.peer_urls.first()?).ok()?;
+        let addr = format!("{}:{}", url.host_str()?, url.port_or_known_default()?);
+        let id = m.id.clone();
+        Some(async move {
+            let up = tokio::time::timeout(Duration::from_secs(1), tokio::net::TcpStream::connect(addr)).await;
+            (!matches!(up, Ok(Ok(_)))).then_some(id)
+        })
+    });
+    futures_util::future::join_all(probes).await.into_iter().flatten().collect()
+}
+
 fn build(seen: &Seen, serves: Option<&str>) -> (Health, String, Vec<ComponentSummary>) {
     let m = seen.metrics.as_ref();
     let g = |n: &str| m.and_then(|m| m.u64(n));
@@ -400,12 +423,15 @@ fn build(seen: &Seen, serves: Option<&str>) -> (Health, String, Vec<ComponentSum
         // port every client uses — and the one a TLS mistake shuts (#47).
         // The numbers below are the scrape's; "ok" would hide the cause.
         (Health::Error, format!("the client port did not answer: {}", seen.alive_err))
+    } else if !alarms.is_empty() {
+        // Before /health's own answer, which an alarm also turns unhealthy: this one says what to do.
+        (Health::Error, format!("alarm {} — writes are refused", alarms.join(", ")))
     } else if seen.alive == Some(false) {
         (Health::Error, "answers /health unhealthy".to_string())
-    } else if !alarms.is_empty() {
-        (Health::Error, format!("alarm {} — writes are refused", alarms.join(", ")))
     } else if has_leader == Some(false) {
         (Health::Error, "no leader — the store cannot commit".to_string())
+    } else if !seen.silent.is_empty() {
+        (Health::Warn, format!("{} of {} members not answering", seen.silent.len(), seen.members.len()))
     } else if ratio.is_some_and(|r| r >= 0.8) {
         (Health::Warn, format!("{:.0}% of its space used", ratio.unwrap_or(0.0) * 100.0))
     } else if m.is_none() {
@@ -573,9 +599,12 @@ fn build(seen: &Seen, serves: Option<&str>) -> (Health, String, Vec<ComponentSum
             (Health::Error, format!("alarm {}", mine.iter().map(|a| a.alarm.as_str()).collect::<Vec<_>>().join(", ")))
         } else if leader.is_empty() || leader == "0" {
             (Health::Warn, "no leader".to_string())
-        } else if mem.client_urls.is_empty() {
-            // A member added but not yet started has no client URLs.
-            (Health::Warn, "not started — no client URLs".to_string())
+        } else if seen.silent.contains(&mem.id) {
+            (Health::Error, "does not answer on its raft port: down, or out of this node's reach".to_string())
+        } else if mem.name.is_empty() && mem.client_urls.is_empty() {
+            // A member added but not yet started has neither. A name and no URL is a running fastetcd member:
+            // it reports a client URL only for the member answering (fastetcd#187).
+            (Health::Warn, "not started".to_string())
         } else {
             (Health::Ok, String::new())
         };
