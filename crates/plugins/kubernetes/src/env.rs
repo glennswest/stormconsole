@@ -44,7 +44,7 @@ fn text<'a>(v: &'a Value, ptr: &str) -> &'a str {
 /// Which ConfigMaps and Secrets a container names.
 pub fn references(container: &Value) -> (Vec<String>, Vec<String>) {
     let (mut maps, mut secrets) = (Vec::new(), Vec::new());
-    let mut add = |list: &mut Vec<String>, n: &str| {
+    let add = |list: &mut Vec<String>, n: &str| {
         if !n.is_empty() && !list.iter().any(|x| x == n) {
             list.push(n.to_string());
         }

@@ -5,7 +5,7 @@
   import { onDestroy } from 'svelte'
 
   let { ns, name, containers = [], refused = '' } = $props()
-  const names = containers.filter((c) => c.state?.state === "running").map((c) => c.name)
+  const names = containers.filter((c) => c.state?.kind === 'running').map((c) => c.name)
   let container = $state(names[0] || containers[0]?.name || '')
   let command = $state('')
   let box = $state(null)
