@@ -1574,10 +1574,11 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
 - [x] the console reads stormvm's bindings: `host-bridge` is the host's bridge; `bridge`,
       `masquerade`, `passt` are the pod network; `user` is the NAT (`verify-vm-net.sh`,
       `verify-vm-policy.sh`, default `sc-build`). The suite reads #167's depth too
-- [ ] rerun on a pvetest machine: **blocked on stormcos#271** (2026-11-05). Run 8d592fb2b3 errored
-      fetching its image, and stormcentral now refuses runs on pvetest1 and pvetest2 until a
-      probe fetches a test image from forge. Then: `stormcentral test run stormconsole blade
-      --tag pvetest1`, record each answer on #76, file differences, close #76
+- [ ] rerun on a pvetest machine. stormcos#271 closed, but run 684d6ba765 (2026-11-06) failed the same way on
+      pvetest1, now on 12.58.4 (console 701155f, which has the fix; 12.61's console 5c4199c does not). stormcentral
+      refuses further runs there. **Blocked on stormcos#805** (no forge peer on 12.58.x) and **stormcentral#512**
+      (images never seal on pvetest1/2, all components). Then: `stormcentral test run stormconsole blade --tag
+      pvetest1` on a release carrying 379ebd7 or later, record each answer on #76, file differences, close #76
 
 ### The ring's hold-off from the end of the work (#154)
 The golden's `cargo test --release --target musl` failed
