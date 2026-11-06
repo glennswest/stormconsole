@@ -2325,6 +2325,9 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
   `fetch`: an image with `localName`, one falling back to its name with `aarch64` added, one with `arch: null`), clippy `-D warnings` on the crate;
   the default `sc-build`. Not seen on a real operator. It shows the architecture, and does not refuse a mismatch: that needs the node's
 
+### A stormimds plugin (#11): waiting on the owner
+Read from stormimds 986f887: since its #12 the kubelet answers for guests on a node, so `/admin/instances` is empty there and writes 409; the console has no admin key mounted; a node guest gets default keys and no user-data (stormimds#20, rustkube-node#168). So the plugin as filed would be empty on every node. Asked on #11: A, the VM page from `/vmInstance`; B, as filed; C, close and refile (recommended: A). Nothing built yet. Not checked: whether the kubelet takes the console's token on `/vmInstance`.
+
 ### Scale, cordon and drain (#36)
 Read from rustkube 6c4fe56: `/scale` is served (#86), `pods/eviction` too (`pkg/apiserver/src/eviction.rs`, 429 on a budget), so nothing to file. Its budget check and delete are not atomic, so evictions go one at a time. As the viewer. A node's verbs need admin here and an identity, as #77's rack; scaling is an operator's, like deleting a pod.
 - [x] `kubernetes/src/dayto.rs`: routes, plan, drain; row actions; `ScaleField`; `NodeDrain`; a route's `ask` answered by `call`
