@@ -381,8 +381,8 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 - **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
   with no API (stormcos#38); the console offers none.
 - **Scale a workload, cordon/uncordon and drain a node** — not built (#36).
-- **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293);
-  the page's Flows tab says so. **Another node's flowsdn agent** — its API
+- **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293); the page's Flows tab says so, and shows
+  the counts of what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile. **Another node's flowsdn agent** — its API
   is loopback only, so each node's console shows its own. Endpoint and
   Service scoping by namespace is unit-tested and not yet run live against
   RBAC (the rig has no apiserver).

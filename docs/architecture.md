@@ -1466,7 +1466,8 @@ console shows its own; the page says so.
   query).
 - **Page** `#/flowsdn`: Endpoints (search, node and namespace filters, ✓/·
   marks, one opened live), IPAM, Health, Config, Services, Routes, State,
-  Flows — which says flowsdn has no Hubble observer yet (flowsdn#293).
+  Flows — which says flowsdn has no Hubble observer yet (flowsdn#293), and shows what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile: decisions counted
+  per endpoint, not flows, joined to the endpoint's pod. A viewer with limits sees their projects' rows and the node's own, and not one whose endpoint is not known, which could be anyone's.
 
 ### API health on this node (#123)
 

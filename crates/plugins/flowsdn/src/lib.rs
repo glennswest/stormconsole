@@ -50,7 +50,7 @@ use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-pub use model::{Edition, Endpoint, Healthz, Module, Pool, Service};
+pub use model::{Verdict, Edition, Endpoint, Healthz, Module, Pool, Service};
 
 pub const NAME: &str = "flowsdn";
 
