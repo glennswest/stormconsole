@@ -200,6 +200,7 @@ deploy/browser/run.sh "$W" vm.cjs "http://127.0.0.1:19096" MODE=net || RC=1
 
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c.log | grep -v 'no users and no auth_token' | head -20 || true
+tar czf vm-shots.tgz -C "$W" shots 2>/dev/null || true
 say "done"
 [ "$RC11" = 0 ] || exit 1
 exit $RC

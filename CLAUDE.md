@@ -2342,8 +2342,10 @@ Items 1 and 5 done in v0.8.0; 3 superseded by 4. Item 2 here: `127.0.0.1:9962/me
 
 ### What a guest is told (#11)
 Master, for the owner, 2026-11-06: option A: on the VM page from the kubelet (`/vmInstance/{address}`), a small stormimds health card, no admin key; if the kubelet refuses the console's token, file the grant on its owner. Read from rustkube-node 993db53: the route needs only an authenticated bearer (TokenReview), and answers `instance_id`, `hostname`, `local_ipv4`, `region`, `zone`, `tags`, `labels`, `network.interfaces`, `launched_at`; 404 no machine at that address; 503 not synced or stale. Keys and user-data wait on rustkube-node#168 and stormimds#20 (proposed `public_keys`, `user_data`). stormimds 986f887: `/admin/health` on loopback :8169, open.
-- [ ] `vm/src/identity.rs`, `GET /vms/{ns}/{name}/identity`, `[vm] stormimds_url`, the `vm:imds` row
-- [ ] VM page card; `blade` suite reads it on a real node; `verify-vm-net.sh` with a stand-in kubelet; docs; dist; image
+- [x] `vm/src/identity.rs`, `GET /vms/{ns}/{name}/identity`, `[vm] stormimds_url`, the `vm:imds` row
+- [x] VM page card; `blade` suite reads it on a real node; `verify-vm-net.sh` with a stand-in kubelet; docs; dist; image
+- Verified with `sc-build deploy/verify-vm-net.sh` (0 failed), default `sc-build`: real fastetcd and rustkube, a stand-in kubelet in `vm_manager.rs`'s and `server.rs`'s shape over TLS. Answered per address, nobody, another machine, not synced, refused, keys when passed (type and comment, never the key or content); the stormimds row up, not started and silent; Chromium
+- Not seen: a real kubelet (needs PID 1's runtime), so the token being accepted is from its code: `auth_mw` takes any bearer the apiserver authenticates. The `blade` suite's `vm-told` reads it on a real node when #76 can run. `public_keys` and `user_data` are the names proposed on rustkube-node#168
 
 ### Scale, cordon and drain (#36)
 Read from rustkube 6c4fe56: `/scale` is served (#86), `pods/eviction` too (`pkg/apiserver/src/eviction.rs`, 429 on a budget), so nothing to file. Its budget check and delete are not atomic, so evictions go one at a time. As the viewer. A node's verbs need admin here and an identity, as #77's rack; scaling is an operator's, like deleting a pod.
