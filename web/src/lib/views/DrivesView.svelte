@@ -334,7 +334,7 @@
               {#each pick.usage.slabs as sl (sl.id)}
                 {@const vs = (pick.volumes || []).flatMap((v) => v.slabs).find((x) => x.id === sl.id)}
                 <tr>
-                  <td class="mono">{sl.id}{#if vs && vs.state !== 'ok'} <span class="warn">{vs.state}</span>{/if}</td>
+                  <td class="mono">{sl.id}{#if vs && vs.state !== 'ok'}{' '}<span class="warn">{vs.state}</span>{/if}</td>
                   <td>{sl.role}</td><td>{sl.tier}</td>
                   <td><div class="usebar small"><span class="used" class:hot={sl.total && sl.used / sl.total >= 0.9} style="width: {sl.total ? (sl.used / sl.total) * 100 : 0}%"></span></div></td>
                   <td class="n">{formatBytes(sl.used)}</td><td class="n">{formatBytes(sl.free)}</td><td class="n">{formatBytes(sl.total)}</td>

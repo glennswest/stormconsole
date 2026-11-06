@@ -2247,12 +2247,16 @@ Update page's generations. All on plain clients.
 - Not seen: a real node's stormcert pair; `verify-drive-offer.sh` over TLS (a destructive verb goes the same way, with the viewer's bearer). On a node the console's own bind is `/data/stormcert`, not `/etc/stormcert`
 - stormcos#374 sets `url` and `ca_file` together when the engine's pair is on
 
-### The volumes on every node's drives (#52)
+### The volumes on every node's drives (#52) ✅ 2026-11-06
 stormdrive#26 landed: `usage.volumes` on `GET /api/v1/drives` (`src/usage.rs`, `DriveVolume`), absent while its engine reports no placement, which is not the same as empty. A remote volume has no `sb:volume` row here, so its name has no link; its
 consumer does. This shows every node's consumers to every viewer, so one in a project the viewer may not see is withheld (#163's rule).
-- [ ] `usage.rs` carries the volumes; `value::consumer_words` shared with the engine plugin; withheld per viewer past the cache
-- [ ] `drivemap.js` prefers them on every node, this engine's placement as the fallback and for a slab's state; the page's sentence by what is reported; test
-- [ ] `deploy/verify-drive-volumes.sh`: real apiserver, stand-ins in `usage.rs`'s shape, a viewer in one project; Chromium; `verify-drives.sh`; docs, changelog, dist; close; golden
+- [x] `usage.rs` carries the volumes; `value::consumer_words` shared with the engine plugin; withheld per viewer past the cache
+- [x] `drivemap.js` prefers them on every node, this engine's placement as the fallback and for a slab's state; the page's sentence by what is reported; test
+- [x] `deploy/verify-drive-volumes.sh`: real apiserver, stand-ins in `usage.rs`'s shape, a viewer in one project; Chromium; `verify-drives.sh`; docs, changelog, dist; close; golden
+- Verified with `sc-build deploy/verify-drive-volumes.sh` (0 failed): real fastetcd, apiserver (RBAC, signed tokens) and console, three stand-in stormdrives in `src/usage.rs`'s shape and a stand-in engine. Another node's volume with its state and its consumer linked
+  to a real claim, its name with no row to lead to; an empty list said as empty, an absent one as not reporting, an old one with its age; this node's list from stormdrive with a slab's state from the engine, and the engine as the fallback. alice: her project's consumer named,
+  the other's said to exist and nowhere in the answer or page, the administrator still seeing it from the same kept answer. Also `verify-drives.sh` (1,600), `drivemap.test.mjs`, default `sc-build`
+- Not seen: a real stormdrive reporting volumes (a build VM has no drives), a real multi-node cluster. Left: `/api/plugins/sb/placement` still names every consumer to every viewer (#232)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

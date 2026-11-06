@@ -13,7 +13,7 @@ walk(`drive volumes (${PHASE})`, async (t) => {
     return p
   }
   t.check(await t.open(page, '#/drives', /FAR-1|drive/), 'the drives page')
-  t.check(await t.until(async () => (await page.locator('button.bay').count()) >= 7), 'every node\'s drives', `${await page.locator('button.bay').count()}`)
+  t.check(await t.until(async () => (await page.locator('button.bay').count()) === 6), 'every node\'s drives', `${await page.locator('button.bay').count()}`)
 
   let p = await pick('FAR-1')
   const row = (name) => p.locator('tr', { hasText: name })
