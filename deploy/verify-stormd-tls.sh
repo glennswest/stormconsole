@@ -74,7 +74,8 @@ say "they refuse what the console does today"
 check "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$W/nodeca.crt" "https://127.0.0.1:$TLS/api/v1/components")" 401 "stormd: no credential, 401"
 check "$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:$TLS/api/v1/components" || true)" 000 "stormd: plain HTTP, nothing"
 check "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$W/nodeca.crt" --cert "$W/console.crt" --key "$W/console.key" "https://127.0.0.1:$TLS/api/v1/components")" 200 "stormd: with the pair, 200"
-check "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$W/nodeca.crt" "https://127.0.0.1:$DRIVE/api/v1/components")" 401 "stormdrive: no credential, 401"
+curl -sS -o /dev/null --cacert "$W/nodeca.crt" "https://127.0.0.1:$DRIVE/api/v1/components" 2>&1 | sed 's/^/  curl says: /' | cut -c1-200 || true
+check "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$W/nodeca.crt" "https://127.0.0.1:$DRIVE/api/v1/components" || true)" 401 "stormdrive: no credential, 401"
 check "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$DRIVE/api/v1/components" || true)" 403 "stormdrive: plain HTTP, 403"
 
 conf() { # require
@@ -131,7 +132,8 @@ grep -c restart "$W/tlsd.log" | sed 's/^/  restart lines in its log: /' || true
 say "API health asks the stormds the same way"
 sleep 6
 H=$(curl -s "$C/api/plugins/health/snapshot"); echo "  $H" | cut -c1-300
-check "$(echo "$H" | j '"stormd:%s" in str(d) or ":%s" in str(d.get("answered",""))' 2>/dev/null | head -1 | sed "s/%s//")" True "a stormd answered" || true
+check "$(echo "$H" | j '":%d" % '"$TLS"' in d["answered"]')" True "the TLS stormd answered"
+check "$(echo "$H" | j '":%d" % '"$PLAIN"' in d["answered"]')" True "and the plain one"
 check "$(echo "$H" | grep -c "$STRANGE")" 1 "the stranger's named"
 
 say "stormdrive over TLS"
@@ -155,11 +157,11 @@ check "$BR" 0 "the walk"
 
 say "the client pair is renewed in place, and a bad one is noticed"
 cp "$W/otherclient.crt" "$W/use.crt"; cp "$W/otherclient.key" "$W/use.key"
-for _ in $(seq 15); do S=$(comps | j '[c["health"] for c in d if c["id"]=="fleet:svc:tlsd:system"]'); [ "$S" = "[]" ] && break; sleep 1; done
-check "$S" "[]" "a stranger's client pair: the TLS stormd stops being read"
+for _ in $(seq 15); do S=$(curl -s -o /dev/null -w '%{http_code}' "$C/api/plugins/fleet/proxy/$TLS/api/v1/components"); [ "$S" = 401 ] && break; sleep 1; done
+check "$S" 401 "a stranger's client pair: the TLS stormd refuses the console"
 cp "$W/console.crt" "$W/use.crt"; cp "$W/console.key" "$W/use.key"
-until_has fleet:svc:tlsd:system || true
-check "$(has fleet:svc:tlsd:system)" True "renewed: read again, no restart"
+for _ in $(seq 15); do S=$(curl -s -o /dev/null -w '%{http_code}' "$C/api/plugins/fleet/proxy/$TLS/api/v1/components"); [ "$S" = 200 ] && break; sleep 1; done
+check "$S" 200 "renewed: read again, no restart"
 
 say "the plain stormd moves to TLS"
 kill "$PLAIN_PID"; wait "$PLAIN_PID" 2>/dev/null || true
