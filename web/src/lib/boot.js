@@ -52,7 +52,9 @@ const remote = (half) => half === 'remote' || half === 'mixed'
 export function flowStory(health) {
   if (!health) return { state: 'unknown', word: 'The engine has not said yet' }
   const slabs = health.slabs || null
-  const fromNetwork = !!slabs && (slabs.diskless || remote(slabs.system) || remote(slabs.data))
+  // Not `diskless` alone: an engine with no volume placed yet says that, with both halves `none`.
+  const fromNetwork = !!slabs && (remote(slabs.system) || remote(slabs.data))
+  const fromDisk = !!slabs && !fromNetwork && (slabs.system === 'local' || slabs.data === 'local')
   const left = health.flow_over_remaining
   const f = health.flow_over || null
   const moved = f?.moved ?? 0
@@ -71,9 +73,9 @@ export function flowStory(health) {
   if (left == null) {
     return fromNetwork
       ? { ...base, state: 'network', word: 'Running from the network', sub: 'This engine runs no flow-over.' }
-      : slabs
+      : fromDisk
         ? { ...base, state: 'local', word: 'Running from its own disk', sub: 'No flow-over on this boot.' }
-        : { ...base, state: 'none', word: 'No flow-over on this boot', sub: 'The engine has not said where its slabs are yet.' }
+        : { ...base, state: 'none', word: 'No flow-over on this boot', sub: slabs ? 'The engine has no volume on a slab yet.' : 'The engine has not said where its slabs are yet.' }
   }
   if (health.flow_over_stalled) return { ...base, state: 'stalled', word: 'The flow-over stopped', sub: health.flow_over_stalled }
   if (left > 0) return { ...base, state: 'moving', word: 'Moving onto its own disk', sub: 'Running from the network while it moves.' }

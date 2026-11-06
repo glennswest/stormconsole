@@ -7,11 +7,16 @@ const mode = (m) => fetch(`${FLOW}/_mode/${m}`, { method: 'POST' })
 walk(`boot (${PHASE})`, async (t) => {
   const page = await t.page('')
   await page.setViewportSize({ width: 1920, height: 1080 })
+  page.upstreamDown = PHASE === 'gone'
   const word = () => page.locator('[data-testid=flow-word]').innerText()
   const says = (re) => t.until(async () => re.test(await word()), 20000)
   await page.goto(`${t.BASE}/#/boot`)
 
   const boot = page.locator('[data-testid=boot-card]')
+  if (PHASE === 'bare') {
+    t.check(await t.until(async () => /diskless|no system-data|not mounted|keeps no record/i.test(await boot.innerText())), 'a node with no system-data says so', await boot.innerText().catch(() => ''))
+    return
+  }
   t.check(await t.until(async () => /modules/.test(await boot.innerText())), "the Boot card has PID 1's phases", await boot.innerText().catch(() => ''))
   if (PHASE === 'none') {
     t.check(/firmware end to PID 1/.test(await boot.innerText()), 'and what came before PID 1')
@@ -23,10 +28,6 @@ walk(`boot (${PHASE})`, async (t) => {
   }
   if (PHASE === 'gone') {
     t.check(await says(/cannot be asked/), 'no engine: said', await word())
-    return
-  }
-  if (PHASE === 'bare') {
-    t.check(/no record|no system-data/.test(await boot.innerText()), 'a diskless node says it keeps none', await boot.innerText())
     return
   }
 

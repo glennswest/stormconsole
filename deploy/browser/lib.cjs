@@ -45,6 +45,8 @@ exports.walk = (name, fn) => {
           // 501 too: an upstream saying a thing is not served yet (stormipmi's
           // boot intent) is an answer the page shows, not a failure.
           if (/the server responded with a status of (4\d\d|501)/.test(m.text())) return
+          // A walk of an upstream that is down, where the 502 is what the page has to say.
+          if (page.upstreamDown && /the server responded with a status of 502/.test(m.text())) return
           errors.push(`${who} console: ${m.text().split('\n')[0]}`)
         })
         // confirm() is accepted; prompt() is answered with `page.answer`

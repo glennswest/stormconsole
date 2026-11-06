@@ -41,6 +41,7 @@ assert.equal(flowStory({ flow_over_remaining: 0, flow_over: flow, slabs: { diskl
 assert.equal(flowStory({ slabs: { diskless: false, system: 'local', data: 'local' } }).state, 'local')
 assert.equal(flowStory({ slabs: { diskless: true, system: 'remote', data: 'remote' } }).state, 'network')
 assert.equal(flowStory({ slabs: { diskless: false, system: 'remote', data: 'local' } }).state, 'network')
+assert.equal(flowStory({ slabs: { diskless: true, system: 'none', data: 'none', items: [] } }).state, 'none', 'a real engine with nothing placed: not "the network"')
 assert.equal(flowStory({}).state, 'none', 'slabs not known yet claims nothing about where it runs')
 assert.equal(flowStory(null).state, 'unknown')
 assert.equal(flowStory({ flow_over_remaining: 0 }).percent, 100, 'nothing to move')

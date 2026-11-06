@@ -17,6 +17,11 @@
 
   async function loadBoot() {
     try {
+      const status = await get('/api/v1/history')
+      if (!status.available) {
+        bootNote = status.note || 'This node keeps no record of its boots.'
+        return
+      }
       const list = await get('/api/v1/history/boots')
       const rows = list.items || list.boots || list
       const row = (rows || []).find((b) => b.current) || (rows || [])[0]
