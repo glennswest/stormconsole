@@ -31,6 +31,8 @@ pub struct Act {
 pub fn act(method: &Method, path: &str, upgrade: bool) -> Option<Act> {
     let object = path.strip_prefix("/api/plugins/").or_else(|| path.strip_prefix("/api/v1/")).unwrap_or(path).to_string();
     let door = |o: &str| o.starts_with("ipmi/console/") || (o.starts_with("vm/console/") && (o.ends_with("/serial") || o.ends_with("/vnc")))
+        // RDP to a machine (#54).
+        || (o.starts_with("vm/vms/") && o.ends_with("/rdp/session"))
         // A shell in a container (#12).
         || (o.starts_with("k8s/pods/") && o.ends_with("/exec"));
     if upgrade && door(&object) {

@@ -32,6 +32,7 @@ mod identity;
 pub mod images;
 pub mod keys;
 mod keystore;
+mod rdp;
 pub mod lifecycle;
 pub mod network;
 pub mod settings;
@@ -275,6 +276,9 @@ impl ConsolePlugin for VmPlugin {
             .route("/instances/{ns}/{name}/stop", post(delete_instance))
             .route("/vms/{ns}/{name}", get(detail))
             .route("/vms/{ns}/{name}/identity", get(identity_of))
+            .route("/vms/{ns}/{name}/rdp", get(rdp::status))
+            .route("/vms/{ns}/{name}/rdp/login", post(rdp::login))
+            .route("/vms/{ns}/{name}/rdp/session", get(rdp::session))
             .route("/vms/{ns}/{name}/settings", get(settings_of).put(settings_set))
             .route("/vms/{ns}/{name}/disks", post(disk_add))
             .route("/vms/{ns}/{name}/disks/{disk}", delete(disk_remove))
@@ -560,7 +564,7 @@ fn visible_to(id: &str, hidden: &std::collections::HashSet<String>) -> bool {
 /// A VM in a namespace this viewer may not see does not exist as far as
 /// they are concerned — the same answer an absent one gets, so a plugin
 /// route is not a way around the filtered feed.
-async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
+pub(crate) async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
     let (hidden, _) = inner.access.as_ref()?.hidden(viewer).await?;
     hidden.contains(ns).then(|| {
         (StatusCode::NOT_FOUND, Json(json!({"error": format!("no project {ns}")}))).into_response()

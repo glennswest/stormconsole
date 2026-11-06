@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Remote desktop on a machine's page (#54)
+- **feat:** a Remote desktop tab: RDP to a machine in the browser through the node's stormrdp, as the signed-in person, with the gateway's RBAC check at every connection. Loaded only when used.
+- **chore:** new npm dependencies: IronRDP's web packages, at the versions stormrdp pins.
+
 ### 2026-11-06 — Finding the engine's token (#30)
 - **feat:** with `[stormblock] token_file` unset, the console finds the engine's token as the engine's own client does. A token from a file on this machine is never sent to an engine on another.
 

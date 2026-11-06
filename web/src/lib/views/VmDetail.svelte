@@ -17,6 +17,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import YamlPanel from '../components/YamlPanel.svelte'
   import FlowTable from '../components/FlowTable.svelte'
+  import VmRdp from './VmRdp.svelte'
   import Icon from '../components/Icon.svelte'
   import { ago } from '../ui/time.js'
   import EventBox from '../components/EventBox.svelte'
@@ -31,7 +32,7 @@
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
 
-  const TABS = ['Overview', 'Metrics', 'Settings', 'Backup', 'Serial console', 'Graphical console', 'YAML']
+  const TABS = ['Overview', 'Metrics', 'Settings', 'Backup', 'Serial console', 'Graphical console', 'Remote desktop', 'YAML']
 
   // `?door=serial` / `?door=screen` opens straight onto a console.
   //
@@ -873,6 +874,8 @@
           </p>
         </div>
       {/if}
+    {:else if tab === 'Remote desktop'}
+      <VmRdp {ns} {name} />
     {:else if tab === 'Graphical console'}
       {#if !doors.vnc}
         <EmptyState
