@@ -2405,8 +2405,11 @@ Read from the sources (2026-11-06): stormvm has the split; the standalone cadvis
 
 ### A Boot and flow-over page (#271)
 Read from stormpump f8d74d4 (`history.rs`: `CLOCK_BOOTTIME` ms, a `pid1` event per start, `phase` with `ms`, `started`, `all-running`) and stormblock a7027db (open `/api/v1/health`: `flow_over_remaining`, absent with no flow-over; `flow_over` flattened with `eta_seconds`; `flow_over_stalled`; `slabs`). `mb_per_s` there is the average since it began, so the sparkline comes from byte deltas.
-- [ ] `web/src/lib/boot.js` + test: the story and the states; `#/boot` outside the shell, its own dark palette; nav beside History
-- [ ] `verify-history.sh`: real writers for the timeline, a real engine for no flow-over, a stand-in in `flowprogress.rs`'s shape for a running one (a real one needs an appliance); screenshots at 1920x1080; docs; dist; image
+- [x] `web/src/lib/boot.js` + test: the story and the states; `#/boot` outside the shell, its own dark palette; nav beside History
+- [x] `verify-history.sh`: real writers for the timeline, a real engine for no flow-over, a stand-in in `flowprogress.rs`'s shape for a running one; screenshots at 1920x1080; docs; dist; image
+- Verified with `sc-build deploy/verify-history.sh` (0 failed), default `sc-build`. The real writer's timeline; states walked in Chromium at 1920x1080, fitting with no scrolling; screenshots read. The real engine found `diskless: true` with both halves `none` when nothing is placed, which read as "from the network" (fixed)
+- Found: the engine's `seconds` runs on after the end, so its average decays (stormblock#543): shown only as watched
+- Not seen: a real flow-over or a real node. The page is ready to record once one runs; firmware time is not on it, since the clock starts at the kernel
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

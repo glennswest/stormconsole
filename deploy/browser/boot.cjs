@@ -19,7 +19,7 @@ walk(`boot (${PHASE})`, async (t) => {
   }
   t.check(await t.until(async () => /modules/.test(await boot.innerText())), "the Boot card has PID 1's phases", await boot.innerText().catch(() => ''))
   if (PHASE === 'none') {
-    t.check(/firmware end to PID 1/.test(await boot.innerText()), 'and what came before PID 1')
+    t.check(/kernel and initramfs/.test(await boot.innerText()), 'and what came before PID 1')
     t.check(await says(/./), 'the real engine answers', await word())
     t.check(/own disk|No flow-over/.test(await word()), 'a real engine with no flow-over says so', await word())
     t.check((await page.locator('[role=progressbar]').count()) === 0, 'and draws no progress')
@@ -68,8 +68,14 @@ walk(`boot (${PHASE})`, async (t) => {
   await mode('done')
   t.check(await says(/Running from its own disk/), 'at the end: running from its own disk', await word())
   t.check((await page.locator('[role=progressbar]').count()) === 0, 'the bar has gone')
-  t.check(/MB\/s on average/.test(await page.locator('[data-testid=flow-total]').innerText()), 'what it moved, and how fast')
+  t.check(/copied/.test(await page.locator('[data-testid=flow-total]').innerText()) && /MB\/s on average/.test(await page.locator('[data-testid=flow-total]').innerText()), 'what it moved, and how fast, as it was watched', await page.locator('[data-testid=flow-total]').innerText())
   await t.shot(page, 'boot-done')
+  // A reload after the end has only the engine's average, which has been falling since: not said (stormblock#543).
+  await page.reload()
+  t.check(await says(/Running from its own disk/), 'a reload after the end')
+  const reloaded = page.locator('[data-testid=flow-total]')
+  t.check(await t.until(async () => /copied/.test(await reloaded.innerText())), 'the bytes stand', await reloaded.innerText().catch(() => ''))
+  t.check(!/average/.test(await reloaded.innerText()), 'and no average it cannot vouch for', await reloaded.innerText())
 
   // A phone is not what this is for, and it still has to read.
   await page.setViewportSize({ width: 390, height: 800 })

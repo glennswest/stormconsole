@@ -4,7 +4,7 @@
   // Everything is read here and nothing kept: PID 1's timeline from system-data, and the engine's open health.
   import { onDestroy } from 'svelte'
   import { get, formatBytes } from '../api.js'
-  import { bootStory, uptimeMs, flowStory, rates, sparkline, clock, seconds } from '../boot.js'
+  import { bootStory, uptimeMs, flowStory, flowTotal, rates, sparkline, clock, seconds } from '../boot.js'
 
   const KEEP = 150 // five minutes at one reading every two seconds
 
@@ -13,6 +13,7 @@
   let health = $state(null)
   let healthError = $state('')
   let samples = $state([])
+  let watched = $state(null)
   let now = $state(Date.now())
 
   async function loadBoot() {
@@ -42,6 +43,7 @@
       health = h
       healthError = ''
       if (h.flow_over) samples = [...samples, { t: Date.now(), bytes: h.flow_over.bytes }].slice(-KEEP)
+      if (h.flow_over && h.flow_over_remaining > 0) watched = { seconds: h.flow_over.seconds, average: h.flow_over.mb_per_s }
     } catch (e) {
       healthError = e.message
     }
@@ -62,6 +64,7 @@
   const line = $derived(sparkline(speeds))
   const up = $derived(uptimeMs(story, now))
   const big = $derived(flow.percent != null && ['moving', 'checking', 'stalled', 'settling', 'corrupt'].includes(flow.state))
+  const total = $derived(flowTotal(flow, watched))
   const mbps = (v) => (v == null ? '—' : v >= 100 ? Math.round(v).toString() : v.toFixed(1))
 </script>
 
@@ -119,8 +122,14 @@
           <svg class="spark" viewBox="0 0 600 80" preserveAspectRatio="none" role="img" aria-label="MB per second over the last minutes" data-testid="flow-spark"><polyline points={line} /></svg>
         {/if}
         <p class="note">{flow.moved.toLocaleString()} extents moved · {flow.zeroed.toLocaleString()} all zeros · {(flow.left ?? 0).toLocaleString()} left · {formatBytes(flow.bytes)} copied</p>
-      {:else if flow.state === 'local' && flow.bytes}
-        <p class="note" data-testid="flow-total">{formatBytes(flow.bytes)} moved in {clock((flow.seconds ?? 0) * 1000)}, {mbps(flow.average)} MB/s on average</p>
+      {:else if total}
+        <div class="stats" data-testid="flow-total">
+          <div><span class="digits">{formatBytes(total.bytes)}</span><span class="what">copied</span></div>
+          {#if total.seconds != null}
+            <div><span class="digits">{clock(total.seconds * 1000)}</span><span class="what">it took</span></div>
+            <div><span class="digits">{mbps(total.average)}</span><span class="what">MB/s on average</span></div>
+          {/if}
+        </div>
       {/if}
     </section>
   </main>
@@ -162,7 +171,7 @@
   h2 { margin: 0; color: var(--b-dim); font-size: clamp(13px, 1.9vh, 22px); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
   .note { margin: 0; color: var(--b-dim); font-size: clamp(14px, 2vh, 22px); }
   .phases { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(6px, 1.2vh, 14px); }
-  .phases li { display: grid; grid-template-columns: minmax(0, 13em) 1fr 5em; gap: 12px; align-items: center; font-size: clamp(14px, 2.2vh, 24px); }
+  .phases li { display: grid; grid-template-columns: 36% 1fr 4.5em; gap: 12px; align-items: center; font-size: clamp(14px, 2.2vh, 24px); }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .secs { text-align: right; font-variant-numeric: tabular-nums; color: var(--b-dim); }
   .track { position: relative; height: clamp(8px, 1.4vh, 16px); background: var(--b-line); border-radius: 4px; overflow: hidden; }
@@ -180,7 +189,7 @@
   [data-state='stalled'] .progress span, [data-state='corrupt'] .progress span { background: var(--b-bad); }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .stats .digits { font-size: clamp(32px, 8vh, 96px); }
-  .spark { width: 100%; flex: 1; min-height: 48px; max-height: 26vh; }
+  .spark { width: 100%; flex: 1; min-height: 48px; }
   .spark polyline { fill: none; stroke: var(--b-accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
   @media (prefers-reduced-motion: reduce) { .progress span { transition: none; } }
 </style>

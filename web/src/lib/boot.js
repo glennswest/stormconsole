@@ -16,7 +16,7 @@ export function bootStory(detail) {
     .filter((e) => e.event === 'phase' && e.ms != null)
     .map((e) => ({ name: e.name || 'phase', at: e.t_ms, ms: e.ms }))
     .sort((a, b) => a.at - b.at)
-  const before = first ? [{ name: 'firmware end to PID 1', at: 0, ms: first, before: true }] : []
+  const before = first ? [{ name: 'kernel and initramfs', at: 0, ms: first, before: true }] : []
   const ends = [...phases.map((p) => p.at + p.ms), all?.t_ms ?? 0, first ?? 0]
   const span = Math.max(1, ...ends)
   const rows = [...before, ...phases]
@@ -87,6 +87,14 @@ export function flowStory(health) {
   // Slabs are kept for ten seconds, so they can still say the network just after the last extent.
   if (fromNetwork) return { ...base, state: 'settling', word: 'Moved, and settling', sub: 'The last extent has moved; the engine still reports a slab on the network.' }
   return { ...base, state: 'local', word: 'Running from its own disk', sub: f ? 'Its data has moved.' : 'Flow-over finished.' }
+}
+
+/// What to say of a finished flow-over. The engine's `seconds` keeps counting after the last extent
+/// (stormblock#543), so its average falls for as long as it runs: time and speed are said only from the last
+/// reading this page took while extents were left. `watched` is that reading, or null after a reload.
+export function flowTotal(flow, watched) {
+  if (flow.state !== 'local' || !flow.bytes) return null
+  return { bytes: flow.bytes, seconds: watched?.seconds ?? null, average: watched?.average ?? null }
 }
 
 /// MB/s between readings of the copied-bytes counter. The engine's own `mb_per_s` is the average since

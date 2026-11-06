@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { bootStory, uptimeMs, flowStory, rates, sparkline, clock, seconds } from './boot.js'
+import { bootStory, uptimeMs, flowStory, flowTotal, rates, sparkline, clock, seconds } from './boot.js'
 
 const tl = [
   { t_ms: 3000, event: 'boot', wall_unix: 1 },
@@ -10,7 +10,7 @@ const tl = [
   { t_ms: 9000, event: 'all-running', detail: '2 service(s)' },
 ]
 const s = bootStory({ timeline: tl, release: '12.61', hostname: 'n1', current: true, started: 2, at: '2026-11-06T00:00:00Z' })
-assert.deepEqual(s.rows.map((r) => r.name), ['firmware end to PID 1', 'early', 'modules'], 'what came before PID 1, then in the order they began')
+assert.deepEqual(s.rows.map((r) => r.name), ['kernel and initramfs', 'early', 'modules'], 'what came before PID 1, then in the order they began')
 assert.equal(s.rows[0].ms, 3000)
 assert.equal(s.span, 9000)
 assert.equal(s.allRunningMs, 9000)
@@ -20,7 +20,7 @@ assert.equal(bootStory(null).rows.length, 0)
 assert.equal(bootStory({ timeline: [{ event: 'boot', t_ms: 1 }] }).allRunningMs, null, 'nothing has happened yet')
 const many = bootStory({ timeline: Array.from({ length: 14 }, (_, i) => ({ event: 'phase', name: `p${i}`, t_ms: i + 1, ms: 1 })) })
 assert.equal(many.rows.length, 9)
-assert.equal(many.more, 6, 'the first event is PID 1 by default, so 15 rows, 6 not shown')
+assert.equal(many.more, 6, "the first event is what came before PID 1, so 15 rows, 6 not shown")
 
 const flow = { moved: 300, zeroed: 100, bytes: 1200e6, seconds: 60, mb_per_s: 20, eta_seconds: 90, extents_per_s: 6.6 }
 const moving = flowStory({ flow_over_remaining: 600, flow_over: flow, slabs: { diskless: false, system: 'mixed', data: 'mixed' } })
@@ -46,6 +46,9 @@ assert.equal(flowStory({}).state, 'none', 'slabs not known yet claims nothing ab
 assert.equal(flowStory(null).state, 'unknown')
 assert.equal(flowStory({ flow_over_remaining: 0 }).percent, 100, 'nothing to move')
 
+assert.deepEqual(flowTotal(local({ seconds: 9999, mb_per_s: 1 }), { seconds: 60, average: 20 }), { bytes: 1200e6, seconds: 60, average: 20 }, 'what was watched, not the decayed average')
+assert.deepEqual(flowTotal(local({ seconds: 9999, mb_per_s: 1 }), null), { bytes: 1200e6, seconds: null, average: null }, 'after a reload: only the bytes')
+assert.equal(flowTotal(moving, null), null)
 assert.deepEqual(rates([{ t: 0, bytes: 0 }, { t: 2000, bytes: 100e6 }, { t: 4000, bytes: 100e6 }]), [50, 0], 'from the counter, not the average')
 assert.deepEqual(rates([{ t: 0, bytes: 9e6 }, { t: 2000, bytes: 0 }, { t: 4000, bytes: 2e6 }]), [1], 'a counter that fell is a new engine, not a negative rate')
 assert.equal(sparkline([1]), '')
