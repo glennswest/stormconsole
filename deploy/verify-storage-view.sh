@@ -53,17 +53,30 @@ echo "  one: $(direct volumes | j 'd["items"][0]["status"]' | cut -c1-300)"
 
 say "stormdrive: the real one and the stand-in"
 python3 "$HERE/deploy/storage-view.standin.py" 19401 > "$W/standin.log" 2>&1 &
+(cd "$W"
+ openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=nodeca" -keyout nodeca.key -out nodeca.crt 2>/dev/null
+ openssl req -newkey rsa:2048 -nodes -subj "/CN=stormdrive" -keyout drive.key -out drive.csr 2>/dev/null
+ printf 'subjectAltName=IP:127.0.0.1,DNS:localhost\nextendedKeyUsage=serverAuth\n' > drive.ext
+ openssl x509 -req -in drive.csr -CA nodeca.crt -CAkey nodeca.key -CAcreateserial -days 2 -extfile drive.ext -out drive.crt 2>/dev/null
+ openssl req -newkey rsa:2048 -nodes -subj "/CN=stormconsole" -keyout client.key -out client.csr 2>/dev/null
+ printf 'extendedKeyUsage=clientAuth\n' > client.ext
+ openssl x509 -req -in client.csr -CA nodeca.crt -CAkey nodeca.key -CAcreateserial -days 2 -extfile client.ext -out client.crt 2>/dev/null)
 cat > "$W/drive.toml" <<EOF
 listen_addr = "127.0.0.1:19402"
 data_dir = "$W/drive-data"
+[api]
+tls_cert_file = "$W/drive.crt"
+tls_key_file = "$W/drive.key"
+client_ca_files = ["$W/nodeca.crt"]
 [stormblock]
 enabled = false
 EOF
 mkdir -p "$W/drive-data"
 "$W/bin/stormdrive" --config "$W/drive.toml" > "$W/drive.log" 2>&1 &
-for _ in $(seq 40); do curl -s -o /dev/null http://127.0.0.1:19402/apis/storage.storm.io/v1 && break; sleep 0.5; done
-echo "  the real one: $(curl -s http://127.0.0.1:19402/apis/storage.storm.io/v1/drives | cut -c1-200)"
-echo "  its enclosures: $(curl -s http://127.0.0.1:19402/apis/storage.storm.io/v1/enclosures | cut -c1-200)"
+RD=(--cacert "$W/nodeca.crt" --cert "$W/client.crt" --key "$W/client.key" https://127.0.0.1:19402/apis/storage.storm.io/v1)
+for _ in $(seq 40); do curl -s -o /dev/null "${RD[@]}" && break; sleep 0.5; done
+echo "  the real one: $(curl -s --cacert "$W/nodeca.crt" --cert "$W/client.crt" --key "$W/client.key" https://127.0.0.1:19402/apis/storage.storm.io/v1/drives | cut -c1-300)"
+echo "  its enclosures: $(curl -s --cacert "$W/nodeca.crt" --cert "$W/client.crt" --key "$W/client.key" https://127.0.0.1:19402/apis/storage.storm.io/v1/enclosures | cut -c1-200)"
 
 CONSOLE=
 console() { # the [stormblock] token line
@@ -72,6 +85,7 @@ console() { # the [stormblock] token line
   { printf 'listen_addr = "127.0.0.1:19096"\ndata_dir = "%s/c"\n' "$W"
     printf '[stormblock]\nurl = "%s"\n%s\n' "$EN" "$1"
     printf '[stormdrive]\nurl = "http://127.0.0.1:19401"\n[stormdrive.nodes]\nreal = "http://127.0.0.1:19402"\ndead = "http://127.0.0.1:19499"\n'
+    printf '[node_tls]\nca_file = "%s/nodeca.crt"\ncert_file = "%s/client.crt"\nkey_file = "%s/client.key"\n' "$W" "$W" "$W"
     for s in kubernetes fleet logs stormstorage sbregistry vm vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate ironprom; do printf '[%s]\nenabled = false\n' "$s"; done
   } > "$W/c.toml"
   "$BIN" --config "$W/c.toml" >> "$W/c.log" 2>&1 &
@@ -95,12 +109,14 @@ check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$C/api/plugins/sb/resou
 
 say "stormdrive's objects, from every node"
 D=$(dr drives)
-check "$(echo "$D" | j '[(x["node"],x["serial"],x["bay"],x["health"],x["temperatureC"],x["wearPct"]) for x in d["items"]]')" "[('this node', 'ZC900', 7, 'warning', 44, 12)]" "the stand-in's drive, reduced"
+check "$(echo "$D" | j '[(x["serial"],x["bay"],x["health"],x["temperatureC"],x["wearPct"]) for x in d["items"] if x["serial"]=="ZC900"]')" "[('ZC900', 7, 'warning', 44, 12)]" "the stand-in's drive, reduced"
+echo "  every node: $(echo "$D" | j 'd["nodes"]' | cut -c1-300)"
+echo "  the real stormdrive found: $(echo "$D" | j '[(x["name"],x["serial"],x["health"]) for x in d["items"] if x["node"]=="real"]' | cut -c1-300)"
 check "$(echo "$D" | grep -c -E 'long history|plannedFormat' || true)" 0 "its history stays behind"
-check "$(echo "$D" | j '{n["node"]:n["ok"] for n in d["nodes"]}=={"this node":True,"real":True,"dead":False}')" True "the real stormdrive answers, in its own shape"
+check "$(echo "$D" | j '{n["node"]:n["ok"] for n in d["nodes"] if n["node"] in ("real","dead")}=={"real":True,"dead":False}')" True "the real stormdrive answers over TLS, with the client pair"
 check "$(echo "$D" | j '[bool(n["error"]) for n in d["nodes"] if n["node"]=="dead"]')" "[True]" "the dead one is named, with why"
 E_=$(dr enclosures)
-check "$(echo "$E_" | j '[(x["node"],x["driveCount"],x["powerSupplies"],x["maxTemperatureC"]) for x in d["items"]]')" "[('this node', 24, {'ok': 1, 'total': 2}, 51)]" "an enclosure"
+check "$(echo "$E_" | j '[(x["driveCount"],x["powerSupplies"],x["maxTemperatureC"]) for x in d["items"] if x["name"]=="5000a098aaaa0001"]')" "[(24, {'ok': 1, 'total': 2}, 51)]" "an enclosure"
 
 BR=0; env PHASE=real "$HERE/deploy/browser/run.sh" "$W" storage-view.cjs "$C" || BR=1
 check "$BR" 0 "the page"

@@ -1,10 +1,11 @@
 <script>
   // What a container's environment comes to (#12): the references resolved, as far as this person may read
   // them. A Secret's value is never here.
+  import { untrack } from 'svelte'
   import { get } from '../api.js'
   let { base, containers = [] } = $props()
-  const names = containers.map((c) => c.name)
-  let container = $state(names[0] || '')
+  const names = $derived(containers.map((c) => c.name))
+  let container = $state(untrack(() => containers[0]?.name || ''))
   let data = $state(null)
   let error = $state('')
   $effect(() => {

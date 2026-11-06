@@ -25,9 +25,12 @@ assert.strictEqual(ds.filter((d) => d.seenBy === 'both').length, 0, 'two engine 
 const ss = slabRows([{ metadata: { name: 'a' }, spec: { drive: { path: '/a' } }, status: { capacityBytes: 8, freeBytes: 2 } }, { metadata: { name: 'b' }, spec: { drive: { path: '/b' } }, status: { quarantined: true, holdsMetadata: true } }])
 assert.deepStrictEqual(ss.map((s) => [s.id, s.quarantined, s.metadata]), [['b', true, true], ['a', false, false]])
 
-const ns = nodeRows([{ metadata: { name: 'z' }, spec: {}, status: { local: true, totalBytes: 9, freeBytes: 3 } }, { metadata: { name: 'a' }, spec: { topology: { rack: 'r1' }, topologyChain: ['rack'] }, status: { totalBytes: 1, freeBytes: 1 } }])
+const ns = nodeRows([{ metadata: { name: 'z' }, spec: {}, status: { local: true, totalBytes: 9, freeBytes: 3 } }, { metadata: { name: 'a' }, spec: { topology: { rack: 'r1' }, topologyChain: 'rack=r1/node=a' }, status: { totalBytes: 1, freeBytes: 1 } }])
 assert.deepStrictEqual(ns.map((n) => n.name), ['z', 'a'], 'this node first')
-assert.strictEqual(ns[1].topology, 'rack=r1')
+assert.strictEqual(ns[1].topology, 'rack=r1/node=a', 'the engine sends a string')
+assert.strictEqual(nodeRows([{ metadata: { name: 'x' }, spec: { topology: { rack: 'r1' } }, status: {} }])[0].topology, 'rack=r1')
+// A thin volume nothing has written to has no legs yet: that is not missing any.
+assert.strictEqual(volumeRows([vol('e', { legsExpected: 0, unreadable: 0 })])[0].trouble, false)
 
 const t = totals({ volumes: vs, slabs: ss, nodes: ns })
 assert.deepStrictEqual([t.volumes, t.trouble, t.quarantined, t.capacityBytes, t.freeBytes], [4, 2, 1, 10, 4])

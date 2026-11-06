@@ -87,7 +87,7 @@
             <tr class:trouble={v.trouble}>
               <td><a href={`#/grid?id=${encodeURIComponent(`sb:volume:${v.id}`)}`}>{v.name}</a>{#if v.sealed}<span class="dim gap">sealed</span>{/if}</td>
               <td class={tone(v.health)}>{dash(v.health)}{#if v.unreadable}<span class="bad gap">unreadable</span>{/if}{#if v.failedSlabs}<span class="bad gap">{v.failedSlabs} slab(s) failed</span>{/if}</td>
-              <td class:warn={v.legsMissing}>{v.legsExpected == null ? '—' : `${v.legsExpected - v.legsMissing} of ${v.legsExpected}`}</td>
+              <td class:warn={v.legsMissing}>{v.legsExpected ? `${v.legsExpected - v.legsMissing} of ${v.legsExpected}` : '—'}</td>
               <td>{bytes(v.sizeBytes)}</td><td>{bytes(v.allocatedBytes)}</td><td>{bytes(v.physicalBytes)}</td>
               <td>{dash(v.redundancy)}</td><td>{dash(v.role)}</td><td>{dash(v.retention)}</td><td>{dash(v.attach)}</td>
             </tr>

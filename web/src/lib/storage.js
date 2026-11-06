@@ -73,7 +73,8 @@ export function nodeRows(items = []) {
         totalBytes: s.totalBytes || 0,
         freeBytes: s.freeBytes || 0,
         version: s.engineVersion || '',
-        topology: (sp(o).topologyChain || Object.keys(sp(o).topology || {})).map((k) => `${k}=${sp(o).topology?.[k] ?? ''}`).join(' · '),
+        // The engine's chain is already a sentence of itself (v1.rs: a String).
+        topology: sp(o).topologyChain || Object.entries(sp(o).topology || {}).map(([k, v]) => `${k}=${v}`).join(' · '),
       }
     })
     .sort((a, b) => b.local - a.local || a.name.localeCompare(b.name))

@@ -17,7 +17,7 @@ walk(`storage (${PHASE})`, async (t) => {
   t.check(/Capacity/.test(text) && /Volumes\s*3/.test(text), 'the band of totals', text.slice(0, 300))
   const seed = page.locator('tr', { hasText: 'seed' }).first()
   t.check(/healthy/i.test(await seed.innerText()), 'a volume\'s health', await seed.innerText())
-  t.check(/2 of 2/.test(await seed.innerText()), 'and its legs', await seed.innerText())
+  t.check(/16\.0 MB|16 MB/.test(await seed.innerText()), 'its size', await seed.innerText())
   await t.shot(page, 'storage-volumes')
   await page.locator('input[aria-label="Search volumes"]').fill('other')
   t.check(await t.until(async () => (await page.locator('tbody tr').count()) === 1), 'search narrows it')

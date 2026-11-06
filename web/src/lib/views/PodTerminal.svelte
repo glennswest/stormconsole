@@ -2,11 +2,11 @@
   // A shell in a container (#12). The relay goes as the person, so what they may do is the apiserver's
   // to say; this page only says what it said. xterm.js is loaded when a terminal is opened, as noVNC is.
   import '@xterm/xterm/css/xterm.css'
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
 
   let { ns, name, containers = [], refused = '' } = $props()
-  const names = containers.filter((c) => c.state?.kind === 'running').map((c) => c.name)
-  let container = $state(names[0] || containers[0]?.name || '')
+  // A running one first: there is nothing to connect to in the rest.
+  let container = $state(untrack(() => (containers.find((c) => c.state?.kind === 'running') || containers[0])?.name || ''))
   let command = $state('')
   let box = $state(null)
   // idle, connecting, open, ended
