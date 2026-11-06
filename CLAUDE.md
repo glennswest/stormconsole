@@ -1956,7 +1956,14 @@ are the source; the catalog adds names. No sealed-at in either.
 stormd#32 and stormdrive#19 landed: HTTPS, and a node-CA client certificate or a bearer. stormcos mounts the node CA and
 `stormconsole-client` already (#294). stormcos#371 moves stormds one at a time, so a port may be either.
 - [x] `console_core::dial`, `[node_tls]`: feed, proxy, fleet, node page, API health, stormdrive, stormstorage
-- [ ] `deploy/verify-stormd-tls.sh`: real stormd and stormdrive; tell stormcos the keys; golden
+- [x] `deploy/verify-stormd-tls.sh`: real stormd and stormdrive; tell stormcos the keys; golden
+- Verified with `sc-build deploy/verify-stormd-tls.sh` (0 failed): stormd and stormdrive from main, an openssl node CA and
+  a stranger's. A TLS stormd refusing anonymous callers, read through the pair; a plain one on the same console; a
+  stranger's never read, said on the card, the node page, API health and its proxy (502). A process restart through the
+  proxy. stormdrive's feed and formats. A bad client pair refused, renewed with no restart. A plain stormd moved to TLS
+  while running. `require` leaves a plain port unread. Half a pair exits 78. Chromium on the node page
+- Not seen: a real node, whose stormcert pairs may differ (SANs). No drive on a build VM, so stormdrive had none to list.
+  stormcos sets the keys when its stormds move (#371). The bearer form stormd takes is not used: the pair is enough
 
 ### The console's apiserver role (#78)
 Owner on stormcos#203: writes "listed resource by resource", the settings of the components it manages. Read from
