@@ -475,15 +475,18 @@ pub(crate) async fn detail(State(inner): State<Arc<Inner>>, viewer: Viewer, Path
         },
     };
     let iso = isolation_state(&inner).await;
-    let (members, members_error) = match client.get_as(&format!("{RBAC}/namespaces/{name}/rolebindings"), token).await {
-        Ok(b) => (members(&b), None),
-        Err(e) => (vec![], Some(format!("could not read who is in {name}: {e}"))),
+    let (members, members_error, members_refused) = match client.get_as(&format!("{RBAC}/namespaces/{name}/rolebindings"), token).await {
+        Ok(b) => (members(&b), None, false),
+        // `view` holds no rolebindings: an answer about this person, not a fault.
+        Err(crate::RkError::Status(s)) if s.as_u16() == 403 => (vec![], None, true),
+        Err(e) => (vec![], Some(format!("could not read who is in {name}: {e}")), false),
     };
     Json(json!({
         "project": with_isolation(row(&object, inner.access.is_system(&name), None), &iso),
         "outside": outside_policy(&inner, &name, token).await,
         "members": members,
         "membersError": members_error,
+        "membersRefused": members_refused,
         "roles": ROLES,
         "can": can(&inner, &viewer, &name).await,
     }))

@@ -120,7 +120,9 @@
   <section class="card">
     <h2>Members</h2>
     {#if data.membersError}<p class="error">{data.membersError}</p>{/if}
-    {#if !data.members.length && !data.membersError}
+    {#if data.membersRefused}
+      <p class="dim">Your role here does not show who is in this project.</p>
+    {:else if !data.members.length && !data.membersError}
       <p class="dim">No members bound to admin, edit or view.</p>
     {:else}
       <table class="members">

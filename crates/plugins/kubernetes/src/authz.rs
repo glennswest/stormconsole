@@ -467,6 +467,127 @@ pub fn note(hidden: usize, source: Source) -> String {
     }
 }
 
+/// The shared answer to "what may this viewer see and do".
+///
+/// Two plugins ask it — kubernetes and vm — and they must not ask
+/// separately: two Authorizers would mean two sets of reviews per viewer
+/// per cache window against the same apiserver for the same answer, and
+/// they could disagree for thirty seconds at a time. One instance is
+/// built beside the kubernetes plugin's watch cache (which already holds
+/// the namespace list) and handed to whoever else needs it.
+pub struct NamespaceAccess {
+    /// The apiserver, asked as the viewer — through the console's checked
+    /// connection, never its bearer (#33).
+    conn: Option<Arc<console_core::apiserver::Conn>>,
+    store: Arc<Store>,
+    authz: Authorizer,
+    /// Namespaces beyond rustkube's reserved set that hold the system's own
+    /// things — the node's services (`cilium`) — and so are never a target
+    /// for somebody's workload (#28).
+    system: std::sync::RwLock<Vec<String>>,
+}
+
+/// Projects the system owns (#28, #162): rustkube's reserved set
+/// (`default`, `openshift`, `kube-*`, `openshift-*`), the platform's own
+/// (`storm-*`, which stormcos and stormcentral make for their work, and
+/// `cilium`, `cilium-secrets`), and `extra`, where a trailing `*` matches a
+/// prefix. User workloads are never created in one, and the Projects page
+/// marks each.
+pub fn is_system_namespace(ns: &str, extra: &[String]) -> bool {
+    ns == "default"
+        || ns == "openshift"
+        || ns == "cilium"
+        || ns == "cilium-secrets"
+        || ns.starts_with("kube-")
+        || ns.starts_with("openshift-")
+        || ns.starts_with("storm-")
+        || extra.iter().any(|e| match e.strip_suffix('*') {
+            Some(prefix) => ns.starts_with(prefix),
+            None => e == ns,
+        })
+}
+
+/// What a viewer may not see: the namespaces, and the line to say about
+/// them. `None` means nothing is being withheld.
+pub type Hidden = Option<(HashSet<String>, String)>;
+
+impl NamespaceAccess {
+    pub fn new(conn: Option<Arc<console_core::apiserver::Conn>>, store: Arc<Store>) -> Arc<Self> {
+        Arc::new(Self {
+            conn,
+            store,
+            authz: Authorizer::default(),
+            system: std::sync::RwLock::new(vec![]),
+        })
+    }
+
+    /// Replace the extra system namespaces (`[kubernetes] system_namespaces`).
+    pub fn set_system_namespaces(&self, extra: Vec<String>) {
+        if let Ok(mut s) = self.system.write() {
+            *s = extra;
+        }
+    }
+
+    pub fn system_namespaces(&self) -> Vec<String> {
+        self.system.read().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// What this viewer's requests may do at the apiserver, or `None` when
+    /// that cannot be asked. Someone with no kubernetes identity of their own
+    /// acts on the console's credential, so that is whose rights these are.
+    pub async fn rights(&self, viewer: &Viewer) -> Option<Arc<Rights>> {
+        let conn = self.conn.as_ref()?;
+        let token = viewer.token.clone().or_else(|| conn.token())?;
+        let known = self.store.namespaces().await;
+        self.authz.answer(conn.server(), &conn.http(), &token, &known).await.rights
+    }
+
+    /// Should this be offered to this viewer? See [`Rights::may`].
+    pub async fn may(&self, viewer: &Viewer, need: &Need) -> bool {
+        self.rights(viewer).await.is_none_or(|r| r.may(need))
+    }
+
+    /// See [`Authorizer::forget`].
+    pub async fn forget(&self) {
+        self.authz.forget().await;
+    }
+
+    pub fn is_system(&self, ns: &str) -> bool {
+        is_system_namespace(ns, &self.system_namespaces())
+    }
+
+    /// The projects this viewer may see, or `None` for every one (the same answer as
+    /// [`hidden`](Self::hidden), for a query that has to name them, #46).
+    pub async fn visible(&self, viewer: &Viewer) -> Option<Vec<String>> {
+        let (hidden, _) = self.hidden(viewer).await?;
+        if hidden.is_empty() {
+            return None;
+        }
+        Some(self.store.namespaces().await.into_iter().filter(|n| !hidden.contains(n)).collect())
+    }
+
+    /// `None` when nothing is hidden — no identity to authorize against,
+    /// no apiserver, or a viewer who may see everything.
+    pub async fn hidden(&self, viewer: &Viewer) -> Hidden {
+        let (Some(token), Some(conn)) = (&viewer.token, &self.conn) else { return None };
+        let known = self.store.namespaces().await;
+        let allowed = self.authz.answer(conn.server(), &conn.http(), token, &known).await.allowed;
+        if allowed.source == Source::Unavailable {
+            // An authorizer that cannot be reached must not quietly become
+            // a permissive one, and must not blank the console either:
+            // nothing is hidden, and the note says why.
+            return Some((HashSet::new(), note(0, Source::Unavailable)));
+        }
+        let hidden: HashSet<String> =
+            known.into_iter().filter(|n| !allowed.namespaces.contains(n)).collect();
+        if hidden.is_empty() {
+            return None;
+        }
+        let note = note(hidden.len(), allowed.source);
+        Some((hidden, note))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,128 +811,5 @@ mod tests {
         let second = a.answer("http://127.0.0.1:1", &http, "t", &[]).await;
         assert_eq!(second, first);
         assert!(started.elapsed() < Duration::from_millis(50), "second ask was not cached");
-    }
-}
-
-
-
-/// The shared answer to "what may this viewer see and do".
-///
-/// Two plugins ask it — kubernetes and vm — and they must not ask
-/// separately: two Authorizers would mean two sets of reviews per viewer
-/// per cache window against the same apiserver for the same answer, and
-/// they could disagree for thirty seconds at a time. One instance is
-/// built beside the kubernetes plugin's watch cache (which already holds
-/// the namespace list) and handed to whoever else needs it.
-pub struct NamespaceAccess {
-    /// The apiserver, asked as the viewer — through the console's checked
-    /// connection, never its bearer (#33).
-    conn: Option<Arc<console_core::apiserver::Conn>>,
-    store: Arc<Store>,
-    authz: Authorizer,
-    /// Namespaces beyond rustkube's reserved set that hold the system's own
-    /// things — the node's services (`cilium`) — and so are never a target
-    /// for somebody's workload (#28).
-    system: std::sync::RwLock<Vec<String>>,
-}
-
-/// Projects the system owns (#28, #162): rustkube's reserved set
-/// (`default`, `openshift`, `kube-*`, `openshift-*`), the platform's own
-/// (`storm-*`, which stormcos and stormcentral make for their work, and
-/// `cilium`, `cilium-secrets`), and `extra`, where a trailing `*` matches a
-/// prefix. User workloads are never created in one, and the Projects page
-/// marks each.
-pub fn is_system_namespace(ns: &str, extra: &[String]) -> bool {
-    ns == "default"
-        || ns == "openshift"
-        || ns == "cilium"
-        || ns == "cilium-secrets"
-        || ns.starts_with("kube-")
-        || ns.starts_with("openshift-")
-        || ns.starts_with("storm-")
-        || extra.iter().any(|e| match e.strip_suffix('*') {
-            Some(prefix) => ns.starts_with(prefix),
-            None => e == ns,
-        })
-}
-
-/// What a viewer may not see: the namespaces, and the line to say about
-/// them. `None` means nothing is being withheld.
-pub type Hidden = Option<(HashSet<String>, String)>;
-
-impl NamespaceAccess {
-    pub fn new(conn: Option<Arc<console_core::apiserver::Conn>>, store: Arc<Store>) -> Arc<Self> {
-        Arc::new(Self {
-            conn,
-            store,
-            authz: Authorizer::default(),
-            system: std::sync::RwLock::new(vec![]),
-        })
-    }
-
-    /// Replace the extra system namespaces (`[kubernetes] system_namespaces`).
-    pub fn set_system_namespaces(&self, extra: Vec<String>) {
-        if let Ok(mut s) = self.system.write() {
-            *s = extra;
-        }
-    }
-
-    pub fn system_namespaces(&self) -> Vec<String> {
-        self.system.read().map(|s| s.clone()).unwrap_or_default()
-    }
-
-    /// What this viewer's requests may do at the apiserver, or `None` when
-    /// that cannot be asked. Someone with no kubernetes identity of their own
-    /// acts on the console's credential, so that is whose rights these are.
-    pub async fn rights(&self, viewer: &Viewer) -> Option<Arc<Rights>> {
-        let conn = self.conn.as_ref()?;
-        let token = viewer.token.clone().or_else(|| conn.token())?;
-        let known = self.store.namespaces().await;
-        self.authz.answer(conn.server(), &conn.http(), &token, &known).await.rights
-    }
-
-    /// Should this be offered to this viewer? See [`Rights::may`].
-    pub async fn may(&self, viewer: &Viewer, need: &Need) -> bool {
-        self.rights(viewer).await.is_none_or(|r| r.may(need))
-    }
-
-    /// See [`Authorizer::forget`].
-    pub async fn forget(&self) {
-        self.authz.forget().await;
-    }
-
-    pub fn is_system(&self, ns: &str) -> bool {
-        is_system_namespace(ns, &self.system_namespaces())
-    }
-
-    /// The projects this viewer may see, or `None` for every one (the same answer as
-    /// [`hidden`](Self::hidden), for a query that has to name them, #46).
-    pub async fn visible(&self, viewer: &Viewer) -> Option<Vec<String>> {
-        let (hidden, _) = self.hidden(viewer).await?;
-        if hidden.is_empty() {
-            return None;
-        }
-        Some(self.store.namespaces().await.into_iter().filter(|n| !hidden.contains(n)).collect())
-    }
-
-    /// `None` when nothing is hidden — no identity to authorize against,
-    /// no apiserver, or a viewer who may see everything.
-    pub async fn hidden(&self, viewer: &Viewer) -> Hidden {
-        let (Some(token), Some(conn)) = (&viewer.token, &self.conn) else { return None };
-        let known = self.store.namespaces().await;
-        let allowed = self.authz.answer(conn.server(), &conn.http(), token, &known).await.allowed;
-        if allowed.source == Source::Unavailable {
-            // An authorizer that cannot be reached must not quietly become
-            // a permissive one, and must not blank the console either:
-            // nothing is hidden, and the note says why.
-            return Some((HashSet::new(), note(0, Source::Unavailable)));
-        }
-        let hidden: HashSet<String> =
-            known.into_iter().filter(|n| !allowed.namespaces.contains(n)).collect();
-        if hidden.is_empty() {
-            return None;
-        }
-        let note = note(hidden.len(), allowed.source);
-        Some((hidden, note))
     }
 }

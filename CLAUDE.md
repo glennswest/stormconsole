@@ -2348,7 +2348,7 @@ Read from rustkube 6c4fe56: `/scale` is served (#86), `pods/eviction` too (`pkg/
 - Verified with `sc-build deploy/verify-day2.sh` (0 failed): fastetcd, rustkube 6c4fe56 apiserver and controller-manager, signed tokens. Scale: bad numbers 400, a reader 403, carol 404 (a project she cannot see), bob in his project, the controller-manager making the pods; a StatefulSet; a DaemonSet refused. Cordon: refused for an operator, a reader, the node's bearer and
   an admin with no apiserver rights; alice; the row turning to Uncordon. Drain: the plan (with another project's pods counted for bob, not named); refusals leaving the node as it was; alice's: cordoned, 4 evicted and recreated as new pods, the budget's 429 in words, a bare pod left; DaemonSet (a real one's pod too) and mirror pods stay. Chromium: the row's number, the plain button's prompt, the plan, a blocked drain, evicting the bare pod, uncordon. Screenshots read: they found the number unreadable. Also `verify-rbac.sh`, `verify-one-node.sh`, default `sc-build`
 - Not seen: a real kubelet (no pod here ever ran, so graceful termination is not exercised), an actual multi-node reschedule (no scheduler in the rig; pods recreated stay unbound), a real node
-- Left: a page cannot say beforehand who the apiserver would refuse, so scale is offered to all (#45)
+- A page now says beforehand who the apiserver would refuse: scale is offered per #45
 
 ### The image operator over TLS (#55)
 Settled on the issue (vmcloud-image-operator 382cf1f, stormcos b71a818): https with the node CA, the console's own client pair, User `stormconsole` by SubjectAccessReview on `storm.io`. So no shared token; #82's
@@ -2375,10 +2375,14 @@ because Hardware → Shelves is already the drive map's. The engine holds fail, 
 
 ### Ask the apiserver what a viewer may do (#45)
 Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `selfsubjectrulesreviews` with no namespace answers the cluster's bindings, with one the namespace's as well, as written, with `incomplete`; `rule_matches` is what a rules answer has to be read by. Any user may ask (`system:basic-user`). A Project is its own namespace to RBAC (`projects` in `project.openshift.io`, namespace = name).
-- [ ] `authz.rs`: rules reviews replace the list and the per-namespace pods probe (an access review where a rules answer is incomplete; the probe only where the apiserver does not serve the review). One answer per token: what they see and `Rights`
-- [ ] `ConsolePlugin::offers`, applied by the registry: row actions the apiserver would refuse are dropped (k8s, vm), and writes for a reader. Display only: the apiserver and the gates still decide; what cannot be asked stays offered
-- [ ] Project page (members, isolate, delete) and YAML Edit (pod, project) from the same answer
-- [ ] `deploy/verify-access-reviews.sh`: real apiserver, users by role, Chromium; docs, changelog, dist; golden
+- [x] `authz.rs`: rules reviews replace the list and the per-namespace pods probe (an access review where a rules answer is incomplete; the probe only where the apiserver does not serve the review). One answer per token: what they see and `Rights`
+- [x] `ConsolePlugin::offers`, applied by the registry: row actions the apiserver would refuse are dropped (k8s, vm), and writes for a reader. Display only: the apiserver and the gates still decide; what cannot be asked stays offered
+- [x] Project page (members, isolate, delete) and YAML Edit (pod, project) from the same answer
+- [x] `deploy/verify-access-reviews.sh`: real apiserver, users by role, Chromium; docs, changelog, dist; golden
+- Verified with `sc-build deploy/verify-access-reviews.sh` (0 failed): rustkube from main, anonymous off; seven users by console and project role. Each row's actions, the project page's `can` and YAML's `editable` per user, then the same requests by hand, agreeing: refused where not offered, done where offered. No-identity dan is bound by the console's read-only credential. A change through the console counts at once, behind its back within 30 s. Chromium, screenshots read. Also `verify-projects`, `verify-day2`, `verify-vm-lifecycle`, `verify-rbac`, `verify-storage-guard`, `verify-pod-page`, `verify-pod-terminal`, default `sc-build`. The stubbed unit tests carry "no probe": a rules-only conversation, a cluster-admin in one question, an incomplete answer settled by an access review, the probe only with no review served
+- Found: a refused pod delete, raw delete and YAML save answered 502 (fixed, 403)
+- Not seen: an incomplete answer or an apiserver without the review against a real one (stubs only); a real node
+- Left: the Create menu, a VM page's settings/disks/snapshots/keys and the Terminal look only at the console role (#259)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
@@ -2415,7 +2419,7 @@ Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `sel
       dynamic-plugin style / stormd `[process.ui]` style)
 - [x] YAML edit/apply views for rustkube resources (v0.8.0: `/apply`, and
       `GET|PUT /api/plugins/k8s/object/{kind}/{key}` on every watched kind)
-- [ ] RBAC-aware UI — rustkube serves the reviews since v0.9.0 (#45)
+- [x] RBAC-aware UI (#45: rows, project page, YAML Edit; the rest is #259)
 
 ## Cross-project issues filed
 

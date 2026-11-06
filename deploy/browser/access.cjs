@@ -26,7 +26,9 @@ walk('access', async (t) => {
   const bob = await t.page('bob')
   await accessTab(bob)
   const members = bob.locator('section.card', { hasText: 'Members' })
-  // `view` holds no rolebindings: the apiserver's answer is what the page says.
+  // `view` holds no rolebindings: an answer about him, not a fault.
+  t.check(await t.until(async () => /does not show who is in/.test(await members.innerText())), 'bob, view on shop: told his role does not show the members', await members.innerText())
+  t.check((await members.locator('p.error').count()) === 0, 'not as an error')
   t.check(await t.until(async () => /may not change who is in/.test(await members.innerText())), 'bob, view on shop: told he may not change who is in it', await members.innerText())
   for (const b of ['Add member', 'Remove', 'Isolate this project', 'Delete shop']) {
     t.check((await named(bob, b)) === 0, `no ${b}`)
