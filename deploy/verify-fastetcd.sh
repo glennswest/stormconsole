@@ -143,11 +143,14 @@ curl -s -D "$W/sh" -b "$W/root$P.jar" -o "$W/snap" "$A/snapshot"
 tr -d '\r' < "$W/sh" | grep -i '^content-disposition' | sed 's/^/  /'
 check "$(head -c 8 "$W/snap")" FEBACKUP "fastetcd's own backup format"
 "$FE" --data-dir "$W/restored" restore "$W/snap" 2>&1 | tail -2 | cut -c1-160 | sed 's/^/  /'
-"$FE" --name r1 --data-dir "$W/restored" --listen-client-urls http://127.0.0.1:24190 --advertise-client-urls http://127.0.0.1:24190 --listen-peer-urls http://127.0.0.1:24191 --listen-metrics-url 127.0.0.1:24192 > "$W/r.log" 2>&1 &
+# A backup carries its raft members, so one member of three brings it up with --force-new-cluster, as a lost cluster would.
+"$FE" --name f1 --force-new-cluster --data-dir "$W/restored" --listen-client-urls http://127.0.0.1:24190 --advertise-client-urls http://127.0.0.1:24190 --listen-peer-urls http://127.0.0.1:24191 --listen-metrics-url 127.0.0.1:24192 > "$W/r.log" 2>&1 &
 RP=$!
-for _ in $(seq 60); do ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24190 get /registry/namespaces/default --print-value-only 2>/dev/null | grep -q Namespace && break; sleep 0.5; done
-contains "$(ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24190 get /registry/namespaces/default --print-value-only 2>&1)" Namespace "restored into a new store, the value is there"
-check "$(ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24190 get --prefix /registry/pods/default/ --keys-only 2>&1 | grep -c web-)" 3 "and the pods"
+rctl() { ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24190 --command-timeout=3s "$@" 2>/dev/null; }
+for _ in $(seq 20); do rctl get /registry/namespaces/default --print-value-only | grep -q Namespace && break; sleep 1; done
+contains "$(rctl get /registry/namespaces/default --print-value-only || true)" Namespace "restored into a new store, the value is there"
+check "$(rctl get --prefix /registry/pods/default/ --keys-only | grep -c web- || true)" 3 "and the pods"
+tail -3 "$W/r.log" | cut -c1-170 | sed 's/^/  restored: /'
 kill $RP 2>/dev/null || true
 
 say "in Chromium"
