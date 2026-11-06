@@ -139,7 +139,7 @@ until_card() { for _ in $(seq 1 "$2"); do case "$(card)" in *"$1"*) return 0;; e
 form() { curl -s "$C/api/v1/console/creators" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
-for c in (d.get("creators",[]) if isinstance(d,dict) else d):
+for c in (d.get('creators',[]) if isinstance(d,dict) else d):
     for f in c.get('fields',[]):
         if f.get('name')=='golden':
             print(len(f.get('options') or []), '|', f.get('hint') or '')"; }

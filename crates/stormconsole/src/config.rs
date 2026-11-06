@@ -474,7 +474,7 @@ pub struct VmImages {
 
 impl Default for VmImages {
     fn default() -> Self {
-        Self { enabled: true, url: None }
+        Self { enabled: true, url: None, ca_file: None, cert_file: None, key_file: None }
     }
 }
 
