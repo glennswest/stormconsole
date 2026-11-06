@@ -9,6 +9,7 @@ fn fastetcd(metrics: &str) -> Seen {
         metrics_err: String::new(),
         status: None,
         members: vec![],
+        silent: vec![],
         alarms: vec![],
         gateway_err: Some(GwError::NotServed("/v3/maintenance/status responded 404".into())),
         objects: None,
