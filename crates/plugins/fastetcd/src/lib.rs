@@ -760,7 +760,8 @@ async fn value_route(AxState(inner): St, viewer: Viewer, Query(q): Query<KeyQ>) 
     }
 }
 
-/// The whole store, as the file `etcdctl snapshot save` writes.
+/// The whole store, as the file `etcdctl snapshot save` writes: fastetcd's own backup format since its 1.15, which
+/// `fastetcd restore` reads.
 ///
 /// The gateway streams it as one JSON object per chunk with the bytes in
 /// base64; this undoes that on the fly so a browser saves a file etcd's

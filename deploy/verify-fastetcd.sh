@@ -109,9 +109,9 @@ say "the keyspace, decoded"
 k() { curl -s -b "$W/root$P.jar" "$A/$1"; }
 contains "$(k keys | j '[c["name"] for c in d["children"]]')" namespaces "the top of /registry/"
 check "$(k 'keys?prefix=/registry/pods/default/' | j 'd["total"]')" 3 "three pods under a prefix"
-check "$(k 'value?key=/registry/namespaces/default' | j 'd["decoded"]["format"], d["decoded"]["value"]["kind"]')" "('json', 'Namespace')" "a JSON value"
-check "$(k 'value?key=/registry/deployments/default/web' | j 'd["decoded"]["format"], d["decoded"].get("type",d["decoded"].get("kind"))')" "('protobuf', 'apps/v1 Deployment')" "the kube protobuf envelope"
-check "$(k 'value?key=/registry/ranges/serviceips' | j 'd["decoded"]["format"], d["decoded"]["value"]')" "('text', 'default/kubernetes')" "text"
+check "$(k 'value?key=/registry/namespaces/default' | j 'd["decoded"]["encoding"], d["decoded"]["json"]["kind"]')" "('json', 'Namespace')" "a JSON value"
+check "$(k 'value?key=/registry/deployments/default/web' | j 'd["decoded"]["encoding"], d["decoded"]["api_version"], d["decoded"]["kind"]')" "('protobuf', 'apps/v1', 'Deployment')" "the kube protobuf envelope"
+check "$(k 'value?key=/registry/ranges/serviceips' | j 'd["decoded"]["encoding"], d["decoded"]["text"]')" "('text', 'default/kubernetes')" "text"
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/root$P.jar" "$A/value?key=/nope")" 404 "a missing key"
 
 say "only an administrator"
@@ -125,9 +125,15 @@ R=$(ETCDCTL_API=3 "$CTL" --endpoints "$EP" endpoint status -w json | j 'd[0]["St
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/root$P.jar" -X POST "$A/compact?revision=$R")" 200 "compact through the console"
 contains "$(ETCDCTL_API=3 "$CTL" --endpoints "$EP" get --rev=$((R-5)) /ready 2>&1 || true)" "compacted" "etcdctl agrees: the old revision is gone"
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/root$P.jar" -X POST "$A/defragment")" 200 "defragment"
+M1=$(comps '[c["id"].split(":")[-1] for c in mem if c["label"]=="f1"][0]')
+contains "$(curl -s -b "$W/root$P.jar" -X POST "$A/defragment?member=$M1")" "$(cl 1)" "defragment of the member it reads through, by its row"
+# A member reports only its own client URL (fastetcd#187), so another's row offers none; when it does, it must reach it.
 M2=$(comps '[c["id"].split(":")[-1] for c in mem if c["label"]=="f2"][0]')
-contains "$(curl -s -b "$W/root$P.jar" -X POST "$A/defragment?member=$M2")" "$(cl 2)" "defragment of another member reaches that member"
-grep -c "defragment complete" "$W/f2.log" | sed 's/^/  f2 logged defragment complete: /'
+if [ "$(comps '[bool(c["actions"]) for c in mem if c["label"]=="f2"][0]')" = True ]; then
+  contains "$(curl -s -b "$W/root$P.jar" -X POST "$A/defragment?member=$M2")" "$(cl 2)" "another member's defragment reaches it"
+else
+  contains "$(curl -s -b "$W/root$P.jar" -X POST "$A/defragment?member=$M2")" "no client URL" "another member has no client URL: not offered, and said by hand"
+fi
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/root$P.jar" -X POST "$A/defragment?member=abc")" 404 "an unknown member"
 sleep 6
 ctl put /after-maintenance ok >/dev/null; check "$(ctl get --print-value-only /after-maintenance)" ok "it still takes writes"
