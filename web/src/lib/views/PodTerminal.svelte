@@ -124,7 +124,7 @@
         </select>
       </label>
       <label class="cmd">Command
-        <input bind:value={command} aria-label="Command" placeholder="a shell: bash, or sh" disabled={state_ === 'open'} />
+        <input type="text" bind:value={command} aria-label="Command" placeholder="a shell: bash, or sh" disabled={state_ === 'open'} />
       </label>
       {#if state_ === 'open'}
         <button onclick={close}>Disconnect</button>
@@ -144,8 +144,8 @@
   .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
   .bar label { display: flex; flex-direction: column; gap: 3px; font-size: var(--sc-t-meta); color: var(--text-dim); }
   .bar .cmd { flex: 1; min-width: 200px; }
-  .bar input { width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
-  .bar input:disabled { color: var(--text-dim); background: transparent; }
+  .bar input { width: 100%; box-sizing: border-box; }
+  .bar input:disabled { color: var(--text-dim); opacity: 0.7; }
   .term { display: none; height: 420px; padding: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
   .term.shown { display: block; }
   .result { margin: 6px 0; overflow-wrap: anywhere; }

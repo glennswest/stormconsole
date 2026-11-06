@@ -61,6 +61,6 @@
   .mono { font-family: var(--mono, monospace); }
   .dim { color: var(--text-dim); }
   .small { font-size: var(--sc-t-meta); }
-  .warn { color: var(--warning, var(--error)); font-family: inherit; }
+  .warn { color: var(--warn-strong); font-family: inherit; }
   .bad { color: var(--error); }
 </style>

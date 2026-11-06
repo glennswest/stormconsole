@@ -15,6 +15,7 @@ const z1 = ds.find((d) => d.serial === 'Z1')
 assert.deepStrictEqual([z1.seenBy, z1.slabs, z1.bay], ['both', 2, 1], 'one drive, both halves')
 assert.strictEqual(ds.find((d) => d.serial === 'Z2').slabs, null, 'another node: its slabs are not this engine\'s to say')
 assert.strictEqual(ds.find((d) => d.serial === 'ONLY').seenBy, 'engine')
+assert.strictEqual(driveRows([eng('ONLY', [])], [], 'n1')[0].node, 'n1', 'the engine names its own node')
 // A file-backed drive's serial is "file": not joined with another of the same word.
 ds = driveRows([eng('file', ['a']), eng('file', ['b'])], [phy('n1', 'file'), phy('n1', 'file')])
 assert.strictEqual(ds.filter((d) => d.seenBy === 'both').length, 0)

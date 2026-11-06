@@ -40,7 +40,7 @@
   const volumes = $derived(volumeRows(sb.volumes?.items))
   const slabs = $derived(slabRows(sb.slabs?.items))
   const nodes = $derived(nodeRows(sb.nodes?.items))
-  const drives = $derived(driveRows(sb.drives?.items, phy.drives?.items))
+  const drives = $derived(driveRows(sb.drives?.items, phy.drives?.items, nodes.find((n) => n.local)?.name || ''))
   const enclosures = $derived(enclosureRows(phy.enclosures?.items))
   const t = $derived(totals({ volumes, slabs, nodes }))
   const silent = $derived([...(phy.drives?.nodes || [])].filter((n) => !n.ok))
@@ -72,7 +72,7 @@
     {#each TABS as x (x)}
       <button class:active={tab === x} onclick={() => navigate(`#/storage?tab=${x}`)}>{x[0].toUpperCase() + x.slice(1)} <span class="n">{counts[x]}</span></button>
     {/each}
-    <input class="search" bind:value={search} placeholder="Search" aria-label={`Search ${words[tab]}`} />
+    <input class="search" type="search" bind:value={search} placeholder="Search" aria-label={`Search ${words[tab]}`} />
   </nav>
 
   {#if !rows.length}
@@ -113,7 +113,7 @@
         <tbody>
           {#each shown as d (d.key)}
             <tr>
-              <td>{d.node || 'this node'}</td><td class="mono">{dash(d.path)}{#if d.system}<span class="dim gap">system</span>{/if}</td>
+              <td>{d.node || '—'}</td><td class="mono">{dash(d.path)}{#if d.system}<span class="dim gap">system</span>{/if}</td>
               <td class="mono dim">{dash(d.serial)}</td><td class="dim">{dash(d.model)}</td><td>{bytes(d.capacityBytes)}</td>
               <td>{d.bay == null ? '—' : `${d.enclosure ? `${d.enclosure} ` : ''}${d.bay}`}</td>
               <td class={tone(d.health)}>{dash(d.health)}</td><td>{d.temperatureC == null ? '—' : `${d.temperatureC} °C`}</td><td>{d.wearPct == null ? '—' : `${d.wearPct} %`}</td>
@@ -164,11 +164,11 @@
   table { width: 100%; border-collapse: collapse; font-size: var(--sc-t-body); }
   th { text-align: left; color: var(--text-faint); font-size: var(--sc-t-meta); font-weight: 600; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
   td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--sc-hairline); vertical-align: top; }
-  tr.trouble td:first-child { box-shadow: inset 2px 0 0 var(--warning, var(--error)); padding-left: 6px; }
+  tr.trouble td:first-child { box-shadow: inset 2px 0 0 var(--warn-strong); padding-left: 6px; }
   .mono { font-family: var(--mono, monospace); }
   .dim { color: var(--text-dim); }
   .small { font-size: var(--sc-t-meta); }
   .gap { margin-left: 6px; font-size: var(--sc-t-meta); }
-  .warn { color: var(--warning, var(--error)); }
+  .warn { color: var(--warn-strong); }
   .bad { color: var(--error); }
 </style>

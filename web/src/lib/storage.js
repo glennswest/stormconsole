@@ -83,7 +83,7 @@ export function nodeRows(items = []) {
 /// One line per drive. The engine knows its slabs and drain, stormdrive its bay and health; a serial is what
 /// they share. A drive only one of them knows still has a line, because that is itself a finding: a drive
 /// the engine has that stormdrive does not, or one on another node, whose slabs this engine does not hold.
-export function driveRows(engine = [], physical = []) {
+export function driveRows(engine = [], physical = [], engineNode = '') {
   const rows = physical.map((d) => ({
     key: `${d.node}/${d.serial || d.name}`,
     node: d.node,
@@ -114,7 +114,7 @@ export function driveRows(engine = [], physical = []) {
     } else {
       rows.push({
         key: `engine/${o.metadata?.name}`,
-        node: '',
+        node: engineNode,
         path: sp(o).path,
         serial: s.serial,
         model: s.model,
