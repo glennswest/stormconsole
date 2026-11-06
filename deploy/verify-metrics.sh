@@ -140,33 +140,6 @@ check "$(until_lines vms read)" "['secret / vm2', 'shop / vm1']" "VM disk reads"
 check "$(until_lines network drops)" "['Policy denied / INGRESS']" "network drops"
 check "$(code '/charts?level=nothing')" 400 "a level that is not one"
 
-say "disk reads and writes, apart (#265)"
-for c in disk_read disk_write disk_read_ops disk_write_ops; do check "$(until_lines containers $c)" "['secret / vault / app', 'shop / web / app']" "containers: $c"; done
-rate() { g "/charts?$1&window=900" | python3 -c "import json,sys; d=json.load(sys.stdin); v=[p['v'] for c in d['charts'] if c['id']=='$2' for s in c['series'] for p in s['points'] if p['v']]; print(round(v[-1]) if v else None)"; }
-for _ in $(seq 40); do [ "$(rate level=containers disk_read)" != None ] && break; sleep 2; done
-R0=$(rate 'entity=pod&ns=shop&name=web' disk_read); W0=$(rate 'entity=pod&ns=shop&name=web' disk_write); O0=$(rate 'entity=pod&ns=shop&name=web' disk_read_ops); P0=$(rate 'entity=pod&ns=shop&name=web' disk_write_ops)
-echo "  a pod: reads $R0 B/s, writes $W0 B/s, $O0 and $P0 ops/s"
-check "$([ "${R0:-0}" -gt 3000 ] && [ "${W0:-0}" -lt 1500 ] && [ "${W0:-0}" -gt 500 ] && echo ok)" ok "a pod's reads and writes at the exporter's own different rates"
-check "$([ "${O0:-0}" -ge 30 ] && [ "${P0:-0}" -le 15 ] && echo ok)" ok "and its operations"
-check "$(ent 'entity=pod&ns=shop&name=web' disk_read)" "['app']" "by container"
-check "$(ent 'entity=pod&ns=shop&name=web&only=disk' disk_read)" "['app']" "only=disk has them"
-check "$(g '/charts?entity=pod&ns=shop&name=web&only=disk&window=900' | j 'sorted(c["id"] for c in d["charts"])')" "['disk_read', 'disk_read_ops', 'disk_write', 'disk_write_ops']" "and nothing else"
-check "$(ent 'entity=pod&ns=secret&name=vault&only=disk' disk_read alice)" "[]" "alice: not another project's"
-check "$(lines_of containers disk_read alice)" "['shop / web / app']" "alice: her project's only"
-check "$(until_lines drives disk_read)" "['nvme0n1 / NV200']" "a drive's reads, from SMART"
-check "$(ent 'entity=drive&serial=NV200' disk_write)" "['nvme0n1']" "and one drive's writes"
-holds "$(g '/charts?entity=drive&serial=ZC100&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="disk_read"][0]')" "stormdrive#" "a SAS drive: says what it waits on, not a fault"
-holds "$(g '/charts?entity=drive&serial=NV200&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="disk_read_ops"][0]')" "operations yet" "and no drive has operations yet"
-holds "$(g '/charts?entity=vm&ns=shop&name=vm1&window=900' | j 'sorted(c["id"] for c in d["charts"])')" "write_ops" "a VM has them already"
-check "$(until_lines vms read_ops)" "['secret / vm2', 'shop / vm1']" "VM read operations at the level"
-
-say "the node's disks: a real cadvisor (#265)"
-dd if=/dev/zero of="$W/io.bin" bs=1M count=200 oflag=direct 2>/dev/null; dd if="$W/io.bin" of=/dev/null bs=1M iflag=direct 2>/dev/null
-for c in disk_read disk_write disk_read_ops disk_write_ops; do L=$(until_lines node $c); echo "  $c: $L"; holds "$L" "/dev/" "the node's $c, by device"; done
-for _ in $(seq 30); do dd if=/dev/zero of="$W/io.bin" bs=1M count=50 oflag=direct 2>/dev/null; RN=$(rate level=node disk_write); [ "${RN:-0}" != 0 ] && [ "$RN" != None ] && break; sleep 2; done
-echo "  node writes: $RN B/s"; check "$([ "${RN:-0}" -gt 1000 ] 2>/dev/null && echo ok)" ok "real writes, from sectors, as a rate of bytes"
-rm -f "$W/io.bin"
-
 say "an empty chart says why"
 holds "$(g '/charts?level=datastore&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="puts"][0]')" "fastetcd is up, and served none" "a target up with no such series (fastetcd v1.2.0 has no put counter)"
 
@@ -193,6 +166,33 @@ check "$(ent 'entity=pod&ns=shop&name=web' cpu alice)" "['agent', 'app']" "alice
 check "$(code '/charts?entity=pod&ns=secret&name=vault' alice)" 404 "alice: another project's pod is not there"
 check "$(code '/charts?entity=vm&ns=secret&name=vm2' alice)" 404 "alice: nor its machine"
 check "$(g '/charts?level=containers&window=900' alice | grep -c vault || true)" 0 "the other project's name is not in her answer"
+
+say "disk reads and writes, apart (#265)"
+for c in disk_read disk_write disk_read_ops disk_write_ops; do check "$(until_lines containers $c)" "['secret / vault / app', 'shop / web / app']" "containers: $c"; done
+rate() { g "/charts?$1&window=900" | python3 -c "import json,sys; d=json.load(sys.stdin); v=[p['v'] for c in d['charts'] if c['id']=='$2' for s in c['series'] for p in s['points'] if p['v']]; print(v[-1] if v else None)"; }
+for _ in $(seq 40); do [ "$(rate level=containers disk_read)" != None ] && break; sleep 2; done
+R0=$(rate 'entity=pod&ns=shop&name=web' disk_read); W0=$(rate 'entity=pod&ns=shop&name=web' disk_write); O0=$(rate 'entity=pod&ns=shop&name=web' disk_read_ops); P0=$(rate 'entity=pod&ns=shop&name=web' disk_write_ops)
+echo "  a pod: reads $R0 B/s, writes $W0 B/s, $O0 and $P0 ops/s"
+check "$(python3 -c "print(3 < $R0 / $W0 < 5)")" True "a pod's reads are 4 times its writes, as the exporter's are: not the same series twice"
+check "$(python3 -c "print(3 < $O0 / $P0 < 5)")" True "and its operations"
+check "$(ent 'entity=pod&ns=shop&name=web' disk_read)" "['app']" "by container"
+check "$(ent 'entity=pod&ns=shop&name=web&only=disk' disk_read)" "['app']" "only=disk has them"
+check "$(g '/charts?entity=pod&ns=shop&name=web&only=disk&window=900' | j 'sorted(c["id"] for c in d["charts"])')" "['disk_read', 'disk_read_ops', 'disk_write', 'disk_write_ops']" "and nothing else"
+check "$(code '/charts?entity=pod&ns=secret&name=vault&only=disk' alice)" 404 "alice: not another project's"
+check "$(lines_of containers disk_read alice)" "['shop / web / app']" "alice: her project's only"
+check "$(until_lines drives disk_read)" "['nvme0n1 / NV200']" "a drive's reads, from SMART"
+check "$(ent 'entity=drive&serial=NV200' disk_write)" "['nvme0n1']" "and one drive's writes"
+holds "$(g '/charts?entity=drive&serial=ZC100&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="disk_read"][0]')" "stormdrive#" "a SAS drive: says what it waits on, not a fault"
+holds "$(g '/charts?entity=drive&serial=NV200&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="disk_read_ops"][0]')" "operations yet" "and no drive has operations yet"
+holds "$(g '/charts?entity=vm&ns=shop&name=vm1&window=900' | j 'sorted(c["id"] for c in d["charts"])')" "write_ops" "a VM has them already"
+check "$(until_lines vms read_ops)" "['secret / vm2', 'shop / vm1']" "VM read operations at the level"
+
+say "the node's disks: a real cadvisor (#265)"
+dd if=/dev/zero of="$W/io.bin" bs=1M count=200 oflag=direct 2>/dev/null; dd if="$W/io.bin" of=/dev/null bs=1M iflag=direct 2>/dev/null
+for c in disk_read disk_write disk_read_ops disk_write_ops; do L=$(until_lines node $c); echo "  $c: $L"; holds "$L" "/dev/" "the node's $c, by device"; case "$L" in *shm*|*sda3*) check "$L" "whole disks" "no partition or tmpfs row";; esac; done
+for _ in $(seq 30); do dd if=/dev/zero of="$W/io.bin" bs=1M count=50 oflag=direct 2>/dev/null; RN=$(rate level=node disk_write); WO=$(rate level=node disk_write_ops); [ "$RN" != None ] && python3 -c "import sys; sys.exit(0 if $RN > 100000 else 1)" && break; sleep 2; done
+echo "  node writes: $RN B/s, $WO ops/s"; check "$(python3 -c "print($RN > 100000 and $WO > 0)" 2>/dev/null)" True "real writes, as a rate of bytes and of operations"
+rm -f "$W/io.bin"
 
 say "the page"
 BR=0; env PHASE=root "$HERE/deploy/browser/run.sh" "$W" metrics.cjs "$C" || BR=1; check "$BR" 0 "the walk, as an administrator"

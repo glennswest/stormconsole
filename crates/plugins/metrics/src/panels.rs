@@ -100,17 +100,18 @@ pub const LEVELS: &[Level] = &[
     Level {
         id: "node",
         title: "Node",
-        note: "This node's disks, from the kernel's counters through cadvisor: the devices it sees mounted. A drive the engine holds raw is under Drives.",
+        note: "This node's disks, whole devices, from the root cgroup's io.stat through cadvisor.",
         panels: &[
-            // The root cgroup has no io.stat, so bytes come from diskstats' sectors, which are 512 bytes whatever the drive's format.
+            // cadvisor's `/` also has rows for every mounted partition and tmpfs, whose counters read 0
+            // (cadvisor#30), so operations are narrowed to the devices io.stat knows.
             Panel { id: "disk_read", title: "Node disk reads", unit: "bytes_per_sec", job: "cadvisor",
-                query: r#"sum by (device) (rate(container_fs_sector_reads_total{job="cadvisor",id="/"}[5m])) * 512"#, legend: &["device"] },
+                query: r#"sum by (device) (rate(container_fs_reads_bytes_total{job="cadvisor",id="/"}[5m]))"#, legend: &["device"] },
             Panel { id: "disk_write", title: "Node disk writes", unit: "bytes_per_sec", job: "cadvisor",
-                query: r#"sum by (device) (rate(container_fs_sector_writes_total{job="cadvisor",id="/"}[5m])) * 512"#, legend: &["device"] },
+                query: r#"sum by (device) (rate(container_fs_writes_bytes_total{job="cadvisor",id="/"}[5m]))"#, legend: &["device"] },
             Panel { id: "disk_read_ops", title: "Node disk read operations", unit: "per_sec", job: "cadvisor",
-                query: r#"sum by (device) (rate(container_fs_reads_total{job="cadvisor",id="/"}[5m]))"#, legend: &["device"] },
+                query: r#"sum by (device) (rate(container_fs_reads_total{job="cadvisor",id="/"}[5m])) and on (device) sum by (device) (container_fs_reads_bytes_total{job="cadvisor",id="/"})"#, legend: &["device"] },
             Panel { id: "disk_write_ops", title: "Node disk write operations", unit: "per_sec", job: "cadvisor",
-                query: r#"sum by (device) (rate(container_fs_writes_total{job="cadvisor",id="/"}[5m]))"#, legend: &["device"] },
+                query: r#"sum by (device) (rate(container_fs_writes_total{job="cadvisor",id="/"}[5m])) and on (device) sum by (device) (container_fs_writes_bytes_total{job="cadvisor",id="/"})"#, legend: &["device"] },
         ],
     },
     Level {
