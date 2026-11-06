@@ -101,7 +101,8 @@ console() { # <body appended to the config>
   "$BIN" --config "$W/c.toml" > "$W/console.log" 2>&1 & CPID=$!
   for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done
 }
-node() { NODE=$(curl -s "$C/api/v1/components" | j '[c["label"] for c in d if c["id"]=="fleet:node:local"][0]'); curl -s "$C/api/plugins/fleet/nodes/$NODE"; }
+NODE=$(hostname)
+node() { curl -s "$C/api/plugins/fleet/nodes/$NODE"; }
 PAIR="ca_file = \"$K/ca.crt\"
 cert_file = \"$K/console.crt\"
 key_file = \"$K/console.key\""
