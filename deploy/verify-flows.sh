@@ -115,10 +115,10 @@ ends() { python3 -c "import json,sys; d=json.load(sys.stdin); print(sorted({(f['
 
 say "an administrator: every project"
 A=$(ask root "?last=50")
-check "$(echo "$A" | j 'd["available"], len(d["items"]), d["connected"]')" "True 5 1" "five flows, and the relay's node count"
+check "$(echo "$A" | j 'd["available"], len(d["items"]), d["connected"]')" "(True, 5, 1)" "five flows, and the relay's node count"
 check "$(echo "$A" | j '[f["verdict"] for f in d["items"]].count("DROPPED")')" 1 "one dropped"
 check "$(echo "$A" | j '[f["drop"] for f in d["items"] if f["drop"]]')" "['POLICY_DENIED']" "with the reason"
-check "$(echo "$A" | j '[f["port"] for f in d["items"]][0], d["items"][0]["protocol"]')" "5432 TCP" "and the port"
+check "$(echo "$A" | j '[f["port"] for f in d["items"]][0], d["items"][0]["protocol"]')" "(5432, 'TCP')" "and the port"
 check "$(ask root '?verdict=DROPPED' | j 'len(d["items"])')" 1 "the verdict filter reaches the relay"
 check "$(ask root '?verdict=nonsense' | j 'len(d["items"])')" 5 "a word that is no verdict filters nothing rather than failing"
 check "$(ask root '?last=2' | j 'len(d["items"])')" 2 "last"
