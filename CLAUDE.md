@@ -1952,6 +1952,12 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### Each stormd and stormdrive over TLS (#49)
+stormd#32 and stormdrive#19 landed: HTTPS, and a node-CA client certificate or a bearer. stormcos mounts the node CA and
+`stormconsole-client` already (#294). stormcos#371 moves stormds one at a time, so a port may be either.
+- [x] `console_core::dial`, `[node_tls]`: feed, proxy, fleet, node page, API health, stormdrive, stormstorage
+- [ ] `deploy/verify-stormd-tls.sh`: real stormd and stormdrive; tell stormcos the keys; golden
+
 ### The console's apiserver role (#78)
 Owner on stormcos#203: writes "listed resource by resource", the settings of the components it manages. Read from
 the code: `client.rs` falls back to the console's own token for anyone with no identity, so the role bounds them too.

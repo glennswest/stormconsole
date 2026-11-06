@@ -56,6 +56,22 @@ pub struct Config {
     pub stormupdate: Stormupdate,
     #[serde(default)]
     pub stormcentral: Stormcentral,
+    #[serde(default)]
+    pub node_tls: NodeTls,
+}
+
+/// How to reach a node's stormds and stormdrive over TLS (#49). Unset: as each is configured.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeTls {
+    /// The node CA. Setting it turns this on: each port is asked over HTTPS first.
+    pub ca_file: Option<String>,
+    /// The console's client pair, presented over TLS only.
+    pub cert_file: Option<String>,
+    pub key_file: Option<String>,
+    /// No port is read plainly. For when the node has finished moving (stormcos#371).
+    #[serde(default)]
+    pub require: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -691,6 +707,13 @@ impl Config {
                 self.kubernetes_server()
             ));
         }
+        let nt = &self.node_tls;
+        if nt.cert_file.is_some() != nt.key_file.is_some() {
+            return Err("[node_tls] cert_file and key_file go together: set both, or neither".into());
+        }
+        if nt.ca_file.is_none() && (nt.cert_file.is_some() || nt.require) {
+            return Err("[node_tls] needs ca_file: a pair or require means nothing without a CA to verify against".into());
+        }
         let sc = &self.stormcluster;
         if sc.cert_file.is_some() != sc.key_file.is_some() {
             return Err("[stormcluster] cert_file and key_file go together: set both, or neither".into());
@@ -821,6 +844,17 @@ impl Config {
             let scheme = if self.stormcluster.ca_file.is_some() { "https" } else { "http" };
             format!("{scheme}://127.0.0.1:9102")
         })
+    }
+
+    /// How to reach a node's stormds and stormdrive (#49).
+    pub fn node_dial(&self) -> std::sync::Arc<console_core::dial::Dial> {
+        let f = &self.node_tls;
+        let files = console_core::tls::TlsFiles {
+            ca: f.ca_file.as_ref().map(Into::into),
+            cert: f.cert_file.as_ref().map(Into::into),
+            key: f.key_file.as_ref().map(Into::into),
+        };
+        console_core::dial::Dial::new(files, f.require)
     }
 
     /// The `[stormcluster]` TLS files, for the plugin (#89).

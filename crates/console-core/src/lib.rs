@@ -17,6 +17,7 @@ pub mod access;
 pub mod apiserver;
 pub mod create;
 pub mod members;
+pub mod dial;
 pub mod feed;
 mod nav;
 mod plugin;

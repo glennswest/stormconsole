@@ -1094,6 +1094,16 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### Daemons moving to TLS (#49)
+
+stormd (stormd#32) and stormdrive (stormdrive#19) serve HTTPS and take a node-CA client certificate, one daemon at a
+time on a node (stormcos#371). `console_core::dial` asks each port over HTTPS first and remembers for 30 s. A
+certificate it does not trust is never a reason to fall back, since reading that port plainly would make the check
+worth nothing; the pair is only offered over TLS, so a plain port learns nothing. `[node_tls] require` ends the fallback.
+
+The console reads the daemons over HTTP only: it does not subscribe to their `/ws/components` or `/ws/logs`, so those
+need nothing here. A person's bearer still goes on a destructive drive call (#82), and a bearer wins over the pair.
+
 ### The console's apiserver role (#78)
 
 The console's own credential gets the role in `deploy/rbac/stormconsole.yaml`: see [rbac.md](rbac.md). A viewer with no

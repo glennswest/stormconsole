@@ -224,16 +224,26 @@ pub fn components(s: &Snapshot, now: DateTime<Utc>) -> Vec<ComponentSummary> {
 }
 
 /// Each stormd's answer, read concurrently.
-async fn read_stormds(client: &reqwest::Client, host: &str, ports: &[u16]) -> (Vec<Api>, Vec<String>, Vec<String>) {
+async fn read_stormds(dial: &console_core::dial::Dial, host: &str, ports: &[u16]) -> (Vec<Api>, Vec<String>, Vec<String>) {
     let asks = ports.iter().map(|&port| async move {
-        let url = format!("http://{host}:{port}/api/v1/health/apis");
-        (port, client.get(&url).send().await)
+        let asked = match dial.route(&format!("http://{host}:{port}")).await {
+            Ok(r) => Ok(r.client.get(format!("{}/api/v1/health/apis", r.base)).timeout(Duration::from_secs(3)).send().await),
+            Err(e) => Err(e),
+        };
+        (port, asked)
     });
     let (mut apis, mut answered, mut notes) = (Vec::new(), Vec::new(), Vec::new());
     for (port, r) in futures_util::future::join_all(asks).await {
         // Nothing on the port is the ordinary case: the layout has more
         // ports than any one node runs.
-        let Ok(r) = r else { continue };
+        let r = match r {
+            Ok(Ok(r)) => r,
+            Ok(Err(_)) => continue,
+            Err(why) => {
+                notes.push(format!("stormd :{port}: {why}"));
+                continue;
+            }
+        };
         let at = format!(":{port}");
         match r.status().as_u16() {
             200 => match r.json::<Value>().await {
@@ -259,7 +269,7 @@ struct Inner {
     history_dir: String,
     stormd_host: String,
     stormd_ports: Vec<u16>,
-    client: reqwest::Client,
+    dial: Arc<console_core::dial::Dial>,
     snap: RwLock<Snapshot>,
 }
 
@@ -278,7 +288,7 @@ impl Inner {
             }
             Err(note) => {
                 next.summary_note = note;
-                let (apis, answered, notes) = read_stormds(&self.client, &self.stormd_host, &self.stormd_ports).await;
+                let (apis, answered, notes) = read_stormds(&self.dial, &self.stormd_host, &self.stormd_ports).await;
                 next.source = Source::Stormd;
                 next.apis = apis;
                 next.stormds = answered;
@@ -309,18 +319,25 @@ pub struct ApiHealthPlugin {
 }
 
 impl ApiHealthPlugin {
+    /// How to reach each stormd (#49). Right after construction.
+    pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.dial = dial;
+        }
+        self
+    }
+
     /// `summary_file` is PID 1's summary; `history_dir` the kept changes;
     /// the stormds at `stormd_host` on `stormd_ports` are asked when the
     /// summary cannot be read.
     pub fn new(summary_file: &str, history_dir: &str, stormd_host: &str, stormd_ports: Vec<u16>) -> Self {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap_or_default();
         Self {
             inner: Arc::new(Inner {
                 summary_file: summary_file.to_string(),
                 history_dir: history_dir.to_string(),
                 stormd_host: stormd_host.to_string(),
                 stormd_ports,
-                client,
+                dial: console_core::dial::Dial::off(),
                 snap: RwLock::new(Snapshot::new(summary_file)),
             }),
         }

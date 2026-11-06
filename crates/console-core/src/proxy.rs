@@ -87,6 +87,7 @@ struct Target {
     client: reqwest::Client,
     upstream: String,
     bearer: Arc<crate::token::FileToken>,
+    dial: Option<Arc<crate::dial::Dial>>,
 }
 
 /// Everything under this router goes to one upstream. Nest it at
@@ -97,14 +98,37 @@ pub fn router(client: reqwest::Client, upstream: String) -> Router {
 
 /// [`router`], carrying the console's own bearer for that upstream.
 pub fn router_as(client: reqwest::Client, upstream: String, bearer: Option<String>) -> Router {
-    Router::new()
-        .route("/{*path}", any(handler))
-        .with_state(Arc::new(Target { client, upstream, bearer: Arc::new(crate::token::FileToken::fixed(bearer)) }))
+    router_dial(client, upstream, bearer, None)
 }
 
 /// [`router_as`], with a bearer kept in a file, read as it is now.
 pub fn router_token(client: reqwest::Client, upstream: String, bearer: Arc<crate::token::FileToken>) -> Router {
-    Router::new().route("/{*path}", any(handler)).with_state(Arc::new(Target { client, upstream, bearer }))
+    Router::new().route("/{*path}", any(handler)).with_state(Arc::new(Target { client, upstream, bearer, dial: None }))
+}
+
+/// [`router_as`], reaching the upstream through `dial` (#49).
+pub fn router_dial(client: reqwest::Client, upstream: String, bearer: Option<String>, dial: Option<Arc<crate::dial::Dial>>) -> Router {
+    Router::new()
+        .route("/{*path}", any(handler))
+        .with_state(Arc::new(Target { client, upstream, bearer: Arc::new(crate::token::FileToken::fixed(bearer)), dial }))
+}
+
+/// [`forward_as`] through `dial`. A port that must not be read answers 502 and says why.
+#[allow(clippy::too_many_arguments)]
+pub async fn forward_dial(
+    dial: &crate::dial::Dial,
+    upstream: &str,
+    method: &Method,
+    path: &str,
+    query: Option<&str>,
+    headers: &HeaderMap,
+    body: Bytes,
+    bearer: Option<&str>,
+) -> Response {
+    match dial.route(upstream).await {
+        Ok(r) => forward_as(&r.client, &r.base, method, path, query, headers, body, bearer).await,
+        Err(e) => (StatusCode::BAD_GATEWAY, axum::Json(serde_json::json!({"error": e}))).into_response(),
+    }
 }
 
 /// Destructive storage goes upstream with the viewer's bearer, not this
@@ -124,5 +148,8 @@ async fn handler(
         Ok(b) => b,
         Err(refused) => return refused,
     };
-    forward_as(&t.client, &t.upstream, &method, &path, uri.query(), &headers, body, bearer).await
+    match &t.dial {
+        Some(d) => forward_dial(d, &t.upstream, &method, &path, uri.query(), &headers, body, bearer).await,
+        None => forward_as(&t.client, &t.upstream, &method, &path, uri.query(), &headers, body, bearer).await,
+    }
 }

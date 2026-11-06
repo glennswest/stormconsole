@@ -57,6 +57,8 @@ struct Inner {
     hosts: Option<LogHosts>,
     remotes: RwLock<BTreeMap<String, Arc<Feed>>>,
     client: reqwest::Client,
+    /// How to reach a stormdrive, which serves TLS from 0.21 (#49, stormdrive#19).
+    dial: Arc<console_core::dial::Dial>,
     /// The last usage answer and when it was made (#29).
     usage: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
     /// The same for the format page (#165).
@@ -118,6 +120,15 @@ fn with_node(mut list: Vec<ComponentSummary>, node: &str) -> Vec<ComponentSummar
 }
 
 impl DrivesPlugin {
+    /// How to reach each stormdrive (#49). Right after construction.
+    pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
+        self.inner.local.set_dial(dial.clone());
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.dial = dial;
+        }
+        self
+    }
+
     pub fn new(url: &str, statics: BTreeMap<String, String>, hosts: Option<LogHosts>) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -127,6 +138,7 @@ impl DrivesPlugin {
                 hosts,
                 remotes: RwLock::new(BTreeMap::new()),
                 client: reqwest::Client::new(),
+                dial: console_core::dial::Dial::off(),
                 usage: tokio::sync::Mutex::new(None),
                 formats: tokio::sync::Mutex::new(None),
             }),
@@ -144,7 +156,11 @@ impl DrivesPlugin {
         for (host, url) in want {
             remotes
                 .entry(host.clone())
-                .or_insert_with(|| Arc::new(Feed::new(&url, &prefix(Some(&host)), &proxy_base(Some(&host)))));
+                .or_insert_with(|| {
+                    let feed = Feed::new(&url, &prefix(Some(&host)), &proxy_base(Some(&host)));
+                    feed.set_dial(self.inner.dial.clone());
+                    Arc::new(feed)
+                });
         }
     }
 }
@@ -172,7 +188,10 @@ impl ConsolePlugin for DrivesPlugin {
             .route("/formats/history", get(format_history))
             .route("/format", post(format_start))
             .with_state(self.inner.clone())
-            .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.local.base.clone()))
+            .nest(
+                "/proxy",
+                console_core::proxy::router_dial(self.inner.client.clone(), self.inner.local.base.clone(), None, Some(self.inner.dial.clone())),
+            )
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
@@ -260,11 +279,12 @@ async fn usage_route(State(inner): State<Arc<Inner>>) -> Response {
         targets.push((host.clone(), feed.base.clone(), prefix(Some(host))));
     }
     let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| {
-        let client = inner.client.clone();
-        let url = format!("{base}/api/v1/drives");
+        let dial = inner.dial.clone();
         async move {
-            let resp = client
-                .get(&url)
+            let route = dial.route(base).await?;
+            let resp = route
+                .client
+                .get(format!("{}/api/v1/drives", route.base))
                 .timeout(Duration::from_secs(5))
                 .send()
                 .await
@@ -301,10 +321,12 @@ async fn targets(inner: &Inner) -> Vec<(String, String, String)> {
     out
 }
 
-async fn read_json(client: &reqwest::Client, url: String) -> Result<serde_json::Value, String> {
+async fn read_json(dial: &console_core::dial::Dial, base: &str, path: &str) -> Result<serde_json::Value, String> {
     use std::error::Error as _;
-    let resp = client
-        .get(&url)
+    let route = dial.route(base).await?;
+    let resp = route
+        .client
+        .get(format!("{}{path}", route.base))
         .timeout(Duration::from_secs(5))
         .send()
         .await
@@ -320,8 +342,8 @@ async fn read_formats(inner: &Inner) -> serde_json::Value {
     let targets = targets(inner).await;
     let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| async move {
         let (drives, objects) = tokio::join!(
-            read_json(&inner.client, format!("{base}/api/v1/drives")),
-            read_json(&inner.client, format!("{base}/apis/storage.storm.io/v1/drives")),
+            read_json(&inner.dial, base, "/api/v1/drives"),
+            read_json(&inner.dial, base, "/apis/storage.storm.io/v1/drives"),
         );
         (drives, objects)
     }))
@@ -369,7 +391,7 @@ async fn format_history(State(inner): State<Arc<Inner>>, axum::extract::Query(q)
     if !q.id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')) {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "bad drive id"}))).into_response();
     }
-    match read_json(&inner.client, format!("{base}/api/v1/drives/{}/history?limit=1000", q.id)).await {
+    match read_json(&inner.dial, &base, &format!("/api/v1/drives/{}/history?limit=1000", q.id)).await {
         Ok(h) => Json(json!({"active": h.get("active"), "runs": format::runs(&h)})).into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response(),
     }
@@ -421,9 +443,20 @@ async fn format_start(
             user = viewer.user.as_deref().unwrap_or("anonymous"), node, block_size, protection, drives = ?names,
             "drive format requested"
         );
-        let mut call = inner
+        let route = match inner.dial.route(base).await {
+            Ok(r) => r,
+            Err(e) => {
+                all_ok = false;
+                results.push(json!({
+                    "node": node, "drives": ids, "block_size": block_size, "protection": protection,
+                    "ok": false, "status": 502, "error": e,
+                }));
+                continue;
+            }
+        };
+        let mut call = route
             .client
-            .post(format!("{base}/api/v1/format"))
+            .post(format!("{}/api/v1/format", route.base))
             .timeout(Duration::from_secs(120))
             .json(&json!({"drives": ids, "block_size": block_size, "protection": protection}));
         if let Some(t) = &bearer {
@@ -468,7 +501,7 @@ async fn node_proxy(
     let base = inner.remotes.read().await.get(&host).map(|f| f.base.clone());
     match base {
         Some(b) => {
-            console_core::proxy::forward_as(&inner.client, &b, &method, &path, uri.query(), &headers, body, bearer).await
+            console_core::proxy::forward_dial(&inner.dial, &b, &method, &path, uri.query(), &headers, body, bearer).await
         }
         None => (StatusCode::NOT_FOUND, Json(json!({"error": format!("no stormdrive known on {host}")}))).into_response(),
     }

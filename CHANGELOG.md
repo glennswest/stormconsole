@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Each stormd and stormdrive over TLS (#49)
+- **feat:** `[node_tls] ca_file/cert_file/key_file/require`: the stormd feed, its actions, the node page, API health,
+  stormdrive and stormstorage ask each port over HTTPS first and present the console's client pair. A port still
+  plain is read plainly with nothing presented, until `require`. A certificate the console does not trust is never
+  read: the card and the node page say why.
+
 ### 2026-11-05 — The console's apiserver role, resource by resource (#78)
 - **feat:** `deploy/rbac/stormconsole.yaml`, the role stormcos ships, and `docs/rbac.md`: every read and write on
   the console's own credential, and what is left to a signed-in identity. A test fails the build when the code

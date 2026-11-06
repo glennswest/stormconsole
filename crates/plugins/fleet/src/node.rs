@@ -95,21 +95,30 @@ pub struct NodeDetail {
     /// daemons than a control-plane node, and that difference is the most
     /// interesting thing on this page.
     pub silent: Vec<u16>,
+    /// Ports that must not be read, and why: a certificate this console does not trust (#49).
+    pub refused: Vec<serde_json::Value>,
     pub note: String,
 }
 
 /// Ask one port whether a storm daemon is behind it. A stormview feed is
 /// the platform's universal "what are you" — every daemon here serves one,
 /// and its `system` card is the daemon's own name for itself.
+///
+/// `Err` is a port that must not be read, and why; `Ok(None)` one with no daemon behind it.
 pub async fn probe_port(
-    client: &reqwest::Client,
+    dial: &console_core::dial::Dial,
     addr: &str,
     port: u16,
     expected: &'static str,
-) -> Option<NodeService> {
-    let base = format!("http://{addr}:{port}");
-    let resp = client
-        .get(format!("{base}/api/v1/components"))
+) -> Result<Option<NodeService>, String> {
+    let route = dial.route(&format!("http://{addr}:{port}")).await?;
+    Ok(read_port(&route, addr, port, expected).await)
+}
+
+async fn read_port(route: &console_core::dial::Route, addr: &str, port: u16, expected: &'static str) -> Option<NodeService> {
+    let resp = route
+        .client
+        .get(format!("{}/api/v1/components", route.base))
         .timeout(Duration::from_secs(2))
         .send()
         .await

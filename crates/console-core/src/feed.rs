@@ -39,6 +39,8 @@ pub struct Feed {
     /// A service stormcos starts only on some nodes (#60): its stormd's
     /// port, and what to say when it is not started here.
     not_started: Option<(u16, String)>,
+    /// How to reach it, when it may have moved to TLS (#49).
+    dial: std::sync::OnceLock<Arc<crate::dial::Dial>>,
 }
 
 impl Feed {
@@ -49,7 +51,13 @@ impl Feed {
             proxy_base: proxy_base.trim_end_matches('/').to_string(),
             state: RwLock::new(FeedState::default()),
             not_started: None,
+            dial: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Reach the upstream through `dial`. Before the first poll.
+    pub fn set_dial(&self, dial: Arc<crate::dial::Dial>) {
+        let _ = self.dial.set(dial);
     }
 
     /// The upstream is a service a node may carry and, by design, not run
@@ -72,8 +80,19 @@ impl Feed {
     /// One poll. An upstream that cannot be reached shows as an error with
     /// no components — stale rows would say the opposite of the truth.
     pub async fn poll(&self, client: &reqwest::Client) {
-        let url = format!("{}/api/v1/components", self.base);
-        let observed = match client.get(&url).timeout(Duration::from_secs(5)).send().await {
+        let routed = match self.dial.get() {
+            Some(d) => d.route(&self.base).await,
+            None => Ok(crate::dial::Route { client: client.clone(), base: self.base.clone() }),
+        };
+        let route = match routed {
+            Ok(r) => r,
+            Err(e) => {
+                *self.state.write().await = FeedState { health: Health::Error, detail: e, components: Vec::new() };
+                return;
+            }
+        };
+        let url = format!("{}/api/v1/components", route.base);
+        let observed = match route.client.get(&url).timeout(Duration::from_secs(5)).send().await {
             Ok(resp) if resp.status().is_success() => match resp.json::<Vec<ComponentSummary>>().await {
                 Ok(list) => {
                     let (health, detail) = summarize(&list);
@@ -192,6 +211,7 @@ pub struct FeedPlugin {
     items: Vec<(String, String)>,
     feed: Arc<Feed>,
     client: reqwest::Client,
+    dial: Option<Arc<crate::dial::Dial>>,
     /// The upstream's own token, added by the proxy to what it forwards
     /// (#53). The browser's `Authorization` is never passed on: the
     /// console decides who acts upstream, not the page.
@@ -219,6 +239,7 @@ impl FeedPlugin {
             items: vec![(item.to_string(), format!("#/grid?id=plugin:{name}"))],
             feed,
             client: reqwest::Client::new(),
+            dial: None,
             bearer: None,
             rekind: None,
         }
@@ -228,6 +249,12 @@ impl FeedPlugin {
     /// (#53). Its feed and reads stay open upstream, so only the proxy
     /// carries it. Destructive storage still goes with the viewer's own
     /// bearer instead (#82, [`crate::storage::upstream_bearer`]).
+    pub fn dial(mut self, dial: Arc<crate::dial::Dial>) -> Self {
+        self.feed.set_dial(dial.clone());
+        self.dial = Some(dial);
+        self
+    }
+
     pub fn bearer(mut self, token: Option<String>) -> Self {
         self.bearer = token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
         self
@@ -285,7 +312,7 @@ impl ConsolePlugin for FeedPlugin {
     fn routes(&self) -> axum::Router {
         axum::Router::new().nest(
             "/proxy",
-            crate::proxy::router_as(self.client.clone(), self.feed.base.clone(), self.bearer.clone()),
+            crate::proxy::router_dial(self.client.clone(), self.feed.base.clone(), self.bearer.clone(), self.dial.clone()),
         )
     }
 

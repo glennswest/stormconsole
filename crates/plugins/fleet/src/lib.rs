@@ -54,6 +54,10 @@ struct Inner {
     hosts: Option<LogHosts>,
     hostname: String,
     client: reqwest::Client,
+    /// How to reach a stormd that may have moved to TLS (#49).
+    dial: Arc<console_core::dial::Dial>,
+    /// This node's ports that must not be read, and why.
+    refused: RwLock<BTreeMap<u16, String>>,
     services: RwLock<BTreeMap<u16, Arc<Service>>>,
     /// stormstorage's feed: what the engine on each node holds.
     storage: Option<Arc<Feed>>,
@@ -74,10 +78,20 @@ impl FleetPlugin {
                 hosts,
                 hostname,
                 client: reqwest::Client::new(),
+                dial: console_core::dial::Dial::off(),
+                refused: RwLock::new(BTreeMap::new()),
                 services: RwLock::new(BTreeMap::new()),
                 storage: None,
             }),
         }
+    }
+
+    /// How to reach each stormd (#49). Right after construction.
+    pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.dial = dial;
+        }
+        self
     }
 
     /// stormstorage's feed, for the numbers on a node's row. Called right
@@ -352,12 +366,27 @@ impl ConsolePlugin for FleetPlugin {
                     continue;
                 }
                 let base = format!("http://{}:{port}", self.inner.host);
-                if let Some(name) = probe_stormd(&self.inner.client, &base).await {
+                let route = match self.inner.dial.route(&base).await {
+                    Ok(r) => {
+                        self.inner.refused.write().await.remove(&port);
+                        r
+                    }
+                    Err(e) => {
+                        let mut refused = self.inner.refused.write().await;
+                        if refused.get(&port) != Some(&e) {
+                            tracing::warn!(port, "a stormd was not read: {e}");
+                        }
+                        refused.insert(port, e);
+                        continue;
+                    }
+                };
+                if let Some(name) = probe_stormd(&route.client, &route.base).await {
                     let feed = Arc::new(Feed::new(
                         &base,
                         &format!("fleet:svc:{name}"),
                         &format!("/api/plugins/fleet/proxy/{port}"),
                     ));
+                    feed.set_dial(self.inner.dial.clone());
                     info!(port, service = %name, "stormd instance discovered");
                     let svc = Arc::new(Service { name, port, feed: feed.clone() });
                     self.inner.services.write().await.insert(port, svc);
@@ -433,6 +462,7 @@ async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) 
             reachable: false,
             services: vec![],
             silent: vec![],
+            refused: vec![],
             note: node::note("", 0, 0),
         })
         .into_response();
@@ -441,18 +471,20 @@ async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) 
     // Probed together rather than in sequence: two dozen ports at two
     // seconds each is half a minute of staring at a spinner.
     let probes = node::NODE_PORTS.iter().map(|(port, expected)| {
-        let client = inner.client.clone();
+        let dial = inner.dial.clone();
         let addr = addr.clone();
-        async move { (*port, node::probe_port(&client, &addr, *port, expected).await) }
+        async move { (*port, node::probe_port(&dial, &addr, *port, expected).await) }
     });
     let results = futures_util::future::join_all(probes).await;
 
     let mut services = Vec::new();
     let mut silent = Vec::new();
+    let mut refused = Vec::new();
     for (port, found) in results {
         match found {
-            Some(s) => services.push(s),
-            None => silent.push(port),
+            Ok(Some(s)) => services.push(s),
+            Ok(None) => silent.push(port),
+            Err(why) => refused.push(serde_json::json!({"port": port, "why": why})),
         }
     }
     services.sort_by_key(|s| s.port);
@@ -463,6 +495,7 @@ async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) 
         reachable: !services.is_empty(),
         services,
         silent,
+        refused,
         note,
     })
     .into_response()
@@ -502,7 +535,7 @@ async fn node_proxy(
             .into_response();
     }
     let upstream = format!("http://{addr}:{port}");
-    console_core::proxy::forward(&inner.client, &upstream, &method, &path, uri.query(), &headers, body).await
+    console_core::proxy::forward_dial(&inner.dial, &upstream, &method, &path, uri.query(), &headers, body, None).await
 }
 
 async fn proxy(
@@ -517,7 +550,7 @@ async fn proxy(
         return (StatusCode::NOT_FOUND, format!("no service on port {port}")).into_response();
     }
     let upstream = format!("http://{}:{port}", inner.host);
-    console_core::proxy::forward(&inner.client, &upstream, &method, &path, uri.query(), &headers, body).await
+    console_core::proxy::forward_dial(&inner.dial, &upstream, &method, &path, uri.query(), &headers, body, None).await
 }
 
 /// A node's shape in one clause, from its beacon.

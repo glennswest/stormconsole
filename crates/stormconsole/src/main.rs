@@ -167,6 +167,8 @@ async fn main() {
     // The cluster's nodes and their addresses: the fleet plugin drills into
     // them, and the drives plugin reads each one's stormdrive (#32).
     let log_hosts = logs.as_ref().map(|l| l.hosts());
+    // Each stormd's and stormdrive's TLS, as a node moves to it (#49).
+    let node_dial = config.node_dial();
     let stormstorage = config.stormstorage.enabled.then(|| {
         // stormstorage's write token (#53), held server-side like the
         // engine's: every action on its feed is a write.
@@ -177,7 +179,7 @@ async fn main() {
                 None
             }
         });
-        Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url(), token))
+        Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url(), token).dial(node_dial.clone()))
     });
     if config.fleet.enabled {
         plugins.push(Arc::new(
@@ -187,6 +189,7 @@ async fn main() {
                 config.fleet.stormd_ports.clone(),
                 logs.as_ref().map(|l| l.hosts()),
             )
+            .with_dial(node_dial.clone())
             .with_storage(stormstorage.as_ref().map(|p| p.feed())),
         ));
     }
@@ -198,7 +201,7 @@ async fn main() {
             &config.stormdrive_url(),
             config.stormdrive.nodes.clone(),
             log_hosts.clone(),
-        )));
+        ).with_dial(node_dial.clone())));;
     }
     if let Some(p) = stormstorage {
         plugins.push(p);
@@ -304,7 +307,7 @@ async fn main() {
             &config.health_history_dir(),
             &config.fleet.stormd_host,
             config.fleet.stormd_ports.clone(),
-        )));
+        ).with_dial(node_dial.clone())));
     }
     // What the cluster runs and an update's steps, with an admin's acts (#164).
     if config.stormupdate.enabled {

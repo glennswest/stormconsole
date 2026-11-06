@@ -167,6 +167,14 @@ enabled = true
 # url = "http://127.0.0.1:9097"
 # token_file = "/etc/stormconsole/stormipmi.token"
 
+# [node_tls]
+# Each stormd and stormdrive over TLS, as a node moves to it (#49). Setting ca_file asks every port
+# over HTTPS first. A certificate it does not trust is said, and that port is not read.
+# ca_file = "/data/stormcert/ca.crt"
+# cert_file = "/data/stormcert/stormconsole-client.crt"
+# key_file = "/data/stormcert/stormconsole-client.key"
+# require = false                          # true: no port is read plainly
+
 [stormcluster]
 enabled = true
 # The Cluster page: members, discovered peers and operations, from the

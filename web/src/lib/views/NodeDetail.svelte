@@ -126,6 +126,9 @@
       <div class="card wide">
         <h2>What answered</h2>
         <p class="note">{data.note}</p>
+        {#each data.refused || [] as r (r.port)}
+          <p class="refused">:{r.port} was not read: {r.why}</p>
+        {/each}
         {#if data.silent.length}
           <p class="silent">
             Quiet: {data.silent.join(', ')} — a worker runs fewer daemons than a control-plane
@@ -258,4 +261,5 @@
   .w-status { width: 110px; }
   .w-n { width: 100px; text-align: right; }
   .sc-back { font-size: var(--sc-t-body); }
+  .refused { color: var(--error); overflow-wrap: anywhere; }
 </style>
