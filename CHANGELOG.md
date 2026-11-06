@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — What a guest is told (#11)
+- **feat:** a VM's page says what the node tells that guest when it asks who it is: instance, hostname, address, zone, and whether its own keys and user-data arrive, per address. "No answer for this address" is why a guest comes up with no identity.
+- **feat:** a stormimds row says whether the metadata service answers, or is not started on this node. `[vm] stormimds_url` moves it from `http://127.0.0.1:8169`.
+
 ### 2026-11-06 — A Boot and flow-over page (#271)
 - **feat:** `#/boot`, a full page to watch and record: the phases since the kernel started with their seconds, how long to every service running, and the flow-over live, percent, MB/s with a sparkline, time left, then "Running from its own disk".
 

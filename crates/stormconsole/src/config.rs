@@ -455,7 +455,7 @@ pub struct Vm {
 
 impl Default for Vm {
     fn default() -> Self {
-        Self { enabled: true, url: None, ssh_keys_namespace: None }
+        Self { enabled: true, url: None, ssh_keys_namespace: None, stormimds_url: None }
     }
 }
 

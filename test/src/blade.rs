@@ -453,6 +453,23 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
     // The serial log, through the console's door.
     let t = Instant::now();
     let serial = ctx.console.read_ws(&format!("/api/plugins/vm/console/{ns}/{name}/serial"), Duration::from_secs(120), "STORMCONSOLE-BLADE-ADDR").await;
+    // #11: what the guest is told, as a real kubelet answers (stormimds#19 has never seen this end to end).
+    let told = format!("{page}/identity");
+    match ctx.console.get(&told).await {
+        Ok(a) if a.status == 200 => {
+            let state = a.body["verdict"]["state"].as_str().unwrap_or("").to_string();
+            let said = a.body["verdict"]["sentence"].as_str().unwrap_or("").to_string();
+            let outcome = match state.as_str() {
+                "answered" => Outcome::Pass(format!("{said}: {}", a.body["items"][0]["hostname"])),
+                // The master's rule on #11: a refusal is filed as a grant, not a console failure.
+                "refused" => Outcome::Skip(said),
+                _ => Outcome::Fail(format!("{state}: {said}")),
+            };
+            r.record("vm-told", outcome, 0, Some(a.body.clone()));
+        }
+        Ok(a) => r.record("vm-told", Outcome::Fail(format!("HTTP {}", a.status)), 0, None),
+        Err(e) => r.record("vm-told", Outcome::Fail(e), 0, None),
+    }
     r.record(
         "vm-serial",
         match serial {
