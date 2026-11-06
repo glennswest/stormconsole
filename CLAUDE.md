@@ -2213,6 +2213,15 @@ transparently. Its #56 is still open for `kubectl` proof, not for the route.
   users with `kube_token`: the same open question as #165
 - Terminal and Environment are per container; no separate container page: the tabs have the picker
 
+### A Storage page over the storage.storm.io objects (#96)
+stormblock serves `/apis/storage.storm.io/v1/{volumes,slabs,drives,nodes}` (`mgmt/api/kube.rs`), stormdrive `{drives,enclosures}` (`api/kube.rs`). The issue waited
+on rustkube#83; that proxy is wired, but nothing registers these groups (no APIService in stormcos) and the two components serve the same group, so
+the console reads each directly, as it does the rest of their APIs. What these add: a volume's legs, role, retention and physical bytes; a slab's
+quarantine and metadata; a node's topology and capacity; an enclosure's PSUs, fans and heat. `storm.io/namespace` is a family (`stormcos`, `nana`), not a project.
+- [ ] sb `GET /resources/{volumes|slabs|drives|nodes}`; drive `GET /resources/{drives|enclosures}`, every node, reduced
+- [ ] `#/storage` (Storage → Overview): those five as tabs, a band of totals, drives joined by serial. `web/src/lib/storage.js` + test
+- [ ] `deploy/verify-storage-view.sh`: real engine and stormdrive, a stand-in for an enclosure; Chromium; docs, changelog, dist; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

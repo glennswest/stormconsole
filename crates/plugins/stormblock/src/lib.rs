@@ -83,6 +83,7 @@ impl ConsolePlugin for StormblockPlugin {
             // (#19). Goldens, blanks and media are the registry's, under
             // Images; a volume nothing is using is kept apart, because it is
             // the question "can this go" rather than "what is running".
+            .item_at("Overview", "#/storage", -1)
             .item("Volumes", "#/grid?id=sb:engine&rel=volumes")
             .item("Unattached volumes", "#/grid?id=sb:engine&rel=unattached")
             .item("Slabs", "#/grid?id=sb:engine&rel=slabs")
@@ -126,6 +127,7 @@ impl ConsolePlugin for StormblockPlugin {
         axum::Router::new()
             .route("/placement", axum::routing::get(placement_route))
             .route("/runs-on", axum::routing::get(runs_on_route))
+            .route("/resources/{kind}", axum::routing::get(resources_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -191,6 +193,26 @@ async fn engine_get(inner: &Inner, path: &str, budget: Duration) -> Result<Value
     }
     r.json().await.map_err(|e| e.to_string())
 }
+
+/// `GET /resources/{kind}` (#96): the engine's own `storage.storm.io/v1` objects. An engine that will
+/// not answer is said in the answer: an empty list would read as a node with nothing on it.
+async fn resources_route(
+    axum::extract::State(inner): axum::extract::State<Arc<Inner>>,
+    axum::extract::Path(kind): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if !RESOURCES.contains(&kind.as_str()) {
+        return (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"error": format!("{kind:?} is not one of the engine's objects")}))).into_response();
+    }
+    let path = format!("/apis/storage.storm.io/v1/{kind}");
+    axum::Json(match engine_get(&inner, &path, Duration::from_secs(15)).await {
+        Ok(v) => serde_json::json!({"items": v.get("items").cloned().unwrap_or(serde_json::json!([]))}),
+        Err(e) => serde_json::json!({"items": [], "error": format!("the engine did not answer: {e}")}),
+    })
+    .into_response()
+}
+
+const RESOURCES: [&str; 4] = ["volumes", "slabs", "drives", "nodes"];
 
 /// `GET /runs-on` (#75): see [`runs_on`].
 async fn runs_on_route(

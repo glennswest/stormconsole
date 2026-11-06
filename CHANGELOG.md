@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — A Storage page over the storage.storm.io objects (#96)
+- **feat:** Storage → Overview (`#/storage`): volumes with their legs and health, slabs, drives with the engine's and stormdrive's views joined, nodes with their
+  topology and capacity, enclosures with PSUs, fans and heat. Read-only. An engine or node that does not answer is said, not shown as empty.
+
 ### 2026-11-05 — A pod's Terminal and Environment (#12)
 - **feat:** a Terminal tab on the pod page: a shell in a container, as you. It needs the operator role here and `create pods/exec` at the
   apiserver, and never uses the console's own credential. Opening one is in the audit; what is typed is not. Adds xterm.js 5.5.0, MIT,

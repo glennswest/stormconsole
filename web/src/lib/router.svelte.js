@@ -18,6 +18,8 @@ const routes = [
   // Whichever network this cluster runs (#168).
   { pattern: '#/network/policies', name: 'networkpolicies' },
   { pattern: '#/network/endpoints', name: 'networkendpoints' },
+  // The storage.storm.io objects (#96); the tab travels in the query.
+  { pattern: '#/storage', name: 'storage' },
   // Targets and charts from the node's ironprom (#46); level and object travel in the query.
   { pattern: '#/metrics', name: 'metrics' },
   // What the cluster runs, an update's steps, history (#164).

@@ -1823,6 +1823,18 @@ with what to set; `/readyz` stays open, so the registry can read ready while not
 token. A pull-only robot gives the views and a 403 on the create forms; the token's own grants bound what an operator can do
 through the proxy.
 
+### The Storage page (#96)
+
+`#/storage` (Storage → Overview) is the `storage.storm.io/v1` objects: **Volumes** (health, legs, redundancy, role, retention, allocated against physical), **Slabs**
+(tier, role, free, quarantined, holds metadata), **Drives** (the engine's and stormdrive's joined by serial, so a drive reads as one with its slabs and its bay),
+**Nodes** (topology, capacity) and **Enclosures** (PSUs, fans, heat), with a band of totals. `GET /api/plugins/sb/resources/{kind}`, and `GET
+/api/plugins/drive/resources/{kind}` from every node, reduced because a Drive carries its history. Read-only: the actions stay on the pages that have their guards (#82).
+
+- **Read directly, not through the apiserver.** rustkube's aggregation is wired (rustkube#83), but nothing registers these groups, and the engine and stormdrive both
+  serve `storage.storm.io`, each with a `drives` that means something else. One APIService cannot name both. If that changes, only the two routes change.
+- **The engine's objects are this node's**, stormdrive's every node's. A remote node's drive has its physical half and no slabs here.
+- **Not narrowed by project**, as the feed's volume rows are not: `storm.io/namespace` is a storage family, not a project.
+
 ### metrics
 
 The node's ironprom (#46, stormcos#64, `[ironprom]`, :9091): `/api/v1/targets` every 15 s, `/api/v1/query_range` when a page asks.

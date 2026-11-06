@@ -26,6 +26,7 @@
 //! drain — see [`usage`].
 
 pub mod format;
+mod resources;
 pub mod usage;
 
 use std::collections::BTreeMap;
@@ -184,6 +185,7 @@ impl ConsolePlugin for DrivesPlugin {
         Router::new()
             .route("/node/{host}/proxy/{*path}", any(node_proxy))
             .route("/usage", get(usage_route))
+            .route("/resources/{kind}", get(resources_route))
             .route("/formats", get(formats_route))
             .route("/formats/history", get(format_history))
             .route("/format", post(format_start))
@@ -361,6 +363,32 @@ async fn read_formats(inner: &Inner) -> serde_json::Value {
         }
     }
     json!({"drives": drives, "nodes": nodes})
+}
+
+/// `GET /resources/{drives|enclosures}` (#96): stormdrive's `storage.storm.io/v1` objects from every node,
+/// reduced to what the Storage page shows (a Drive carries its history), with the nodes that did not answer.
+async fn resources_route(State(inner): State<Arc<Inner>>, axum::extract::Path(kind): axum::extract::Path<String>) -> Response {
+    let reduce: fn(&serde_json::Value, &str) -> serde_json::Value = match kind.as_str() {
+        "drives" => resources::drive,
+        "enclosures" => resources::enclosure,
+        _ => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": format!("{kind:?} is not one of stormdrive's objects")}))).into_response(),
+    };
+    let targets = targets(&inner).await;
+    let path = format!("/apis/storage.storm.io/v1/{kind}");
+    let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| read_json(&inner.dial, base, &path))).await;
+    let mut items = Vec::new();
+    let mut nodes = Vec::new();
+    for ((node, _, _), answer) in targets.iter().zip(answers) {
+        match answer {
+            Ok(v) => {
+                let list = v.get("items").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
+                nodes.push(serde_json::json!({"node": node, "ok": true, "items": list.len()}));
+                items.extend(list.iter().map(|o| reduce(o, node)));
+            }
+            Err(e) => nodes.push(serde_json::json!({"node": node, "ok": false, "error": e})),
+        }
+    }
+    Json(serde_json::json!({"items": items, "nodes": nodes})).into_response()
 }
 
 /// The format page's read (#165). Nothing is kept but this short cache: the
