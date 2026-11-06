@@ -173,6 +173,8 @@ check "$(spec n1)" None "looking changes nothing"
 PB=$(as bob "$DP"); echo "  bob: $PB" | cut -c1-260
 check "$(echo "$PB" | j 'd.get("may")')" False "bob may not"
 contains "$(echo "$PB" | j 'd.get("why")')" "admin role" "and is told"
+check "$(echo "$PB" | j 'd["hidden"] >= 1')" True "another project's pods on the node are counted for bob"
+case "$PB" in *theirs*) echo "  FAIL and named"; FAILED=$((FAILED+1));; *) echo "  ok   and not named";; esac
 
 say "who may drain"
 check "$(code bob "$DP")" 403 "bob: refused here"

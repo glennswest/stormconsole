@@ -8,7 +8,6 @@ walk('day 2', async (t) => {
   const bobCard = bob.locator('section[aria-label="Drain"]')
   t.check((await bobCard.getByRole('button', { name: /Drain|Cordon|Uncordon/ }).count()) === 0, 'and no button')
   t.check(/admin role/.test(await bobCard.innerText()), 'and is told why')
-  t.check(/in projects you cannot see/.test(await bobCard.innerText()), 'and another project is counted, not named', (await bobCard.innerText()).slice(0, 400))
   t.check(!/theirs/.test(await bobCard.innerText()), 'no name from it')
 
   const page = await t.page('alice')
