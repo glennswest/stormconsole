@@ -206,7 +206,7 @@ mod tests {
         b["user_data"] = json!("#cloud-config\npassword: hunter2\n");
         let a = answer("10.0.0.1", 200, &b, "u1");
         assert_eq!(a["told"]["keys"], json!(["ssh-ed25519 alice@laptop", "ssh-rsa no comment"]));
-        assert_eq!(a["told"]["userDataBytes"], 33);
+        assert_eq!(a["told"]["userDataBytes"], 32);
         let text = a.to_string();
         assert!(!text.contains("AAAA") && !text.contains("hunter2"), "{text}");
     }
