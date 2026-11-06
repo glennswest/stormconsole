@@ -156,11 +156,6 @@
       </section>
     {/if}
 
-    <section class="card" data-testid="disk-io">
-      <h2>Disk I/O, reads and writes apart</h2>
-      <EntityCharts query={{ entity: 'pod', ns, name, only: 'disk' }} />
-    </section>
-
     <section class="card">
       <h2>Storage</h2>
       <table>
@@ -185,6 +180,12 @@
   {:else}
     <p class="none">Reading…</p>
   {/if}
+
+  <!-- From ironprom, not the kubelet's samples, so it stands whether or not those can be read. -->
+  <section class="card" data-testid="disk-io">
+    <h2>Disk I/O, reads and writes apart</h2>
+    <EntityCharts query={{ entity: 'pod', ns, name, only: 'disk' }} />
+  </section>
 </div>
 
 <style>

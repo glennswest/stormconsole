@@ -45,7 +45,7 @@ walk(`metrics (${PHASE})`, async (t) => {
   t.check(/Container disk reads/.test(await t.text(page)) && /Container disk writes/.test(await t.text(page)), 'reads and writes apart')
   t.check(/vault/.test(await page.locator('main').innerHTML()), 'an administrator sees every project')
   await charted('Node', 4)
-  t.check(/Node disk reads/.test(await t.text(page)) && /Node disk write operations/.test(await t.text(page)), "the node's disks")
+  t.check(await t.until(async () => /Node disk reads/.test(await t.text(page)) && /Node disk write operations/.test(await t.text(page))), "the node's disks", (await t.text(page)).slice(0, 300))
   await charted('API server', 2)
   await charted('Datastore', 1)
   await charted('Virtual machines', 3)
