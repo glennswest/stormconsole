@@ -2302,6 +2302,13 @@ docs' "not yet right" goes rather than gaining a reference. stormd no longer pro
 - Verified: `sc-build deploy/check-slides.sh docs/presentation.md` (all 11 fit); default `sc-build`; each claim read against the upstream
   issues, stormcos `docs/CLUSTER.md` and the live registry (`health = /healthz`). Docs only, plus one crate comment: no behaviour changed
 
+### Each node's last verification (#74)
+sectionsystems (`docs/api.md`, read at ee5ec2f): `GET :9103/api/v1/status` = `{running, booted, next, reporting, last}`, `last` null
+until a pass finishes, with `result` pass|incomplete|fail, `finished`, `release`, `counts`, `findings[]`. Plain HTTP, no credential. It
+reaches nodes with stormcos#227 (open). Polled per member, because passes are hours apart and a console restart would lose a heard line.
+- [x] `fleet/src/verification.rs`; row metric and health; `GET /verification/{host}`; `NodeVerification.svelte`; filter
+- [ ] `deploy/verify-node-verification.sh`: real sectionsystems and apiserver, stand-ins for other nodes' answers; Chromium; docs; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

@@ -52,6 +52,7 @@ pub const NODE_PORTS: &[(u16, &str)] = &[
     (9094, "stormconsole"),
     (9097, "stormipmi"),
     (STORMCLUSTER_PORT, "stormcluster"),
+    (crate::verification::PORT, "sectionsystems"),
     (9192, "stormdrive (stormd)"),
     (9193, "stormstorage (stormd)"),
     (9194, "stormconsole (stormd)"),

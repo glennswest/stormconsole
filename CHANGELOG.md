@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Each node's last verification (#74)
+- **feat:** the Nodes page shows each node's last verification from sectionsystems (`:9103/api/v1/status`), with a filter for failed ones. A failed pass makes the node's row an error and an incomplete one a warning. The node page shows the result, time, counts and every finding that is not as it should be. Read-only. A node without sectionsystems shows no verdict, not a problem.
+- **feat:** sectionsystems' feed (9103) is on the node page's list of services.
+
 ### 2026-11-06 — Docs: who does join and drain, the beacon, the health path (#65)
 - **docs:** join, promote, demote and drain are the Cluster page's `cluster.storm.io` objects, not "a CLI with no API"; a change reaching a real node waits on stormcos#38. The capability beacon is done (stormcos#26). The golden is built by stormcentral from its registry, whose health path is `/healthz` (stormcos#102, stormcentral#226 closed), so the "not yet right" notes are gone. The deck's status and planned list are brought up to date.
 - **docs:** every slide fits its frame, checked by `deploy/check-slides.sh` (copied from stormcentral); five overflowed (#239).

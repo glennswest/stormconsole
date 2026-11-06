@@ -822,7 +822,7 @@ role" from "role unknown", and nothing on this side defaults them to zero.
 Another node's services are drilled into on demand — `GET
 /api/plugins/fleet/nodes/{host}` probes its port layout (`node::NODE_PORTS`,
 checked against stormcos `build-goldens.sh` and stormcentral's component
-registry: only ports that serve a feed, 27 of them, probed together)
+registry: only ports that serve a feed, 28 of them, probed together)
 and `…/nodes/{addr}/{port}/…` proxies to one, for an address the collector
 has heard and a port in the layout. A test holds the layout's stormd entries
 and `[fleet] stormd_ports`' default together (#68). stormcluster's :9102 is TLS
@@ -831,6 +831,17 @@ them; a refusal is said on the page, not listed as quiet; and its proxy takes
 only the Cluster page's reads, because that client holds the console's
 certificate and `/api/v1/record` and `/api/v1/node/*` are between stormclusters.
 Join, promote, demote and drain are not here: they are the Cluster page's.
+
+**Each node's last verification (#74)** is sectionsystems' answer on
+`:9103/api/v1/status`. Every member is asked once a minute, so the Nodes page
+has it after a console restart; a pass is hours apart, so its line on the log
+group would not be enough. It is first among the row's metrics and in the row's
+health: failed is an error, incomplete a warning. A node that does not answer has
+no verdict, because sectionsystems is not on every release yet (stormcos#227); one
+that stops answering keeps what it last said, marked as such. `GET
+/api/plugins/fleet/verification/{host}` asks now, for the node page: the result,
+time, counts and every finding that is not as it should be. It is read-only on
+both sides.
 
 ### stormdrive and stormstorage — feed consumers
 

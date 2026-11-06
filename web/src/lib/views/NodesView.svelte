@@ -3,10 +3,9 @@
   // A single node's list is itself. Other machines on the segment are heard
   // on the same group and are never here; they are other clusters'.
   //
-  // Health here is recency, not a probe: a node that stopped talking is
-  // the thing worth noticing, and it is the only thing the log group can
-  // honestly tell you. What a node is *running* is a question for its own
-  // page, which asks it directly.
+  // Health here is recency, its engine's health, and whether its last
+  // verification passed (#74). What a node is *running* is a question for its
+  // own page, which asks it directly.
   import { shown as asShown } from '../ui/words.js'
   import { feed, prefs, setView } from '../stores.svelte.js'
   import { call } from '../api.js'
@@ -22,15 +21,18 @@
   const resolveId = (id) => feed.components.find((c) => c.id === id)
   const invoke = (a) => call(a.method, a.path)
 
+  const verification = (c) => c.metrics?.find((m) => m.label === 'verification')
   const all = $derived(feed.components.filter((c) => c.kind === 'node'))
   const rows = $derived(
     all.filter((c) => {
-      if (state && c.health !== state) return false
+      if (state === 'failed') {
+        if (verification(c)?.tone !== 'error') return false
+      } else if (state && c.health !== state) return false
       if (!search) return true
       return `${c.label} ${c.detail || ''}`.toLowerCase().includes(search.toLowerCase())
     })
   )
-  const quiet = $derived(all.filter((c) => c.health === 'error' || c.health === 'warn').length)
+  const attention = $derived(all.filter((c) => c.health === 'error' || c.health === 'warn').length)
 </script>
 
 <div class="sc-page">
@@ -40,9 +42,9 @@
     count={feed.loaded ? all.length : null}
   >
     {#snippet status()}
-      {#if quiet}
-        <span class="quiet" title="Nodes that have not been heard from recently">
-          {quiet} quiet
+      {#if attention}
+        <span class="quiet" title="Not heard from recently, or a verification or engine that is not right">
+          {attention} need{attention === 1 ? 's' : ''} attention
         </span>
       {/if}
     {/snippet}
@@ -63,9 +65,10 @@
       {#snippet filters()}
         <select bind:value={state} aria-label="Filter by state">
           <option value="">All nodes</option>
-          <option value="ok">Heard recently</option>
-          <option value="warn">Going quiet</option>
-          <option value="error">Not heard</option>
+          <option value="ok">Ready</option>
+          <option value="warn">Degraded</option>
+          <option value="error">Failed</option>
+          <option value="failed">Verification failed</option>
         </select>
       {/snippet}
     </Toolbar>

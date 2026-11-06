@@ -19,6 +19,7 @@
   import StatusPill from '../components/StatusPill.svelte'
   import Icon from '../components/Icon.svelte'
   import NodeRack from './NodeRack.svelte'
+  import NodeVerification from './NodeVerification.svelte'
 
   const host = $derived(route.current.params.host)
 
@@ -26,6 +27,7 @@
   let error = $state('')
   let loaded = $state(false)
   let busy = $state(false)
+  let asked = $state(0)
 
   // The node's row in the aggregate — health, recency, log volume. It is
   // live, unlike everything else on this page.
@@ -45,6 +47,7 @@
 
   async function load() {
     busy = true
+    asked += 1
     try {
       data = await get(`/api/plugins/fleet/nodes/${encodeURIComponent(host)}`)
       error = ''
@@ -144,6 +147,8 @@
         {/if}
       </div>
     </section>
+
+    <NodeVerification {host} {asked} />
 
     {#if data.services.length === 0}
       <EmptyState

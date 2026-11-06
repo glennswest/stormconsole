@@ -40,6 +40,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub mod node;
+pub mod verification;
 
 struct Service {
     name: String,
@@ -63,9 +64,58 @@ struct Inner {
     services: RwLock<BTreeMap<u16, Arc<Service>>>,
     /// stormstorage's feed: what the engine on each node holds.
     storage: Option<Arc<Feed>>,
+    /// What each node's verifier last said, and whether it still answers (#74).
+    verified: RwLock<BTreeMap<String, (verification::Verdict, bool)>>,
 }
 
 impl Inner {
+    /// Where a node is asked. `None` is not a node of this cluster; an empty
+    /// address is one that has not said where it is yet.
+    async fn addr_of(&self, host: &str) -> Option<String> {
+        let hosts = match &self.hosts {
+            Some(h) => h.hosts().await,
+            None => Vec::new(),
+        };
+        let summary = hosts.iter().find(|h| h.host == host);
+        // The node this console runs on is always askable, heard on the group
+        // or not: it is reachable at whatever address the console was pointed
+        // at, which is a loopback no datagram would ever carry.
+        let is_local = host == self.hostname;
+        match summary.map(|s| s.addr.clone()).filter(|a| !a.is_empty()) {
+            Some(a) => Some(a),
+            None if is_local => Some(self.host.clone()),
+            None => summary.map(|_| String::new()),
+        }
+    }
+
+    /// Bring every node's verification up to date.
+    async fn poll_verification(&self) {
+        let mut asks = match &self.hosts {
+            Some(h) => h.hosts().await.into_iter().map(|h| (h.host, h.addr)).collect::<Vec<_>>(),
+            None => Vec::new(),
+        };
+        asks.retain(|(host, addr)| !addr.is_empty() && *host != self.hostname);
+        asks.push((self.hostname.clone(), self.host.clone()));
+        let answers = futures_util::future::join_all(asks.iter().map(|(host, addr)| async move {
+            (host.clone(), verification::ask(&self.dial, addr).await)
+        }))
+        .await;
+        let mut verified = self.verified.write().await;
+        verified.retain(|host, _| asks.iter().any(|(h, _)| h == host));
+        for (host, answer) in answers {
+            match answer {
+                Ok(status) => {
+                    verified.insert(host, (verification::verdict(&status), true));
+                }
+                Err(_) => {
+                    if let Some(known) = verified.get_mut(&host) {
+                        known.1 = false;
+                    }
+                }
+            }
+        }
+    }
+
     fn dial_for(&self, port: u16) -> Arc<console_core::dial::Dial> {
         match &self.cluster_dial {
             Some(d) if port == node::STORMCLUSTER_PORT => d.clone(),
@@ -94,6 +144,7 @@ impl FleetPlugin {
                 refused: RwLock::new(BTreeMap::new()),
                 services: RwLock::new(BTreeMap::new()),
                 storage: None,
+                verified: RwLock::new(BTreeMap::new()),
             }),
         }
     }
@@ -149,6 +200,17 @@ fn with_storage(node: &mut ComponentSummary, storage: &[ComponentSummary]) {
     }
 }
 
+/// A node's last verification on its row: first, because a failed one is the
+/// thing to see, and in its health when it did not pass.
+fn with_verification(node: &mut ComponentSummary, v: &verification::Verdict, answering: bool, now: chrono::DateTime<chrono::Utc>) {
+    node.metrics.insert(0, v.metric(now, answering));
+    if let Some(h) = v.health() {
+        if rank(h) < rank(node.health) {
+            node.health = h;
+        }
+    }
+}
+
 fn is_loopback(host: &str) -> bool {
     host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
@@ -185,6 +247,7 @@ impl ConsolePlugin for FleetPlugin {
         axum::Router::new()
             .route("/proxy/{port}/{*path}", any(proxy))
             .route("/nodes/{host}", get(node_detail))
+            .route("/verification/{host}", get(node_verification))
             .route("/nodes/{addr}/{port}/{*path}", any(node_proxy))
             .with_state(self.inner.clone())
     }
@@ -349,6 +412,13 @@ impl ConsolePlugin for FleetPlugin {
                 with_storage(n, &storage);
             }
         }
+        let verified = self.inner.verified.read().await;
+        for n in &mut nodes {
+            if let Some((v, answering)) = verified.get(&n.label) {
+                with_verification(n, v, *answering, now);
+            }
+        }
+        drop(verified);
         let mut all = nodes;
         all.extend(out);
         all
@@ -379,6 +449,17 @@ impl ConsolePlugin for FleetPlugin {
     }
 
     async fn run(&self, shutdown: CancellationToken) {
+        let inner = self.inner.clone();
+        let stop = shutdown.clone();
+        tokio::spawn(async move {
+            loop {
+                inner.poll_verification().await;
+                tokio::select! {
+                    _ = tokio::time::sleep(verification::POLL) => {}
+                    _ = stop.cancelled() => return,
+                }
+            }
+        });
         // Discover stormd instances on the local port layout; each found
         // one gets its own feed poller. Ports that answer nothing are
         // re-probed every cycle — a service that starts later shows up.
@@ -467,26 +548,12 @@ fn rank(h: Health) -> u8 {
 /// One node, asked about itself. Everything here is fetched now — see the
 /// module note on why this is not in the aggregate feed.
 async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) -> Response {
-    let hosts = match &inner.hosts {
-        Some(h) => h.hosts().await,
-        None => Vec::new(),
-    };
-    let summary = hosts.iter().find(|h| h.host == host);
-    // The node this console runs on is always askable, heard on the group
-    // or not: it is reachable at whatever address the console was pointed
-    // at, which is a loopback no datagram would ever carry.
-    let is_local = host == inner.hostname;
-    if summary.is_none() && !is_local {
+    let Some(addr) = inner.addr_of(&host).await else {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": format!("no node {host} has been heard on the group")})),
         )
             .into_response();
-    }
-    let addr = match summary.map(|s| s.addr.clone()).filter(|a| !a.is_empty()) {
-        Some(a) => a,
-        None if is_local => inner.host.clone(),
-        None => String::new(),
     };
 
     if addr.is_empty() {
@@ -533,6 +600,25 @@ async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) 
         note,
     })
     .into_response()
+}
+
+/// What this node's verifier last found, asked now (#74). A node that does not
+/// answer is an answer too: sectionsystems is not on every release yet.
+async fn node_verification(State(inner): State<Arc<Inner>>, Path(host): Path<String>) -> Response {
+    let Some(addr) = inner.addr_of(&host).await else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("no node {host} has been heard on the group")})),
+        )
+            .into_response();
+    };
+    if addr.is_empty() {
+        return Json(serde_json::json!({"host": host, "answered": false, "why": "it has not said where it is yet"})).into_response();
+    }
+    match verification::ask(&inner.dial, &addr).await {
+        Ok(status) => Json(verification::page(&host, &status)).into_response(),
+        Err(why) => Json(serde_json::json!({"host": host, "answered": false, "why": why})).into_response(),
+    }
 }
 
 /// Reach one port on one node through this console's origin. The address
