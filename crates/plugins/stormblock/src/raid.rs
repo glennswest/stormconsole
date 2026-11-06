@@ -77,8 +77,9 @@ fn spare_view(sp: &Value) -> Value {
     json!({"drive": sp["drive_uuid"], "path": sp["path"], "serial": sp["serial"], "capacityBytes": sp["capacity_bytes"]})
 }
 
-/// What the page shows. `free` is what a spare or a replacement can be: drives offered blank, which the
-/// engine takes without `force`. A drive opened at its start says nothing about what it held, so it is not offered.
+/// What the page shows. `free` is what a spare or a replacement can be: drives offered blank that no set or
+/// spare holds. A drive opened at its start says nothing about what it held, so it is not offered. A drive a set
+/// has since replaced looks the same here; the engine refuses it, in words, without `force`, which is not offered.
 pub fn view(shelves: &[Value], arrays: &[Value], spares: &[Value], drives: &[Value]) -> Value {
     let used = |uuid: &str| {
         spares.iter().any(|x| s(x, "drive_uuid") == uuid)

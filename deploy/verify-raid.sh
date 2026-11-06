@@ -212,8 +212,8 @@ slow 2147483648
 until_state clean 240 || true
 R=$(raid); echo "  $R" | cut -c1-300
 check "$(state)" clean "clean: the replacement and the spare both rebuilt"
-check "$(echo "$R" | j 'len(d["free"])')" 0 "both free drives are in use"
-check "$(code bob "$SBP/arrays/$AID/scrub")" 200 "a scrub only reads: an operator may start one, with no word"
+check "$(echo "$R" | j '[f["path"].split("/")[-1] for f in d["free"]]')" "['bay6.img']" "both free drives are in use; the one the first spare replaced is left, for a person"
+check "$(code bob "$SBP/arrays/$AID/scrub")" 202 "a scrub only reads: an operator may start one, with no word"
 for _ in $(seq 1 120); do [ "$(raid | j 'd["shelves"][0]["sets"][0]["status"].get("scrub",{}).get("running")')" = False ] && break; sleep 1; done
 SC=$(raid | j 'd["shelves"][0]["sets"][0]["status"].get("scrub")'); echo "  $SC" | cut -c1-200
 check "$(raid | j '(d["shelves"][0]["sets"][0]["status"]["scrub"]["percent"], d["shelves"][0]["sets"][0]["status"]["scrub"]["mismatches"])')" "(100.0, 0)" "it reads to the end and finds no mismatch after real rebuilds"
@@ -222,7 +222,7 @@ check "$BR" 0 "the walk, clean"
 [ -z "${SHOTS_OUT:-}" ] || tar czf "$SHOTS_OUT" -C "$W" shots
 grep 'storage: ' "$W/c.log" | sed -E 's/.*(storage: .*)/  \1/' | cut -c1-130 | head -8
 check "$(grep 'storage: ' "$W/c.log" | grep -c 'as bob' || true)" 0 "the audit has alice's acts and none as bob"
-check "$(grep 'storage: ' "$W/c.log" | grep -c 'as alice' | awk '{print ($1 >= 5)}')" 1 "and every one of hers"
+check "$(grep 'storage: ' "$W/c.log" | grep -c 'as alice' | awk '{print ($1 >= 6)}')" 1 "and hers: three fails, two replaces and the spare"
 
 say "$FAILED failed"
 exit "$FAILED"
