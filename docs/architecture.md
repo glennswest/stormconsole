@@ -2102,7 +2102,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
-| stormconsole | #42 where SSH keys live; #36 scale, cordon, drain; #266 login and users; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #42 where SSH keys live; #266 login and users | — |
 
 ## Phasing (history)
 
