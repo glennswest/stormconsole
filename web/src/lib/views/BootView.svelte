@@ -162,7 +162,7 @@
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
   h1 { margin: 0; font-size: clamp(28px, 5vh, 60px); font-weight: 600; letter-spacing: -0.01em; }
   .sub { margin: 4px 0 0; color: var(--b-dim); font-size: clamp(15px, 2.2vh, 26px); }
-  .digits { font-variant-numeric: tabular-nums; font-weight: 600; line-height: 1; }
+  .digits { font-variant-numeric: tabular-nums; font-weight: 600; line-height: 1; white-space: nowrap; }
   .what { display: block; color: var(--b-dim); font-size: clamp(13px, 1.8vh, 20px); margin-top: 6px; }
   .clock { text-align: right; }
   .clock .digits { font-size: clamp(40px, 9vh, 110px); color: var(--b-accent); }
@@ -188,7 +188,7 @@
   .progress span { display: block; height: 100%; background: var(--b-accent); transition: width 1.8s linear; }
   [data-state='stalled'] .progress span, [data-state='corrupt'] .progress span { background: var(--b-bad); }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .stats .digits { font-size: clamp(32px, 8vh, 96px); }
+  .stats .digits { font-size: clamp(26px, 6.4vh, 76px); }
   .spark { width: 100%; flex: 1; min-height: 48px; }
   .spark polyline { fill: none; stroke: var(--b-accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
   @media (prefers-reduced-motion: reduce) { .progress span { transition: none; } }

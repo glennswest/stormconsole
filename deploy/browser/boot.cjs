@@ -69,6 +69,8 @@ walk(`boot (${PHASE})`, async (t) => {
   t.check(await says(/Running from its own disk/), 'at the end: running from its own disk', await word())
   t.check((await page.locator('[role=progressbar]').count()) === 0, 'the bar has gone')
   t.check(/copied/.test(await page.locator('[data-testid=flow-total]').innerText()) && /MB\/s on average/.test(await page.locator('[data-testid=flow-total]').innerText()), 'what it moved, and how fast, as it was watched', await page.locator('[data-testid=flow-total]').innerText())
+  const lines = await page.locator('[data-testid=flow-total] .digits').first().evaluate((e) => e.getClientRects().length === 1 && e.offsetHeight < 1.4 * parseFloat(getComputedStyle(e).fontSize))
+  t.check(lines, 'the total stays on one line')
   await t.shot(page, 'boot-done')
   // A reload after the end has only the engine's average, which has been falling since: not said (stormblock#543).
   await page.reload()
