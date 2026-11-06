@@ -402,8 +402,7 @@ fn root_disk(catalogue: &Catalogue) -> Field {
         // below a numbered release rather than above it.
         let version: u32 = l
             .split(|ch: char| !ch.is_ascii_digit())
-            .filter(|p| !p.is_empty())
-            .next_back()
+            .rfind(|p| !p.is_empty())
             .and_then(|d| d.parse().ok())
             .unwrap_or(0);
         (!fedora, std::cmp::Reverse(version), c.label.clone())

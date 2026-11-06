@@ -2320,7 +2320,10 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
 `localName` is `<distro>-<version>-<arch>`, so only a fallback to the resource's name lacked it. A catalogue listing is one architecture
 (`?arch=`, the cluster default), so it is not repeated on each row, and those rows' unread fields go.
 - [x] `ImageItem::label`; a test over HTTP; no `allow(dead_code)` left in the crate
-- [ ] sc-build with clippy on the crate; close; golden
+- [x] sc-build with clippy on the crate (its two old lints fixed, part of #133); close; golden
+- Verified: `sc-build` with `cargo build` showing no warning, `cargo test -p plugin-vm` (a test serving the operator's shape over HTTP through
+  `fetch`: an image with `localName`, one falling back to its name with `aarch64` added, one with `arch: null`), clippy `-D warnings` on the crate;
+  the default `sc-build`. Not seen on a real operator. It shows the architecture, and does not refuse a mismatch: that needs the node's
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

@@ -179,7 +179,7 @@ fn named(v: &Value) -> Option<&str> {
 /// alone can state only one of them.
 pub fn merged(definition: Option<&Value>, instance: Option<&Value>) -> Vec<Value> {
     let listed = |spec: Option<&Value>| {
-        spec.map(|s| crate::components::disks(s)).unwrap_or_default()
+        spec.map(crate::components::disks).unwrap_or_default()
     };
     let want = listed(definition);
     let have = listed(instance);
