@@ -21,6 +21,10 @@ walk('day 2', async (t) => {
   await field.fill('4')
   await row.getByRole('button', { name: 'Scale' }).click()
   t.check(await t.until(async () => /web: 4 replicas/.test(await t.text(page))), 'the row scales and says so', (await t.text(page)).slice(0, 300))
+  t.check((await field.inputValue()) === '4', 'and the field keeps the new number', await field.inputValue())
+  const fg = await field.evaluate((e) => getComputedStyle(e).color)
+  const bg = await field.evaluate((e) => getComputedStyle(e).backgroundColor)
+  t.check(fg !== bg, 'its number can be read', `${fg} on ${bg}`)
   await t.shot(page, 'day2-scale')
 
   // The opened row's plain button has no number to send, so it asks.

@@ -2328,7 +2328,11 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
 ### Scale, cordon and drain (#36)
 Read from rustkube 6c4fe56: `/scale` is served (#86), `pods/eviction` too (`pkg/apiserver/src/eviction.rs`, 429 on a budget), so nothing to file. Its budget check and delete are not atomic, so evictions go one at a time. As the viewer. A node's verbs need admin here and an identity, as #77's rack; scaling is an operator's, like deleting a pod.
 - [x] `kubernetes/src/dayto.rs`: routes, plan, drain; row actions; `ScaleField`; `NodeDrain`; a route's `ask` answered by `call`
-- [ ] `deploy/verify-day2.sh`: real apiserver and controller-manager; users; Chromium; docs; dist; golden
+- [x] `deploy/verify-day2.sh`: real apiserver and controller-manager; users; Chromium; docs; dist; golden
+- Verified with `sc-build deploy/verify-day2.sh` (0 failed): fastetcd, rustkube 6c4fe56 apiserver and controller-manager, signed tokens. Scale: bad numbers 400, a reader 403, carol 404 (a project she cannot see), bob in his project, the controller-manager making the pods; a StatefulSet; a DaemonSet refused. Cordon: refused for an operator, a reader, the node's bearer and
+  an admin with no apiserver rights; alice; the row turning to Uncordon. Drain: the plan (with another project's pods counted for bob, not named); refusals leaving the node as it was; alice's: cordoned, 4 evicted and recreated as new pods, the budget's 429 in words, a bare pod left; DaemonSet (a real one's pod too) and mirror pods stay. Chromium: the row's number, the plain button's prompt, the plan, a blocked drain, evicting the bare pod, uncordon. Screenshots read: they found the number unreadable. Also `verify-rbac.sh`, `verify-one-node.sh`, default `sc-build`
+- Not seen: a real kubelet (no pod here ever ran, so graceful termination is not exercised), an actual multi-node reschedule (no scheduler in the rig; pods recreated stay unbound), a real node
+- Left: a page cannot say beforehand who the apiserver would refuse, so scale is offered to all (#45)
 
 ### The image operator over TLS (#55)
 Settled on the issue (vmcloud-image-operator 382cf1f, stormcos b71a818): https with the node CA, the console's own client pair, User `stormconsole` by SubjectAccessReview on `storm.io`. So no shared token; #82's

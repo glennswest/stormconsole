@@ -6,6 +6,10 @@
   let edited = $state(null)
   let busy = $state(false)
   const value = $derived(edited ?? current)
+  // Kept until the watch brings the new count, so the field does not jump back to the old one.
+  $effect(() => {
+    if (edited !== null && Number(edited) === current) edited = null
+  })
 
   async function go() {
     const n = Number(value)
@@ -13,7 +17,7 @@
     busy = true
     try {
       ondone?.(await call(action.method, action.path, undefined, { replicas: n }), n)
-      edited = null
+      edited = String(n)
     } catch (e) {
       if (e.message !== 'cancelled') onerror?.(e)
     }
@@ -36,5 +40,14 @@
 
 <style>
   .scale { display: inline-flex; gap: 4px; align-items: center; }
-  input { width: 62px; }
+  input {
+    width: 62px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 3px 6px;
+    font-family: var(--mono);
+    font-size: var(--sc-t-meta);
+  }
 </style>
