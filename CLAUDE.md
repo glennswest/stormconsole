@@ -2273,6 +2273,16 @@ no stormipmi. A recorded location wins over a hand-set label (`location::plan`, 
 - Not seen: a real formed cluster; a real node's stormipmi having `patch nodes`
 - The Machines API does not carry `status.storm.location.message` (why a label did not land), so the page can only say "not on the Node yet"
 
+### The node page's ports: 8269, stormcluster's feed, and one layout (#68)
+`NODE_PORTS` misses stormimds's stormd (8269) and stormcluster's feed (9102). Read from stormcentral's registry
+(2026-11-06): nfsop's stormd is 9189 (its port 9089 + 100), not the 9198 listed; ironprom's 9191 is missing too; nothing
+is at 9198. :9102 is TLS only (stormcluster#5), and a node has `[stormcluster]`'s pair today and no `[node_tls]` yet
+(stormcos#371), so the probe uses #89's files. Its proxy is reads only: `/api/v1/record` and `/api/v1/node/*` are between
+stormclusters, and this client holds the console's certificate.
+- [ ] `NODE_PORTS`, the test both ways; `Dial::tls_only`, `[stormcluster]`'s for 9102; a refusal said, not "quiet"
+- [ ] The proxy to 9102: GET of `plugin_stormcluster::forwardable` only
+- [ ] `deploy/verify-node-ports.sh`: real stormcluster and stormd; docs, changelog, dist unchanged; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

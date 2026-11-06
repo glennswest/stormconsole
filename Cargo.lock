@@ -1096,6 +1096,7 @@ dependencies = [
  "console-core",
  "futures-util",
  "plugin-logs",
+ "plugin-stormcluster",
  "reqwest",
  "serde",
  "serde_json",

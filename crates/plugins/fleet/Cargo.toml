@@ -10,6 +10,7 @@ repository.workspace = true
 console-core.workspace = true
 stormview.workspace = true
 plugin-logs.workspace = true
+plugin-stormcluster.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 axum.workspace = true

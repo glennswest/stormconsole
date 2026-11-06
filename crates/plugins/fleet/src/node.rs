@@ -24,20 +24,23 @@ use std::time::Duration;
 use serde::Serialize;
 use stormview::{ComponentSummary, Health};
 
+/// stormcluster's own port: TLS only (stormcluster#5), and asked with the
+/// `[stormcluster]` client when there is one, not `[node_tls]`'s.
+pub const STORMCLUSTER_PORT: u16 = 9102;
+
 /// The StormCOS port layout, as a node presents itself: every port here
 /// serves a stormview feed at `/api/v1/components`, which is what the probe
 /// asks. Probing every port of every node on every cycle is what makes this
 /// expensive, so the list is short and the well-known daemons are named
 /// rather than swept.
 ///
-/// Checked against stormcos `deploy/build-goldens.sh` (#21): the control
-/// plane's stormd instances are 9081–9085, and a service golden's stormd API
-/// is its port + 100 (stormlb's port 80 → 180). Rechecked against
-/// stormcentral's component registry (#61): stormupdate, nfsop, stormrdp,
-/// stormcluster, nextnfs and minismbd are service goldens too. stormblock (9090), stormvm
-/// (9095) and sbregistry (5100) serve no feed and were always "silent" here;
-/// their stormd APIs (9190, 9195, …) are what answers. 9080 is stormd's own
-/// default, for a stormd run outside StormCOS.
+/// Checked against stormcos `deploy/build-goldens.sh` (#21) and stormcentral's
+/// component registry (#61, #68): the control plane's stormd instances are
+/// 9081–9085, and a service golden's stormd API is its port + 100 (stormlb's
+/// port 80 → 180). stormblock (9090), stormvm (9095) and sbregistry (5100) serve
+/// no feed and were always "silent" here. 9080 is stormd's own default, for a
+/// stormd run outside StormCOS. The stormd entries and `[fleet] stormd_ports`'
+/// default are held together by a test in the stormconsole crate's config.
 pub const NODE_PORTS: &[(u16, &str)] = &[
     (9080, "stormd"),
     (9081, "fastetcd (stormd)"),
@@ -49,6 +52,7 @@ pub const NODE_PORTS: &[(u16, &str)] = &[
     (9093, "stormstorage"),
     (9094, "stormconsole"),
     (9097, "stormipmi"),
+    (STORMCLUSTER_PORT, "stormcluster"),
     (9192, "stormdrive (stormd)"),
     (9193, "stormstorage (stormd)"),
     (9194, "stormconsole (stormd)"),
@@ -56,12 +60,14 @@ pub const NODE_PORTS: &[(u16, &str)] = &[
     (9196, "cadvisor (stormd)"),
     (9197, "stormipmi (stormd)"),
     (9188, "stormupdate (stormd)"),
-    (9198, "nfsop (stormd)"),
+    (9189, "nfsop (stormd)"),
+    (9191, "ironprom (stormd)"),
     (9199, "vmcloud-image-operator (stormd)"),
     (9201, "stormrdp (stormd)"),
     (9202, "stormcluster (stormd)"),
     (180, "stormlb (stormd)"),
     (8180, "nextnfs (stormd)"),
+    (8269, "stormimds (stormd)"),
     (8545, "minismbd (stormd)"),
 ];
 
@@ -100,6 +106,26 @@ pub struct NodeDetail {
     pub note: String,
 }
 
+/// May a browser reach this path on this port through the node proxy?
+///
+/// Every port but stormcluster's takes what it is sent. Behind :9102 the
+/// console presents its client certificate, and `/api/v1/record` and
+/// `/api/v1/node/*` are between stormclusters, so this is the Cluster page's
+/// rule: its reads and nothing else. A change to a cluster is an object
+/// written as the viewer (#88), never this.
+pub fn proxy_allows(port: u16, method: &axum::http::Method, path: &str) -> bool {
+    port != STORMCLUSTER_PORT
+        || (matches!(*method, axum::http::Method::GET | axum::http::Method::HEAD) && plugin_stormcluster::forwardable(path))
+}
+
+/// What a daemon's refusal says. The body's `error` when it has one, its status otherwise.
+fn refusal(status: reqwest::StatusCode, body: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(body).ok().and_then(|v| v["error"].as_str().map(str::to_string)) {
+        Some(e) => format!("it answered {}: {e}", status.as_u16()),
+        None => format!("it answered {status}"),
+    }
+}
+
 /// Ask one port whether a storm daemon is behind it. A stormview feed is
 /// the platform's universal "what are you" — every daemon here serves one,
 /// and its `system` card is the daemon's own name for itself.
@@ -112,23 +138,33 @@ pub async fn probe_port(
     expected: &'static str,
 ) -> Result<Option<NodeService>, String> {
     let route = dial.route(&format!("http://{addr}:{port}")).await?;
-    Ok(read_port(&route, addr, port, expected).await)
+    read_port(&route, addr, port, expected).await
 }
 
-async fn read_port(route: &console_core::dial::Route, addr: &str, port: u16, expected: &'static str) -> Option<NodeService> {
-    let resp = route
-        .client
-        .get(format!("{}/api/v1/components", route.base))
-        .timeout(Duration::from_secs(2))
-        .send()
-        .await
-        .ok()?;
-    if !resp.status().is_success() {
-        return None;
+async fn read_port(
+    route: &console_core::dial::Route,
+    addr: &str,
+    port: u16,
+    expected: &'static str,
+) -> Result<Option<NodeService>, String> {
+    let Ok(resp) = route.client.get(format!("{}/api/v1/components", route.base)).timeout(Duration::from_secs(2)).send().await else {
+        return Ok(None);
+    };
+    let status = resp.status();
+    if !status.is_success() {
+        // stormcluster runs on every node, so its refusal is a console that
+        // cannot read it, not a quiet port. Other daemons keep their silence:
+        // a console behind its own sign-in answers 401 to this on every node.
+        if port == STORMCLUSTER_PORT && matches!(status.as_u16(), 401 | 403) {
+            return Err(refusal(status, &resp.text().await.unwrap_or_default()));
+        }
+        return Ok(None);
     }
-    let list: Vec<ComponentSummary> = resp.json().await.ok()?;
+    let Ok(list) = resp.json::<Vec<ComponentSummary>>().await else {
+        return Ok(None);
+    };
     let (health, detail) = summarize(&list);
-    Some(NodeService {
+    Ok(Some(NodeService {
         port,
         expected,
         name: list
@@ -140,7 +176,7 @@ async fn read_port(route: &console_core::dial::Route, addr: &str, port: u16, exp
         detail,
         components: list.len(),
         proxy: format!("/api/plugins/fleet/nodes/{addr}/{port}"),
-    })
+    }))
 }
 
 /// A daemon's verdict on itself, or the feed's own worst case.
@@ -232,6 +268,41 @@ mod tests {
         let before = ports.len();
         ports.dedup();
         assert_eq!(before, ports.len(), "duplicate port in the layout");
+    }
+
+    #[test]
+    fn the_ports_issue_68_found_are_in_the_layout_under_their_own_names() {
+        let at = |p: u16| NODE_PORTS.iter().find(|(q, _)| *q == p).map(|(_, n)| *n);
+        assert_eq!(at(8269), Some("stormimds (stormd)"));
+        assert_eq!(at(9102), Some("stormcluster"));
+        // nfsop's port is 9089, so its stormd is 9189; nothing is at 9198.
+        assert_eq!(at(9189), Some("nfsop (stormd)"));
+        assert_eq!(at(9198), None);
+        assert_eq!(at(9191), Some("ironprom (stormd)"));
+    }
+
+    #[test]
+    fn stormclusters_port_takes_reads_and_nothing_else() {
+        use axum::http::Method;
+        let p = STORMCLUSTER_PORT;
+        assert!(proxy_allows(p, &Method::GET, "api/v1/components"));
+        assert!(proxy_allows(p, &Method::GET, "api/v1/operations/op1"));
+        // Between stormclusters, whatever the method.
+        for path in ["api/v1/record", "api/v1/node", "api/v1/node/drain", "api/v1/components/../record"] {
+            assert!(!proxy_allows(p, &Method::GET, path), "{path}");
+        }
+        assert!(!proxy_allows(p, &Method::PUT, "api/v1/record"));
+        assert!(!proxy_allows(p, &Method::POST, "api/v1/node/drain"));
+        assert!(!proxy_allows(p, &Method::POST, "api/v1/components"));
+        // Other daemons' actions go through as they always did.
+        assert!(proxy_allows(9202, &Method::POST, "api/v1/restart"));
+    }
+
+    #[test]
+    fn a_refusal_says_the_daemons_words_or_at_least_its_status() {
+        let s = reqwest::StatusCode::FORBIDDEN;
+        assert_eq!(refusal(s, r#"{"error":"served over TLS only"}"#), "it answered 403: served over TLS only");
+        assert_eq!(refusal(s, "<html>"), "it answered 403 Forbidden");
     }
 
     fn c(id: &str, health: Health) -> ComponentSummary {

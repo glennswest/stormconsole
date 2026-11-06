@@ -56,11 +56,22 @@ struct Inner {
     client: reqwest::Client,
     /// How to reach a stormd that may have moved to TLS (#49).
     dial: Arc<console_core::dial::Dial>,
+    /// How to reach a node's stormcluster: `[stormcluster]`'s client (#68, #89).
+    cluster_dial: Option<Arc<console_core::dial::Dial>>,
     /// This node's ports that must not be read, and why.
     refused: RwLock<BTreeMap<u16, String>>,
     services: RwLock<BTreeMap<u16, Arc<Service>>>,
     /// stormstorage's feed: what the engine on each node holds.
     storage: Option<Arc<Feed>>,
+}
+
+impl Inner {
+    fn dial_for(&self, port: u16) -> Arc<console_core::dial::Dial> {
+        match &self.cluster_dial {
+            Some(d) if port == node::STORMCLUSTER_PORT => d.clone(),
+            _ => self.dial.clone(),
+        }
+    }
 }
 
 pub struct FleetPlugin {
@@ -79,6 +90,7 @@ impl FleetPlugin {
                 hostname,
                 client: reqwest::Client::new(),
                 dial: console_core::dial::Dial::off(),
+                cluster_dial: None,
                 refused: RwLock::new(BTreeMap::new()),
                 services: RwLock::new(BTreeMap::new()),
                 storage: None,
@@ -87,6 +99,14 @@ impl FleetPlugin {
     }
 
     /// How to reach each stormd (#49). Right after construction.
+    /// `[stormcluster]`'s TLS, for that port on any node. Without it, `[node_tls]`'s.
+    pub fn with_cluster_dial(mut self, dial: Option<Arc<console_core::dial::Dial>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.cluster_dial = dial;
+        }
+        self
+    }
+
     pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
             inner.dial = dial;
@@ -485,7 +505,7 @@ async fn node_detail(State(inner): State<Arc<Inner>>, Path(host): Path<String>) 
     // Probed together rather than in sequence: two dozen ports at two
     // seconds each is half a minute of staring at a spinner.
     let probes = node::NODE_PORTS.iter().map(|(port, expected)| {
-        let dial = inner.dial.clone();
+        let dial = inner.dial_for(*port);
         let addr = addr.clone();
         async move { (*port, node::probe_port(&dial, &addr, *port, expected).await) }
     });
@@ -548,8 +568,15 @@ async fn node_proxy(
         )
             .into_response();
     }
+    if !node::proxy_allows(port, &method, &path) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": format!("{method} {path} on :{port} is not offered here: only stormcluster's reads are")})),
+        )
+            .into_response();
+    }
     let upstream = format!("http://{addr}:{port}");
-    console_core::proxy::forward_dial(&inner.dial, &upstream, &method, &path, uri.query(), &headers, body, None).await
+    console_core::proxy::forward_dial(&inner.dial_for(port), &upstream, &method, &path, uri.query(), &headers, body, None).await
 }
 
 async fn proxy(

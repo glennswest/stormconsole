@@ -913,6 +913,11 @@ impl Config {
         console_core::dial::Dial::new(files, f.require)
     }
 
+    /// How to reach a node's stormcluster, when `[stormcluster]` has its TLS (#68).
+    pub fn stormcluster_dial(&self) -> Option<std::sync::Arc<console_core::dial::Dial>> {
+        console_core::dial::Dial::tls_only("stormcluster", self.stormcluster_tls())
+    }
+
     /// The `[stormblock]` TLS files (#160).
     pub fn stormblock_tls(&self) -> console_core::tls::TlsFiles {
         let f = &self.stormblock;
@@ -1217,6 +1222,28 @@ data_dir    = \"/var/lib/stormconsole\"
         let no = |t: &str| Config::parse(t).map(|_| ()).unwrap_err().to_string();
         assert!(no("[stormblock]\nca_file = \"/x\"\n").contains("only used over https"), "the default url is http");
         assert!(no("[stormblock]\nurl = \"https://h:9090\"\ncert_file = \"/x\"\n").contains("go together"));
+    }
+
+    /// Default stormd ports no service holds, so the node page has no name for them.
+    /// A port added to the default has to be named here or be in the layout.
+    const NO_STORMD_THERE: &[u16] = &[9086, 9087, 9088, 9089, 9180, 9181, 9182, 9183, 9184, 9185, 9186, 9187, 9190, 9198];
+
+    #[test]
+    fn the_node_page_and_the_stormd_default_cannot_disagree() {
+        let layout = plugin_fleet::node::NODE_PORTS;
+        let default = default_stormd_ports();
+        for p in &default {
+            assert_ne!(
+                layout.iter().any(|(q, _)| q == p),
+                NO_STORMD_THERE.contains(p),
+                "stormd port {p}: in the node layout, or named as having nothing there, and not both"
+            );
+        }
+        for (p, name) in layout {
+            if name.ends_with("(stormd)") || *name == "stormd" {
+                assert!(default.contains(p), "{name} on {p} is on the node page and not in [fleet] stormd_ports' default");
+            }
+        }
     }
 
     #[test]

@@ -67,6 +67,8 @@ pub struct Dial {
     tls: Option<Client>,
     plain: reqwest::Client,
     require: bool,
+    /// The config section this came from, for what is said.
+    section: &'static str,
     /// host:port → (speaks TLS, when asked).
     seen: RwLock<HashMap<String, (bool, Instant)>>,
 }
@@ -74,7 +76,7 @@ pub struct Dial {
 impl Dial {
     /// No `[node_tls]`: every daemon as it was configured.
     pub fn off() -> Arc<Self> {
-        Arc::new(Self { tls: None, plain: reqwest::Client::new(), require: false, seen: RwLock::default() })
+        Arc::new(Self { tls: None, plain: reqwest::Client::new(), require: false, section: "node_tls", seen: RwLock::default() })
     }
 
     pub fn new(files: TlsFiles, require: bool) -> Arc<Self> {
@@ -86,8 +88,23 @@ impl Dial {
             tls: Some(Client::http1("node_tls", files)),
             plain: reqwest::Client::new(),
             require,
+            section: "node_tls",
             seen: RwLock::default(),
         })
+    }
+
+    /// For a daemon that is TLS only: another section's files, no plain fallback. `None` with no files.
+    pub fn tls_only(section: &'static str, files: TlsFiles) -> Option<Arc<Self>> {
+        if files.is_empty() {
+            return None;
+        }
+        Some(Arc::new(Self {
+            tls: Some(Client::http1(section, files)),
+            plain: reqwest::Client::new(),
+            require: true,
+            section,
+            seen: RwLock::default(),
+        }))
     }
 
     fn remembered(&self, at: &str) -> Option<bool> {
@@ -125,7 +142,7 @@ impl Dial {
         match classify(&failed) {
             Failed::Down => Ok(if base.starts_with("https://") { secure } else { as_given() }),
             Failed::Untrusted => Err(format!("{at} is not trusted, so it was not read: {failed}")),
-            Failed::Other if self.require => Err(format!("{at} does not speak TLS, and [node_tls] require is on: {failed}")),
+            Failed::Other if self.require => Err(format!("{at} does not speak TLS, and [{}] requires it: {failed}", self.section)),
             Failed::Other => {
                 // Does it answer plainly at all? Nothing is presented here.
                 match self.plain.get(format!("http://{at}/healthz")).timeout(ASK).send().await {

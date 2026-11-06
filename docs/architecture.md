@@ -821,9 +821,15 @@ role" from "role unknown", and nothing on this side defaults them to zero.
 Another node's services are drilled into on demand — `GET
 /api/plugins/fleet/nodes/{host}` probes its port layout (`node::NODE_PORTS`,
 checked against stormcos `build-goldens.sh` and stormcentral's component
-registry: only ports that serve a feed, 24 of them, probed together)
+registry: only ports that serve a feed, 27 of them, probed together)
 and `…/nodes/{addr}/{port}/…` proxies to one, for an address the collector
-has heard and a port in the layout. **Not built:** the fleet actions —
+has heard and a port in the layout. A test holds the layout's stormd entries
+and `[fleet] stormd_ports`' default together (#68). stormcluster's :9102 is TLS
+only, so it is asked with `[stormcluster]`'s files, or `[node_tls]`'s without
+them; a refusal is said on the page, not listed as quiet; and its proxy takes
+only the Cluster page's reads, because that client holds the console's
+certificate and `/api/v1/record` and `/api/v1/node/*` are between stormclusters.
+**Not built:** the fleet actions —
 join, promote, demote, drain — which have no API (stormcos#38).
 
 ### stormdrive and stormstorage — feed consumers

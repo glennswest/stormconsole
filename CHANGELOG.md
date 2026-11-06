@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The node page's ports (#68)
+- **fix:** the node page reads stormimds's stormd (8269), ironprom's (9191) and stormcluster's own feed (9102). It looked for nfsop's stormd at 9198, where nothing is; it is at 9189. A test now holds the page's list and `[fleet] stormd_ports`' default together.
+- **feat:** :9102 is TLS only, so the page asks it with `[stormcluster]`'s files, or `[node_tls]`'s without them, and a refusal is said rather than listed as quiet. The proxy to that port takes only the Cluster page's reads: `/api/v1/record` and `/api/v1/node/*` are between stormclusters.
+
 ### 2026-11-06 — A node's rack, whoever can set it (#77)
 - **feat:** the node page says a node's rack. Where stormipmi answers and has a machine for the node, it is stormipmi's and leads to Machines. Otherwise, as on a formed cluster where stormipmi does not run, an admin can set or clear `topology.storm.io/rack`, written as themselves.
 

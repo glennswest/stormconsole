@@ -191,6 +191,7 @@ async fn main() {
                 logs.as_ref().map(|l| l.hosts()),
             )
             .with_dial(node_dial.clone())
+            .with_cluster_dial(config.stormcluster_dial())
             .with_storage(stormstorage.as_ref().map(|p| p.feed())),
         ));
     }
