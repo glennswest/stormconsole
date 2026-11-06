@@ -2328,7 +2328,8 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
 ### Full Cilium, what is left (#4)
 Items 1 and 5 done in v0.8.0; 3 superseded by 4. Item 2 here: `127.0.0.1:9962/metrics`, names from Cilium v1.20.2's `metrics.rst`. There is no policy-verdict counter at the agent, so `drop_count_total{reason="Policy denied"}`.
 - [x] `kubernetes/src/agentmetrics.rs`, on the card; `deploy/verify-cilium-metrics.sh`
-- [ ] Item 4 (flows) and #17's leftovers: a gRPC client, and the agent's unix socket. A decision for the owner: asked on #4
+- Verified with `sc-build deploy/verify-cilium-metrics.sh` (0 failed): a stand-in agent in v1.20.2's names, real apiserver and console, Chromium. Totals across labels, a rate on the next scrape, a map at 93% warning and gone again, no metrics no failure, no agent no card. Not seen: a real agent (needs root and BPF)
+- [ ] Item 4 (flows) and #17's leftovers: a gRPC client, and the agent's unix socket. A decision for the owner: asked on #4 (recommended: a gRPC client for the relay only; leave the socket out). The counters ship with the next golden: none requested, as the issue is not done
 
 ### A stormimds plugin (#11): waiting on the owner
 Read from stormimds 986f887: since its #12 the kubelet answers for guests on a node, so `/admin/instances` is empty there and writes 409; the console has no admin key mounted; a node guest gets default keys and no user-data (stormimds#20, rustkube-node#168). So the plugin as filed would be empty on every node. Asked on #11: A, the VM page from `/vmInstance`; B, as filed; C, close and refile (recommended: A). Nothing built yet. Not checked: whether the kubelet takes the console's token on `/vmInstance`.
