@@ -2315,6 +2315,13 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
   rows, filter, the page, Refresh; screenshots read. The walk found the page's effect re-running itself (fixed). Default `sc-build`
 - Not seen: a real node (stormcos#227 is open) or a real pass that fails. Left: past passes (`/api/v1/history`) are not shown
 
+### A root disk says its architecture (#59)
+`status.arch` was parsed and unread, its warning hidden by `allow(dead_code)` since 00f842e. Read from vmcloud-image-operator 6f1bec4:
+`localName` is `<distro>-<version>-<arch>`, so only a fallback to the resource's name lacked it. A catalogue listing is one architecture
+(`?arch=`, the cluster default), so it is not repeated on each row, and those rows' unread fields go.
+- [x] `ImageItem::label`; a test over HTTP; no `allow(dead_code)` left in the crate
+- [ ] sc-build with clippy on the crate; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

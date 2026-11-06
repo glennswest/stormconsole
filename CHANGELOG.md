@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — A root disk says its architecture (#59)
+- **fix:** Create VM's root-disk list names every built image's architecture when the operator reports it, so an image on the wrong one can be seen before it fails to boot. Fields read from the image operator and never used are gone, along with the `allow(dead_code)` that hid them.
+
 ### 2026-11-06 — Each node's last verification (#74)
 - **feat:** the Nodes page shows each node's last verification from sectionsystems (`:9103/api/v1/status`), with a filter for failed ones. A failed pass makes the node's row an error and an incomplete one a warning. The node page shows the result, time, counts and every finding that is not as it should be. Read-only. A node without sectionsystems shows no verdict, not a problem.
 - **feat:** sectionsystems' feed (9103) is on the node page's list of services.

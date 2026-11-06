@@ -129,17 +129,6 @@ struct CatalogItem {
     distro: String,
     #[serde(default, deserialize_with = "nullable")]
     version: String,
-    // Read off the wire for the shape (and Debug), not used yet.
-    #[allow(dead_code)]
-    #[serde(default, deserialize_with = "nullable")]
-    arch: String,
-    /// The golden name this would produce, which is what a VM spec asks for.
-    #[allow(dead_code)]
-    #[serde(default, deserialize_with = "nullable")]
-    golden: String,
-    #[allow(dead_code)]
-    #[serde(default, deserialize_with = "nullable")]
-    provisioning: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -206,9 +195,23 @@ struct ImageStatus {
     /// differ by a byte are two goldens with one pretty name.
     #[serde(default, deserialize_with = "nullable")]
     golden: String,
-    #[allow(dead_code)]
+    /// `x86_64` or `aarch64`: a machine on the wrong one does not boot (#59).
     #[serde(default, deserialize_with = "nullable")]
     arch: String,
+}
+
+impl ImageItem {
+    /// What the form calls this image. Always says its architecture when the
+    /// operator has said it: `localName` already does (`fedora-43-x86_64`),
+    /// and the resource's own name does not (`fedora-43`).
+    fn label(&self) -> String {
+        let name = if self.status.local_name.is_empty() { &self.name } else { &self.status.local_name };
+        if name.is_empty() || self.status.arch.is_empty() || name.contains(&self.status.arch) {
+            name.clone()
+        } else {
+            format!("{name} ({})", self.status.arch)
+        }
+    }
 }
 
 /// The goldens actually on one node, as that node's engine lists them.
@@ -305,11 +308,7 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
                 // one of them as though it were. Offering a digest as the
                 // label would be honest and unreadable, so the two are now
                 // separate: read the name, submit the volume.
-                let label = if i.status.local_name.is_empty() {
-                    i.name.clone()
-                } else {
-                    i.status.local_name.clone()
-                };
+                let label = i.label();
                 let volume = i.status.golden.clone();
                 if volume.is_empty() || label.is_empty() || local.contains(&volume) {
                     continue;
@@ -560,11 +559,29 @@ mod tests {
         assert_eq!(i.status.local_name, "fedora-43-x86_64");
         assert_eq!(i.spec.reference, "fedora:43");
 
-        let label = if i.status.local_name.is_empty() { i.name.clone() } else { i.status.local_name.clone() };
-        let choice = Choice { label, value: i.status.golden.clone() };
+        let choice = Choice { label: i.label(), value: i.status.golden.clone() };
         assert_eq!(choice.value, "media-846574c8a97c", "the value is a volume");
         assert_eq!(choice.label, "fedora-43-x86_64", "the label is readable");
         assert!(!is_reference(&choice.value), "a volume is not a catalogue reference");
+    }
+
+    #[tokio::test]
+    async fn the_root_disk_list_says_each_images_architecture() {
+        // Over HTTP, in the operator's shape: `status.arch` has to reach the form.
+        let body = r#"{"items":[
+            {"name":"fedora-43","spec":{"reference":"fedora:43"},
+             "status":{"phase":"Available","localName":"fedora-43-x86_64","golden":"media-a","arch":"x86_64"}},
+            {"name":"fedora-42","spec":{"reference":"fedora:42"},
+             "status":{"phase":"Available","localName":null,"golden":"media-b","arch":"aarch64"}},
+            {"name":"alma-10","spec":{"reference":"alma:10"},
+             "status":{"phase":"Available","golden":"media-c","arch":null}}]}"#;
+        let app = axum::Router::new().route("/api/v1/images", axum::routing::get(move || async move { body }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let got = fetch(&reqwest::Client::new(), &base, "").await;
+        let got: Vec<_> = got.choices.iter().map(|c| (c.value.as_str(), c.label.as_str())).collect();
+        assert_eq!(got, [("media-a", "fedora-43-x86_64"), ("media-b", "fedora-42 (aarch64)"), ("media-c", "alma-10")]);
     }
 
     #[test]
