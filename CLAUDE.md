@@ -2439,7 +2439,7 @@ Read from stormblock 2165f53 (`mgmt/auth.rs` `token_for`, `config.rs`). Done sin
 
 ### RDP in a VM's page (#54)
 Read from stormrdp 08f1e55: `:8443` serves `/rdcleanpath` and `POST /api/v1/login` with a self-signed pair it mints; the golden ships no `web_root`, so a node has no client page to iframe, and a browser would refuse the cross-origin certificate anyway. So: IronRDP's web component in the console (lazily, at the versions stormrdp pins), `/rdcleanpath` relayed through the console's origin, the login exchanged server-side with the viewer's bearer. Loopback only: a node's gateway serves that node's VMs (`GET :9101/api/v1/vms` says which), and an unverifiable certificate takes no bearer off the machine.
-- [ ] `vm/src/rdp.rs`: status, login, session relay; audit as a console
+- [x] `vm/src/rdp.rs`: status, login, session relay; audit as a console
 - [ ] `VmRdp.svelte`; `deploy/verify-vm-rdp.sh`: real gateway, real apiserver, a real framebuffer, Chromium; docs; dist; image
 
 ### Phase 4 — fleet/nodes plugin

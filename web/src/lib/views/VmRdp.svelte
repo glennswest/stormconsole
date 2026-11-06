@@ -12,6 +12,7 @@
   let said = $state('')
   let host = $state(null)
   let ui = null
+  let leaving = false
 
   $effect(() => {
     get(base).then((s) => (status = s)).catch((e) => (status = { available: false, reason: e.message }))
@@ -35,6 +36,7 @@
   async function connect() {
     phase = 'connecting'
     said = ''
+    leaving = false
     try {
       const login = await postJson(`${base}/login`, {})
       const rdp = await client()
@@ -56,12 +58,28 @@
       rdp.setVisibility(true)
       phase = 'connected'
       const end = await session.run()
-      said = `Session ended: ${end.reason()}`
+      said = leaving ? 'Disconnected.' : `The session ended: ${end.reason()}`
     } catch (e) {
-      said = `Could not connect: ${e?.backtrace?.() ?? e?.message ?? e}`
+      said = leaving ? 'Disconnected.' : failure(e)
     }
     ui?.setVisibility(false)
     phase = 'idle'
+  }
+
+  // IronRDP's errors are its own: a refused login at NLA is "[CredSSP @ …] access denied", and the page says what
+  // that means here, with its words after.
+  function failure(e) {
+    const text = e?.backtrace?.() ?? e?.message ?? String(e)
+    if (phase === 'connected') return `The session ended: ${text}`
+    if (/access denied/i.test(text)) {
+      return `The gateway refused you (${text}). It asks the apiserver at each connection whether you may get this machine's instance in ${ns}, and that login may also have been replaced by a newer one.`
+    }
+    return `Could not connect: ${text}`
+  }
+
+  function disconnect() {
+    leaving = true
+    ui.shutdown()
   }
 
   onDestroy(() => {
@@ -74,7 +92,7 @@
     <span class="state {phase}">{phase}</span>
     {#if phase === 'connected'}
       <button type="button" onclick={() => ui.ctrlAltDel()}>Ctrl+Alt+Del</button>
-      <button type="button" onclick={() => ui.shutdown()}>Disconnect</button>
+      <button type="button" onclick={disconnect}>Disconnect</button>
     {:else}
       <button type="button" class="sc-primary" disabled={!status?.available || phase === 'connecting'} onclick={connect}>Connect</button>
     {/if}
@@ -82,7 +100,7 @@
   </div>
   {#if status && !status.available}<p class="dim" data-testid="rdp-why">{status.reason}</p>{/if}
   {#if said}<p class="said" data-testid="rdp-said">{said}</p>{/if}
-  <p class="dim note">A login here replaces your earlier remote desktop login, so another client using it has to log in again.</p>
+  {#if status?.available}<p class="dim note">A login here replaces your earlier remote desktop login, so another client using it has to log in again.</p>{/if}
   <div class="screen" class:shown={phase !== 'idle'} bind:this={host}></div>
 </div>
 

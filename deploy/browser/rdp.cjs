@@ -19,13 +19,13 @@ walk(`rdp (${PHASE})`, async (t) => {
   await connect.click()
   const state = box.locator('.state')
   if (PHASE === 'dave') {
-    t.check(await t.until(async () => /Could not connect|Session ended/.test(await box.innerText()), 40000), "the gateway's RBAC check refuses him", await box.innerText())
+    t.check(await t.until(async () => /The gateway refused you/.test(await box.innerText()), 40000), "the gateway's RBAC check refuses him", await box.innerText())
     t.check((await state.innerText()).toLowerCase() === 'idle', 'and no session is left')
     return
   }
   t.check(await t.until(async () => (await state.innerText()).toLowerCase() === 'connected', 40000), 'carol connects', await box.innerText())
   // The frame arrives after the session opens, and a canvas's size says nothing about what is on it.
-  const painted = async () => page.evaluate(() => {
+  const canvas = async () => page.evaluate(() => {
     const find = (root) => {
       for (const e of root.querySelectorAll('*')) {
         if (e.tagName === 'CANVAS') return e
@@ -39,12 +39,25 @@ walk(`rdp (${PHASE})`, async (t) => {
     const g = off.getContext('2d'); g.drawImage(c, 0, 0, 64, 48)
     const d = g.getImageData(0, 0, 64, 48).data
     const seen = new Set()
-    for (let i = 0; i < d.length; i += 4) seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`)
-    return seen.size
+    let sum = 0
+    for (let i = 0; i < d.length; i += 4) { seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`); sum = (sum * 31 + d[i]) >>> 0 }
+    return { colours: seen.size, sum }
   })
+  const painted = async () => ((await canvas()) || { colours: 0 }).colours
   t.check(await t.until(async () => (await painted()) > 1, 40000), "the machine's screen is drawn: more than one colour", String(await painted()))
   await t.shot(page, 'rdp-connected')
-  await page.keyboard.press('Tab').catch(() => {})
+  // This guest has no disk and stops at "No bootable device", so its screen holds still until something reaches it.
+  const still = (await canvas()).sum
+  await page.waitForTimeout(3000)
+  t.check((await canvas()).sum === still, 'the halted guest draws nothing by itself')
+  await box.getByRole('button', { name: 'Ctrl+Alt+Del' }).click()
+  t.check(await t.until(async () => (await canvas()).sum !== still, 20000), 'Ctrl+Alt+Del reaches the guest: it reboots')
   await box.getByRole('button', { name: 'Disconnect' }).click()
-  t.check(await t.until(async () => (await state.innerText()).toLowerCase() === 'idle', 20000), 'Disconnect ends it', await box.innerText())
+  t.check(await t.until(async () => /Disconnected\./.test(await box.innerText()), 20000), 'Disconnect says so, not a failure', await box.innerText())
+  t.check((await state.innerText()).toLowerCase() === 'idle', 'and it is over')
+  await connect.click()
+  t.check(await t.until(async () => (await state.innerText()).toLowerCase() === 'connected', 40000), 'and it connects again, with a new login', await box.innerText())
+  t.check(await t.until(async () => (await painted()) > 1, 40000), 'drawn again')
+  await box.getByRole('button', { name: 'Disconnect' }).click()
+  await t.until(async () => /Disconnected\./.test(await box.innerText()), 20000)
 })

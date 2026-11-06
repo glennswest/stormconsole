@@ -62,10 +62,15 @@ pub fn refusal(may_write: bool, has_bearer: bool) -> Option<&'static str> {
     None
 }
 
-/// The gateway's row for this machine, out of `GET :9101/api/v1/vms`.
-pub fn target_of(vms: &Value, ns: &str, name: &str) -> Option<String> {
-    let row = vms["items"].as_array()?.iter().find(|v| v["namespace"] == ns && v["name"] == name)?;
-    row["target"].as_str().map(str::to_string).or_else(|| Some(format!("{name}.{ns}")))
+/// What the gateway says of this machine, out of `GET :9101/api/v1/vms`: the name RDP connects to, or why not. The
+/// row's own `target` is the gateway's route to the framebuffer, not a name to connect to: that is always `<vm>.<ns>`.
+pub fn target_of(vms: &Value, ns: &str, name: &str) -> Result<String, &'static str> {
+    let row = vms["items"].as_array().and_then(|items| items.iter().find(|v| v["namespace"] == ns && v["name"] == name));
+    match row {
+        None => Err("The gateway on this node has no such machine. It serves the machines running here: a stopped machine has none, and one on another node is on that node's console."),
+        Some(r) if r["framebuffer"] == false => Err("This machine has no framebuffer for the gateway to show."),
+        Some(_) => Ok(format!("{name}.{ns}")),
+    }
 }
 
 /// `GET /vms/{ns}/{name}/rdp`: may it be offered, and why not.
@@ -79,8 +84,8 @@ pub async fn status(State(inner): State<Arc<Inner>>, viewer: Viewer, Path((ns, n
         Ok(r) if r.status().is_success() => {
             let vms: Value = r.json().await.unwrap_or(Value::Null);
             match target_of(&vms, &ns, &name) {
-                Some(t) => (Some(t), None),
-                None => (None, Some("The gateway on this node has no such machine. It serves the machines running here: a stopped machine has none, and one on another node is on that node's console.".to_string())),
+                Ok(t) => (Some(t), None),
+                Err(why) => (None, Some(why.to_string())),
             }
         }
         Ok(r) => (None, Some(format!("stormrdp answered {}.", r.status()))),
@@ -227,11 +232,13 @@ mod tests {
         let v = json!({"items": [
             {"namespace": "shop", "name": "vm1", "uid": "u", "target": "vm/shop/vm1", "framebuffer": true},
             {"namespace": "other", "name": "vm1", "uid": "w"},
+            {"namespace": "shop", "name": "headless", "framebuffer": false},
         ]});
-        assert_eq!(target_of(&v, "shop", "vm1").as_deref(), Some("vm/shop/vm1"));
-        assert_eq!(target_of(&v, "other", "vm1").as_deref(), Some("vm1.other"));
-        assert_eq!(target_of(&v, "shop", "nope"), None);
-        assert_eq!(target_of(&json!({}), "shop", "vm1"), None);
+        assert_eq!(target_of(&v, "shop", "vm1"), Ok("vm1.shop".to_string()));
+        assert_eq!(target_of(&v, "other", "vm1"), Ok("vm1.other".to_string()));
+        assert!(target_of(&v, "shop", "headless").unwrap_err().contains("no framebuffer"));
+        assert!(target_of(&v, "shop", "nope").unwrap_err().contains("no such machine"));
+        assert!(target_of(&json!({}), "shop", "vm1").is_err());
     }
 
     #[test]

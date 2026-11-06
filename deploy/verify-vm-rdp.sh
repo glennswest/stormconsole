@@ -57,7 +57,7 @@ k() { kc -f -X "$1" "$API$2" -H "content-type: ${4:-application/json}" ${3:+-d "
 RB=/apis/rbac.authorization.k8s.io/v1
 k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"shop"}}'
 sa() { k POST "/api/v1/namespaces/$1/serviceaccounts" "{\"apiVersion\":\"v1\",\"kind\":\"ServiceAccount\",\"metadata\":{\"name\":\"$2\"}}"; }
-sa kube-system stormrdp; sa kube-system stormconsole; sa shop carol; sa shop dave; sa shop erin
+sa kube-system stormrdp; sa kube-system stormconsole; sa shop carol; sa shop dave; sa shop erin; sa kube-system fay
 crb() { k POST $RB/clusterrolebindings "{\"apiVersion\":\"rbac.authorization.k8s.io/v1\",\"kind\":\"ClusterRoleBinding\",\"metadata\":{\"name\":\"$1\"},\"roleRef\":{\"apiGroup\":\"rbac.authorization.k8s.io\",\"kind\":\"ClusterRole\",\"name\":\"$2\"},\"subjects\":[{\"kind\":\"ServiceAccount\",\"name\":\"$3\",\"namespace\":\"$4\"}]}"; }
 k POST $RB/clusterroles '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"name":"tr"},"rules":[{"apiGroups":["authentication.k8s.io"],"resources":["tokenreviews"],"verbs":["create"]}]}'
 crb gw tr stormrdp kube-system; crb cons cluster-admin stormconsole kube-system
@@ -73,7 +73,7 @@ k POST /apis/kubevirt.io/v1/namespaces/shop/virtualmachineinstances '{"apiVersio
 k PATCH /apis/kubevirt.io/v1/namespaces/shop/virtualmachineinstances/vm1/status '{"status":{"phase":"Running","nodeName":"n1"}}' application/merge-patch+json
 token() { kc -X POST -H 'Content-Type: application/json' -d '{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest","spec":{}}' "$API/api/v1/namespaces/$1/serviceaccounts/$2/token" | j 'd["status"]["token"]'; }
 token kube-system stormrdp > "$W/gateway-token"
-CONSOLE=$(token kube-system stormconsole); CAROL=$(token shop carol); DAVE=$(token shop dave); ERIN=$(token shop erin)
+CONSOLE=$(token kube-system stormconsole); CAROL=$(token shop carol); DAVE=$(token shop dave); ERIN=$(token shop erin); FAY=$(token kube-system fay)
 
 say "a machine with a real framebuffer, and the gateway on its registered ports"
 RUN="$W/r"; VM="$RUN/shop/vm1"; mkdir -p "$VM"
@@ -98,13 +98,13 @@ H=$(printf pw | "$BIN" --hash-password)
 user() { printf '[[api.users]]\nname = "%s"\npassword_hash = "%s"\nroles = ["%s"]\n' "$1" "$H" "$2"; [ -z "${3:-}" ] || printf 'kube_token = "%s"\n' "$3"; }
 mkdir -p "$W/c"
 { printf 'listen_addr = "127.0.0.1:%s"\ndata_dir = "%s/c"\n[api]\nauth_token = "own-54"\n' "$P" "$W"
-  user carol operator "$CAROL"; user dave operator "$DAVE"; user erin viewer "$ERIN"; user dan operator
+  user carol operator "$CAROL"; user dave operator "$DAVE"; user erin viewer "$ERIN"; user dan operator; user fay operator "$FAY"
   printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\nca_file = "%s/pki/ca.pem"\n[logs]\nmcast_group = "239.255.42.67:25667"\n[fleet]\nmcast_group = "239.255.42.67:25667"\nstormd_ports = []\n' "$API" "$CONSOLE" "$W"
   for s in stormdrive stormstorage stormblock sbregistry vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
 } > "$W/c.toml"
 "$BIN" --config "$W/c.toml" > "$W/c.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done
-for u in carol dave erin dan; do curl -sf -c "$W/$u.jar" -H 'content-type: application/json' -d "{\"username\":\"$u\",\"password\":\"pw\"}" "$C/api/v1/auth/login" >/dev/null; done
+for u in carol dave erin dan fay; do curl -sf -c "$W/$u.jar" -H 'content-type: application/json' -d "{\"username\":\"$u\",\"password\":\"pw\"}" "$C/api/v1/auth/login" >/dev/null; done
 for _ in $(seq 60); do [ "$(curl -s -b "$W/carol.jar" "$C/api/v1/components" | j "any(c['id'].startswith('vm:') and 'vm1' in c['id'] for c in d)")" = True ] && break; sleep 1; done
 R=$C/api/plugins/vm/vms/shop/vm1/rdp
 st() { curl -s -b "$W/$1.jar" "$R" | j "$2"; }
@@ -127,6 +127,13 @@ check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/dan.jar" -X POST -H 'cont
 check "$(curl -s -o /dev/null -w '%{http_code}' "$R")" 401 "nobody signed in"
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/carol.jar" "$C/api/plugins/vm/vms/shop/nope/rdp" | head -c3)" 200 "a machine the gateway has not got: answered"
 contains "$(curl -s -b "$W/carol.jar" "$C/api/plugins/vm/vms/shop/nope/rdp" | j 'd["reason"]')" "no such machine" "and says so"
+check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/fay.jar" "$R")" 404 "fay, in no project: the machine's status is hidden"
+check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/fay.jar" -X POST -H 'content-type: application/json' -d '{}' "$R/login")" 404 "and so is a login"
+upg() { curl -s -o /dev/null -w '%{http_code}' -m 5 -b "$W/$1.jar" -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: c3Rvcm1jb25zb2xlIQ==' "$R/session" || true; }
+check "$(upg fay)" 404 "and the session's socket"
+check "$(upg erin)" 403 "a reader's socket refused"
+check "$(upg dan)" 403 "no identity's socket refused"
+check "$(st carol 'd["target"]')" vm1.shop "the name RDP connects to, not the gateway's route"
 L=$(curl -s -D "$W/h" -b "$W/carol.jar" -X POST -H 'content-type: application/json' -d '{}' "$R/login")
 check "$(echo "$L" | j 'd["login"], d["target"]')" "('system-serviceaccount-shop-carol', 'vm1.shop')" "carol's real login, as her identity at the apiserver"
 check "$(echo "$L" | j 'len(d["password"])')" 32 "with the gateway's password"
@@ -140,6 +147,17 @@ A=$(grep -a "rdp/session" "$W/c/audit.jsonl" | tail -5)
 contains "$A" '"who":"carol"' "opening one is recorded, with who"
 check "$(cat "$W"/c/audit.jsonl | grep -c "$PW" || true)" 0 "the password is not in the audit record"
 check "$(grep -c "$PW" "$W/c.log" || true)" 0 "nor the log"
+
+say "no sign-in: root, on the console's own credential (#165)"
+Q=19170
+{ printf 'listen_addr = "127.0.0.1:%s"\ndata_dir = "%s/c2"\n' "$Q" "$W"
+  printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\nca_file = "%s/pki/ca.pem"\n[logs]\nmcast_group = "239.255.42.67:25668"\n[fleet]\nmcast_group = "239.255.42.67:25668"\nstormd_ports = []\n' "$API" "$CONSOLE" "$W"
+  for s in stormdrive stormstorage stormblock sbregistry vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
+} > "$W/c2.toml"
+mkdir -p "$W/c2"; "$BIN" --config "$W/c2.toml" > "$W/c2.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null "http://127.0.0.1:$Q/healthz" && break; sleep 0.5; done
+check "$(curl -s "http://127.0.0.1:$Q/api/plugins/vm/vms/shop/vm1/rdp" | j 'd["available"]')" True "offered"
+check "$(curl -s -X POST -H 'content-type: application/json' -d '{}' "http://127.0.0.1:$Q/api/plugins/vm/vms/shop/vm1/rdp/login" | j 'd["login"]')" system-serviceaccount-kube-system-stormconsole "the login is the console's own identity"
 tar czf "$HERE/rdp-shots.tgz" -C "$W" shots 2>/dev/null || true
 
 say "$FAILED failed"

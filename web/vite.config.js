@@ -17,6 +17,8 @@ export default defineConfig({
     // lazily-loaded chunk, so this raises the floor only for browsers
     // that open a VM's framebuffer.
     target: 'es2022',
+    // IronRDP's package is one chunk with its WebAssembly inlined, loaded only when Remote desktop is used.
+    chunkSizeWarningLimit: 8192,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/app.js',
