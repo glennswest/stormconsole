@@ -2262,12 +2262,16 @@ consumer does. This shows every node's consumers to every viewer, so one in a pr
   the other's said to exist and nowhere in the answer or page, the administrator still seeing it from the same kept answer. Also `verify-drives.sh` (1,600), `drivemap.test.mjs`, default `sc-build`
 - Not seen: a real stormdrive reporting volumes (a build VM has no drives), a real multi-node cluster. Left: `/api/plugins/sb/placement` still names every consumer to every viewer (#232)
 
-### A node's rack, whoever can set it (#77)
+### A node's rack, whoever can set it (#77) ✅ 2026-11-06
 stormipmi#29 landed: it labels the Node from the machine's location, and #43 edits that on Machines. But stormcos starts it `roles=sno` ("a node that joins a cluster stops it", build-goldens.sh), and racks only mean anything with more than one node: a formed cluster has
-no stormipmi. It never touches a label it did not set (`location.rs`), so a hand-set one is safe beside it.
-- [ ] `PUT /api/plugins/k8s/nodes/{name}/rack`: admin here, as the viewer at the apiserver, never the console's credential; `GET` says what this viewer may do
-- [ ] Node page: stormipmi's where it answers and has a machine for the node, with the way to Machines; otherwise the edit. `web/src/lib/rack.js` + test
-- [ ] `deploy/verify-node-rack.sh` + real stormipmi labelling a Node in `verify-machines.sh`; docs, changelog, dist; close; golden
+no stormipmi. A recorded location wins over a hand-set label (`location::plan`, despite its header's wording); only clearing a location leaves a label it did not set. So the hand edit is offered only where stormipmi has no machine for the node.
+- [x] `PUT /api/plugins/k8s/nodes/{name}/rack`: admin here, as the viewer at the apiserver, never the console's credential; `GET` says what this viewer may do
+- [x] Node page: stormipmi's where it answers and has a machine for the node, with the way to Machines; otherwise the edit. `web/src/lib/rack.js` + test
+- [x] `deploy/verify-node-rack.sh` + real stormipmi labelling a Node in `verify-machines.sh`; docs, changelog, dist; close; golden
+- Verified: `sc-build deploy/verify-node-rack.sh` (0 failed), a real apiserver with RBAC and a real console: admin as themselves, the apiserver's "not allowed to patch nodes", a reader and a no-identity admin refused here, read back, on the node's row, in the audit; Chromium for each and for the owned state, over a stand-in stormipmi.
+  `sc-build deploy/verify-machines.sh`: a real stormipmi puts the rack on a real Node, and a hand-set label gives way to the location
+- Not seen: a real formed cluster; a real node's stormipmi having `patch nodes`
+- The Machines API does not carry `status.storm.location.message` (why a label did not land), so the page can only say "not on the Node yet"
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

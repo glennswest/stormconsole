@@ -10,6 +10,7 @@ walk(`node rack (${PHASE})`, async (t) => {
   const has = (re) => t.until(async () => re.test(await t.text(page)))
   if (PHASE === 'owned') {
     t.check(await has(/set by stormipmi/), 'stormipmi\'s', (await t.text(page)).slice(0, 400))
+    t.check(!/Change\s+Clear/.test(await t.text(page)), 'with no edit, even as it loads')
     t.check(await t.until(async () => (await value()) === 'rack-ipmi'), 'its value', await value())
     t.check(/location says other/.test(await t.text(page)) === false, 'no disagreement to say')
     t.check((await page.getByRole('button', { name: /^(Set|Change|Clear)$/ }).count()) === 0, 'nothing to edit here')

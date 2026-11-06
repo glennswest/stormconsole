@@ -3,7 +3,8 @@
 //! stormipmi sets it from a machine's location, but only runs on a single node (`roles=sno`), and a node
 //! with no BareMetalHost has no location at all. Here an admin sets it by hand for those. It goes **as the
 //! person**: `admin` on this console, `patch nodes` at the apiserver, and never the console's credential.
-//! stormipmi never changes a label it did not set, so this cannot fight it.
+//! The page offers this only where stormipmi has no machine for the node, so it has nothing to fight. If a
+//! location is recorded later it wins: stormipmi sets the label to it (`location::plan`).
 
 use std::sync::Arc;
 

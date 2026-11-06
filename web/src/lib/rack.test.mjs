@@ -14,5 +14,5 @@ assert.deepStrictEqual([s.owner, s.rack, s.note], ['stormipmi', '', ''], 'a mach
 s = rackState('n1', '', [m('n1', 'r1')])
 assert.ok(/not on the Node yet/.test(s.note), s.note)
 s = rackState('n1', 'hand', [m('n1', 'r1')])
-assert.ok(/leaves a label it did not set/.test(s.note), s.note)
+assert.ok(/stormipmi will set the Node to it/.test(s.note), s.note)
 console.log('PASS rack.test.mjs')

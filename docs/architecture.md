@@ -1828,8 +1828,8 @@ through the proxy.
 ### A node's rack (#77)
 
 The rack is the Node label `topology.storm.io/rack` (#43), and stormipmi sets it from a machine's location. It runs only on a single node (`roles=sno`), so a formed cluster, where racks mean something, has no stormipmi; and a node with no BareMetalHost has no location to record.
-So the node page asks: where stormipmi answers and has a machine for this node, the rack is stormipmi's and the way to change it is Machines. Otherwise an admin sets the label, `PUT /api/plugins/k8s/nodes/{name}/rack`, a merge patch as the viewer and never the console's credential. stormipmi leaves a
-label it did not set alone, so the two cannot fight; a location that disagrees with the label is said on the page rather than resolved.
+So the node page asks: where stormipmi answers and has a machine for this node, the rack is stormipmi's and the way to change it is Machines. Otherwise an admin sets the label, `PUT /api/plugins/k8s/nodes/{name}/rack`, a merge patch as the viewer and never the console's credential. The page offers that only
+where stormipmi has no machine for the node, so the two do not fight. If a location is recorded later it wins: stormipmi sets the label to it (`location::plan`), and only clearing a location leaves a label it did not set.
 
 ### The engine over TLS (#160)
 

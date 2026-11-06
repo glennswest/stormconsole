@@ -18,9 +18,13 @@
   const answers = $derived(!!ipmi && ipmi.health !== 'idle' && ipmi.health !== 'error')
 
   async function load() {
-    info = await get(base).catch((e) => ({ rack: null, may: false, why: e.message }))
-    if (answers) machines = await get('/api/plugins/ipmi/proxy/api/v1/machines').then((d) => d.machines || []).catch(() => null)
-    else machines = null
+    // Both before either shows, so an edit is never offered for a moment on a rack that is stormipmi's.
+    const [i, m] = await Promise.all([
+      get(base).catch((e) => ({ rack: null, may: false, why: e.message })),
+      answers ? get('/api/plugins/ipmi/proxy/api/v1/machines').then((d) => d.machines || []).catch(() => null) : null,
+    ])
+    machines = m
+    info = i
   }
   $effect(() => {
     void answers

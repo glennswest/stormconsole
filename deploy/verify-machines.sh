@@ -180,6 +180,16 @@ echo "  read back: $(mach "d.get('location')")"
 printf 'admin, a rack that is not a label value: '; c admin PUT "$M/$TAG/location" '{"rack":"rack 3"}'
 LOC=$(mach "d.get('location')")
 case $LOC in *rack3*) echo "  ok   location kept: $LOC" ;; *) echo "  FAIL location not read back: $LOC"; LOCFAIL=1 ;; esac
+# A real stormipmi labelling a real Node from it (#77). The Node is the one named like the machine's hostname (location.rs).
+HOSTREF=$(mach "'%s %s' % (d['host']['namespace'], d['host']['name'])"); set -- $HOSTREF
+kubectl -n "$1" patch baremetalhost "$2" --type=merge -p '{"spec":{"storm":{"hostname":"rack-node"}}}' >/dev/null
+printf '{"apiVersion":"v1","kind":"Node","metadata":{"name":"rack-node"}}' | kubectl create -f - >/dev/null
+nodelabel() { kubectl get node rack-node -o jsonpath='{.metadata.labels.topology\.storm\.io/rack}' 2>/dev/null; }
+for _ in $(seq 60); do [ "$(nodelabel)" = rack3 ] && break; sleep 1; done
+case $(nodelabel) in rack3) echo "  ok   a real stormipmi put the rack on the Node" ;; *) echo "  FAIL the Node's rack: '$(nodelabel)'"; LOCFAIL=1 ;; esac
+kubectl label node rack-node topology.storm.io/rack=by-hand --overwrite >/dev/null
+for _ in $(seq 60); do [ "$(nodelabel)" = rack3 ] && break; sleep 1; done
+case $(nodelabel) in rack3) echo "  ok   a label set by hand gives way to the recorded location" ;; *) echo "  FAIL by hand stayed: '$(nodelabel)'"; LOCFAIL=1 ;; esac
 
 say "6. adopt NEWBOX1 (a BMC that does not answer, so it cannot contend with sim-0)"
 printf 'ops: '; c ops POST "$M/NEWBOX1/adopt" '{"bmc":{"address":"ipmi://127.0.0.1:9","username":"u","password":"adopt-only-pw"},"online":false}'

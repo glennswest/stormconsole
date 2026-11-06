@@ -69,12 +69,12 @@ put() { curl -s -o "$W/out" -w '%{http_code}' -b "$W/$1.jar" -X PUT -H 'content-
 say "no stormipmi here, as on a formed cluster"
 console 'enabled = false'
 check "$(put reader n2 r9)" 403 "a reader, with every right at the apiserver: refused here"
-holds "$(cat "$W/out")" "admin role" "and says so"
+holds "$(cat "$W/out")" "needs the" "and says so"
 check "$(put nokube n2 r9)" 403 "an admin with no kubernetes identity: never the console's credential"
 holds "$(cat "$W/out")" "kubernetes identity" "and says so"
 check "$(label n2)" None "neither wrote anything"
 check "$(put bob n2 r9)" 403 "an admin here the apiserver refuses: its answer"
-holds "$(cat "$W/out")" "cannot" "in its words" || true
+holds "$(cat "$W/out")" "not allowed to patch nodes" "in its words"
 check "$(label n2)" None "and nothing written"
 check "$(put root n2 'rack 3')" 400 "not a label value"
 check "$(put root nosuchnode r1)" 404 "no such Node"
