@@ -140,11 +140,11 @@ Every key and default: README §Configuration.
 
 ## How it ships and runs
 
-- **Built** with `sc-build` on dev: musl static binary, SPA embedded
+- **Built** with `sc-build` on a fresh build VM: musl static binary, SPA embedded
   (`web/dist` committed).
 - **Shipped** as a stormcos **service golden**, `stormconsole` (32 MB), from
-  its entry in stormcentral's component registry, built by stormcos
-  `deploy/build-goldens.sh`: under stormd (API 9194), flat config
+  its entry in stormcentral's component registry, built by stormcentral:
+  under stormd (API 9194), flat config
   (`listen_addr`, `data_dir`, the engine's `token_file`), data and log
   volumes, exit 78 not restarted, started on single-node clusters.
 - **Updated** by a new golden: `stormcentral component build stormconsole`
@@ -155,24 +155,21 @@ Every key and default: README §Configuration.
 
 ## Planned — not built
 
-- Scale a workload; cordon, uncordon, drain a node — **#36**
-- Fleet lifecycle: join, promote, demote, drain — no API (**stormcos#38**)
+- Scale a workload; cordon, uncordon, drain outside the Cluster page — **#36**
+- A cluster change reaching a real node: the Cluster page writes the objects, and
+  it needs the node lifecycle API (**stormcos#38**)
 - Cilium flows and Hubble — shipped in the image, not read yet (**#4**)
-- Import a VM disk by URL — the registry serves it (**#44**)
 - VM metrics over time — cadvisor not wired (**#14**)
-- Users and groups without a file, certificate identity, audit — **#15**
+- Users and groups without a file — **#15**
 - Remote plugins — a component contributing its own UI — designed only
 
 ---
 
 ## Status and what matters
 
-**0.24.0**, every page's API live-verified against its real upstream; most pages not yet viewed in a browser (**#58**).
+**0.32.0**, every page checked against real upstreams or stand-ins in their shapes, and walked in a browser.
 
 Open, and why it matters:
-- **stormcos#102** / stormcentral#226 — the golden's liveness path is
-  `/admin/healthz`, which the console does not route: it answers the app
-  with a 200, so the probe always passes and a hung console is never seen.
 - **#42** (a decision) — SSH keys live in `default`, where a
   project-only user cannot write them.
 - **#64** — fastetcd serves the v3 gateway and traffic counters now

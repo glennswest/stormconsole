@@ -20,8 +20,8 @@ Version locations:
 
 - Design: `docs/architecture.md`
 - Build and test with `sc-build` after pushing (it builds the pushed commit
-  on dev.g8.lo as `stormbuild` and deletes it); never on this VM, never as
-  root. `web/dist/` is committed: rebuild it with
+  on a fresh build VM as `stormbuild`, then destroys it); never on this VM,
+  never as root. `web/dist/` is committed: rebuild it with
   `SC_BUILD_OUT=dist.tgz SC_BUILD_OUT_TO=tmp/dist.tgz sc-build 'cd web &&
   npm ci && npx vite build && tar czf ../dist.tgz dist'` and unpack it into
   `web/`.
@@ -2290,6 +2290,15 @@ stormclusters, and this client holds the console's certificate.
 - Not seen: a real node, nor another node's stormcluster (its certificate must name the address the console heard it from)
 - Left: services in the registry in neither list: #238
 
+### Docs: who does join and drain, the beacon, the health path (#65)
+Found on stormcos#65. Read on 2026-11-06: there is no `stormcos join` CLI (stormcos `docs/CLUSTER.md`: the original sketch). The
+issue's "stormcluster's API on :9102" has moved on too: the API is `cluster.storm.io` objects (owner, stormcos#38, 2026-10-03), which
+the Cluster page writes (#63, #88). stormcos#38 stays open for the node lifecycle API that lets a member change a node. stormcos#26
+closed 10-01. The health path is fixed: stormcos#102 and stormcentral#226 are closed and the registry has `health = "/healthz"`, so the
+docs' "not yet right" goes rather than gaining a reference. stormd no longer probes from `health` (stormcentral#607).
+- [ ] README, architecture, presentation, the fleet crate's note, this file; the deck's stale status; `deploy/check-slides.sh`
+- [ ] sc-build; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
@@ -2306,13 +2315,11 @@ stormclusters, and this client holds the console's certificate.
 - [x] `#/nodes` — the navigator's "Nodes" pointed at the plugin card, a
       page showing one row with a badge that said 1 however many nodes
       were on the segment
-- [ ] Define the capability beacon — stormcos#26, still open
-- [ ] Fleet actions per CLUSTER.md: join, promote, demote, drain —
-      **blocked**, filed as stormcos#38. They are a CLI on the node
-      (`stormcos join <endpoint> --token …`), with no HTTP surface; a
-      button that cannot work is worse than no button. The transport to
-      reach a node exists now, so what is missing is only something to
-      call
+- [x] The capability beacon — stormcos#26, closed 2026-10-01 (stormpump
+      `beacon.rs`; read by `plugin_logs::beacon`)
+- [x] Fleet actions per CLUSTER.md: join, promote, demote, drain — the
+      Cluster page (#63, #84, #88), written as `cluster.storm.io` objects.
+      A member changing a real node waits on stormcos#38
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive

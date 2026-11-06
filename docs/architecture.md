@@ -21,8 +21,9 @@ nodes running real services**. Every check is against the running thing —
 storage health is the engine's own readiness, not a database row. Its
 actions are day-2 actions. **Replacing a disk** is here — locate, leave the
 fleet, test, format, designate, through stormdrive's own actions. **Join,
-promote, demote and drain are not**: they are a CLI on the node with no
-API (stormcos#38), and a button that cannot work is worse than none. It is
+promote, demote and drain** are the Cluster page, written as
+`cluster.storm.io` objects that stormcluster reconciles (#63, #88); changing a
+real node needs the node lifecycle API (stormcos#38). It is
 not an installer; a console that is only an installer is abandoned the day
 the cluster exists.
 
@@ -829,8 +830,7 @@ only, so it is asked with `[stormcluster]`'s files, or `[node_tls]`'s without
 them; a refusal is said on the page, not listed as quiet; and its proxy takes
 only the Cluster page's reads, because that client holds the console's
 certificate and `/api/v1/record` and `/api/v1/node/*` are between stormclusters.
-**Not built:** the fleet actions —
-join, promote, demote, drain — which have no API (stormcos#38).
+Join, promote, demote and drain are not here: they are the Cluster page's.
 
 ### stormdrive and stormstorage — feed consumers
 
@@ -1945,8 +1945,7 @@ On StormCOS the console is a **service golden**. Its entry in
 stormcentral's component registry says what it is — port 9094, argv
 `--config /etc/stormconsole/stormconsole.toml`, the config text, the
 `stormconsole-data` and `stormconsole-logs` volumes (64 MB each) — and
-stormcos's `deploy/build-goldens.sh` builds it (`service_golden
-stormconsole 32M … 9094`): the static musl binary with the SPA embedded,
+stormcentral builds it from that entry: the static musl binary with the SPA embedded,
 under stormd (whose own API is on 9194), exit 78 not restarted, started on
 single-node clusters. The config is the **flat** shape — `listen_addr =
 "0.0.0.0:9094"`, `data_dir = "/var/lib/stormconsole"` — plus `[stormblock]
@@ -1955,10 +1954,8 @@ token_file = "/run/stormblock/engine/api_token"`, the host's
 flat shape as well as its own sectioned one; `/etc/stormconsole/config.toml`
 is only the default outside a node.
 
-The golden's liveness path is `/admin/healthz` today. The console does not
-route it: like any non-API path it is the app's HTML with a 200, so the
-probe always passes and detects nothing. It must be `/healthz` —
-stormcos#102, and stormcentral#226 for the registry entry.
+The registry's health path is `/healthz` (stormcos#102, stormcentral#226). Any
+other non-API path would be the app's HTML with a 200, which is why it matters.
 
 Outside StormCOS, `Containerfile` builds the same thing on `stormdbase`:
 
@@ -2027,7 +2024,6 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormvm | #48 per-VM metrics | a VM's traffic counters |
 | stormcos | [#38](https://github.com/glennswest/stormcos/issues/38) the node lifecycle API stormcluster calls | a form, join, promote, demote or split actually running on a node (the Cluster page plans and starts them) |
 | stormcluster | [#11](https://github.com/glennswest/stormcluster/issues/11) a dry-run plan's steps carry no description | the console copies `Step::describe` |
-| stormcos | [#102](https://github.com/glennswest/stormcos/issues/102) the golden's health path (and stormcentral [#226](https://github.com/glennswest/stormcentral/issues/226), the registry entry) | a liveness probe that can fail: `/admin/healthz` is the app's 200 |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
@@ -2039,7 +2035,8 @@ filed on its owner. The console says so on the page where the gap shows.
 ## Phasing (history)
 
 How the console was built; kept for the order, not as a plan. Phases 1–5
-are done; the fleet's day-2 actions (4) wait on stormcos#38; remote plugins
+are done; the fleet's day-2 actions (4) are the Cluster page, and reaching a
+real node waits on stormcos#38; remote plugins
 (6) are designed above and not started.
 
 1. **Skeleton** — workspace, core, binary, SPA shell, auth, themes,

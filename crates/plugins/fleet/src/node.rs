@@ -15,9 +15,8 @@
 //!
 //! What is asked is deliberately only what a node serves about itself. The
 //! fleet lifecycle verbs CLUSTER.md lists — join, promote, demote, drain —
-//! are a CLI on the node today (`stormcos join <endpoint> --token …`), not
-//! an API, so they are not offered here; a button that cannot work is
-//! worse than no button. Filed on stormcos.
+//! are `cluster.storm.io` objects, so they are the Cluster page's (#88), not
+//! this one's.
 
 use std::time::Duration;
 

@@ -347,8 +347,8 @@ have no shared name today, so they are joined by time and command line (`joined:
 A stormcos **service golden**, `stormconsole` (32 MB), described by its
 entry in stormcentral's component registry (port 9094, argv `--config
 /etc/stormconsole/stormconsole.toml`, its config text, `stormconsole-data`
-64 MB and `stormconsole-logs` 64 MB) and built by stormcos
-`deploy/build-goldens.sh`: the static musl binary with the SPA inside,
+64 MB and `stormconsole-logs` 64 MB) and built by stormcentral from that
+entry: the static musl binary with the SPA inside,
 under stormd (its API on 9194), exit 78 not restarted, started on
 single-node clusters. The config it is given is the flat shape —
 `listen_addr = "0.0.0.0:9094"`, `data_dir = "/var/lib/stormconsole"` — plus
@@ -357,10 +357,7 @@ host's `/run/stormblock` mounted read-only (stormcos#94, done). Goldens are
 requested with `stormcentral component build stormconsole`; a release
 installs them.
 
-Not yet right on the platform side: the golden's liveness path is
-`/admin/healthz`, which the console does not route — it falls through to
-the app's HTML with a 200, so the probe always passes and detects nothing.
-It must be `/healthz` (stormcos#102, stormcentral#226).
+The registry's health path is `/healthz` (stormcos#102, stormcentral#226).
 
 `Containerfile` + `config/stormd.toml` build the same thing as a container
 on `stormdbase` (stormd on 9080, the console under it, liveness
@@ -379,9 +376,12 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   newest stormcentral built for the component and says so. What a component's image was made from upstream is
   not recorded yet: the page says so (stormcentral-compliance-operations#219). 
   A VM's traffic counters: stormvm#48.
-- **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
-  with no API (stormcos#38); the console offers none.
-- **Scale a workload, cordon/uncordon and drain a node** — not built (#36).
+- **A cluster change reaching a real node** — the Cluster page writes join,
+  promote, demote and drain as `cluster.storm.io` objects (#63, #88), and
+  stormcluster reconciles them. It needs the node lifecycle API to change a
+  node (stormcos#38), so a join there stops at that step and says so.
+- **Scale a workload; cordon/uncordon and drain outside the Cluster page** —
+  not built (#36).
 - **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293); the page's Flows tab says so, and shows
   the counts of what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile. **Another node's flowsdn agent** — its API
   is loopback only, so each node's console shows its own. Endpoint and
