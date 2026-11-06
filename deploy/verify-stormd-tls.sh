@@ -131,9 +131,9 @@ grep -c restart "$W/tlsd.log" | sed 's/^/  restart lines in its log: /' || true
 
 say "API health asks the stormds the same way"
 sleep 6
-H=$(curl -s "$C/api/plugins/health/snapshot"); echo "  $H" | cut -c1-300
-check "$(echo "$H" | j '":%d" % '"$TLS"' in d["answered"]')" True "the TLS stormd answered"
-check "$(echo "$H" | j '":%d" % '"$PLAIN"' in d["answered"]')" True "and the plain one"
+H=$(curl -s "$C/api/plugins/health/snapshot"); echo "  $H" | cut -c150-900
+check "$(echo "$H" | j '":%d" % '"$TLS"' in d["stormds"]')" True "the TLS stormd answered"
+check "$(echo "$H" | j '":%d" % '"$PLAIN"' in d["stormds"]')" True "and the plain one"
 check "$(echo "$H" | grep -c "$STRANGE")" 1 "the stranger's named"
 
 say "stormdrive over TLS"
