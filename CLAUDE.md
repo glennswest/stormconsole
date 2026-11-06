@@ -2171,17 +2171,27 @@ every `/v1` write `admin`. It refuses a credential over plain HTTP from off the 
   probe :5100 (#21). `[node_tls] require` also ends plain reads of the registry
 - The token's grants bound the proxy: with the engine's token, an operator has the registry's admin through it
 
-### A Metrics page over the node's ironprom (#46)
+### A Metrics page over the node's ironprom (#46) ✅ 2026-11-05
 Read from ironprom dacb122 (`ironprom-api`), stormcos `deploy/metrics/ironprom-node.yml` (job names) and each exporter's code. Series
 are in upstream's names: `smartctl_device_temperature`, `smartctl_device_percentage_used`, `container_*` (job `kubelet-cadvisor`),
 `apiserver_request_*`, `etcd_*`/`fastetcd_*`, `kubevirt_vmi_*`, `cilium_drop_count_total`. **No per-volume IO series**:
 `stormblock_nvmeof_io_seconds` has only `op`, so a volume has no series of its own (filed on stormblock).
-- [ ] `crates/plugins/metrics` (name `metrics`), `[ironprom] enabled/url`: targets polled, panels held server-side and never a raw
+- [x] `crates/plugins/metrics` (name `metrics`), `[ironprom] enabled/url`: targets polled, panels held server-side and never a raw
       query, because a free query would read every project's series. Project series carry the viewer's projects
-- [ ] `/targets`, `/charts?level=|entity=`; a chart with nothing says why (target down + its error, no such series)
-- [ ] `#/metrics`: Targets and a tab per level, window; links from a drive, pod and VM
-- [ ] `deploy/verify-metrics.sh`: real ironprom, apiserver and fastetcd, stand-ins in the exporters' shapes, a viewer in one project, Chromium
-- [ ] Docs, changelog, dist; close; golden
+- [x] `/targets`, `/charts?level=|entity=`; a chart with nothing says why (target down + its error, no such series)
+- [x] `#/metrics`: Targets and a tab per level, window; links from a drive, pod and VM
+- [x] `deploy/verify-metrics.sh`: real ironprom, apiserver and fastetcd, stand-ins in the exporters' shapes, a viewer in one project, Chromium
+- [x] Docs, changelog, dist; close; golden
+- Verified with `sc-build deploy/verify-metrics.sh` (0 failed): ironprom from main (dacb122) with stormcos's job names, scraping a real
+  rustkube apiserver (TLS, bearer) and a real fastetcd v1.2.0, stand-ins in the exporters' shapes, one target with nothing there.
+  Targets with the error, down first; a chart for every level through ironprom's real PromQL, including `histogram_quantile`; a value
+  equal to the exporter's; a drive, pod and VM from their own pages; alice sees her project and not the name of the other, a 404
+  on its pod and machine; a hostile serial stays a string; no free query and no proxy; not started idle, its stormd up an error.
+  Chromium as both users; screenshots read
+- Found by the rig: rustkube spells verbs in lower case, so `WATCH|CONNECT` excluded nothing; `get()` turned a refusal into "404 Not Found"
+- Not seen: a real node, stormdrive, kubelet, guest or Cilium (stand-ins, from their code). A `watch` in the series (unit test only: a long
+  watch is not counted while open). A chart over more than a minute or two of data: the rig's history is short, so its 1-hour charts are dots
+- Left: a volume has no series or link (stormblock#536). This node's series only, so another node's drive has no link
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
