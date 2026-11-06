@@ -2229,6 +2229,13 @@ quarantine and metadata; a node's topology and capacity; an enclosure's PSUs, fa
   serial is `file`, deliberately not joined; unit test). A degraded volume live (unit test). A remote node's engine: this node's only
 - Also fixed: the three Svelte warnings #12 shipped in PodEnv and PodTerminal
 
+### Each stormd over TLS: #130 is #49's work (#130) ✅ 2026-11-05
+#130 asks for `[fleet] ca_file/cert_file/key_file`. #49 delivered that as `[node_tls]`, one setting for the fleet, node page, API health, stormdrive and stormstorage, with
+stormcos told the keys on stormcos#371. A second set of keys for the same pair would only let them disagree, so no code. Every stormd read and action goes through `Dial` (read
+from the code); `not_started` only opens a TCP connection, which says nothing and sends nothing.
+- [x] `verify-stormd-tls.sh` rerun on stormd ac1a7fb; it now proves the action by the process's pid, where it had only a 200
+- Left: stormcos#371 turning it on (`[node_tls]` in the console's config, `build.stormd_api_tls`), not done there yet
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

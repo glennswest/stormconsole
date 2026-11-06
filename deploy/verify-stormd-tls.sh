@@ -127,8 +127,13 @@ check "$(grep -c "a stormd was not read" "$W/consoleA.log")" 1 "said once in the
 
 say "an action through the proxy reaches the TLS stormd"
 ACT=$(comps | j '[a["path"] for c in d if c["id"].startswith("fleet:svc:tlsd") and c["kind"]=="process" for a in c.get("actions",[]) if "restart" in a["path"]][0]'); echo "  $ACT"
+# The stormd's own word, over its TLS with the pair: a 200 alone says the request arrived, not that anything restarted.
+PROC() { curl -s --cacert "$W/nodeca.crt" --cert "$W/console.crt" --key "$W/console.key" "https://127.0.0.1:$TLS/api/v1/processes/sleeper"; }
+PID0=$(PROC | j 'd["pid"]'); echo "  the process before: pid $PID0"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$C$ACT")" 200 "restart: 200"
-grep -c restart "$W/tlsd.log" | sed 's/^/  restart lines in its log: /' || true
+for _ in $(seq 20); do PID1=$(PROC | j 'd["pid"]'); [ "$PID1" != "$PID0" ] && [ "$PID1" != None ] && break; sleep 0.5; done
+echo "  the process after: pid $PID1"
+check "$([ "$PID1" != "$PID0" ] && [ "$PID1" != None ] && echo restarted || echo "same: $PID1")" restarted "the stormd's process really restarted"
 
 say "API health asks the stormds the same way"
 sleep 6

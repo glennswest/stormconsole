@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Each stormd over TLS (#130)
+- **docs:** `[node_tls]` (#49) is what #130 asks for; there are no separate `[fleet]` keys. `verify-stormd-tls.sh` now proves an action by the process's pid changing, not only a 200.
+
 ### 2026-11-05 — A Storage page over the storage.storm.io objects (#96)
 - **feat:** Storage → Overview (`#/storage`): volumes with their legs and health, slabs, drives with the engine's and stormdrive's views joined, nodes with their
   topology and capacity, enclosures with PSUs, fans and heat. Read-only. An engine or node that does not answer is said, not shown as empty.
