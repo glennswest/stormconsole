@@ -1165,6 +1165,20 @@ from either cillium or flowsdn". One table, with the source only a small "from:"
 - **Not every mention is gone.** The VM page's sentences about a machine outside policy, and the
   YAML and its Create entries for CiliumNetworkPolicy, still say the API's word.
 
+### A pod's Terminal and Environment (#12)
+
+**Terminal.** `WS /api/plugins/k8s/pods/{ns}/{name}/exec?container=&command=` (`exec.rs`) relays to the apiserver's `pods/exec` in
+`v4.channel.k8s.io`, frames untouched, and the page draws them with xterm.js, loaded when a terminal is opened. **It goes as the person.**
+The pod must be one they may see; their console role must be operator or admin, asked here because a GET is past the write gate; and the
+apiserver must allow them `create pods/exec`. The console's own credential is never used, so a sign-in with no kubernetes identity is
+refused and the page says why. Only stdin and resize frames go on from the browser. A refusal arrives in the words it came in, as a
+channel-3 `Status`, because the upgrade to the browser is already done: reqwest makes the upstream upgrade, so a refused one still has
+a body. Opening one is in the audit as a console; what is typed is not recorded. Default command: bash, else sh, with `TERM=xterm`.
+
+**Environment.** `GET /pods/{ns}/{name}/env?container=` (`env.rs`) says what the spec comes to: literals with `$(VAR)` expanded, field and
+resource references, ConfigMap values read as the viewer, `envFrom` expanded, in the kubelet's order. **A Secret's value is never read out**,
+nor into a `$(VAR)`: a key is there or not. The image's own `ENV` and the node's Service variables are not in the spec, and the tab says so.
+
 ### A pod and a VM at describe depth (#167)
 
 Owner: "match the info that docker/podman has, oc describe pod xyzzy gives lots of info".
@@ -1988,7 +2002,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
-| stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #4 Hubble flows and agent metrics (unblocked); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

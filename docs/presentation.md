@@ -157,7 +157,6 @@ Every key and default: README §Configuration.
 
 - Scale a workload; cordon, uncordon, drain a node — **#36**
 - Fleet lifecycle: join, promote, demote, drain — no API (**stormcos#38**)
-- A pod's terminal and environment — exec waits on the kubelet (**rustkube-node#56**, **#12**)
 - Cilium flows and Hubble — shipped in the image, not read yet (**#4**)
 - Import a VM disk by URL — the registry serves it (**#44**)
 - VM metrics over time — cadvisor not wired (**#14**)

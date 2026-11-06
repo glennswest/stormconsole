@@ -23,10 +23,12 @@
   import CopyButton from '../components/CopyButton.svelte'
   import PodLogs from './PodLogs.svelte'
   import PodStats from './PodStats.svelte'
+  import PodEnv from './PodEnv.svelte'
+  import PodTerminal from './PodTerminal.svelte'
 
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
-  const TABS = ['Overview', 'Stats', 'Network', 'Logs', 'Events', 'YAML']
+  const TABS = ['Overview', 'Stats', 'Network', 'Environment', 'Logs', 'Terminal', 'Events', 'YAML']
   let tab = $state(TABS.includes(route.current.query.get('tab')) ? route.current.query.get('tab') : 'Overview')
   // One click to a container's logs, or its previous run (#167).
   let logContainer = $state(route.current.query.get('container') || '')
@@ -717,6 +719,10 @@
     {:else if tab === 'Stats'}
       <p class="dim"><a href={`#/metrics?entity=pod&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its series in ironprom, over longer windows</a></p>
       <PodStats {base} containers={pod.containers} />
+    {:else if tab === 'Environment'}
+      <PodEnv {base} containers={pod.containers} />
+    {:else if tab === 'Terminal'}
+      <PodTerminal {ns} {name} containers={pod.containers} refused={pod.terminal?.refused || ''} />
     {:else if tab === 'Logs'}
       {#key logContainer + logSource}
         <PodLogs {ns} {name} containers={pod.containers} keep={pod.keptRuns} initial={logContainer} initialSource={logSource} />

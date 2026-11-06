@@ -97,6 +97,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-vm-policy.sh` | machines outside policy (#51): NAT, host bridge and no-endpoint machines named in the isolate answer, the project card, the VM row and page — real fastetcd + rustkube, Chromium |
 | `verify-vm-network-edit.sh` | the VM settings network edit (#50): stopped, running and per-interface-pinned machines — the definition read back from the apiserver, the form and pending, the Settings tab in Chromium — real fastetcd + rustkube |
 | `verify-kube-tls.sh` | the console's apiserver credential (#33): rustkube over TLS with an openssl CA and anonymous off — `ca_file` + `token_file`, a stranger CA, a CA minted late, an expired token renewed in place, skip-verify, system roots, config contradictions |
+| `verify-pod-terminal.sh` | a pod's Terminal and Environment: a real apiserver and console, a stand-in kubelet with a real pty in rustkube-node's protocol, users by role and by RBAC; Chromium (#12) |
 | `verify-metrics.sh` | a real ironprom, apiserver and fastetcd, stand-ins in the exporters' shapes: targets, a down target's error, charts per level and per object, a viewer in one project; Chromium (#46) |
 | `verify-registry-auth.sh` | the registry with auth on, plain and over TLS: no credential, a robot, rotation, the engine's token, a credential held back from plain HTTP off the machine, an untrusted certificate; the Images page in Chromium (#35) |
 | `verify-images.sh` | Volumes vs Images — stormblock v18.1.0 + sbregistry v0.23.0 from their tags, and forge's engine read-only; Images, Volumes and Unattached in Chromium |
@@ -371,8 +372,7 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   not. The console keeps the last 5 runs per container itself, in memory.
   Which image a container was cloned from comes from the kubelet (#75); without its word the page shows the
   newest stormcentral built for the component and says so. What a component's image was made from upstream is
-  not recorded yet: the page says so (stormcentral-compliance-operations#219). A **terminal** waits
-  on the kubelet answering exec (rustkube-node#56); **Environment** (#12).
+  not recorded yet: the page says so (stormcentral-compliance-operations#219). 
   A VM's traffic counters: stormvm#48.
 - **Fleet lifecycle** — join, promote, demote, drain are a CLI on the node
   with no API (stormcos#38); the console offers none.

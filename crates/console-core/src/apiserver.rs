@@ -132,6 +132,11 @@ impl Conn {
         self.tls.read().unwrap_or_else(|e| e.into_inner()).client.clone()
     }
 
+    /// A client for an upgrade (#12), which HTTP/2 does not have. Checks the apiserver as [`http`] does.
+    pub fn http1(&self) -> Result<reqwest::Client, String> {
+        with_trust(builder(None).http1_only(), &self.trust)
+    }
+
     /// What is wrong with the token or CA file, if anything — for the card.
     pub fn error(&self) -> Option<String> {
         let _ = self.token();
@@ -197,7 +202,10 @@ fn closed(timeout: Option<Duration>) -> reqwest::Client {
 
 /// The client a trust setting describes.
 pub fn client(trust: &Trust, timeout: Option<Duration>) -> Result<reqwest::Client, String> {
-    let b = builder(timeout);
+    with_trust(builder(timeout), trust)
+}
+
+fn with_trust(b: reqwest::ClientBuilder, trust: &Trust) -> Result<reqwest::Client, String> {
     let b = match trust {
         Trust::Unverified => b.danger_accept_invalid_certs(true),
         Trust::System => b,

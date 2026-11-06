@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — A pod's Terminal and Environment (#12)
+- **feat:** a Terminal tab on the pod page: a shell in a container, as you. It needs the operator role here and `create pods/exec` at the
+  apiserver, and never uses the console's own credential. Opening one is in the audit; what is typed is not. Adds xterm.js 5.5.0, MIT,
+  loaded when a terminal is opened.
+- **feat:** an Environment tab: what a container's spec comes to, with references resolved. A Secret's value is never shown.
+
 ### 2026-11-05 — A Metrics page over the node's ironprom (#46)
 - **feat:** Observe → Metrics, `[ironprom] enabled/url`. Targets: every job with `up` and its last error. Charts per level: drives,
   volumes, containers, API server, datastore, VMs, network. Links from a drive, a pod and a VM to their own series.

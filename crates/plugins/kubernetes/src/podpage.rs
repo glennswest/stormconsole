@@ -35,7 +35,7 @@ fn not_found(ns: &str, name: &str) -> Response {
     (StatusCode::NOT_FOUND, Json(json!({"error": format!("no pod {ns}/{name}")}))).into_response()
 }
 
-async fn the_pod(inner: &Inner, viewer: &Viewer, ns: &str, name: &str) -> Result<Value, Response> {
+pub(crate) async fn the_pod(inner: &Inner, viewer: &Viewer, ns: &str, name: &str) -> Result<Value, Response> {
     if let Some(refusal) = refuse_hidden(inner, viewer, ns).await {
         return Err(refusal);
     }
@@ -90,6 +90,7 @@ pub async fn detail(
         }
     }
     d["keptRuns"] = json!(crate::logruns::KEEP);
+    d["terminal"] = json!({"refused": crate::exec::refusal(viewer.may_write(), viewer.token.is_some())});
 
     // What the probes were last seen doing, from this pod's events (#124).
     let events = pod_events(&inner, &ns, &name).await;

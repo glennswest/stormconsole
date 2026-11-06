@@ -14,6 +14,8 @@ pub mod authz;
 pub mod cache;
 pub mod client;
 mod components;
+mod env;
+mod exec;
 pub mod network;
 mod netview;
 pub mod logruns;
@@ -222,6 +224,8 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/pods/{ns}/{name}", get(podpage::detail))
             .route("/pods/{ns}/{name}/log", get(podpage::log))
+            .route("/pods/{ns}/{name}/env", get(env::env))
+            .route("/pods/{ns}/{name}/exec", get(exec::exec))
             .route("/pods/{ns}/{name}/traffic", get(podpage::traffic))
             .route("/pods/{ns}/{name}/stats", get(podpage::stats))
             .route("/pods/{ns}/{name}/events", get(podpage::events))

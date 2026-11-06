@@ -30,7 +30,9 @@ pub struct Act {
 /// The act a request is, or `None` for a read.
 pub fn act(method: &Method, path: &str, upgrade: bool) -> Option<Act> {
     let object = path.strip_prefix("/api/plugins/").or_else(|| path.strip_prefix("/api/v1/")).unwrap_or(path).to_string();
-    let door = |o: &str| o.starts_with("ipmi/console/") || (o.starts_with("vm/console/") && (o.ends_with("/serial") || o.ends_with("/vnc")));
+    let door = |o: &str| o.starts_with("ipmi/console/") || (o.starts_with("vm/console/") && (o.ends_with("/serial") || o.ends_with("/vnc")))
+        // A shell in a container (#12).
+        || (o.starts_with("k8s/pods/") && o.ends_with("/exec"));
     if upgrade && door(&object) {
         return Some(Act { capability: "console", object });
     }
@@ -168,6 +170,7 @@ mod tests {
         assert_eq!(door("/api/plugins/vm/console/shop/vm1/serial"), Some("console"));
         assert_eq!(door("/api/plugins/vm/console/shop/vm1/vnc"), Some("console"));
         assert_eq!(door("/api/plugins/ipmi/console/ns/host"), Some("console"));
+        assert_eq!(door("/api/plugins/k8s/pods/shop/web/exec"), Some("console"));
         assert_eq!(door("/api/v1/ws/components"), None, "the feed's socket is a read");
         assert_eq!(cap(Method::DELETE, "/api/plugins/k8s/raw/api/v1/namespaces/a/pods/b"), Some("delete"));
         assert_eq!(cap(Method::POST, "/api/plugins/k8s/pods/a/b/delete"), Some("delete"));
