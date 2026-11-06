@@ -51,8 +51,9 @@ walk(`metrics (${PHASE})`, async (t) => {
   t.check(await t.until(async () => (await page.locator('section.chart svg').count()) === 1), 'a longer window')
 
   // From the objects.
-  t.check(await t.open(page, '#/drives', /sda|ZC100/), 'the drives page')
-  await page.locator('tr, button, [role=button]', { hasText: 'sda' }).first().click()
+  t.check(await t.open(page, '#/drives', /drive/), 'the drives page')
+  t.check(await t.until(async () => (await page.locator('button.bay').count()) > 0), 'with a drive')
+  await page.locator('button.bay').first().click()
   const drive = page.locator('section.picked a.metrics')
   t.check(await t.until(() => drive.isVisible()), 'a drive links to its series')
   await drive.click()

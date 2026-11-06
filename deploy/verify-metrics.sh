@@ -19,13 +19,12 @@ j() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1
 HERE=$(pwd)
 PORT=26503; KAPI=https://127.0.0.1:$PORT
 IP=19091; PROM=http://127.0.0.1:$IP
-P=19203; C=http://127.0.0.1:19094
+C=http://127.0.0.1:19094
 
 say "the SPA and the console from this commit"
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q --locked -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
-unset P
 
 say "fastetcd, rustkube's apiserver and ironprom"
 curl -sfL "https://github.com/glennswest/fastetcd/releases/download/v1.2.0/fastetcd-v1.2.0-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
@@ -74,6 +73,7 @@ k POST /apis/kubevirt.io/v1/namespaces/shop/virtualmachines '{"apiVersion":"kube
 
 say "the stand-ins, and ironprom with stormcos's job names"
 python3 "$HERE/deploy/metrics.standins.py" > "$W/standins.log" 2>&1 &
+STANDINS=$!
 for _ in $(seq 40); do curl -sf -o /dev/null http://127.0.0.1:19205/metrics && break; sleep 0.25; done
 job() { printf '  - job_name: %s\n    static_configs:\n      - targets: ["%s"]\n' "$1" "$2"; }
 { printf 'global:\n  scrape_interval: 2s\n  scrape_timeout: 1s\nscrape_configs:\n'
@@ -118,7 +118,6 @@ holds "$R" "'ok'" "the card is not an error for a target that does not serve"
 holds "$R" "down: stormlb" "and names it"
 
 say "charts per level"
-series() { j 'sorted(s["name"] for c in d["charts"] if c["id"]==sys.argv[2] for s in c["series"])' ; }
 lines_of() { g "/charts?level=$1&window=900" "${3:-root}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sorted(s['name'] for c in d['charts'] if c['id']=='$2' for s in c['series'] if any(p['v'] is not None for p in s['points'])))"; }
 until_lines() { for _ in $(seq 45); do L=$(lines_of "$1" "$2" "${3:-root}"); [ "$L" != "[]" ] && break; sleep 2; done; echo "$L"; }
 check "$(until_lines drives temperature)" "['sda / ZC100', 'sdb / ZC101']" "drive temperature"
@@ -139,7 +138,6 @@ check "$(code '/charts?level=nothing')" 400 "a level that is not one"
 
 say "an empty chart says why"
 holds "$(g '/charts?level=datastore&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="puts"][0]')" "fastetcd is up, and served none" "a target up with no such series (fastetcd v1.2.0 has no put counter)"
-kill -STOP $(pgrep -f metrics.standins.py) 2>/dev/null || true
 
 say "per object, and the viewer's projects"
 ent() { g "/charts?$1&window=900" "${3:-root}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sorted(s['name'] for c in d['charts'] if c['id']=='$2' for s in c['series'] if any(p['v'] is not None for p in s['points'])))"; }
@@ -159,14 +157,13 @@ check "$(ent 'entity=pod&ns=shop&name=web' cpu alice)" "['agent', 'app']" "alice
 check "$(code '/charts?entity=pod&ns=secret&name=vault' alice)" 404 "alice: another project's pod is not there"
 check "$(code '/charts?entity=vm&ns=secret&name=vm2' alice)" 404 "alice: nor its machine"
 check "$(g '/charts?level=containers&window=900' alice | grep -c vault || true)" 0 "the other project's name is not in her answer"
-kill -CONT $(pgrep -f metrics.standins.py) 2>/dev/null || true
 
 say "the page"
 BR=0; env PHASE=root "$HERE/deploy/browser/run.sh" "$W" metrics.cjs "$C" || BR=1; check "$BR" 0 "the walk, as an administrator"
 BR=0; env PHASE=alice "$HERE/deploy/browser/run.sh" "$W" metrics.cjs "$C" || BR=1; check "$BR" 0 "the walk, as alice"
 
 say "the target goes down, then ironprom"
-kill $(pgrep -f metrics.standins.py) 2>/dev/null || true
+kill "$STANDINS"
 for _ in $(seq 30); do D=$(g '/charts?level=vms&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="cpu"][0]'); T=$(g /targets | j '[x["up"] for x in d["jobs"] if x["job"]=="stormvm"]'); [ "$T" = "[0]" ] && break; sleep 2; done
 check "$T" "[0]" "ironprom sees it go"
 kill "$PROMPID"; wait "$PROMPID" 2>/dev/null || true
