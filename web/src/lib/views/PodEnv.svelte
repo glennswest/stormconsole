@@ -50,8 +50,9 @@
 </section>
 
 <style>
+  h2 { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin: 0 0 10px; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px var(--sc-row-px); }
-  h2 select { margin-left: 8px; font-size: var(--sc-t-body); font-weight: 400; }
+  h2 select { margin-left: 8px; font-size: var(--sc-t-body); font-weight: 400; text-transform: none; letter-spacing: 0; }
   table.env { width: 100%; border-collapse: collapse; font-size: var(--sc-t-body); }
   table.env th { text-align: left; color: var(--text-faint); font-size: var(--sc-t-meta); font-weight: 600; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); }
   table.env td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--sc-hairline); vertical-align: top; }

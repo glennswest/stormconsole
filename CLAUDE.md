@@ -82,10 +82,7 @@ Containerfile needed on that path.
       action through the console worked and the watch removed the pod from
       the feed. rustkube emits no events without controller-manager — the
       events view shows an honest empty list.
-- [ ] Pod logs — served upstream: rustkube v0.8.1 `pods/{name}/log`
-      (rustkube#55), streamed by rustkube-node v0.3.0 (#34). Not shown here
-      yet: there is no pod page (#12). A terminal waits on the kubelet
-      serving exec (rustkube-node#56)
+- [x] Pod logs and a terminal: the pod page (#69, #12)
 
 ### Phase 3 — logs plugin ✅ complete 2026-08-28
 - [x] Collector: socket2 multicast join on `239.255.42.1:5514`, lenient

@@ -139,6 +139,7 @@
 </section>
 
 <style>
+  h2 { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin: 0 0 10px; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px var(--sc-row-px); }
   .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
   .bar label { display: flex; flex-direction: column; gap: 3px; font-size: var(--sc-t-meta); color: var(--text-dim); }
