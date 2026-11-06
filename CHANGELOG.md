@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Import a VM disk by URL (#44)
+- **feat:** Create → Import a disk, on Images and Virtual machines: a qcow2, raw, vmdk, ova or iso by URL, with an optional
+  sha256. The registry fetches and verifies it and the engine seals it; progress shows on Images → Catalog, and a machine's
+  root-disk list offers it once sealed.
+
 ### 2026-11-05 — Who did what: an audit (#15)
 - **feat:** every console opened, sign-in and change, allowed or refused, is recorded with who, from where and how it
   ended, in `<data_dir>/audit.jsonl` and the log. `#/audit` (Observe → Audit) and `GET /api/v1/console/audit` are an

@@ -9,6 +9,7 @@
 
 pub mod catalog;
 pub mod holdings;
+mod media;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -180,6 +181,37 @@ async fn holdings_route(
     .into_response()
 }
 
+/// `POST /media` (#44): bring a disk in by URL. The registry fetches it, verifies it, and the engine
+/// imports it into a sealed image, which a machine's root disk is then made from. A route rather than
+/// the proxy, because the form asks for a name and the registry for a repository.
+async fn media_route(
+    axum::extract::State(inner): axum::extract::State<Arc<Inner>>,
+    axum::Json(req): axum::Json<media::Import>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    let body = match media::request(&req) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"error": e}))).into_response(),
+    };
+    let resp = inner.client.post(format!("{}/v1/media", inner.base)).json(&body).timeout(Duration::from_secs(30)).send().await;
+    match resp {
+        Ok(r) => {
+            let code = StatusCode::from_u16(r.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            let said: Value = r.json().await.unwrap_or(Value::Null);
+            if code.is_success() {
+                let name = body["name"].as_str().unwrap_or("");
+                return (code, axum::Json(serde_json::json!({
+                    "message": format!("importing {name}: its progress is on Images → Catalog, and a machine can use it once it is sealed"),
+                    "job": said.get("job"),
+                }))).into_response();
+            }
+            (code, axum::Json(serde_json::json!({"error": media::refusal(code.as_u16(), &said)}))).into_response()
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, axum::Json(serde_json::json!({"error": format!("the registry did not answer: {e}")}))).into_response(),
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct OriginQuery {
     name: String,
@@ -258,6 +290,20 @@ impl ConsolePlugin for SbregistryPlugin {
             .describe("Seal a registry image — sealed and immutable, what containers and instances are made from — from an image pushed to this registry")
             .at(&["#/grid?id=reg:registry&rel=goldens"]),
             Creator::form(
+                "reg:media",
+                "Import a disk",
+                "/api/plugins/reg/media",
+                vec![
+                    Field::text("url", "URL").hint("http or https: a qcow2, raw, vmdk, ova or iso image").required(),
+                    Field::text("name", "Name").hint("what it is called in the registry; from the URL's file name if blank"),
+                    Field::text("sha256", "sha256").hint("optional: the import fails if the bytes do not match"),
+                    Field::select("format", "Format", &["detect", "qcow2", "raw", "vmdk", "ova", "iso"])
+                        .hint("detect reads the image's own bytes, and a format that contradicts them is refused"),
+                ],
+            )
+            .describe("A disk from elsewhere, as a registry image a virtual machine can use. It is fetched here once and verified")
+            .at(&["#/images", "#/vms"]),
+            Creator::form(
                 "reg:clone",
                 "Volume from an image",
                 "/api/plugins/reg/proxy/v1/clones",
@@ -275,6 +321,7 @@ impl ConsolePlugin for SbregistryPlugin {
         axum::Router::new()
             .route("/holdings", axum::routing::get(holdings_route))
             .route("/origin", axum::routing::get(origin_route))
+            .route("/media", axum::routing::post(media_route))
             .with_state(self.inner.clone())
             .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.base.clone()))
     }

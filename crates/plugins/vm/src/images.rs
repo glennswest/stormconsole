@@ -230,6 +230,28 @@ struct NodeImage {
 /// in which case the local-copy question is skipped and everything the fleet
 /// has goldened is offered. That is the honest answer: without a node there
 /// is no such thing as "already here".
+/// Disks imported through the registry (#44): sealed media the image operator did not make.
+/// Offered under what they were imported as; the value is the volume, as for every other choice.
+pub async fn add_imported(cat: &mut Catalogue, http: &reqwest::Client, registry: &str) {
+    let url = format!("{}/v1/catalog/images", registry.trim_end_matches('/'));
+    let Ok(r) = http.get(&url).timeout(std::time::Duration::from_secs(5)).send().await else { return };
+    let Ok(v) = r.json::<serde_json::Value>().await else { return };
+    let items = v.get("items").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
+    merge_imported(cat, &items);
+}
+
+fn merge_imported(cat: &mut Catalogue, items: &[serde_json::Value]) {
+    for i in items {
+        let s = |k: &str| i.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
+        let sealed = i.get("sealed").and_then(serde_json::Value::as_bool) == Some(true);
+        if s("kind") != "media" || !sealed || s("name").is_empty() || cat.choices.iter().any(|c| c.value == s("name")) {
+            continue;
+        }
+        let called = if s("source").is_empty() { s("name") } else { s("source") };
+        cat.choices.push(Choice { label: format!("{called} (imported)"), value: s("name").to_string() });
+    }
+}
+
 pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue {
     let base = base.trim_end_matches('/');
     let mut choices: Vec<Choice> = Vec::new();
@@ -542,6 +564,20 @@ mod tests {
         assert_eq!(choice.value, "media-846574c8a97c", "the value is a volume");
         assert_eq!(choice.label, "fedora-43-x86_64", "the label is readable");
         assert!(!is_reference(&choice.value), "a volume is not a catalogue reference");
+    }
+
+    #[test]
+    fn an_imported_disk_is_offered_once_it_is_sealed() {
+        let mut cat = Catalogue { choices: vec![Choice { value: "media-aaa".into(), label: "fedora-43".into() }], note: String::new() };
+        merge_imported(&mut cat, &[
+            serde_json::json!({"name": "media-bbb", "kind": "media", "sealed": true, "source": "media/mine:latest"}),
+            serde_json::json!({"name": "media-ccc", "kind": "media", "sealed": false}),
+            serde_json::json!({"name": "media-aaa", "kind": "media", "sealed": true, "source": "x:y"}),
+            serde_json::json!({"name": "golden-a-bbbbbbbbbbbb", "kind": "component", "sealed": true}),
+            serde_json::json!({"name": "media-ddd", "kind": "media", "sealed": true}),
+        ]);
+        let got: Vec<_> = cat.choices.iter().map(|c| (c.value.as_str(), c.label.as_str())).collect();
+        assert_eq!(got, [("media-aaa", "fedora-43"), ("media-bbb", "media/mine:latest (imported)"), ("media-ddd", "media-ddd (imported)")]);
     }
 
     #[test]

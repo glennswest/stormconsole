@@ -1952,6 +1952,12 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### Import a VM disk by URL (#44)
+sbregistry `POST /v1/media` with `hold: true` answers 202 and `/v1/media/jobs` has the progress, which the catalog already
+merges (#19). What is missing is the form and the root-disk list.
+- [x] `reg` plugin `POST /media`; `vm` `images::add_imported`
+- [ ] `deploy/verify-disk-import.sh`: real engine and registry, raw and qcow2, Chromium; dist; golden
+
 ### Login, users and roles: what is left of #15
 Steps 1 and 2 are done (7408a47). Since then: the per-node bearer as the escape hatch (#102), certificate identity (#127),
 install-token sign-in (#66). Left: the audit (no decision needed) and users without a file (the owner's decision).

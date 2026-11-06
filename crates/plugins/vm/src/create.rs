@@ -20,13 +20,9 @@
 //! machine to a node called `""` and it would never run, which is the same
 //! shape of bug as `CHANGE-ME` and harder to see.
 //!
-//! **Import.** Bringing an existing qcow2 or raw disk in is the thing
-//! that makes replacing a hypervisor a migration rather than a rebuild,
-//! and it is not here yet. The registry's media path it needed shipped
-//! (stormblock-registry#5, sbregistry v0.19.0: `POST /v1/media` fetches a
-//! raw/qcow2/vmdk/ova by URL into a sealed golden); offering it is #44.
-//! Until then a VM's root disk is a golden that already exists, and the
-//! form says so rather than offering a file picker.
+//! **Import.** Bringing an existing qcow2 or raw disk in is what makes replacing a hypervisor a
+//! migration rather than a rebuild. Create → Import a disk (#44, the registry plugin) fetches one by
+//! URL into a sealed image, and [`images::add_imported`] offers it here as a root disk.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

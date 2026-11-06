@@ -287,7 +287,8 @@ async fn main() {
             namespace_access.clone(),
             image_operator,
         )
-        .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))));
+        .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))
+        .with_registry(config.sbregistry.enabled.then(|| config.sbregistry_url()))));
     }
     // This node's pod network on the flowsdn edition (#83): the agent's
     // loopback API, endpoints scoped by namespace like the pods they are.

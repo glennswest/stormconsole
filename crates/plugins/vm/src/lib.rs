@@ -131,6 +131,8 @@ struct Inner {
     /// Polled rather than asked on demand: `creators()` is synchronous, and
     /// a create form must not wait on an upstream that may be slow or gone.
     image_operator: Option<String>,
+    /// The node's registry, for imported disks (#44).
+    registry: Option<String>,
     images: images::Cache,
     /// Where each user's SSH-key Secret lives (#26); copies go to the
     /// namespaces their machines are in, because `accessCredentials` can
@@ -150,6 +152,15 @@ impl VmPlugin {
         access: Option<Arc<NamespaceAccess>>,
     ) -> Self {
         Self::with_images(conn, stormvm, access, None)
+    }
+
+    /// Where the node's registry answers, so an imported disk (#44) is offered as a root disk.
+    /// Right after construction.
+    pub fn with_registry(mut self, registry: Option<String>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.registry = registry;
+        }
+        self
     }
 
     /// The same, naming where `vmcloud-image-operator` answers.
@@ -174,6 +185,7 @@ impl VmPlugin {
                 http: reqwest::Client::new(),
                 access,
                 image_operator,
+                registry: None,
                 images: images::Cache::new(),
                 keys_ns: "default".into(),
             }),
@@ -392,7 +404,8 @@ impl ConsolePlugin for VmPlugin {
         // operator). A console that offered a dropdown built once at startup
         // would never show an image goldened five minutes ago, which is
         // exactly when somebody goes looking for it.
-        if let Some(base) = self.inner.image_operator.clone() {
+        if self.inner.image_operator.is_some() || self.inner.registry.is_some() {
+            let base = self.inner.image_operator.clone();
             let inner = self.inner.clone();
             let token = shutdown.clone();
             tokio::spawn(async move {
@@ -402,7 +415,13 @@ impl ConsolePlugin for VmPlugin {
                     // the form rather than a property of the console. The
                     // "already on this node" grouping needs a node, so it is
                     // answered per request by the images route below.
-                    let cat = images::fetch(&inner.http, &base, "").await;
+                    let mut cat = match &base {
+                        Some(base) => images::fetch(&inner.http, base, "").await,
+                        None => Default::default(),
+                    };
+                    if let Some(reg) = &inner.registry {
+                        images::add_imported(&mut cat, &inner.http, reg).await;
+                    }
                     let got = !cat.choices.is_empty();
                     inner.images.put(cat);
                     // Until the first good answer, ask again in seconds.
