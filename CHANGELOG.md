@@ -5,6 +5,7 @@
 
 ### 2026-11-06 — Docs: who does join and drain, the beacon, the health path (#65)
 - **docs:** join, promote, demote and drain are the Cluster page's `cluster.storm.io` objects, not "a CLI with no API"; a change reaching a real node waits on stormcos#38. The capability beacon is done (stormcos#26). The golden is built by stormcentral from its registry, whose health path is `/healthz` (stormcos#102, stormcentral#226 closed), so the "not yet right" notes are gone. The deck's status and planned list are brought up to date.
+- **docs:** every slide fits its frame, checked by `deploy/check-slides.sh` (copied from stormcentral); five overflowed (#239).
 
 ### 2026-11-06 — The node page's ports (#68)
 - **fix:** the node page reads stormimds's stormd (8269), ironprom's (9191) and stormcluster's own feed (9102). It looked for nfsop's stormd at 9198, where nothing is; it is at 9189. A test now holds the page's list and `[fleet] stormd_ports`' default together.

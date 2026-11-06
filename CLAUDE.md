@@ -2296,7 +2296,8 @@ issue's "stormcluster's API on :9102" has moved on too: the API is `cluster.stor
 the Cluster page writes (#63, #88). stormcos#38 stays open for the node lifecycle API that lets a member change a node. stormcos#26
 closed 10-01. The health path is fixed: stormcos#102 and stormcentral#226 are closed and the registry has `health = "/healthz"`, so the
 docs' "not yet right" goes rather than gaining a reference. stormd no longer probes from `health` (stormcentral#607).
-- [ ] README, architecture, presentation, the fleet crate's note, this file; the deck's stale status; `deploy/check-slides.sh`
+- [x] README, architecture, presentation, the fleet crate's note, this file; the deck's stale status; `deploy/check-slides.sh`
+- [ ] The deck fits: 5 of 11 slides overflowed, which nothing could measure before (#239)
 - [ ] sc-build; close; golden
 
 ### Phase 4 — fleet/nodes plugin

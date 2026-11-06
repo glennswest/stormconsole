@@ -13,7 +13,7 @@ One Rust binary, the browser app inside it, on **:9094**.
 It shows a StormCOS cluster as it is, and acts on it through each
 component's own API.
 
-v0.21.0 · `npx @marp-team/marp-cli docs/presentation.md`
+v0.32.0 · `npx @marp-team/marp-cli docs/presentation.md`
 
 ---
 
@@ -29,6 +29,8 @@ machines, the datastore, the fleet and its logs, with the day-2 actions
 each component already offers. **Not an installer.**
 
 ---
+
+<style scoped>section { font-size: 24px; }</style>
 
 ## Where it sits
 
@@ -71,6 +73,8 @@ them.
 
 ---
 
+<style scoped>section { font-size: 26px; }</style>
+
 ## What it does today — workloads
 
 - **Projects first.** A project is a namespace: one page, one word, the
@@ -88,6 +92,8 @@ them.
 
 ---
 
+<style scoped>section { font-size: 24px; }</style>
+
 ## What it does today — storage and hardware
 
 - **Images → Catalog.** The registry's goldens, blanks and media, grouped by
@@ -96,15 +102,15 @@ them.
   its consumer; Unattached apart; delete disabled while in use.
 - **Drives, at rack scale.** Every node's drives as a map: each shelf bay
   by bay, coloured by health, temperature, wear or usage; grouped by shelf,
-  node or rack; failing / degraded / rebuilding / draining / full filters;
-  totals to EB. Each drive: what is left, its slabs, the volumes on it and
-  who uses them, a drain in progress; pools per node, role and tier.
-  Checked at 1,600 drives.
+  node or rack, with filters. Each drive: its slabs, the volumes on it and
+  who uses them. Checked at 1,600 drives.
 - **Machines.** Bare metal by service tag from stormipmi: BMC, power, the
   release each boots, default image, adopt, SOL console — admin-only writes.
 - **Datastore.** fastetcd's revision, size vs quota, alarms, leader.
 
 ---
+
+<style scoped>section { font-size: 26px; }</style>
 
 ## What it does today — the fleet and the chrome
 
@@ -118,9 +124,11 @@ them.
   admin sections.
 
 Each of these has a live check: `sc-build deploy/verify-*.sh` stands the
-real upstreams up on dev.
+real upstreams up on a build VM.
 
 ---
+
+<style scoped>section { font-size: 23px; }</style>
 
 ## Interfaces
 
