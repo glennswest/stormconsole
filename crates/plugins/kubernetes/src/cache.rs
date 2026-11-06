@@ -246,6 +246,7 @@ impl Store {
             synced: RwLock::new(HashMap::new()),
             absent: RwLock::new(HashMap::new()),
             kinds,
+            build: std::sync::OnceLock::new(),
         }
     }
 }
