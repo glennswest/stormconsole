@@ -91,7 +91,7 @@ for c in full reads signed; do "$BIN" --config "$W/$c.toml" > "$W/$c.log" 2>&1 &
 for u in $C $R $S; do for _ in $(seq 60); do curl -sf -o /dev/null "$u/healthz" && break; sleep 0.5; done; done
 curl -sf -c "$W/dana.jar" -H 'content-type: application/json' -d '{"username":"dana","password":"pw"}' "$S/api/v1/auth/login" >/dev/null
 K=/api/plugins/k8s
-acts() { curl -s $3 "$1/api/v1/components" | j "[a['id'] for c in d if c['id']=='$2' for a in c['actions']]"; }
+acts() { curl -s ${3:-} "$1/api/v1/components" | j "[a['id'] for c in d if c['id']=='$2' for a in c['actions']]"; }
 for u in $C $R; do for _ in $(seq 60); do [ "$(curl -s "$u/api/v1/components" | j "any(c['id']=='vm:machine:shop/vm1' for c in d)")" = True ] && break; sleep 1; done; done
 for _ in $(seq 60); do [ "$(curl -s -b "$W/dana.jar" "$S/api/v1/components" | j "any(c['id']=='k8s:pod:shop/web-0' for c in d)")" = True ] && break; sleep 1; done
 code() { curl -s -o "$W/out" -w '%{http_code}' -H 'content-type: application/json' "$@"; }
