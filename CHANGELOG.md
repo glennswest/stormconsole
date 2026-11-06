@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Disk reads and writes apart (#265)
+- **feat:** a Node tab on the Metrics page: this node's disks, reads and writes apart, in bytes/s and operations/s. Containers, a pod (its Stats tab too), drives and VMs have the same split.
+- **feat:** where a source has yet to report it, the chart names what it waits on: rustkube-node#323 for pods and containers, stormdrive#120 for drive operations and non-NVMe bytes.
+
 ### 2026-11-06 — #15 closed in favour of #266
 - **docs:** login and users are #266 and stormcos#802 now; README, architecture and the deck point there.
 

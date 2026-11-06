@@ -8,8 +8,9 @@
   import { onDestroy } from 'svelte'
   import { get, formatBytes } from '../api.js'
   import LineChart from '../components/LineChart.svelte'
+  import EntityCharts from '../components/EntityCharts.svelte'
 
-  let { base, containers = [] } = $props()
+  let { base, ns, name, containers = [] } = $props()
 
   let windowSecs = $state(900)
   let data = $state(null)
@@ -154,6 +155,11 @@
         </table>
       </section>
     {/if}
+
+    <section class="card" data-testid="disk-io">
+      <h2>Disk I/O, reads and writes apart</h2>
+      <EntityCharts query={{ entity: 'pod', ns, name, only: 'disk' }} />
+    </section>
 
     <section class="card">
       <h2>Storage</h2>

@@ -2394,6 +2394,11 @@ Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `sel
 - Verified with `sc-build deploy/verify-console-metrics.sh` (0 failed), `deploy/verify-tests.sh`, `verify-auth.sh`, default `sc-build`. ironprom from main: `up` 1 with the token and with authentication off, 0 with the wrong token or none (saying 401), series by label, a rate over the counter. Six of one line and three others: 5 duplicates, 4 entries, 9 occurrences. A real websocket 0, 1, 0. A plugin with no apiserver in `unknown`/`error` by label
 - Not seen: a real node, or a scrape over TLS with a client certificate (the gate is the same one; #127's rig covers that path for logs). Nothing scrapes :9094 until stormcos adds the job
 
+### Disk I/O, read and write apart (#265)
+Read from the sources (2026-11-06): stormvm has the split; the standalone cadvisor has it per cgroup path, and for `/` as diskstats sectors and operations; the kubelet's `/metrics/cadvisor` has none (filed rustkube-node#323); stormdrive has bytes for NVMe only, no operations (filed stormdrive#120); the engine by operation, not bytes (stormblock#536).
+- [ ] `panels.rs`: disk panels on drives, containers, a new node level, a pod, a drive; `unreported`; `only=disk`; the pod's Stats tab
+- [ ] `verify-metrics.sh`: a real cadvisor and real I/O for the node, stand-ins at different read and write rates; docs; dist; image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

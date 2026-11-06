@@ -21,6 +21,10 @@ def drive():
         out.append(f'smartctl_device_temperature{{{l},temperature_type="current"}} {35 + i}')
         out.append(f"smartctl_device_percentage_used{{{l}}} {7 + i}")
         out.append(f"stormdrive_drive_io_errors_total{{{l}}} {up() * i}")
+    # One NVMe drive's SMART counters, the only read and write bytes stormdrive has today.
+    l = 'device="nvme0n1",serial="NV200",model="N",enclosure="",bay="9"'
+    out.append(f"smartctl_device_bytes_read{{{l}}} {up() * 8192}")
+    out.append(f"smartctl_device_bytes_written{{{l}}} {up() * 2048}")
     return out
 
 
@@ -41,6 +45,12 @@ def kubelet():
         l = f'container="{ctr}",id="x-{pod}-{ctr}",namespace="{ns}",pod="{pod}"'
         out.append(f"container_cpu_usage_seconds_total{{{l}}} {up() * cores}")
         out.append(f"container_memory_working_set_bytes{{{l}}} {mem}")
+        # Reads and writes at different rates, so a chart showing the wrong one is caught. Only `app`, as a node might.
+        if ctr == "app":
+            out.append(f'container_fs_reads_bytes_total{{{l},device="/dev/sda"}} {up() * 4096}')
+            out.append(f'container_fs_writes_bytes_total{{{l},device="/dev/sda"}} {up() * 1024}')
+            out.append(f'container_fs_reads_total{{{l},device="/dev/sda"}} {up() * 40}')
+            out.append(f'container_fs_writes_total{{{l},device="/dev/sda"}} {up() * 10}')
     for ns, pod in (("shop", "web"), ("secret", "vault")):
         l = f'container="",id="s-{pod}",interface="eth0",namespace="{ns}",pod="{pod}"'
         out.append(f"container_network_receive_bytes_total{{{l}}} {up() * 50000}")

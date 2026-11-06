@@ -51,12 +51,20 @@ pub const LEVELS: &[Level] = &[
                 query: r#"topk(12, smartctl_device_percentage_used{job="stormdrive"})"#, legend: &["device", "serial"] },
             Panel { id: "errors", title: "Drive IO errors", unit: "per_sec", job: "stormdrive",
                 query: r#"topk(12, rate(stormdrive_drive_io_errors_total{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
+            Panel { id: "disk_read", title: "Drive reads", unit: "bytes_per_sec", job: "stormdrive",
+                query: r#"topk(12, rate(stormdrive_drive_read_bytes_total{job="stormdrive"}[5m]) or rate(smartctl_device_bytes_read{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
+            Panel { id: "disk_write", title: "Drive writes", unit: "bytes_per_sec", job: "stormdrive",
+                query: r#"topk(12, rate(stormdrive_drive_write_bytes_total{job="stormdrive"}[5m]) or rate(smartctl_device_bytes_written{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
+            Panel { id: "disk_read_ops", title: "Drive read operations", unit: "per_sec", job: "stormdrive",
+                query: r#"topk(12, rate(stormdrive_drive_reads_total{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
+            Panel { id: "disk_write_ops", title: "Drive write operations", unit: "per_sec", job: "stormdrive",
+                query: r#"topk(12, rate(stormdrive_drive_writes_total{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
         ],
     },
     Level {
         id: "volumes",
         title: "Volumes",
-        note: "The engine reports IO by operation, across every volume it exports: it has no series per volume yet (stormblock#536).",
+        note: "The engine reports IO by operation, reads and writes apart, across every volume it exports: it has no series per volume and no bytes yet (stormblock#536).",
         panels: &[
             Panel { id: "latency", title: "Volume IO latency, p99", unit: "seconds", job: "stormblock",
                 query: r#"histogram_quantile(0.99, sum by (le, op) (rate(stormblock_nvmeof_io_seconds_bucket{job="stormblock"}[5m])))"#, legend: &["op"] },
@@ -75,6 +83,34 @@ pub const LEVELS: &[Level] = &[
             Panel { id: "memory", title: "Container memory", unit: "bytes", job: CADVISOR,
                 query: r#"topk(10, sum by (namespace, pod, container) (container_memory_working_set_bytes{job="kubelet-cadvisor",container!=""__NS__}))"#,
                 legend: &["namespace", "pod", "container"] },
+            Panel { id: "disk_read", title: "Container disk reads", unit: "bytes_per_sec", job: CADVISOR,
+                query: r#"topk(10, sum by (namespace, pod, container) (rate(container_fs_reads_bytes_total{job="kubelet-cadvisor",container!=""__NS__}[5m])))"#,
+                legend: &["namespace", "pod", "container"] },
+            Panel { id: "disk_write", title: "Container disk writes", unit: "bytes_per_sec", job: CADVISOR,
+                query: r#"topk(10, sum by (namespace, pod, container) (rate(container_fs_writes_bytes_total{job="kubelet-cadvisor",container!=""__NS__}[5m])))"#,
+                legend: &["namespace", "pod", "container"] },
+            Panel { id: "disk_read_ops", title: "Container disk read operations", unit: "per_sec", job: CADVISOR,
+                query: r#"topk(10, sum by (namespace, pod, container) (rate(container_fs_reads_total{job="kubelet-cadvisor",container!=""__NS__}[5m])))"#,
+                legend: &["namespace", "pod", "container"] },
+            Panel { id: "disk_write_ops", title: "Container disk write operations", unit: "per_sec", job: CADVISOR,
+                query: r#"topk(10, sum by (namespace, pod, container) (rate(container_fs_writes_total{job="kubelet-cadvisor",container!=""__NS__}[5m])))"#,
+                legend: &["namespace", "pod", "container"] },
+        ],
+    },
+    Level {
+        id: "node",
+        title: "Node",
+        note: "This node's disks, from the kernel's counters through cadvisor: the devices it sees mounted. A drive the engine holds raw is under Drives.",
+        panels: &[
+            // The root cgroup has no io.stat, so bytes come from diskstats' sectors, which are 512 bytes whatever the drive's format.
+            Panel { id: "disk_read", title: "Node disk reads", unit: "bytes_per_sec", job: "cadvisor",
+                query: r#"sum by (device) (rate(container_fs_sector_reads_total{job="cadvisor",id="/"}[5m])) * 512"#, legend: &["device"] },
+            Panel { id: "disk_write", title: "Node disk writes", unit: "bytes_per_sec", job: "cadvisor",
+                query: r#"sum by (device) (rate(container_fs_sector_writes_total{job="cadvisor",id="/"}[5m])) * 512"#, legend: &["device"] },
+            Panel { id: "disk_read_ops", title: "Node disk read operations", unit: "per_sec", job: "cadvisor",
+                query: r#"sum by (device) (rate(container_fs_reads_total{job="cadvisor",id="/"}[5m]))"#, legend: &["device"] },
+            Panel { id: "disk_write_ops", title: "Node disk write operations", unit: "per_sec", job: "cadvisor",
+                query: r#"sum by (device) (rate(container_fs_writes_total{job="cadvisor",id="/"}[5m]))"#, legend: &["device"] },
         ],
     },
     Level {
@@ -114,6 +150,10 @@ pub const LEVELS: &[Level] = &[
                 query: r#"topk(10, sum by (namespace, name) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{job="stormvm"__NS__}[5m])))"#, legend: &["namespace", "name"] },
             Panel { id: "write", title: "VM disk writes", unit: "bytes_per_sec", job: "stormvm",
                 query: r#"topk(10, sum by (namespace, name) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{job="stormvm"__NS__}[5m])))"#, legend: &["namespace", "name"] },
+            Panel { id: "read_ops", title: "VM disk read operations", unit: "per_sec", job: "stormvm",
+                query: r#"topk(10, sum by (namespace, name) (rate(kubevirt_vmi_storage_iops_read_total{job="stormvm"__NS__}[5m])))"#, legend: &["namespace", "name"] },
+            Panel { id: "write_ops", title: "VM disk write operations", unit: "per_sec", job: "stormvm",
+                query: r#"topk(10, sum by (namespace, name) (rate(kubevirt_vmi_storage_iops_write_total{job="stormvm"__NS__}[5m])))"#, legend: &["namespace", "name"] },
         ],
     },
     Level {
@@ -134,6 +174,14 @@ const DRIVE: &[Panel] = &[
         query: r#"smartctl_device_percentage_used{job="stormdrive",__THE__}"#, legend: &["device"] },
     Panel { id: "errors", title: "IO errors", unit: "per_sec", job: "stormdrive",
         query: r#"rate(stormdrive_drive_io_errors_total{job="stormdrive",__THE__}[5m])"#, legend: &["device"] },
+    Panel { id: "disk_read", title: "Reads", unit: "bytes_per_sec", job: "stormdrive",
+        query: r#"rate(stormdrive_drive_read_bytes_total{job="stormdrive",__THE__}[5m]) or rate(smartctl_device_bytes_read{job="stormdrive",__THE__}[5m])"#, legend: &["device"] },
+    Panel { id: "disk_write", title: "Writes", unit: "bytes_per_sec", job: "stormdrive",
+        query: r#"rate(stormdrive_drive_write_bytes_total{job="stormdrive",__THE__}[5m]) or rate(smartctl_device_bytes_written{job="stormdrive",__THE__}[5m])"#, legend: &["device"] },
+    Panel { id: "disk_read_ops", title: "Read operations", unit: "per_sec", job: "stormdrive",
+        query: r#"rate(stormdrive_drive_reads_total{job="stormdrive",__THE__}[5m])"#, legend: &["device"] },
+    Panel { id: "disk_write_ops", title: "Write operations", unit: "per_sec", job: "stormdrive",
+        query: r#"rate(stormdrive_drive_writes_total{job="stormdrive",__THE__}[5m])"#, legend: &["device"] },
 ];
 
 const POD: &[Panel] = &[
@@ -145,6 +193,14 @@ const POD: &[Panel] = &[
         query: r#"sum by (interface) (rate(container_network_receive_bytes_total{job="kubelet-cadvisor",__THE__}[5m]))"#, legend: &["interface"] },
     Panel { id: "tx", title: "Network sent", unit: "bytes_per_sec", job: CADVISOR,
         query: r#"sum by (interface) (rate(container_network_transmit_bytes_total{job="kubelet-cadvisor",__THE__}[5m]))"#, legend: &["interface"] },
+    Panel { id: "disk_read", title: "Disk reads", unit: "bytes_per_sec", job: CADVISOR,
+        query: r#"sum by (container) (rate(container_fs_reads_bytes_total{job="kubelet-cadvisor",container!="",__THE__}[5m]))"#, legend: &["container"] },
+    Panel { id: "disk_write", title: "Disk writes", unit: "bytes_per_sec", job: CADVISOR,
+        query: r#"sum by (container) (rate(container_fs_writes_bytes_total{job="kubelet-cadvisor",container!="",__THE__}[5m]))"#, legend: &["container"] },
+    Panel { id: "disk_read_ops", title: "Disk read operations", unit: "per_sec", job: CADVISOR,
+        query: r#"sum by (container) (rate(container_fs_reads_total{job="kubelet-cadvisor",container!="",__THE__}[5m]))"#, legend: &["container"] },
+    Panel { id: "disk_write_ops", title: "Disk write operations", unit: "per_sec", job: CADVISOR,
+        query: r#"sum by (container) (rate(container_fs_writes_total{job="kubelet-cadvisor",container!="",__THE__}[5m]))"#, legend: &["container"] },
 ];
 
 const VM: &[Panel] = &[
@@ -174,6 +230,20 @@ const VM: &[Panel] = &[
     Panel { id: "tx_packets", title: "Packets sent", unit: "per_sec", job: "stormvm",
         query: r#"sum by (interface) (rate(kubevirt_vmi_network_transmit_packets_total{job="stormvm",__THE__}[5m]))"#, legend: &["interface"] },
 ];
+
+/// Why a disk chart is empty when its source has yet to report it: the series is not
+/// there at all, which reads as a fault without this. `None` for every other chart.
+pub fn unreported(p: &Panel) -> Option<String> {
+    if !p.id.starts_with("disk_") {
+        return None;
+    }
+    match p.job {
+        CADVISOR => Some("The node's kubelet does not report a container's disk reads and writes yet (rustkube-node#323).".into()),
+        "stormdrive" if p.id.ends_with("_ops") => Some("stormdrive does not report a drive's operations yet (stormdrive#120).".into()),
+        "stormdrive" => Some("Only NVMe drives report this so far, as a SMART counter; other kinds wait on stormdrive#120.".into()),
+        _ => None,
+    }
+}
 
 /// One object's series.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,6 +409,38 @@ mod tests {
 
     fn panel(level: &str, id: &str) -> &'static Panel {
         LEVELS.iter().find(|l| l.id == level).unwrap().panels.iter().find(|p| p.id == id).unwrap()
+    }
+
+    #[test]
+    fn reads_and_writes_are_charted_apart_at_every_level_that_has_disks() {
+        let ids = |ps: &[Panel]| ps.iter().map(|p| p.id).collect::<Vec<_>>();
+        for level in ["drives", "containers", "node"] {
+            let l = LEVELS.iter().find(|l| l.id == level).unwrap();
+            for want in ["disk_read", "disk_write", "disk_read_ops", "disk_write_ops"] {
+                assert!(ids(l.panels).contains(&want), "{level} has no {want}");
+            }
+        }
+        for ps in [DRIVE, POD] {
+            for want in ["disk_read", "disk_write", "disk_read_ops", "disk_write_ops"] {
+                assert!(ids(ps).contains(&want), "{want}");
+            }
+        }
+        // Each is one direction: no panel mixes them.
+        for p in LEVELS.iter().flat_map(|l| l.panels).chain(DRIVE).chain(POD).filter(|p| p.id.starts_with("disk_")) {
+            let (reads, writes) = (p.query.contains("read"), p.query.contains("write"));
+            assert!(reads != writes, "{}", p.query);
+            assert_eq!(reads, p.id.contains("read"), "{}", p.query);
+        }
+    }
+
+    #[test]
+    fn an_empty_disk_chart_names_what_it_waits_on() {
+        let of = |level: &str, id: &str| unreported(panel(level, id)).unwrap_or_default();
+        assert!(of("containers", "disk_read").contains("rustkube-node#"));
+        assert!(of("drives", "disk_read").contains("NVMe"));
+        assert!(of("drives", "disk_write_ops").contains("stormdrive#"));
+        assert_eq!(of("node", "disk_read"), "", "cadvisor reports these: empty there is the usual sentence");
+        assert_eq!(of("drives", "errors"), "");
     }
 
     #[test]

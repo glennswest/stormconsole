@@ -720,7 +720,7 @@
       </section>
     {:else if tab === 'Stats'}
       <p class="dim"><a href={`#/metrics?entity=pod&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its series in ironprom, over longer windows</a></p>
-      <PodStats {base} containers={pod.containers} />
+      <PodStats {base} {ns} {name} containers={pod.containers} />
     {:else if tab === 'Environment'}
       <PodEnv {base} containers={pod.containers} />
     {:else if tab === 'Terminal'}

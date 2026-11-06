@@ -29,11 +29,12 @@ BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 say "fastetcd, rustkube's apiserver and ironprom"
 curl -sfL "https://github.com/glennswest/fastetcd/releases/download/v1.2.0/fastetcd-v1.2.0-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
 FE=$(find "$W" -type f -name fastetcd -perm -u+x | head -1)
-for r in rustkube ironprom; do git clone -q --depth 1 "https://github.com/glennswest/$r" "$W/$r"; echo "  $r $(git -C "$W/$r" rev-parse --short HEAD)"; done
+for r in rustkube ironprom cadvisor; do git clone -q --depth 1 "https://github.com/glennswest/$r" "$W/$r"; echo "  $r $(git -C "$W/$r" rev-parse --short HEAD)"; done
 (cd "$W/rustkube" && CARGO_TARGET_DIR="$W/k-target" cargo build -q --bin kube-apiserver)
 (cd "$W/ironprom" && CARGO_TARGET_DIR="$W/p-target" cargo build -q -p ironprom)
-mkdir -p "$W/bin"; cp "$W/k-target/debug/kube-apiserver" "$W/p-target/debug/ironprom" "$W/bin/"
-rm -rf "${W:?}"/*-target "${W:?}/rustkube" "${W:?}/ironprom"
+(cd "$W/cadvisor" && CARGO_TARGET_DIR="$W/ca-target" cargo build -q)
+mkdir -p "$W/bin"; cp "$W/k-target/debug/kube-apiserver" "$W/p-target/debug/ironprom" "$W/ca-target/debug/cadvisor" "$W/bin/"
+rm -rf "${W:?}"/*-target "${W:?}/rustkube" "${W:?}/ironprom" "${W:?}/cadvisor"
 KA="$W/bin/kube-apiserver"
 
 say "the apiserver"
@@ -71,7 +72,9 @@ k POST /apis/rbac.authorization.k8s.io/v1/namespaces/shop/rolebindings '{"apiVer
 k POST /api/v1/namespaces/shop/pods '{"apiVersion":"v1","kind":"Pod","metadata":{"name":"web"},"spec":{"containers":[{"name":"app","image":"x"},{"name":"agent","image":"y"}]}}' >/dev/null
 k POST /apis/kubevirt.io/v1/namespaces/shop/virtualmachines '{"apiVersion":"kubevirt.io/v1","kind":"VirtualMachine","metadata":{"name":"vm1"},"spec":{"running":false,"template":{"spec":{"domain":{"devices":{"disks":[{"name":"root","disk":{"bus":"virtio"}}]}},"volumes":[{"name":"root","dataVolume":{"name":"rocky"}}]}}}}' >/dev/null
 
-say "the stand-ins, and ironprom with stormcos's job names"
+say "cadvisor, the stand-ins, and ironprom with stormcos's job names"
+"$W/bin/cadvisor" --port=19296 --listen_ip=127.0.0.1 > "$W/cadvisor.log" 2>&1 &
+for _ in $(seq 40); do curl -sf -o /dev/null http://127.0.0.1:19296/metrics && break; sleep 0.5; done
 python3 "$HERE/deploy/metrics.standins.py" > "$W/standins.log" 2>&1 &
 STANDINS=$!
 for _ in $(seq 40); do curl -sf -o /dev/null http://127.0.0.1:19205/metrics && break; sleep 0.25; done
@@ -79,7 +82,7 @@ job() { printf '  - job_name: %s\n    static_configs:\n      - targets: ["%s"]\n
 { printf 'global:\n  scrape_interval: 2s\n  scrape_timeout: 1s\nscrape_configs:\n'
   job ironprom 127.0.0.1:$IP; job stormdrive 127.0.0.1:19201; job stormblock 127.0.0.1:19202
   job kubelet-cadvisor 127.0.0.1:19203; job stormvm 127.0.0.1:19204; job cilium-agent 127.0.0.1:19205
-  job fastetcd 127.0.0.1:23902; job stormlb 127.0.0.1:19299
+  job fastetcd 127.0.0.1:23902; job stormlb 127.0.0.1:19299; job cadvisor 127.0.0.1:19296
   printf '  - job_name: apiserver\n    scheme: https\n    bearer_token_file: %s\n    tls_config:\n      ca_file: %s\n    static_configs:\n      - targets: ["127.0.0.1:%s"]\n' "$W/admin.token" "$W/ca.crt" "$PORT"
 } > "$W/ironprom.yml"
 "$W/bin/ironprom" --config.file="$W/ironprom.yml" --web.listen-address=127.0.0.1:$IP --storage.tsdb.path="$W/prom" > "$W/ironprom.log" 2>&1 &
@@ -107,7 +110,7 @@ for _ in $(seq 40); do g /targets | j 'd["read"]' 2>/dev/null | grep -q True && 
 
 say "targets: where a missing level shows"
 T=$(g /targets)
-check "$(echo "$T" | j 'sorted(x["job"] for x in d["jobs"])==["apiserver","cilium-agent","fastetcd","ironprom","kubelet-cadvisor","stormblock","stormdrive","stormlb","stormvm"]')" True "every job"
+check "$(echo "$T" | j 'sorted(x["job"] for x in d["jobs"])==["apiserver","cadvisor","cilium-agent","fastetcd","ironprom","kubelet-cadvisor","stormblock","stormdrive","stormlb","stormvm"]')" True "every job"
 check "$(echo "$T" | j '[x["level"] for x in d["jobs"] if x["job"]=="stormdrive"]')" "['Drives']" "with its level"
 check "$(echo "$T" | j '[x["up"] for x in d["jobs"] if x["job"]=="apiserver"]')" "[1]" "the real apiserver scraped, TLS and bearer"
 check "$(echo "$T" | j '[x["up"] for x in d["jobs"] if x["job"]=="fastetcd"]')" "[1]" "the real fastetcd scraped"
@@ -136,6 +139,33 @@ check "$(until_lines vms cpu)" "['secret / vm2', 'shop / vm1']" "VM CPU"
 check "$(until_lines vms read)" "['secret / vm2', 'shop / vm1']" "VM disk reads"
 check "$(until_lines network drops)" "['Policy denied / INGRESS']" "network drops"
 check "$(code '/charts?level=nothing')" 400 "a level that is not one"
+
+say "disk reads and writes, apart (#265)"
+for c in disk_read disk_write disk_read_ops disk_write_ops; do check "$(until_lines containers $c)" "['secret / vault / app', 'shop / web / app']" "containers: $c"; done
+rate() { g "/charts?$1&window=900" | python3 -c "import json,sys; d=json.load(sys.stdin); v=[p['v'] for c in d['charts'] if c['id']=='$2' for s in c['series'] for p in s['points'] if p['v']]; print(round(v[-1]) if v else None)"; }
+for _ in $(seq 40); do [ "$(rate level=containers disk_read)" != None ] && break; sleep 2; done
+R0=$(rate 'entity=pod&ns=shop&name=web' disk_read); W0=$(rate 'entity=pod&ns=shop&name=web' disk_write); O0=$(rate 'entity=pod&ns=shop&name=web' disk_read_ops); P0=$(rate 'entity=pod&ns=shop&name=web' disk_write_ops)
+echo "  a pod: reads $R0 B/s, writes $W0 B/s, $O0 and $P0 ops/s"
+check "$([ "${R0:-0}" -gt 3000 ] && [ "${W0:-0}" -lt 1500 ] && [ "${W0:-0}" -gt 500 ] && echo ok)" ok "a pod's reads and writes at the exporter's own different rates"
+check "$([ "${O0:-0}" -ge 30 ] && [ "${P0:-0}" -le 15 ] && echo ok)" ok "and its operations"
+check "$(ent 'entity=pod&ns=shop&name=web' disk_read)" "['app']" "by container"
+check "$(ent 'entity=pod&ns=shop&name=web&only=disk' disk_read)" "['app']" "only=disk has them"
+check "$(g '/charts?entity=pod&ns=shop&name=web&only=disk&window=900' | j 'sorted(c["id"] for c in d["charts"])')" "['disk_read', 'disk_read_ops', 'disk_write', 'disk_write_ops']" "and nothing else"
+check "$(ent 'entity=pod&ns=secret&name=vault&only=disk' disk_read alice)" "[]" "alice: not another project's"
+check "$(lines_of containers disk_read alice)" "['shop / web / app']" "alice: her project's only"
+check "$(until_lines drives disk_read)" "['nvme0n1 / NV200']" "a drive's reads, from SMART"
+check "$(ent 'entity=drive&serial=NV200' disk_write)" "['nvme0n1']" "and one drive's writes"
+holds "$(g '/charts?entity=drive&serial=ZC100&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="disk_read"][0]')" "stormdrive#" "a SAS drive: says what it waits on, not a fault"
+holds "$(g '/charts?entity=drive&serial=NV200&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="disk_read_ops"][0]')" "operations yet" "and no drive has operations yet"
+holds "$(g '/charts?entity=vm&ns=shop&name=vm1&window=900' | j 'sorted(c["id"] for c in d["charts"])')" "write_ops" "a VM has them already"
+check "$(until_lines vms read_ops)" "['secret / vm2', 'shop / vm1']" "VM read operations at the level"
+
+say "the node's disks: a real cadvisor (#265)"
+dd if=/dev/zero of="$W/io.bin" bs=1M count=200 oflag=direct 2>/dev/null; dd if="$W/io.bin" of=/dev/null bs=1M iflag=direct 2>/dev/null
+for c in disk_read disk_write disk_read_ops disk_write_ops; do L=$(until_lines node $c); echo "  $c: $L"; holds "$L" "/dev/" "the node's $c, by device"; done
+for _ in $(seq 30); do dd if=/dev/zero of="$W/io.bin" bs=1M count=50 oflag=direct 2>/dev/null; RN=$(rate level=node disk_write); [ "${RN:-0}" != 0 ] && [ "$RN" != None ] && break; sleep 2; done
+echo "  node writes: $RN B/s"; check "$([ "${RN:-0}" -gt 1000 ] 2>/dev/null && echo ok)" ok "real writes, from sectors, as a rate of bytes"
+rm -f "$W/io.bin"
 
 say "an empty chart says why"
 holds "$(g '/charts?level=datastore&window=900' | j '[c.get("note") for c in d["charts"] if c["id"]=="puts"][0]')" "fastetcd is up, and served none" "a target up with no such series (fastetcd v1.2.0 has no put counter)"

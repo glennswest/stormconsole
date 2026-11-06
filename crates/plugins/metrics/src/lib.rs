@@ -214,6 +214,8 @@ struct ChartsQuery {
     name: Option<String>,
     serial: Option<String>,
     window: Option<i64>,
+    /// `disk`: only an object's disk charts, for the pod page's Stats tab.
+    only: Option<String>,
 }
 
 fn entity_of(q: &ChartsQuery) -> Result<Option<Entity>, String> {
@@ -270,7 +272,8 @@ async fn chart(inner: &Inner, p: &Panel, q: Result<String, String>, range: (i64,
     let (lines, over) = panels::lines(result, p.legend);
     let mut out = with(base, "over", json!(over));
     if lines.is_empty() {
-        out["note"] = json!(empty_note(p.job, list));
+        let up = list.is_some_and(|l| l.iter().any(|t| t.job == p.job && t.up));
+        out["note"] = json!(panels::unreported(p).filter(|_| up).unwrap_or_else(|| empty_note(p.job, list)));
     }
     out["series"] = json!(lines);
     out
@@ -316,7 +319,8 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
     let end = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let start = end - window;
     let mut out = Vec::with_capacity(list.len());
-    for p in list {
+    let wanted = q.only.as_deref() != Some("disk");
+    for p in list.iter().filter(|p| wanted || p.id.starts_with("disk_")) {
         let query = panels::query(p, entity.as_ref(), visible.as_deref());
         out.push(chart(&inner, p, query, (start, end, step), targets.as_deref()).await);
     }
