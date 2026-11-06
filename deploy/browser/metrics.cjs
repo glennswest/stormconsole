@@ -20,9 +20,9 @@ walk(`metrics (${PHASE})`, async (t) => {
     return
   }
   const page = await t.page('root')
-  const nav = await page.evaluate(() => fetch('/api/v1/console/nav').then((r) => r.json())).catch(() => null)
   t.check(await t.open(page, '#/metrics', /targets up/), 'Targets opens', (await t.text(page)).slice(0, 300))
-  t.check(JSON.stringify(nav || '').includes('#/metrics') || (await page.locator('a[href="#/metrics"]').count()) > 0, 'Observe has Metrics')
+  const nav = await page.evaluate(() => fetch('/api/v1/console/nav').then((r) => r.json()))
+  t.check(JSON.stringify(nav.find((s) => s.label === 'Observe') || nav).includes('#/metrics'), 'Observe has Metrics', JSON.stringify(nav).slice(0, 200))
   const lb = page.locator('table.targets tr', { hasText: 'stormlb' })
   t.check(/down/.test(await lb.innerText()) && /refused|connect|error/i.test(await lb.innerText()), 'a down target and its last error', await lb.innerText())
   t.check((await page.locator('table.targets tbody tr').first().innerText()).includes('stormlb'), 'down first')

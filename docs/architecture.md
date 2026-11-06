@@ -1809,6 +1809,23 @@ with what to set; `/readyz` stays open, so the registry can read ready while not
 token. A pull-only robot gives the views and a 403 on the create forms; the token's own grants bound what an operator can do
 through the proxy.
 
+### metrics
+
+The node's ironprom (#46, stormcos#64, `[ironprom]`, :9091): `/api/v1/targets` every 15 s, `/api/v1/query_range` when a page asks.
+`#/metrics` has **Targets** (every job with `up` and its last error, down first) and a tab of **charts per level**: drives, volumes,
+containers, API server, datastore, VMs, network. `?entity=drive|pod|vm` is one object's series, linked from the Drives page, the pod
+page's Stats tab and the VM page.
+
+- **No free query.** The queries are held in `plugins/metrics/src/panels.rs` and the page names a level or an object. ironprom answers
+  anything, so a query from the browser would read every project's series. A project's series carry the viewer's projects in the
+  query (`NamespaceAccess::visible`), and an object in a project they may not see is a 404.
+- **A down target does not make the card unhealthy.** stormcos's config lists targets that do not serve yet, on purpose. The card names
+  them; a healthy node must not read as broken because of it (#161). Not started is idle, its stormd (:9191) up and ironprom silent
+  an error (#60).
+- **An empty chart says why**: the target's last error, no such job, or a target up with no such series.
+- **This node's series only**, as each node scrapes itself: the link is offered on this node's drives alone.
+- **Not per volume.** The engine's IO series carry only `op` (stormblock#536), so the Volumes level is engine-wide and a volume has no link.
+
 ### Creating things — the `Creator` contract
 
 OpenShift puts a **+ Create** on every list and an *Import YAML* in the

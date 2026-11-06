@@ -113,7 +113,7 @@ check "$(echo "$T" | j '[x["up"] for x in d["jobs"] if x["job"]=="apiserver"]')"
 check "$(echo "$T" | j '[x["up"] for x in d["jobs"] if x["job"]=="fastetcd"]')" "[1]" "the real fastetcd scraped"
 check "$(echo "$T" | j '[x["targets"][0]["health"] for x in d["jobs"] if x["job"]=="stormlb"]')" "['down']" "nothing on stormlb's port: down"
 holds "$(echo "$T" | j '[x["targets"][0]["error"] for x in d["jobs"] if x["job"]=="stormlb"]')" "19299" "with its last error"
-R=$(curl -s -b "$W/root.jar" "$C/api/v1/components" | j '[(c["health"],c["detail"]) for c in d if c["id"]=="metrics:ironprom"][0]'); echo "  $R"
+for _ in $(seq 30); do R=$(curl -s -b "$W/root.jar" "$C/api/v1/components" | j '[(c["health"],c["detail"]) for c in d if c["id"]=="metrics:ironprom"][0]'); case "$R" in *"targets up"*) break ;; esac; sleep 1; done; echo "  $R"
 holds "$R" "'ok'" "the card is not an error for a target that does not serve"
 holds "$R" "down: stormlb" "and names it"
 
@@ -128,8 +128,10 @@ check "$(until_lines containers cpu)" "['secret / vault / app', 'shop / web / ag
 check "$(until_lines containers memory)" "['secret / vault / app', 'shop / web / agent', 'shop / web / app']" "container memory"
 V=$(g '/charts?level=containers&window=900' | python3 -c "import json,sys; d=json.load(sys.stdin); print(round([p['v'] for c in d['charts'] if c['id']=='memory' for s in c['series'] if s['name']=='shop / web / app' for p in s['points'] if p['v'] is not None][-1]))")
 check "$V" "$((48*1024*1024))" "the value is the exporter's"
-A=$(until_lines apiserver rate); echo "  $A"; holds "$A" "GET" "the real apiserver's request rate by verb"
-A=$(until_lines apiserver latency); echo "  $A"; holds "$A" "GET" "and its latency"
+A=$(until_lines apiserver rate); echo "  $A"; holds "$A" "list" "the real apiserver's request rate by verb"
+holds "$A" "watch" "the console's watches among them"
+A=$(until_lines apiserver latency); echo "  $A"; holds "$A" "list" "and its latency"
+case "$A" in *watch*) check "$A" "no watch" "a watch's long life is not latency" ;; *) check ok ok "a watch's long life is not latency" ;; esac
 check "$(until_lines datastore size)" "['127.0.0.1:23902']" "the real fastetcd's database size"
 check "$(until_lines vms cpu)" "['secret / vm2', 'shop / vm1']" "VM CPU"
 check "$(until_lines vms read)" "['secret / vm2', 'shop / vm1']" "VM disk reads"

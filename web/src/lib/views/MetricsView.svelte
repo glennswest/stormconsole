@@ -3,7 +3,7 @@
   // missing level shows. The page names a level or an object; the queries are on the server, because a
   // query from here could read any project's series.
   import { onDestroy } from 'svelte'
-  import { get, formatBytes } from '../api.js'
+  import { formatBytes } from '../api.js'
   import { route, navigate } from '../router.svelte.js'
   import { ago } from '../ui/time.js'
   import PageHeader from '../components/PageHeader.svelte'
@@ -20,6 +20,14 @@
   let error = $state('')
   let windowSecs = $state(3600)
   let timer = null
+
+  // Its refusals are sentences ("no project x"), and they are what the page has to say.
+  async function get(path) {
+    const r = await fetch(path)
+    const body = await r.json().catch(() => null)
+    if (!r.ok) throw new Error(body?.error || `${r.status} ${r.statusText}`)
+    return body
+  }
 
   async function load() {
     try {

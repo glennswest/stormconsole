@@ -36,6 +36,9 @@ pub struct Level {
 
 const CADVISOR: &str = "kubelet-cadvisor";
 
+// The latency panel leaves out watch and connect, which stay open for as long as they are wanted.
+// rustkube spells verbs in lower case and upstream in upper, so both are named.
+
 pub const LEVELS: &[Level] = &[
     Level {
         id: "drives",
@@ -82,7 +85,7 @@ pub const LEVELS: &[Level] = &[
             Panel { id: "rate", title: "Request rate", unit: "per_sec", job: "apiserver",
                 query: r#"sum by (verb) (rate(apiserver_request_total{job="apiserver"}[5m]))"#, legend: &["verb"] },
             Panel { id: "latency", title: "Request latency, p99", unit: "seconds", job: "apiserver",
-                query: r#"histogram_quantile(0.99, sum by (le, verb) (rate(apiserver_request_duration_seconds_bucket{job="apiserver",verb!~"WATCH|CONNECT"}[5m])))"#, legend: &["verb"] },
+                query: r#"histogram_quantile(0.99, sum by (le, verb) (rate(apiserver_request_duration_seconds_bucket{job="apiserver",verb!~"watch|connect|WATCH|CONNECT"}[5m])))"#, legend: &["verb"] },
         ],
     },
     Level {
