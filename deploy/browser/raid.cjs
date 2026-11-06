@@ -33,17 +33,17 @@ walk('raid sets', async (t) => {
   t.check(offered.some((o) => /bay8\.img/.test(o)) && offered.some((o) => /bay9\.img/.test(o)), 'the two free drives are offered', offered.join(', '))
   t.check(offered.every((o) => !/bay[1-5]\.img/.test(o)), 'and no member of the set', offered.join(', '))
   await t.shot(page, 'raid-replace')
-  page.once('dialog', (d) => d.accept('not-it'))
+  page.answer = 'not-it'
   await page.getByRole('button', { name: 'Rebuild onto it' }).click()
   t.check(await t.until(async () => /not|type/i.test(await said())), 'the wrong word is refused, on the page', await said())
   // The drive a spare took over from is free to the API, and still carries its old superblock: the
   // engine says so, and it reaches the person.
   await pick.selectOption({ label: offered.find((o) => /bay6\.img/.test(o)) })
-  page.once('dialog', (d) => d.accept(WORD))
+  page.answer = WORD
   await page.getByRole('button', { name: 'Rebuild onto it' }).click()
   t.check(await t.until(async () => /force|superblock|carries|stale/i.test(await said())), "a drive the set replaced: the engine's refusal, on the page", await said())
   await pick.selectOption({ label: offered.find((o) => /bay8\.img/.test(o)) })
-  page.once('dialog', (d) => d.accept(WORD))
+  page.answer = WORD
   await page.getByRole('button', { name: 'Rebuild onto it' }).click()
   t.check(await t.until(async () => (await page.locator('[data-testid=rebuild]').count()) > 0), 'a rebuild starts and shows progress', await t.text(page))
   const line = page.locator('[data-testid=rebuild]').first()
@@ -55,7 +55,7 @@ walk('raid sets', async (t) => {
   await page.getByRole('button', { name: 'Add a spare' }).click()
   const spare = page.getByLabel('Add as a spare')
   await spare.selectOption({ label: (await spare.locator('option').allInnerTexts()).find((o) => /bay9\.img/.test(o)) })
-  page.once('dialog', (d) => d.accept('spares'))
+  page.answer = 'spares'
   await page.getByRole('button', { name: 'Add it' }).click()
   t.check(await t.until(async () => /Spare added to ds0/.test(await said())), 'the spare is added', await said())
   await t.shot(page, 'raid-spare')

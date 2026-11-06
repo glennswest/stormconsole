@@ -133,8 +133,8 @@ state() { raid | j 'd["shelves"][0]["sets"][0]["status"]["state"]'; }
 until_state() { for _ in $(seq 1 "$2"); do [ "$(state)" = "$1" ] && return 0; sleep 1; done; return 1; }
 card() { as alice "$C/api/v1/components" | python3 -c "
 import json,sys
-c=[x for x in json.load(sys.stdin) if x['id']=='$1'][0]
-print(c['health'], '|', c['detail'][:40], '|', [m['value'] for m in c['metrics'] if m['label']=='raid'])"; }
+c=[x for x in json.load(sys.stdin) if x['id']=='$1']
+print(*(c and (c[0]['health'], '|', c[0]['detail'][:40], '|', [m['value'] for m in c[0]['metrics'] if m['label']=='raid']) or ['not in the feed yet']))"; }
 until_card() { for _ in $(seq 1 "$3"); do case "$(card "$1")" in *"$2"*) return 0;; esac; sleep 1; done; return 1; }
 acts() { as "$1" "$C/api/v1/components" | python3 -c "
 import json,sys
