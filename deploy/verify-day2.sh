@@ -65,8 +65,8 @@ ns() { k POST /api/v1/namespaces "{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",
 ns shop; ns other
 k POST /apis/rbac.authorization.k8s.io/v1/namespaces/shop/rolebindings '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"bob-edit"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"edit"},"subjects":[{"kind":"User","apiGroup":"rbac.authorization.k8s.io","name":"bob"}]}'
 mknode() { k POST /api/v1/nodes "{\"apiVersion\":\"v1\",\"kind\":\"Node\",\"metadata\":{\"name\":\"$1\"}}"
-  k PATCH "/api/v1/nodes/$1/status" '{"status":{"conditions":[{"type":"Ready","status":"True"}]}}' application/merge-patch+json; }
-mknode n1; mknode n2
+  k PATCH "/api/v1/nodes/$1/status" "{\"status\":{\"addresses\":[{\"type\":\"InternalIP\",\"address\":\"$2\"}],\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\"}]}}" application/merge-patch+json; }
+mknode n1 127.0.0.21; mknode n2 127.0.0.22
 deploy() { # ns name replicas
   k POST "/apis/apps/v1/namespaces/$1/deployments" "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"$2\"},\"spec\":{\"replicas\":$3,\"selector\":{\"matchLabels\":{\"app\":\"$2\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"$2\"}},\"spec\":{\"volumes\":[{\"name\":\"cache\",\"emptyDir\":{}}],\"containers\":[{\"name\":\"c\",\"image\":\"busybox\"}]}}}}"
 }
@@ -80,8 +80,8 @@ mkdir -p "$W/c"
 {
   printf 'listen_addr = "127.0.0.1:%s"\ndata_dir = "%s/c"\n[api]\nauth_token = "console-own-36"\n' "$P" "$W"
   user alice admin "$ALICE"; user bob operator "$BOB"; user carol admin "$CAROL"; user dave viewer "$DAVE"
-  printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\ninsecure_skip_tls_verify = true\n[fleet]\nstormd_ports = []\n' "$API" "$ADMIN"
-  for s in logs stormdrive stormstorage stormblock sbregistry vm vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
+  printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\ninsecure_skip_tls_verify = true\n[logs]\nmcast_group = "239.255.42.36:25636"\n[fleet]\nmcast_group = "239.255.42.36:25636"\nstormd_ports = []\n' "$API" "$ADMIN"
+  for s in stormdrive stormstorage stormblock sbregistry vm vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
 } > "$W/c.toml"
 "$BIN" --config "$W/c.toml" > "$W/c.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done
