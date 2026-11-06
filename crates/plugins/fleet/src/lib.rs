@@ -337,6 +337,10 @@ impl ConsolePlugin for FleetPlugin {
     async fn health(&self) -> Health {
         let services = self.inner.services.read().await;
         let mut worst = if services.is_empty() { Health::Idle } else { Health::Ok };
+        // A stormd that must not be read is not nothing (#49).
+        if !self.inner.refused.read().await.is_empty() {
+            worst = Health::Warn;
+        }
         for s in services.values() {
             let h = s.feed.state().await.health;
             if rank(h) < rank(worst) {
@@ -347,13 +351,11 @@ impl ConsolePlugin for FleetPlugin {
     }
 
     async fn detail(&self) -> String {
-        let services = self.inner.services.read().await.len();
-        let nodes = match &self.inner.hosts {
-            Some(h) => h.hosts().await.len(),
-            None => 0,
-        };
-        let nodes = nodes.max(1);
-        format!("{nodes} node{} · {services} services on this node", if nodes == 1 { "" } else { "s" })
+        let said = self.summary().await;
+        match self.inner.refused.read().await.iter().next() {
+            Some((port, why)) => format!("{said} · stormd :{port} was not read: {why}"),
+            None => said,
+        }
     }
 
     async fn run(&self, shutdown: CancellationToken) {
@@ -400,6 +402,18 @@ impl ConsolePlugin for FleetPlugin {
                 _ = shutdown.cancelled() => return,
             }
         }
+    }
+}
+
+impl FleetPlugin {
+    async fn summary(&self) -> String {
+        let services = self.inner.services.read().await.len();
+        let nodes = match &self.inner.hosts {
+            Some(h) => h.hosts().await.len(),
+            None => 0,
+        };
+        let nodes = nodes.max(1);
+        format!("{nodes} node{} · {services} services on this node", if nodes == 1 { "" } else { "s" })
     }
 }
 
