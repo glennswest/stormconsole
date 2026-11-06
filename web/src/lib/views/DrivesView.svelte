@@ -282,6 +282,7 @@
         <header>
           <strong>{pick.c.label}</strong>
           <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ` · ${unreadShelf(pick)}`}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}{pick.hba ? ` · controller ${pick.hba}` : ''}{pick.serial ? ` · ${pick.serial}` : ''}</span>
+          {#if pick.serial && !pick.c.id.startsWith('drive:@')}<a class="metrics" href={`#/metrics?entity=drive&serial=${encodeURIComponent(pick.serial)}`}>Metrics</a>{/if}
           <button onclick={() => (selected = null)}>Close</button>
         </header>
         {#if pick.offer}
@@ -536,6 +537,8 @@
   .bay:focus-visible { outline: 2px solid var(--text); }
   .picked { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px var(--sc-row-px); margin-bottom: 14px; }
   .picked header { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+  .picked header .metrics { margin-left: auto; font-size: var(--sc-t-meta); }
+  .picked header .metrics + button { margin-left: 0; }
   .picked header button { margin-left: auto; font-size: var(--sc-t-meta); }
   .usebar { display: flex; height: 10px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .usebar .used { background: var(--accent); }

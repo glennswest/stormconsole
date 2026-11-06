@@ -312,6 +312,12 @@ async fn main() {
             config.fleet.stormd_ports.clone(),
         ).with_dial(node_dial.clone())));
     }
+    // The node's metrics, every level (#46). Asked over TLS first when [node_tls] is set, like any node API.
+    if config.ironprom.enabled {
+        let none = Arc::new(console_core::token::FileToken::fixed(None));
+        let reach = Arc::new(console_core::dial::Reach::new(&config.ironprom_url(), node_dial.clone(), none));
+        plugins.push(Arc::new(plugin_metrics::MetricsPlugin::new(reach, namespace_access.clone())));
+    }
     // What the cluster runs and an update's steps, with an admin's acts (#164).
     if config.stormupdate.enabled {
         plugins.push(Arc::new(

@@ -473,6 +473,7 @@
 
     {#if tab === 'Overview'}
       {#if saved}<p class="saved">{saved}</p>{/if}
+      <p class="metrics-link"><a href={`#/metrics?entity=vm&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its CPU, memory, disk and network over time</a></p>
       <section class="cards">
         <div class="card">
           <h2>Machine</h2>

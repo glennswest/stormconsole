@@ -1,0 +1,19 @@
+[package]
+name = "plugin-metrics"
+description = "stormconsole metrics plugin — the node's ironprom (:9091): every target with its last error, and charts per level and per drive, pod or VM"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console-core.workspace = true
+plugin-kubernetes.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

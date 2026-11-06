@@ -24,6 +24,7 @@ plugin-flowsdn.workspace = true
 plugin-apihealth.workspace = true
 plugin-history.workspace = true
 plugin-stormupdate.workspace = true
+plugin-metrics.workspace = true
 
 # Password hashing. argon2 rather than a digest: a password store is the
 # one place where being *slow* is the feature, and SHA-256 is fast enough

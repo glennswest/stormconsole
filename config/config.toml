@@ -216,6 +216,11 @@ enabled = true
 # summary_file = "/run/stormpump/health.json"
 # history_dir = "/system-data/history/api"
 
+[ironprom]
+enabled = true
+# The Metrics page: the node's scraper, every target with its last error and charts per level.
+# url = "http://127.0.0.1:9091"
+
 [stormupdate]
 enabled = true
 # The Update page: what this cluster runs, an update's steps, history, and an admin's

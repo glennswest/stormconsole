@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — A Metrics page over the node's ironprom (#46)
+- **feat:** Observe → Metrics, `[ironprom] enabled/url`. Targets: every job with `up` and its last error. Charts per level: drives,
+  volumes, containers, API server, datastore, VMs, network. Links from a drive, a pod and a VM to their own series.
+- **feat:** the queries are held on the server, and a project's series carry the viewer's projects, so the page cannot read past the
+  console's access rule. An empty chart says why: the target's error, no such job, or no such series.
+
 ### 2026-11-05 — The registry with a credential, over TLS (#35, #104)
 - **feat:** `[sbregistry] token_file`, a bearer followed when it changes; unset, the engine's token for a registry on this machine.
   Sent on every read, on imports and through the proxy; never over plain HTTP to another machine.

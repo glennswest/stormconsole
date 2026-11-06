@@ -296,6 +296,16 @@ impl NamespaceAccess {
         is_system_namespace(ns, &self.system_namespaces())
     }
 
+    /// The projects this viewer may see, or `None` for every one (the same answer as
+    /// [`hidden`](Self::hidden), for a query that has to name them, #46).
+    pub async fn visible(&self, viewer: &Viewer) -> Option<Vec<String>> {
+        let (hidden, _) = self.hidden(viewer).await?;
+        if hidden.is_empty() {
+            return None;
+        }
+        Some(self.store.namespaces().await.into_iter().filter(|n| !hidden.contains(n)).collect())
+    }
+
     /// `None` when nothing is hidden — no identity to authorize against,
     /// no apiserver, or a viewer who may see everything.
     pub async fn hidden(&self, viewer: &Viewer) -> Hidden {

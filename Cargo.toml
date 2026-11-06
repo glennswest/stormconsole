@@ -45,6 +45,7 @@ plugin-flowsdn = { path = "crates/plugins/flowsdn" }
 plugin-apihealth = { path = "crates/plugins/apihealth" }
 plugin-history = { path = "crates/plugins/history" }
 plugin-stormupdate = { path = "crates/plugins/stormupdate" }
+plugin-metrics = { path = "crates/plugins/metrics" }
 
 stormview = { git = "https://github.com/glennswest/stormview", rev = "5ea5e60d471b3a09c3f4fd2923423046391744b2" }
 tokio = { version = "1", features = ["full"] }

@@ -27,6 +27,7 @@
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import HealthView from './lib/views/HealthView.svelte'
   import AuditView from './lib/views/AuditView.svelte'
+  import MetricsView from './lib/views/MetricsView.svelte'
   import HistoryView from './lib/views/HistoryView.svelte'
   import NetworkView from './lib/views/NetworkView.svelte'
   import UpdateView from './lib/views/UpdateView.svelte'
@@ -61,6 +62,7 @@
     flowsdn: FlowsdnView,
     health: HealthView,
     audit: AuditView,
+    metrics: MetricsView,
     history: HistoryView,
     networkpolicies: NetworkView,
     networkendpoints: NetworkView,

@@ -18,6 +18,8 @@ const routes = [
   // Whichever network this cluster runs (#168).
   { pattern: '#/network/policies', name: 'networkpolicies' },
   { pattern: '#/network/endpoints', name: 'networkendpoints' },
+  // Targets and charts from the node's ironprom (#46); level and object travel in the query.
+  { pattern: '#/metrics', name: 'metrics' },
   // What the cluster runs, an update's steps, history (#164).
   { pattern: '#/update', name: 'update' },
   // This node's boots, installs, drives and hardware, kept across installs

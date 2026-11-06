@@ -715,6 +715,7 @@
         </p>
       </section>
     {:else if tab === 'Stats'}
+      <p class="dim"><a href={`#/metrics?entity=pod&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its series in ironprom, over longer windows</a></p>
       <PodStats {base} containers={pod.containers} />
     {:else if tab === 'Logs'}
       {#key logContainer + logSource}

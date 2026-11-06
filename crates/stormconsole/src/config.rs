@@ -55,6 +55,8 @@ pub struct Config {
     #[serde(default)]
     pub stormupdate: Stormupdate,
     #[serde(default)]
+    pub ironprom: Ironprom,
+    #[serde(default)]
     pub stormcentral: Stormcentral,
     #[serde(default)]
     pub node_tls: NodeTls,
@@ -534,6 +536,22 @@ impl Default for ApiHealth {
     }
 }
 
+/// The Metrics page (#46): the node's own scraper, on the host network.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ironprom {
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// Unset means this node's :9091.
+    pub url: Option<String>,
+}
+
+impl Default for Ironprom {
+    fn default() -> Self {
+        Self { enabled: true, url: None }
+    }
+}
+
 /// The Update page (#164): stormupdate's API, which any node answers for its cluster.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -846,6 +864,10 @@ impl Config {
 
     pub fn history_system_data(&self) -> String {
         self.history.system_data.clone().unwrap_or_else(|| "/run/stormblock/system-data".to_string())
+    }
+
+    pub fn ironprom_url(&self) -> String {
+        self.ironprom.url.clone().unwrap_or_else(|| "http://127.0.0.1:9091".to_string())
     }
 
     pub fn stormupdate_url(&self) -> String {

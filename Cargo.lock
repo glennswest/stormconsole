@@ -1176,6 +1176,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-metrics"
+version = "0.32.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "console-core",
+ "plugin-kubernetes",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "plugin-sbregistry"
 version = "0.32.0"
 dependencies = [
@@ -1882,6 +1898,7 @@ dependencies = [
  "plugin-history",
  "plugin-kubernetes",
  "plugin-logs",
+ "plugin-metrics",
  "plugin-sbregistry",
  "plugin-stormblock",
  "plugin-stormcluster",
