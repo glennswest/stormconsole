@@ -89,11 +89,11 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   await pause(500)
   const menu = await words()
   check(hits(menu).filter((l) => !allowed(l)).length === 0, 'Create menu: no "golden"', hits(menu).slice(0, 3).join(' | '))
-  check(/Registry image/.test(menu) && /Instance/.test(menu), 'Create menu offers Registry image and Instance')
+  check(/Registry image/.test(menu) && /Volume from an image/.test(menu) && !/Instance/.test(menu), 'Create menu offers Registry image and Volume from an image, instance being a VM word')
   await page.screenshot({ path: `${SHOTS}/words-create-menu.png`, fullPage: true })
 
   // The pod page: the Registry image row, and the one tooltip.
-  const pod = await visit('#/pod/shop/web-1', 'pod page', ['Registry image', 'cilium@abc123def456', 'sealed digest sha256:', 'from cilium@abc123'])
+  const pod = await visit('#/pod/shop/web-1', 'pod page', ['Registry image', 'cilium@abc123def456', 'registry/cilium:1.16.3@sha256:', 'from cilium@abc123'])
   check(pod.split('\n').filter(allowed).length === 1, 'the API word appears once, in the tooltip')
 
   for (const e of errors) console.log(`  ${e}`)
