@@ -1823,6 +1823,12 @@ with what to set; `/readyz` stays open, so the registry can read ready while not
 token. A pull-only robot gives the views and a 403 on the create forms; the token's own grants bound what an operator can do
 through the proxy.
 
+### The engine over TLS (#160)
+
+`console_core::engine::Engine` is the one way to `:9090`, for the stormblock plugin and its proxy, the Registry page's holdings and the Update page's generations. The URL's scheme decides: `http://` as
+before, until the engine's `tls_mode = required` (stormblock#525); `https://` verified against `[stormblock] ca_file` and only that. There is no skip and no fallback, unlike `[node_tls]`, which asks each port which it speaks while
+a node moves: stormcos changes the engine's URL and CA together when its pair is on (stormcos#374), so nothing here needs to guess. A client pair is optional and takes the node token's tier. A destructive verb still goes with the viewer's bearer (#82).
+
 ### The Storage page (#96)
 
 `#/storage` (Storage → Overview) is the `storage.storm.io/v1` objects: **Volumes** (health, legs, redundancy, role, retention, allocated against physical), **Slabs**

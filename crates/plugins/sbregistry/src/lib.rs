@@ -30,8 +30,7 @@ struct State {
 /// What the Registry page asks: this node's engine, with the console's own
 /// credential (#163). Never the browser's.
 struct Engine {
-    base: String,
-    token: Arc<console_core::token::FileToken>,
+    engine: Arc<console_core::engine::Engine>,
     access: Option<Arc<plugin_kubernetes::NamespaceAccess>>,
 }
 
@@ -85,22 +84,15 @@ impl SbregistryPlugin {
 
 impl SbregistryPlugin {
     /// Where the Registry page reads who holds what, and whose projects to hide.
-    pub fn with_engine(self, url: &str, token: Arc<console_core::token::FileToken>, access: Option<Arc<plugin_kubernetes::NamespaceAccess>>) -> Self {
-        let _ = self.inner.engine.set(Engine { base: url.trim_end_matches('/').to_string(), token, access });
+    pub fn with_engine(self, engine: Arc<console_core::engine::Engine>, access: Option<Arc<plugin_kubernetes::NamespaceAccess>>) -> Self {
+        let _ = self.inner.engine.set(Engine { engine, access });
         self
     }
 }
 
 /// One of the engine's lists, with its token.
-async fn engine_list(inner: &Inner, e: &Engine, path: &str) -> Result<Vec<Value>, String> {
-    let mut req = inner.client.get(format!("{}{path}", e.base)).timeout(Duration::from_secs(15));
-    if let Some(t) = e.token.get() {
-        req = req.bearer_auth(t);
-    }
-    let r = req.send().await.map_err(|e| {
-        use std::error::Error as _;
-        e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
-    })?;
+async fn engine_list(e: &Engine, path: &str) -> Result<Vec<Value>, String> {
+    let r = e.engine.get(path)?.timeout(Duration::from_secs(15)).send().await.map_err(|e| console_core::dial::chain(&e))?;
     if !r.status().is_success() {
         let code = r.status().as_u16();
         let why = r.json::<Value>().await.ok().and_then(|v| field(&v, &["error"])).unwrap_or_default();
@@ -161,14 +153,14 @@ async fn read_holdings(inner: &Inner) -> Arc<Answer> {
         return Arc::new(Answer { engine_error: "no engine is configured for this console".into(), ..Default::default() });
     };
     let mut a = Answer::default();
-    match engine_list(inner, e, "/api/v1/volumes").await {
+    match engine_list(e, "/api/v1/volumes").await {
         Err(why) => a.engine_error = why,
         Ok(volumes) => {
             let catalog = catalog_items(inner).await.unwrap_or_else(|why| {
                 a.catalog_note = why;
                 vec![]
             });
-            let hosts = engine_list(inner, e, "/api/v1/boothost").await.unwrap_or_else(|why| {
+            let hosts = engine_list(e, "/api/v1/boothost").await.unwrap_or_else(|why| {
                 a.hosts_note = why;
                 vec![]
             });

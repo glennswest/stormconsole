@@ -113,6 +113,35 @@ pub fn router_dial(client: reqwest::Client, upstream: String, bearer: Option<Str
         .with_state(Arc::new(Target { client, upstream, bearer: Arc::new(crate::token::FileToken::fixed(bearer)), dial }))
 }
 
+/// Everything under this router goes to the engine (#160), whose client follows its CA. Destructive
+/// storage goes with the viewer's bearer as anywhere else (#82).
+pub fn router_engine(engine: Arc<crate::engine::Engine>) -> Router {
+    Router::new().route("/{*path}", any(engine_handler)).with_state(engine)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn engine_handler(
+    State(engine): State<Arc<crate::engine::Engine>>,
+    Path(path): Path<String>,
+    method: Method,
+    uri: Uri,
+    OriginalUri(original): OriginalUri,
+    act: Option<Extension<crate::storage::ActAs>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let client = match engine.client() {
+        Ok(c) => c,
+        Err(e) => return (StatusCode::BAD_GATEWAY, axum::Json(serde_json::json!({"error": e}))).into_response(),
+    };
+    let own = engine.token();
+    let bearer = match crate::storage::upstream_bearer(&method, &original, act.as_deref(), own.as_deref()) {
+        Ok(b) => b,
+        Err(refused) => return refused,
+    };
+    forward_as(&client, engine.base(), &method, &path, uri.query(), &headers, body, bearer).await
+}
+
 /// Everything under this router goes to one [`Reach`]: its dial, and its credential where it may go (#35).
 pub fn router_reach(reach: Arc<crate::dial::Reach>) -> Router {
     Router::new().route("/{*path}", any(reach_handler)).with_state(reach)

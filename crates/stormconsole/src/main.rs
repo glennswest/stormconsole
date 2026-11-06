@@ -214,8 +214,10 @@ async fn main() {
         None => console_core::token::FileToken::fixed(None),
     });
     let registry_reach = config.sbregistry_reach(node_dial.clone(), &engine_token);
+    // One way to the engine for all who ask it (#160).
+    let engine = Arc::new(console_core::engine::Engine::new(&config.stormblock_url(), config.stormblock_tls(), engine_token.clone()));
     if config.stormblock.enabled {
-        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_token(&config.stormblock_url(), engine_token.clone())));
+        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_engine(engine.clone())));
     }
     // The datastore rustkube stands on, so the relation is drawn only
     // when there is an apiserver component to draw it to.
@@ -259,7 +261,7 @@ async fn main() {
     if config.sbregistry.enabled {
         plugins.push(Arc::new(
             plugin_sbregistry::SbregistryPlugin::new(registry_reach.clone())
-                .with_engine(&config.stormblock_url(), engine_token.clone(), namespace_access.clone()),
+                .with_engine(engine.clone(), namespace_access.clone()),
         ));
     }
     // Cloud images: what could be goldened, what has been, and where the
@@ -322,7 +324,7 @@ async fn main() {
     if config.stormupdate.enabled {
         plugins.push(Arc::new(
             plugin_stormupdate::StormupdatePlugin::new(&config.stormupdate_url(), config.stormupdate.token_file.as_deref(), &config.data_dir())
-                .with_engine(&config.stormblock_url(), engine_token.clone()),
+                .with_engine(engine.clone()),
         ));
     }
     // The node's record of itself, kept across installs (#121).

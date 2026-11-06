@@ -31,11 +31,9 @@ struct State {
 }
 
 struct Inner {
-    base: String,
-    /// The engine's API token (`<data_dir>/api_token`), when it guards its
-    /// API — v18 does, reads included. Held here; the browser never sees it.
-    token: Arc<console_core::token::FileToken>,
-    client: reqwest::Client,
+    /// The engine: its address, its CA (#160), and its API token, which a v18 engine wants for reads
+    /// too. Held here; the browser never sees it.
+    engine: Arc<console_core::engine::Engine>,
     state: RwLock<State>,
     /// The last per-drive placement answer and when it was made (#29).
     placement: tokio::sync::Mutex<Option<(std::time::Instant, Value)>>,
@@ -49,15 +47,13 @@ pub struct StormblockPlugin {
 
 impl StormblockPlugin {
     pub fn new(url: &str) -> Self {
-        Self::with_token(url, Arc::new(console_core::token::FileToken::fixed(None)))
+        Self::with_engine(Arc::new(console_core::engine::Engine::plain(url, Arc::new(console_core::token::FileToken::fixed(None)))))
     }
 
-    pub fn with_token(url: &str, token: Arc<console_core::token::FileToken>) -> Self {
+    pub fn with_engine(engine: Arc<console_core::engine::Engine>) -> Self {
         Self {
             inner: Arc::new(Inner {
-                token,
-                base: url.trim_end_matches('/').to_string(),
-                client: reqwest::Client::new(),
+                engine,
                 state: RwLock::new(State {
                     health: Health::Unknown,
                     detail: "not yet polled".into(),
@@ -131,7 +127,7 @@ impl ConsolePlugin for StormblockPlugin {
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
-                console_core::proxy::router_token(self.inner.client.clone(), self.inner.base.clone(), self.inner.token.clone()),
+                console_core::proxy::router_engine(self.inner.engine.clone()),
             )
     }
 
@@ -145,7 +141,7 @@ impl ConsolePlugin for StormblockPlugin {
 
     async fn detail(&self) -> String {
         let s = self.inner.state.read().await;
-        console_core::upstream::detail("stormblock", &self.inner.base, &s.detail)
+        console_core::upstream::detail("stormblock", self.inner.engine.base(), &s.detail)
     }
 
     async fn run(&self, shutdown: CancellationToken) {
@@ -162,18 +158,14 @@ impl ConsolePlugin for StormblockPlugin {
 /// `GET {base}{path}` → the `items` array, or None if the engine is not
 /// there or does not serve that resource (luns are optional).
 async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
-    let url = format!("{}{path}", inner.base);
-    let mut req = inner.client.get(&url).timeout(Duration::from_secs(5));
-    if let Some(t) = inner.token.get() {
-        req = req.bearer_auth(t);
-    }
-    let resp = req
+    let resp = inner
+        .engine
+        .get(path)?
+        .timeout(Duration::from_secs(5))
         .send()
         .await
-        .map_err(|e| {
-            use std::error::Error as _;
-            e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
-        })?;
+        // The whole chain: one level hides "invalid peer certificate" (#47).
+        .map_err(|e| console_core::dial::chain(&e))?;
     if !resp.status().is_success() {
         return Err(format!("{path} responded {}", resp.status()));
     }
@@ -183,11 +175,7 @@ async fn list(inner: &Inner, path: &str) -> Result<Vec<Value>, String> {
 
 /// One value from the engine, with its token, within a budget.
 async fn engine_get(inner: &Inner, path: &str, budget: Duration) -> Result<Value, String> {
-    let mut req = inner.client.get(format!("{}{path}", inner.base)).timeout(budget);
-    if let Some(t) = inner.token.get() {
-        req = req.bearer_auth(t);
-    }
-    let r = req.send().await.map_err(|e| e.to_string())?;
+    let r = inner.engine.get(path)?.timeout(budget).send().await.map_err(|e| console_core::dial::chain(&e))?;
     if !r.status().is_success() {
         return Err(format!("{path} answered {}", r.status()));
     }

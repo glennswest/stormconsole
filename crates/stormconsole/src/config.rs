@@ -400,11 +400,16 @@ pub struct Stormblock {
     /// The engine's API token file (its `<data_dir>/api_token`). An engine
     /// that guards its API answers 401 to every read without it.
     pub token_file: Option<String>,
+    /// The node CA, for an `https://` url (#160). Only this CA is trusted, and the check cannot be skipped.
+    pub ca_file: Option<String>,
+    /// A client pair the node CA issued: the engine takes it at the node token's tier. Optional.
+    pub cert_file: Option<String>,
+    pub key_file: Option<String>,
 }
 
 impl Default for Stormblock {
     fn default() -> Self {
-        Self { enabled: true, url: None, token_file: None }
+        Self { enabled: true, url: None, token_file: None, ca_file: None, cert_file: None, key_file: None }
     }
 }
 
@@ -735,6 +740,16 @@ impl Config {
         if nt.ca_file.is_none() && (nt.cert_file.is_some() || nt.require) {
             return Err("[node_tls] needs ca_file: a pair or require means nothing without a CA to verify against".into());
         }
+        let sb = &self.stormblock;
+        if sb.cert_file.is_some() != sb.key_file.is_some() {
+            return Err("[stormblock] cert_file and key_file go together: set both, or neither".into());
+        }
+        if (sb.ca_file.is_some() || sb.cert_file.is_some()) && !self.stormblock_url().starts_with("https://") {
+            return Err(format!(
+                "[stormblock] ca_file/cert_file are set but url is {:?}: certificates are only used over https://",
+                self.stormblock_url()
+            ));
+        }
         let sc = &self.stormcluster;
         if sc.cert_file.is_some() != sc.key_file.is_some() {
             return Err("[stormcluster] cert_file and key_file go together: set both, or neither".into());
@@ -896,6 +911,16 @@ impl Config {
             key: f.key_file.as_ref().map(Into::into),
         };
         console_core::dial::Dial::new(files, f.require)
+    }
+
+    /// The `[stormblock]` TLS files (#160).
+    pub fn stormblock_tls(&self) -> console_core::tls::TlsFiles {
+        let f = &self.stormblock;
+        console_core::tls::TlsFiles {
+            ca: f.ca_file.as_ref().map(Into::into),
+            cert: f.cert_file.as_ref().map(Into::into),
+            key: f.key_file.as_ref().map(Into::into),
+        }
     }
 
     /// The `[stormcluster]` TLS files, for the plugin (#89).
@@ -1184,6 +1209,16 @@ data_dir    = \"/var/lib/stormconsole\"
     }
 
     /// stormcluster's :9102 is TLS only (#89, stormcluster#5).
+    #[test]
+    fn stormblock_tls() {
+        let c = Config::parse("[stormblock]\nurl = \"https://127.0.0.1:9090\"\nca_file = \"/data/stormcert/ca.crt\"\n").unwrap();
+        assert_eq!(c.stormblock_tls().ca.as_deref(), Some(std::path::Path::new("/data/stormcert/ca.crt")));
+        assert!(Config::parse("").unwrap().stormblock_tls().is_empty(), "plain unless asked");
+        let no = |t: &str| Config::parse(t).map(|_| ()).unwrap_err().to_string();
+        assert!(no("[stormblock]\nca_file = \"/x\"\n").contains("only used over https"), "the default url is http");
+        assert!(no("[stormblock]\nurl = \"https://h:9090\"\ncert_file = \"/x\"\n").contains("go together"));
+    }
+
     #[test]
     fn stormcluster_tls_files() {
         let c = Config::parse(

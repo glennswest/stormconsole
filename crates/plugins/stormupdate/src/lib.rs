@@ -61,7 +61,7 @@ struct Seen {
 struct Inner {
     base: String,
     token: FileToken,
-    engine: Option<(String, Arc<FileToken>)>,
+    engine: Option<Arc<console_core::engine::Engine>>,
     record: PathBuf,
     client: reqwest::Client,
     seen: RwLock<Seen>,
@@ -91,9 +91,9 @@ impl StormupdatePlugin {
     }
 
     /// This node's engine, for what is staged beside the running release.
-    pub fn with_engine(mut self, url: &str, token: Arc<FileToken>) -> Self {
+    pub fn with_engine(mut self, engine: Arc<console_core::engine::Engine>) -> Self {
         if let Some(i) = Arc::get_mut(&mut self.inner) {
-            i.engine = Some((url.trim_end_matches('/').to_string(), token));
+            i.engine = Some(engine);
         }
         self
     }
@@ -232,12 +232,9 @@ impl ConsolePlugin for StormupdatePlugin {
 /// What this node's engine holds beside the running release: only it knows. An
 /// engine that will not say is left out; the rest of the page does not rest on it.
 async fn generations(inner: &Inner) -> Value {
-    let Some((base, token)) = &inner.engine else { return Value::Null };
-    let mut req = inner.client.get(format!("{base}/api/v1/releases/generations")).timeout(Duration::from_secs(5));
-    if let Some(t) = token.get() {
-        req = req.bearer_auth(t);
-    }
-    match req.send().await {
+    let Some(engine) = &inner.engine else { return Value::Null };
+    let Ok(req) = engine.get("/api/v1/releases/generations") else { return Value::Null };
+    match req.timeout(Duration::from_secs(5)).send().await {
         Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
         _ => Value::Null,
     }

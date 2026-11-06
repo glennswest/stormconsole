@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The engine over https with the node CA (#160)
+- **feat:** `[stormblock] ca_file/cert_file/key_file`. An `https://` engine url is verified against that CA and no other, with no way to skip the check; `http://` works as before. It covers everything that asks the engine: its card and proxy, the Registry page and the Update page. A client pair is optional. A CA with an `http://` url, or half a pair, is exit 78.
+- **fix:** a failed read of the engine says the whole cause on its card, so a certificate refusal is not just "client error (Connect)".
+
 ### 2026-11-05 — Each stormd over TLS (#130)
 - **docs:** `[node_tls]` (#49) is what #130 asks for; there are no separate `[fleet]` keys. `verify-stormd-tls.sh` now proves an action by the process's pid changing, not only a 200.
 

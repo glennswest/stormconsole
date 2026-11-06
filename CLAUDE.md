@@ -2236,6 +2236,12 @@ from the code); `not_started` only opens a TCP connection, which says nothing an
 - [x] `verify-stormd-tls.sh` rerun on stormd ac1a7fb; it now proves the action by the process's pid, where it had only a 200
 - Left: stormcos#371 turning it on (`[node_tls]` in the console's config, `build.stormd_api_tls`), not done there yet
 
+### The engine over https with the node CA (#160)
+stormcos#374: `:9090` moves to TLS from the node CA (stormblock#203); `tls_mode = optional` takes both while callers move (#525). Three plugins ask the engine: stormblock, the registry's holdings, the
+Update page's generations. All on plain clients.
+- [ ] `console_core::engine::Engine`: address, trust, token, for all three. `[stormblock] ca_file/cert_file/key_file`; the URL's scheme decides; no skip, no fallback; 78 on a contradiction
+- [ ] `deploy/verify-engine-tls.sh`: a real engine from a test CA, optional and required; another CA refused; the pair with no token; renewal; docs, changelog; say the keys on stormcos#374; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

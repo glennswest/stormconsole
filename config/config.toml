@@ -115,6 +115,13 @@ enabled = true
 # The engine's API token, when it guards its API (v18 does, reads too):
 # its <data_dir>/api_token. Without it every read is a 401.
 # token_file = "/data/stormblock/api_token"
+# An https:// url is verified against this CA and no other; there is no way to skip the check. On a node,
+# once the engine serves TLS: url = "https://127.0.0.1:9090" and the node CA. A plain http:// url keeps
+# working until the engine's tls_mode is required, and a CA with one is a config error.
+# ca_file = "/data/stormcert/ca.crt"
+# A client pair the node CA issued, which the engine takes at the node token's tier. Optional.
+# cert_file = "/data/stormcert/stormconsole-client.crt"
+# key_file = "/data/stormcert/stormconsole-client.key"
 [sbregistry]
 enabled = true
 # url = "http://127.0.0.1:5100"
