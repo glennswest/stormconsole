@@ -172,7 +172,8 @@ ctl put /with-two ok >/dev/null; check "$(ctl get --print-value-only /with-two)"
 say "NOSPACE: fill a small quota, then disarm through the console"
 Q=19165
 "$FE" --name n1 --data-dir "$W/n" --listen-client-urls http://127.0.0.1:24200 --advertise-client-urls http://127.0.0.1:24200 --listen-peer-urls http://127.0.0.1:24201 --listen-metrics-url 127.0.0.1:24202 \
-  --quota-backend-bytes 268435456 --space-check-interval-secs 1 --space-high-water-percent 94 --space-alarm-percent 95 --space-clear-percent 70 > "$W/n.log" 2>&1 &
+  --quota-backend-bytes 268435456 --space-check-interval-secs 1 --space-high-water-percent 94 --space-alarm-percent 95 --space-clear-percent 1 > "$W/n.log" 2>&1 &
+# A clear mark of 1%: fastetcd clears the alarm by itself as its log is purged, and this is about disarming it from the console.
 nctl() { ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24200 "$@"; }
 for _ in $(seq 60); do nctl put /ready 1 >/dev/null 2>&1 && break; sleep 0.5; done
 console $Q http://127.0.0.1:24200 http://127.0.0.1:24202
