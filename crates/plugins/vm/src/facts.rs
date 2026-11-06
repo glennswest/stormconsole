@@ -5,9 +5,8 @@
 //! Read from rustkube-node (2026-10-02): the instance's status carries
 //! `phase`, `nodeName`, `reason`, `message`, conditions and the
 //! `storm.io/startedUnix` / `readyUnix` / `bootSeconds` marks; no image
-//! digest for any disk and no interface counters. The counters are
-//! stormvm#48 (in the guest) and rustkube-node#131 (the tap, as the
-//! kubelet already counts a pod's interfaces).
+//! digest for any disk. Interface counters are stormvm's (stormvm#48), on the
+//! machine's Metrics tab (#14).
 
 use serde_json::{json, Map, Value};
 
@@ -131,11 +130,6 @@ pub fn gaps(images: &[Value]) -> Vec<Value> {
             "issue": plugin_kubernetes::pod::STATUS_ISSUE,
         }));
     }
-    out.push(json!({
-        "what": "traffic counters",
-        "why": "nothing counts a machine's interfaces yet — neither the guest's (stormvm#48) nor the tap on the node",
-        "issue": plugin_kubernetes::pod::NETWORK_ISSUE,
-    }));
     out
 }
 
@@ -199,6 +193,6 @@ mod tests {
         assert_eq!(i[1]["digest"], format!("sha256:{hex}"));
         let g = gaps(&i);
         assert_eq!(g[0]["what"], "image digest");
-        assert_eq!(g[1]["what"], "traffic counters");
+        assert_eq!(g.len(), 1, "a machine's traffic is on its Metrics tab (#14)");
     }
 }

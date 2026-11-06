@@ -66,7 +66,7 @@ walk(`metrics (${PHASE})`, async (t) => {
   t.check(!/vault/.test(await page.locator('main').innerHTML()), 'its own and no other pod')
 
   t.check(await t.open(page, '#/vm/shop/vm1', /vm1/), 'the VM page')
-  await page.getByRole('link', { name: /CPU, memory, disk and network over time/ }).click()
-  t.check(await t.until(async () => /Virtual machine vm1 in shop/i.test(await t.text(page)) && (await page.locator('section.chart svg').count()) === 6, 30000), 'a VM links to its series', (await t.text(page)).slice(0, 300))
+  await page.locator('nav.tabs button', { hasText: 'Metrics' }).click()
+  t.check(await t.until(async () => /Memory: allocated and in use/.test(await t.text(page)) && (await page.locator('section.chart svg').count()) === 11, 30000), 'a VM links to its series', (await t.text(page)).slice(0, 300))
   await t.shot(page, 'metrics-vm')
 })

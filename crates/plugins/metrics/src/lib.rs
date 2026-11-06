@@ -295,7 +295,7 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
                     return refuse(StatusCode::NOT_FOUND, format!("no project {ns}"));
                 }
             }
-            (e.title(), "", e.panels())
+            (e.title(), e.note(), e.panels())
         }
         None => {
             let id = q.level.as_deref().unwrap_or("");

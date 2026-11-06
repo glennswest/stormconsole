@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — A VM's metrics, on its page (#14)
+- **feat:** a Metrics tab on a machine's page: CPU and time waiting for the host, memory allocated against in use, each disk's bytes and operations, each interface's bytes and packets, over a window. It replaces the link off to the Metrics page, which has the same charts.
+- **fix:** the machine's page no longer says nothing counts its interfaces: stormvm has since stormvm#48.
+
 ### 2026-11-06 — The Cilium agent's counters on the card (#4)
 - **feat:** the pod network's card shows what this node's agent forwarded, dropped (with a rate) and denied by policy, and the fullest BPF map. A map 90% full turns the card to a warning. An agent serving no metrics has none, and is not a failure.
 

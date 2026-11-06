@@ -147,6 +147,11 @@ check "$(ent 'entity=pod&ns=shop&name=web' cpu)" "['agent', 'app']" "one pod, by
 check "$(ent 'entity=pod&ns=shop&name=web' rx)" "['eth0']" "its network"
 check "$(ent 'entity=vm&ns=shop&name=vm1' read)" "['root']" "one VM, by disk"
 check "$(ent 'entity=vm&ns=shop&name=vm1' tx)" "['default']" "its network"
+check "$(ent 'entity=vm&ns=shop&name=vm1' memory)" "['allocated', 'in use on the node', 'the balloon leaves the guest']" "its memory: allocated against touched, through ironprom's real regex matcher"
+check "$(ent 'entity=vm&ns=shop&name=vm1' wait)" "['0']" "the CPU it waited for"
+check "$(ent 'entity=vm&ns=shop&name=vm1' read_ops)" "['root']" "its disk operations"
+check "$(ent 'entity=vm&ns=shop&name=vm1' tx_packets)" "['default']" "its packets"
+contains_note=$(g '/charts?entity=vm&ns=shop&name=vm1&window=900' | j 'd["note"]'); case "$contains_note" in *"no network series"*) echo "  ok   and says what has no network series";; *) echo "  FAIL the note — got: $contains_note"; FAILED=$((FAILED+1));; esac
 check "$(code '/charts?entity=volume&ns=a&name=b')" 400 "a volume has no series to ask for"
 INJ=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("Z\"} or up{a=\""))')
 check "$(ent "entity=drive&serial=$INJ" temperature)" "[]" "a serial cannot end its string"

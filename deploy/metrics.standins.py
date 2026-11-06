@@ -54,6 +54,13 @@ def vm():
         b = f'namespace="{ns}",name="{name}",uid="u-{name}"'
         out.append(f'kubevirt_vmi_vcpu_seconds_total{{{b},id="0",state="running"}} {up() * 0.5}')
         out.append(f"kubevirt_vmi_memory_resident_bytes{{{b}}} {512 << 20}")
+        out.append(f"kubevirt_vmi_memory_domain_bytes{{{b}}} {4096 << 20}")
+        out.append(f"kubevirt_vmi_memory_actual_balloon_bytes{{{b}}} {2048 << 20}")
+        out.append(f'kubevirt_vmi_vcpu_delay_seconds_total{{{b},id="0"}} {up() * 0.1}')
+        out.append(f'kubevirt_vmi_storage_iops_read_total{{{b},drive="root"}} {up() * 4}')
+        out.append(f'kubevirt_vmi_storage_iops_write_total{{{b},drive="root"}} {up() * 8}')
+        out.append(f'kubevirt_vmi_network_receive_packets_total{{{b},interface="default"}} {up() * 10}')
+        out.append(f'kubevirt_vmi_network_transmit_packets_total{{{b},interface="default"}} {up() * 5}')
         out.append(f'kubevirt_vmi_storage_read_traffic_bytes_total{{{b},drive="root"}} {up() * 4096}')
         out.append(f'kubevirt_vmi_storage_write_traffic_bytes_total{{{b},drive="root"}} {up() * 8192}')
         out.append(f'kubevirt_vmi_network_receive_bytes_total{{{b},interface="default"}} {up() * 1000}')

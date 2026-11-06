@@ -24,12 +24,13 @@
   import CopyButton from '../components/CopyButton.svelte'
   import VmBackup from './VmBackup.svelte'
   import VmKeys from './VmKeys.svelte'
+  import EntityCharts from '../components/EntityCharts.svelte'
   import { noteActivity } from '../stores.svelte.js'
 
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
 
-  const TABS = ['Overview', 'Settings', 'Backup', 'Serial console', 'Graphical console', 'YAML']
+  const TABS = ['Overview', 'Metrics', 'Settings', 'Backup', 'Serial console', 'Graphical console', 'YAML']
 
   // `?door=serial` / `?door=screen` opens straight onto a console.
   //
@@ -473,7 +474,6 @@
 
     {#if tab === 'Overview'}
       {#if saved}<p class="saved">{saved}</p>{/if}
-      <p class="metrics-link"><a href={`#/metrics?entity=vm&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its CPU, memory, disk and network over time</a></p>
       <section class="cards">
         <div class="card">
           <h2>Machine</h2>
@@ -691,7 +691,7 @@
         </div>
 
         <div class="card">
-          <h2>Traffic and log</h2>
+          <h2>Log</h2>
           <p class="none">
             The guest’s serial log is on the
             <a href={`#/vm/${ns}/${name}?door=serial`} onclick={() => (tab = 'Serial console')}>Serial console</a>
@@ -710,6 +710,8 @@
       <section class="card events-card">
         <EventBox id={`vm:instance:${ns}/${name}`} refresh={eventTick} />
       </section>
+    {:else if tab === 'Metrics'}
+      <EntityCharts query={new URLSearchParams({ entity: 'vm', ns, name }).toString()} />
     {:else if tab === 'Settings'}
       {#if settings?.pending?.length}
         <!-- Written, and not yet in force. Left unsaid, this is the gap

@@ -376,7 +376,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   Which image a container was cloned from comes from the kubelet (#75); without its word the page shows the
   newest stormcentral built for the component and says so. What a component's image was made from upstream is
   not recorded yet: the page says so (stormcentral-compliance-operations#219). 
-  A VM's traffic counters: stormvm#48.
 - **A cluster change reaching a real node** — the Cluster page writes join,
   promote, demote and drain as `cluster.storm.io` objects (#63, #88), and
   stormcluster reconciles them. Changing a real node needs the node lifecycle
@@ -398,8 +397,7 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   probes, and shows no history; it says which.
 - **Cilium flows, per-module agent health and a Service's datapath backends** — the image ships them
   (stormpump#11, closed); the console reads none yet (#4). The agent's counters are on the card.
-- **VM metrics over time** — cadvisor is not wired (#14; per-VM stats
-  keyed to the VMI are cadvisor#15); **VM hotplug and
+- **VM hotplug and
   memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —
   stormvm#41; **VMs on the pod network** (and so isolation covering them) —
   stormvm#16; until then a NAT'd or bridged machine says no policy applies

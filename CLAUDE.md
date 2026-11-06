@@ -2325,6 +2325,11 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
   `fetch`: an image with `localName`, one falling back to its name with `aarch64` added, one with `arch: null`), clippy `-D warnings` on the crate;
   the default `sc-build`. Not seen on a real operator. It shows the architecture, and does not refuse a mismatch: that needs the node's
 
+### A VM's metrics (#14)
+Settings done (v0.10.0, v0.11.0, #50). The metrics half waited on cadvisor's container-to-VM key, and no longer needs it: stormvm#48 serves `/metrics` per VM in KubeVirt's names with `namespace`, `name`, ironprom scrapes it (stormcos `ironprom-node.yml`), and #46 charts part of it. Left: allocated against touched, operations, packets, a tab on the VM's page, and a stale "nothing counts its interfaces".
+- [x] `metrics/panels.rs` VM panels; `EntityCharts.svelte` shared with the Metrics page; the tab; `facts.rs`
+- [ ] `verify-metrics.sh` extended; docs; dist; close; golden
+
 ### Full Cilium, what is left (#4)
 Items 1 and 5 done in v0.8.0; 3 superseded by 4. Item 2 here: `127.0.0.1:9962/metrics`, names from Cilium v1.20.2's `metrics.rst`. There is no policy-verdict counter at the agent, so `drop_count_total{reason="Policy denied"}`.
 - [x] `kubernetes/src/agentmetrics.rs`, on the card; `deploy/verify-cilium-metrics.sh`

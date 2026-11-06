@@ -150,16 +150,29 @@ const POD: &[Panel] = &[
 const VM: &[Panel] = &[
     Panel { id: "cpu", title: "CPU", unit: "cores", job: "stormvm",
         query: r#"sum by (id) (rate(kubevirt_vmi_vcpu_seconds_total{job="stormvm",__THE__}[5m]))"#, legend: &["id"] },
-    Panel { id: "memory", title: "Memory in use on the node", unit: "bytes", job: "stormvm",
-        query: r#"kubevirt_vmi_memory_resident_bytes{job="stormvm",__THE__}"#, legend: &["name"] },
+    // "Is it busy or stuck": time it could have run and did not get. Not a share of the guest's own CPU.
+    Panel { id: "wait", title: "CPU waiting for the host", unit: "cores", job: "stormvm",
+        query: r#"sum by (id) (rate(kubevirt_vmi_vcpu_delay_seconds_total{job="stormvm",__THE__}[5m]))"#, legend: &["id"] },
+    // Allocated against touched (#14). The allocation is the hypervisor's, because a VM's cgroup has no memory.max
+    // and so cadvisor would read it as unlimited (cadvisor#15).
+    Panel { id: "memory", title: "Memory: allocated and in use", unit: "bytes", job: "stormvm",
+        query: r#"{__name__=~"kubevirt_vmi_memory_(domain|resident|actual_balloon)_bytes",job="stormvm",__THE__}"#, legend: &["__name__"] },
     Panel { id: "read", title: "Disk reads", unit: "bytes_per_sec", job: "stormvm",
         query: r#"sum by (drive) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{job="stormvm",__THE__}[5m]))"#, legend: &["drive"] },
     Panel { id: "write", title: "Disk writes", unit: "bytes_per_sec", job: "stormvm",
         query: r#"sum by (drive) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{job="stormvm",__THE__}[5m]))"#, legend: &["drive"] },
+    Panel { id: "read_ops", title: "Disk read operations", unit: "per_sec", job: "stormvm",
+        query: r#"sum by (drive) (rate(kubevirt_vmi_storage_iops_read_total{job="stormvm",__THE__}[5m]))"#, legend: &["drive"] },
+    Panel { id: "write_ops", title: "Disk write operations", unit: "per_sec", job: "stormvm",
+        query: r#"sum by (drive) (rate(kubevirt_vmi_storage_iops_write_total{job="stormvm",__THE__}[5m]))"#, legend: &["drive"] },
     Panel { id: "rx", title: "Network received", unit: "bytes_per_sec", job: "stormvm",
         query: r#"sum by (interface) (rate(kubevirt_vmi_network_receive_bytes_total{job="stormvm",__THE__}[5m]))"#, legend: &["interface"] },
     Panel { id: "tx", title: "Network sent", unit: "bytes_per_sec", job: "stormvm",
         query: r#"sum by (interface) (rate(kubevirt_vmi_network_transmit_bytes_total{job="stormvm",__THE__}[5m]))"#, legend: &["interface"] },
+    Panel { id: "rx_packets", title: "Packets received", unit: "per_sec", job: "stormvm",
+        query: r#"sum by (interface) (rate(kubevirt_vmi_network_receive_packets_total{job="stormvm",__THE__}[5m]))"#, legend: &["interface"] },
+    Panel { id: "tx_packets", title: "Packets sent", unit: "per_sec", job: "stormvm",
+        query: r#"sum by (interface) (rate(kubevirt_vmi_network_transmit_packets_total{job="stormvm",__THE__}[5m]))"#, legend: &["interface"] },
 ];
 
 /// One object's series.
@@ -192,6 +205,15 @@ impl Entity {
             Entity::Drive { serial } => format!("serial={}", quote(serial)),
             Entity::Pod { ns, name } => format!("namespace={},pod={}", quote(ns), quote(name)),
             Entity::Vm { ns, name } => format!("namespace={},name={}", quote(ns), quote(name)),
+        }
+    }
+
+    /// What is not here and why, shown above its charts.
+    pub fn note(&self) -> &'static str {
+        match self {
+            // stormvm `metrics.rs`: the counters are the tap's, and these two have none.
+            Entity::Vm { .. } => "An interface on qemu's userspace network or passt has no kernel interface, so it has no network series.",
+            _ => "",
         }
     }
 
@@ -272,6 +294,13 @@ pub fn lines(result: &[Value], legend: &[&str]) -> (Vec<Value>, usize) {
         .iter()
         .map(|s| {
             let name = line_name(s.get("metric").unwrap_or(&Value::Null), legend);
+            // A panel of several series is named by what each one is.
+            let name = match name.as_str() {
+                "kubevirt_vmi_memory_domain_bytes" => "allocated".to_string(),
+                "kubevirt_vmi_memory_resident_bytes" => "in use on the node".to_string(),
+                "kubevirt_vmi_memory_actual_balloon_bytes" => "the balloon leaves the guest".to_string(),
+                _ => name,
+            };
             let points = s.get("values").and_then(Value::as_array).map(|a| a.iter().filter_map(sample).collect()).unwrap_or_default();
             (name, points)
         })
@@ -296,6 +325,17 @@ pub fn clamp_window(window: Option<i64>) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vms_memory_lines_are_named_by_what_they_are() {
+        let series = |n: &str| json!({"metric": {"__name__": n, "namespace": "a", "name": "b"}, "values": [[1, "1"]]});
+        let (lines, _) = lines(
+            &[series("kubevirt_vmi_memory_domain_bytes"), series("kubevirt_vmi_memory_resident_bytes"), series("kubevirt_vmi_memory_actual_balloon_bytes")],
+            &["__name__"],
+        );
+        let names: Vec<&str> = lines.iter().map(|l| l["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["allocated", "in use on the node", "the balloon leaves the guest"]);
+    }
 
     fn panel(level: &str, id: &str) -> &'static Panel {
         LEVELS.iter().find(|l| l.id == level).unwrap().panels.iter().find(|p| p.id == id).unwrap()

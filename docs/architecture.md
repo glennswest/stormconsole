@@ -850,6 +850,10 @@ that stops answering keeps what it last said, marked as such. `GET
 time, counts and every finding that is not as it should be. It is read-only on
 both sides.
 
+### A VM's metrics (#14)
+
+A machine's Metrics tab is ironprom's series from stormvm (`/metrics` on :9095, stormvm#48, in KubeVirt's names), over a window: CPU and time waiting for the host, memory allocated against in use on the node with what the balloon leaves, each disk's bytes and operations, each interface's bytes and packets. Neither cadvisor nor the container-to-VM key the issue first waited on is needed: stormvm labels every series with the machine's namespace and name, and a VM's cgroup has no `memory.max`, so cadvisor could not have said what was allocated. A NIC on qemu's userspace network or passt has no kernel interface and so no network series, which the tab says. It reads this node's ironprom, so a machine on another node has its series on that node's console.
+
 ### The image operator over TLS (#55)
 
 vmcloud-image-operator#16 makes :9099 TLS with a credential; plain HTTP answers health only. `[vmimages] ca_file/cert_file/key_file` is one
@@ -2069,7 +2073,6 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
-| cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
 | stormconsole | #4 Hubble flows and agent metrics (unblocked); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
