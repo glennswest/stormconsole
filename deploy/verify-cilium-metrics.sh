@@ -24,17 +24,25 @@ cargo build -q --locked -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
 
 scrape() { # dropped denied ct4-pressure
-  cat > "$W/metrics" <<SCRAPE
-# TYPE cilium_drop_count_total counter
-cilium_drop_count_total{direction="EGRESS",reason="Policy denied"} $2
-cilium_drop_count_total{direction="INGRESS",reason="Stale or unroutable IP"} $(( $1 - $2 ))
-cilium_forward_count_total{direction="EGRESS"} 15000
-cilium_forward_count_total{direction="INGRESS"} 5000
-${3:+cilium_bpf_map_pressure{map_name="cilium_ct4_global"\} $3}
-SCRAPE
+  { echo '# TYPE cilium_drop_count_total counter'
+    echo "cilium_drop_count_total{direction=\"EGRESS\",reason=\"Policy denied\"} $2"
+    echo "cilium_drop_count_total{direction=\"INGRESS\",reason=\"Stale or unroutable IP\"} $(( $1 - $2 ))"
+    echo 'cilium_forward_count_total{direction="EGRESS"} 15000'
+    echo 'cilium_forward_count_total{direction="INGRESS"} 5000'
+    [ -z "${3:-}" ] || echo "cilium_bpf_map_pressure{map_name=\"cilium_ct4_global\"} $3"
+  } > "$W/metrics.new"; mv "$W/metrics.new" "$W/metrics"
 }
+say "fastetcd and rustkube, for the page's own reads"
+curl -sfL "https://github.com/glennswest/fastetcd/releases/download/v1.2.0/fastetcd-v1.2.0-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+curl -sfL "https://github.com/glennswest/rustkube/releases/download/v0.15.3/rustkube-apiserver-v0.15.3-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+FE=$(find "$W" -type f -name fastetcd -perm -u+x | head -1); KA=$(find "$W" -type f -name kube-apiserver -perm -u+x | head -1)
+FP=http://127.0.0.1:23704
+"$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls $FP --advertise-client-urls $FP --listen-peer-urls http://127.0.0.1:23705 --initial-advertise-peer-urls http://127.0.0.1:23705 --listen-metrics-url 127.0.0.1:23706 > "$W/fastetcd.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null $FP/health && break; sleep 0.5; done
+"$KA" --bind-addr 127.0.0.1 --secure-port 26404 --etcd-servers $FP --insecure true --dev-anonymous-admin true > "$W/apiserver.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:26404/readyz && break; sleep 0.5; done
 mkdir -p "$W/c"
-{ printf 'listen_addr = "127.0.0.1:%s"\ndata_dir = "%s/c"\n' "$P" "$W"
+{ printf 'listen_addr = "127.0.0.1:%s"\ndata_dir = "%s/c"\n[kubernetes]\nserver = "http://127.0.0.1:26404"\n' "$P" "$W"
   for s in fleet logs stormdrive stormstorage stormblock sbregistry vm vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate ironprom; do printf '[%s]\nenabled = false\n' "$s"; done
 } > "$W/c.toml"
 card() { curl -s "$C/api/v1/components" | python3 -c "
@@ -56,6 +64,7 @@ contains "$(card)" "'dropped': '500" "everything dropped, across reasons"
 contains "$(card)" "'forwarded': '20.0k'" "forwarded"
 contains "$(card)" "'fullest map': 'cilium_ct4_global 93%'" "the fullest map"
 contains "$(card)" "BPF map cilium_ct4_global is 93% full" "said on the card"
+contains "$(card)" "warn |" "and the card warns"
 contains "$(card)" "'agent': 'up'" "and the health server's answer alongside"
 
 say "drops moving"
@@ -68,9 +77,10 @@ check "$BR" 0 "the walk"
 
 say "nothing near full"
 scrape 800 420 ""
-until_card "'dropped': '800'" 40 || true
+for _ in $(seq 1 40); do case "$(card)" in *"fullest map"*) sleep 1;; *) break;; esac; done
 absent "$(card)" "fullest map" "no map named: the agent only publishes pressure past a threshold"
 absent "$(card)" "% full" "and nothing said about it"
+absent "$(card)" "warn |" "and the warning goes with it"
 
 say "an agent that serves no metrics"
 rm "$W/metrics"

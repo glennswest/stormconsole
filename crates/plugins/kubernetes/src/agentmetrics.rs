@@ -116,7 +116,8 @@ pub fn onto_card(card: &mut ComponentSummary, r: &Reading) {
         metrics.push(Metric::new("fullest map", format!("{map} {:.0}%", full * 100.0)).tone(if hot { "warn" } else { "muted" }));
         if hot {
             card.detail = format!("{} · BPF map {map} is {:.0}% full", card.detail, full * 100.0);
-            if card.health == Health::Ok {
+            // Whatever the CRDs said, short of something already worse.
+            if card.health != Health::Error {
                 card.health = Health::Warn;
             }
         }
@@ -193,6 +194,12 @@ cilium_endpoint_count 4
         onto_card(&mut hot, &Reading { counters: parse(SCRAPE), drops_per_sec: None, at: None });
         assert_eq!(hot.health, Health::Warn);
         assert!(hot.detail.contains("cilium_ct4_global is 93% full"), "{}", hot.detail);
+
+        // A card with nothing to report but this says this.
+        let mut idle = card();
+        idle.health = Health::Idle;
+        onto_card(&mut idle, &Reading { counters: parse(SCRAPE), drops_per_sec: None, at: None });
+        assert_eq!(idle.health, Health::Warn);
 
         // A card already an error stays one.
         let mut down = card();
