@@ -15,7 +15,7 @@
       data = await get(`/api/v1/console/audit?${q}`)
       error = ''
     } catch (e) {
-      error = e.message
+      error = /^403/.test(e.message) ? "The audit is an administrator's to read." : e.message
     }
   }
   $effect(() => {

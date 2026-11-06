@@ -16,6 +16,8 @@ export const capability = (c) => CAPABILITIES[c] || c
 
 /// How it ended. A refusal is worth seeing as one.
 export function result(status) {
+  // An apply or a format answers 207 when part of it was refused.
+  if (status === 207) return { word: 'partly refused (207)', tone: 'warn' }
   if (status === 101 || (status >= 200 && status < 300)) return { word: 'done', tone: 'ok' }
   if (status === 401 || status === 403 || status === 428) return { word: `refused (${status})`, tone: 'warn' }
   return { word: `failed (${status})`, tone: 'bad' }

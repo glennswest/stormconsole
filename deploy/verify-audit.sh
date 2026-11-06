@@ -74,8 +74,8 @@ say "acts"
 check "$(login root pw)" 200 "root signs in"; login ops pw >/dev/null; login reader pw >/dev/null
 check "$(login mallory SECRET-PASSWORD-15)" 401 "a wrong one does not"
 CM='{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"c1"},"data":{"a":"BODY-SECRET-15"}}'
-check "$(code ops -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop" -d "$CM")" 403 "ops, with no RBAC in shop: the apiserver refuses it"
-check "$(code root -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop&token=QUERY-SECRET-15" -d "$CM")" 200 "root applies"
+check "$(code ops -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop" -d "$CM")" 207 "ops, with no RBAC in shop: the apiserver refuses it, said per document"
+check "$(code root -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop&token=QUERY-SECRET-15" -d "$CM")" 201 "root applies"
 check "$(code reader -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop" -d "$CM")" 403 "a reader is stopped at the gate"
 check "$(code root -X DELETE "$C/api/plugins/k8s/raw/api/v1/namespaces/shop/configmaps/c1")" 200 "root deletes"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop" -d "$CM")" 401 "nobody at all"
@@ -88,7 +88,7 @@ as root "$C/api/plugins/k8s/events" >/dev/null
 say "the record"
 A=$(as root "$C/api/v1/console/audit"); echo "$A" | j 'd["items"][:4]' | cut -c1-400
 rec() { echo "$A" | j "[(r['who'],r['status']) for r in d['items'] if $1]"; }
-check "$(rec "r['capability']=='change' and r['object']=='k8s/apply'" | tr -d ' ')" "[('anonymous',401),('reader',403),('root',200),('ops',403)]" "every apply, newest first: refused and allowed, each by who"
+check "$(rec "r['capability']=='change' and r['object']=='k8s/apply'" | tr -d ' ')" "[('anonymous',401),('reader',403),('root',201),('ops',207)]" "every apply, newest first: refused and allowed, each by who"
 check "$(rec "r['capability']=='delete' and 'c1' in r['object']")" "[('root', 200)]" "the delete, on what"
 check "$(echo "$A" | j "[r['from'] for r in d['items']][0]")" 127.0.0.1 "from where"
 check "$(rec "r['capability']=='sign-in' and r['object']=='refused'")" "[('mallory', 401)]" "a refused sign-in, with the name it gave"
