@@ -51,3 +51,6 @@ uuid.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
 futures-util.workspace = true
+
+[dev-dependencies]
+serde_yaml.workspace = true

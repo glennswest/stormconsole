@@ -1952,6 +1952,12 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### The console's apiserver role (#78)
+Owner on stormcos#203: writes "listed resource by resource", the settings of the components it manages. Read from
+the code: `client.rs` falls back to the console's own token for anyone with no identity, so the role bounds them too.
+- [x] `deploy/rbac/stormconsole.yaml`, `docs/rbac.md`, `crates/stormconsole/src/rbac.rs`
+- [ ] `deploy/verify-rbac.sh`: real apiserver; post on stormcos#76; golden
+
 ### Image words and names per the glossary (#85)
 stormcos `docs/GLOSSARY.md`: a pod's or service's clone is its container; instance is a VM's disk. Read from
 stormblock-registry da53e0e: a catalog item's `source` is `repo:tag`, and only then is its `digest` upstream's; a

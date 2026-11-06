@@ -1,0 +1,160 @@
+# The console's own apiserver role (stormconsole#78, for stormcos#76 step 2). The owner on
+# stormcos#203: "a role that may write the settings of the components it manages, scoped to those
+# settings and not cluster-admin", its writes "listed resource by resource".
+#
+# Checked against the code by crates/stormconsole/src/rbac.rs, and live by deploy/verify-rbac.sh.
+# docs/rbac.md says why each rule is here, and what is left to a signed-in user's own identity.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stormconsole
+  namespace: kube-system
+---
+# The home of users' SSH keys (stormconsole#42). stormcos ships it, so the console needs no
+# cluster-wide create on namespaces.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storm-users
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: stormcos:stormconsole
+rules:
+  # --- What the console watches: every kind it lists, on its own credential ---
+  - apiGroups: [""]
+    resources: [namespaces, nodes, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, resourcequotas, limitranges]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    verbs: [get, list, watch]
+  - apiGroups: [route.openshift.io]
+    resources: [routes]
+    verbs: [get, list, watch]
+  - apiGroups: [k8s.cni.cncf.io]
+    resources: [network-attachment-definitions]
+    verbs: [get, list, watch]
+  - apiGroups: [cilium.io]
+    resources: [ciliumendpoints, ciliumnodes, ciliumidentities, ciliumnetworkpolicies, ciliumclusterwidenetworkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [flowsdn.io]
+    resources: [flowsdnendpoints, flowsdnidentities, flowsdnnetworkpolicies, flowsdnclusterwidenetworkpolicies]
+    verbs: [get, list, watch]
+  # --- What it reads on demand ---
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [endpoints]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get]
+  - apiGroups: [project.openshift.io]
+    resources: [projects]
+    verbs: [get, list]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, list]
+  - nonResourceURLs: [/version]
+    verbs: [get]
+  # --- What it writes: the settings of the components it manages ---
+  # A machine's settings and whether it runs. Restart and stop delete the instance.
+  - apiGroups: [kubevirt.io]
+    resources: [virtualmachines]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [kubevirt.io]
+    resources: [virtualmachineinstances]
+    verbs: [get, list, watch, delete]
+  # A machine's snapshots.
+  - apiGroups: [snapshot.kubevirt.io]
+    resources: [virtualmachinesnapshots]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [snapshot.kubevirt.io]
+    resources: [virtualmachinerestores]
+    verbs: [get, list, watch, create]
+  # The cluster's membership, which stormcluster reconciles.
+  - apiGroups: [cluster.storm.io]
+    resources: [clusters, clustermembers]
+    verbs: [get, list, watch, create, patch, delete]
+  # The VM image catalogue.
+  - apiGroups: [storm.io]
+    resources: [cloudimages]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: stormcos:stormconsole
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: stormcos:stormconsole
+subjects:
+  - { kind: ServiceAccount, name: stormconsole, namespace: kube-system }
+---
+# Users' SSH keys (stormconsole#42): only the console writes here.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stormconsole-keys
+  namespace: storm-users
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, create, update, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stormconsole-keys
+  namespace: storm-users
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stormconsole-keys
+subjects:
+  - { kind: ServiceAccount, name: stormconsole, namespace: kube-system }
+---
+# The one-time move of those keys out of `default` (stormconsole#42). Drop this Role and its binding
+# once every node has run it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stormconsole-keys-migration
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stormconsole-keys-migration
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stormconsole-keys-migration
+subjects:
+  - { kind: ServiceAccount, name: stormconsole, namespace: kube-system }

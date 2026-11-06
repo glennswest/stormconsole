@@ -1895,6 +1895,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "serde_yaml",
  "stormview",
  "subtle",
  "tokio",

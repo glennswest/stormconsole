@@ -5,6 +5,8 @@
 mod auth;
 mod config;
 mod listen;
+#[cfg(test)]
+mod rbac;
 mod server;
 
 use std::sync::Arc;

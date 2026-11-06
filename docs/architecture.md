@@ -1094,6 +1094,11 @@ stormdrive), the page makes one group per node and controller, names the
 controller and says the shelf is not read yet. Drives and Shelves both say so,
 and the navigator's Shelves count includes it.
 
+### The console's apiserver role (#78)
+
+The console's own credential gets the role in `deploy/rbac/stormconsole.yaml`: see [rbac.md](rbac.md). A viewer with no
+kubernetes identity goes out on it too, so it bounds what such a person can do. A test ties it to the code.
+
 ### What a container runs on (#75)
 
 The owner: "nothing uses a golden, everything uses a CoW, but the golden is our registry". The kubelet writes

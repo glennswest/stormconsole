@@ -58,7 +58,7 @@ use tokio_util::sync::CancellationToken;
 /// the one `oc get vmi` and `virtctl` speak (stormvm DESIGN.md). Both are
 /// optional: a cluster with no VM CRD is a cluster with no VMs, not a
 /// broken one.
-const RESOURCES: &[ResourceSpec] = &[
+pub const RESOURCES: &[ResourceSpec] = &[
     ResourceSpec {
         kind: "vm",
         api_kind: "VirtualMachine",
