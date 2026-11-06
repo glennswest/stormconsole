@@ -2329,7 +2329,13 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
 stormblock bcbe3e0 (`docs/raid-sets.md`, `mgmt/api/{shelves,arrays}.rs`, `raid/rebuild.rs`). The engine's "shelf" is a set's pool. Named RAID sets in the nav,
 because Hardware → Shelves is already the drive map's. The engine holds fail, replace and `POST /spares` for its admin, so all three go through #82's guard.
 - [x] `stormblock/src/raid.rs`, `GET /raid`; member actions; health on the engine and the node; `#/raid`, `raid.js`
-- [ ] `deploy/verify-raid.sh`: a real engine, real failures and rebuilds, viewers; Chromium; docs; dist; golden
+- [x] `deploy/verify-raid.sh`: a real engine, real failures and rebuilds, viewers; Chromium; docs; dist; golden
+- Verified with `sc-build deploy/verify-raid.sh` (0 failed): stormblock bcbe3e0 with a real shelf (RAID-6 × 6 + a spare, file-backed), reviewing bearers at rustkube main. A member failed through
+  the console as alice: the spare taken, slot 5 rebuilding with a moving percent, the engine's card and the node's row warn, clean again. Two more failed: degraded, the third refused by the engine.
+  bob sees it all and gets no member action; 403 by hand. Chromium: the bays marked, a wrong word, a replaced drive refused in the engine's words, a real replace and spare, both rebuilt, a real
+  scrub at 100% with no mismatch. Screenshots read. Also `verify-storage-guard.sh`, `verify-drive-offer.sh`, `verify-drives.sh`, default `sc-build`
+- Not seen: a real drive or DS2246 (file-backed, so no serial: the word is `file`), a set in `failed` (unit test only), a real scrub mismatch, a real node. Another node's sets are on its own console
+- Left: `repair` scrubs, stopping a scrub and a rate cap are not offered. Upstream: stormblock#537 (a replaced drive still says blank). Bay LEDs: stormdrive#44
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
