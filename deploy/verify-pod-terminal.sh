@@ -97,10 +97,6 @@ for u in alice bob carol dave root; do curl -s -o /dev/null -c "$W/$u.jar" -H 'c
 for _ in $(seq 30); do curl -s -b "$W/root.jar" -o /dev/null -w '%{http_code}' "$C/api/plugins/k8s/pods/shop/web" | grep -q 200 && break; sleep 1; done
 upgrade() { curl -s -o "$W/out" -w '%{http_code}' --max-time 3 -b "$W/$1.jar" -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Protocol: v4.channel.k8s.io' "$C/api/plugins/k8s/pods/$2/exec?container=$3" || true; }
 
-say "the apiserver's own answer, as an administrator"
-curl -sk -i --max-time 3 --cacert "$W/ca.crt" -H "Authorization: Bearer $ADMIN" -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Protocol: v4.channel.k8s.io' "$KAPI/api/v1/namespaces/shop/pods/web/exec?container=app&stdin=true&stdout=true&tty=true&command=/bin/sh" | head -12 | cut -c1-300 | sed 's/^/  /' || true
-cat "$W/kubelet.log" | sed 's/^/  kubelet: /'
-
 say "who may open one"
 check "$(upgrade carol shop/web app)" 403 "a reader with kubernetes rights: refused here, a GET being past the write gate"
 holds "$(cat "$W/out")" "operator role" "and says so"

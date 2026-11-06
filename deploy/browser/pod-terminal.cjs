@@ -28,7 +28,7 @@ walk(`pod terminal (${PHASE})`, async (t) => {
   }
   if (PHASE === 'bob') {
     await connect.click()
-    t.check(await t.until(async () => /forbidden/i.test(await t.text(page))), 'view, not edit: the apiserver says no, in its words', await page.locator('p.result').innerText().catch(() => 'no result line'))
+    t.check(await t.until(async () => /not allowed to create pods\/exec/.test(await t.text(page))), 'view, not edit: the apiserver says no, in its words', await page.locator('p.result').innerText().catch(() => 'no result line'))
     await tab('Environment')
     t.check(await t.until(async () => /could not be read/.test(await t.text(page))), 'a Secret he may not read is said to be', (await t.text(page)).slice(0, 500))
     t.check(/from-configmap/.test(await t.text(page)), 'a ConfigMap he may read has its value')
@@ -54,7 +54,7 @@ walk(`pod terminal (${PHASE})`, async (t) => {
     return m && m[0] !== before
   }), 'a smaller window resizes it', `${before} → ${await screen()}`)
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await type('printf "\\033[31mred\\033[0m\\n"')
+  await type('C=31; printf "\\033[${C}mred\\033[0m\\n"')
   t.check(await seen(/\bred\b/), 'escape codes are drawn, not printed')
   t.check(!/\[31m/.test(await screen()), 'and not shown as text')
   await type('exit 3')
