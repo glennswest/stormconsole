@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The datastore against fastetcd itself (#64)
+- **fix:** a running fastetcd member with no client URL no longer reads "not started" with a warning: fastetcd reports a URL only for the member answering (fastetcd#187).
+- **feat:** a member whose raft port refuses is an error on its row and a warning on the store, which said `ok` with a member down.
+- **fix:** a store under an alarm says the alarm in its headline, not "answers /health unhealthy".
+- **fix:** a snapshot downloads as `fastetcd-snapshot.fbak`, what fastetcd has written since its 1.15, and says `fastetcd restore` reads it.
+- **test:** `deploy/verify-fastetcd.sh`.
+
 ### 2026-11-06 — Remote desktop on a machine's page (#54)
 - **feat:** a Remote desktop tab: RDP to a machine in the browser through the node's stormrdp, as the signed-in person, with the gateway's RBAC check at every connection. Loaded only when used.
 - **chore:** new npm dependencies: IronRDP's web packages, at the versions stormrdp pins.

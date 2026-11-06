@@ -158,7 +158,9 @@ BR=0; "$HERE/deploy/browser/run.sh" "$W" datastore.cjs "$C" || BR=1; check "$BR"
 tar czf "$HERE/fe-shots.tgz" -C "$W" shots 2>/dev/null || true
 
 say "a member lost, and the leader lost"
-kill "$PID3"; sleep 8
+kill "$PID3"
+# If it was the leader, the store has none until the others elect one, and says so: an error, then the warning.
+for _ in $(seq 40); do [ "$(comps 's.get("health")')" = warn ] && break; sleep 1; done
 comps '[(c["label"],c["health"]) for c in mem]' | sed 's/^/  /'
 check "$(comps '[c["health"] for c in mem if c["label"]=="f3"][0]')" error "the dead member is an error"
 contains "$(comps '[c["detail"] for c in mem if c["label"]=="f3"][0]')" "raft port" "saying why"
@@ -184,8 +186,8 @@ check "$(comps 's.get("health")' $Q)" error "the store is in error"
 contains "$(comps 's.get("detail")' $Q)" "alarm NOSPACE" "and names NOSPACE"
 DIS=$(comps '[a["path"] for a in s["actions"] if "disarm" in a["path"]][0]' $Q)
 contains "$DIS" "alarm=NOSPACE" "Disarm offered"
-contains "$(nctl put /refused x 2>&1 || true)" "no space" "a write is refused"
-nctl del --prefix /big/ >/dev/null
+contains "$(nctl --command-timeout=5s put /refused x 2>&1 || true)" "space exceeded" "a write is refused"
+check "$(nctl del --prefix /big/ | awk 'NR==1' | python3 -c 'print(int(input()) > 50)')" True "a delete is not: that is how it is dug out"
 curl -s -o /dev/null -b "$W/root$Q.jar" -X POST "http://127.0.0.1:$Q/api/plugins/etcd/compact?revision=$(nctl endpoint status -w json | j 'd[0]["Status"]["header"]["revision"]')"
 curl -s -o /dev/null -b "$W/root$Q.jar" -X POST "http://127.0.0.1:$Q/api/plugins/etcd/defragment"
 du -sh "$W/n" | sed 's/^/  data directory dug out: /'

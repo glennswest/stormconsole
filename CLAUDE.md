@@ -2444,6 +2444,11 @@ Read from stormrdp 08f1e55: `:8443` serves `/rdcleanpath` and `POST /api/v1/logi
 - Verified with `sc-build deploy/verify-vm-rdp.sh` (0 failed): stormrdp and rustkube from main, its real cluster login, qemu running a boot sector that echoes keys. Chromium ran IronRDP through the console: the screen drawn, typed text on the guest's screen, Ctrl+Alt+Del rebooting it, Disconnect, a second connection. Refused: a reader and no identity (here), another project (404), no `get` on the instance (the gateway's RBAC check). No sign-in logs in as the console's identity. Not started and no such machine said. The password is in neither the log nor the audit, which records who opened one. Screenshots read
 - Not seen: a real node's gateway (stormrdp#1) or a real guest OS with a desktop. It dials loopback, as for stormipmi and the engine. stormrdp starts on the sno role, so elsewhere the tab says it is not started. A machine on another node is that node's console's, not relayed. A desktop session needs the viewer's kubernetes identity, so until #266 a signed-in user needs `kube_token`; no sign-in uses the console's, which must be allowed `get` on the machine's instance
 
+### The datastore against fastetcd itself (#64)
+Only etcd 3.5.17 and fastetcd v1.2.0 had been through the plugin's gateway path, apart from #47's reads at v1.13.0.
+- [x] `deploy/verify-fastetcd.sh`: three real members at the latest tag, checked against etcdctl; what it found fixed; dist; golden
+- Filed fastetcd#187 (MemberList has client URLs only for the member answering)
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
