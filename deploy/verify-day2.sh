@@ -106,8 +106,7 @@ check "$(j 'd["ask"]["field"], d["ask"]["current"]' < "$W/out")" "('replicas', 1
 for bad in '{"replicas":-1}' '{"replicas":"many"}' '{"replicas":1.5}'; do check "$(code alice -d "$bad" "$SC")" 400 "$bad refused"; done
 check "$(rep shop deployments web)" 1 "nothing changed"
 check "$(code dave -d '{"replicas":5}' "$SC")" 403 "a console reader: the write gate, whatever the apiserver would say"
-check "$(code carol -d '{"replicas":5}' "$SC")" 403 "carol, no rights at the apiserver: its 403"
-echo "  $(said)" | cut -c1-160
+check "$(code carol -d '{"replicas":5}' "$SC")" 404 "carol, no rights at the apiserver: a project she cannot see is not there"
 check "$(rep shop deployments web)" 1 "still 1"
 check "$(code bob -d '{"replicas":3}' "$SC")" 200 "bob, edit in shop: scaled, as himself"
 contains "$(said)" "web: 3 replicas" "and says so"
@@ -124,7 +123,7 @@ for _ in $(seq 1 15); do [ "$(as alice "$C/api/v1/components" | j 'sum(1 for c i
 check "$(as alice "$C/api/v1/components" | j '[a["id"] for c in d if c["id"]=="k8s:deploy:shop/web" for a in c["actions"]]')" "['scale']" "the row offers it"
 
 say "cordon and uncordon"
-spec() { kc "$API/api/v1/nodes/$1" | j 'd["spec"].get("unschedulable")'; }
+spec() { kc "$API/api/v1/nodes/$1" | j 'd.get("spec",{}).get("unschedulable")'; }
 for u in bob dave; do check "$(code "$u" "$K8S/nodes/n2/cordon")" 403 "$u: refused here"; done
 contains "$(code bob "$K8S/nodes/n2/cordon" >/dev/null; said)" "admin role" "saying why"
 check "$(curl -s -o "$W/out" -w '%{http_code}' -X POST -H 'Authorization: Bearer console-own-36' "$K8S/nodes/n2/cordon")" 403 "the node's bearer, no identity: refused, never the console's credential"
@@ -140,7 +139,9 @@ check "$(code alice "$K8S/nodes/n2/uncordon")" 200 "alice uncordons"
 check "$(spec n2)" False "schedulable again"
 
 say "a node with work on it"
-bind() { k POST "/api/v1/namespaces/$1/pods/$2/binding" "{\"apiVersion\":\"v1\",\"kind\":\"Binding\",\"metadata\":{\"name\":\"$2\"},\"target\":{\"kind\":\"Node\",\"name\":\"$3\"}}"; }
+# rustkube binds with a PUT, not pods/binding (its control_plane_rbac.rs).
+bind() { kc "$API/api/v1/namespaces/$1/pods/$2" | python3 -c "import json,sys; d=json.load(sys.stdin); d['spec']['nodeName']='$3'; print(json.dumps(d))" > "$W/bound.json"
+  kc -f -X PUT "$API/api/v1/namespaces/$1/pods/$2" -H 'content-type: application/json' --data-binary @"$W/bound.json" >/dev/null || { echo "FAILED: bind $2"; kc -X PUT "$API/api/v1/namespaces/$1/pods/$2" -H 'content-type: application/json' --data-binary @"$W/bound.json"; exit 1; }; }
 names() { kc "$API/api/v1/namespaces/$1/pods" | python3 -c "
 import json,sys
 for p in json.load(sys.stdin)['items']:
@@ -168,7 +169,7 @@ contains "$(names_in stays)" "ds-agent" "a DaemonSet's stays"
 contains "$(names_in stays)" "mirror-n1" "and the mirror pod"
 check "$(echo "$PL" | j 'd["evict"][0]["losesData"] or d["evict"][1]["losesData"]')" True "says an emptyDir goes"
 check "$(echo "$PL" | j 'd["may"], d["cordoned"], d["warning"]')" "(True, False, None)" "alice may; another node can take it"
-check "$(kc "$API/api/v1/nodes/n1" | j 'bool(d["spec"].get("unschedulable"))')" False "looking changes nothing"
+check "$(spec n1)" None "looking changes nothing"
 PB=$(as bob "$DP"); echo "  bob: $PB" | cut -c1-260
 check "$(echo "$PB" | j 'd.get("may")')" False "bob may not"
 contains "$(echo "$PB" | j 'd.get("why")')" "admin role" "and is told"
@@ -177,13 +178,13 @@ say "who may drain"
 check "$(code bob "$DP")" 403 "bob: refused here"
 check "$(code carol "$DP")" 403 "carol: the apiserver refuses, listing the pods"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer console-own-36' "$DP")" 403 "the node's bearer: refused"
-check "$(kc "$API/api/v1/nodes/n1" | j 'bool(d["spec"].get("unschedulable"))')" False "none of them cordoned it"
+check "$(spec n1)" None "none of them cordoned it"
 
 say "the drain"
 BEFORE=$(names shop web | tr '\n' ' ')
 check "$(code alice -d '{}' "$DP")" 200 "alice drains"
 R=$(cat "$W/out"); echo "  $R" | cut -c1-500
-check "$(kc "$API/api/v1/nodes/n1" | j 'd["spec"].get("unschedulable")')" True "cordoned"
+check "$(spec n1)" True "cordoned"
 check "$(echo "$R" | j 'len(d["evicted"])')" 4 "web's three and theirs evicted"
 check "$(echo "$R" | j '[p["name"] for p in d["blocked"]]')" "['$GUARD']" "the guarded one refused"
 contains "$(echo "$R" | j 'd["blocked"][0]["why"]')" "disruption budget" "by its budget, in the apiserver's words"
@@ -205,7 +206,7 @@ check "$BR" 0 "the walk"
 say "the walk changed the real objects"
 check "$(rep shop deployments web)" 4 "the row's number set 4"
 check "$(rep other deployments theirs)" 2 "the expanded row's button set 2, through the prompt"
-check "$(kc "$API/api/v1/nodes/n1" | j 'd["spec"].get("unschedulable")')" False "the page uncordoned it"
+check "$(spec n1)" False "the page uncordoned it"
 check "$(kc "$API/api/v1/namespaces/shop/pods/solo" | j 'd.get("code")')" 404 "evicting the unmanaged one, when asked, took it"
 
 say "$FAILED failed"
