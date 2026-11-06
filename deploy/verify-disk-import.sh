@@ -141,6 +141,7 @@ say "a raw image, its sha256 given"
 R=$(imp "{\"url\":\"$U/plain.img\",\"sha256\":\"$RAWSHA\"}"); echo "  $R" | cut -c1-240
 check "$(last "$R")" 202 "answered at once"
 check "$(waitjob plain)" "['done']" "fetched and imported"
+curl -s "$REG/v1/media/jobs" | cut -c1-900 | sed 's/^/  jobs: /'
 G1=media-${RAWSHA:0:12}
 check "$(curl -s "$REG/v1/catalog/images" | j "[(i['kind'],i['sealed']) for i in d['items'] if i['name']=='$G1']")" "[('media', True)]" "a sealed image named for its content"
 check "$(curl -s "${AUTH[@]}" "$EN/volumes/$G1/content" -H 'Range: bytes=0-7')" "RAWDATA!" "its bytes on the volume"
@@ -153,13 +154,16 @@ G2=media-${QSHA:0:12}
 check "$(curl -s "$REG/v1/catalog/images" | j "[i['sealed'] for i in d['items'] if i['name']=='$G2']")" "[True]" "sealed, named for the file's own sha256"
 check "$(curl -s "${AUTH[@]}" "$EN/volumes/$G2/content" -H 'Range: bytes=0-7')" "QCOWDATA" "the disk inside it, not the qcow2 file"
 
+curl -s "$REG/v1/catalog/images" | j '[{k:i.get(k) for k in ("name","kind","source","digest","sealed")} for i in d["items"]]' | cut -c1-600 | sed 's/^/  catalog: /'
+curl -s "$REG/v1/media" | cut -c1-900 | sed 's/^/  media: /'
+
 say "what goes wrong is said, on the catalog too"
 R=$(imp "{\"url\":\"$U/plain.img\",\"name\":\"wrongsum\",\"sha256\":\"$(printf 'a%.0s' $(seq 64))\"}"); echo "  $R" | cut -c1-200
 check "$(waitjob wrongsum)" "['failed']" "a sha256 that does not match"
 R=$(imp "{\"url\":\"$U/missing.img\"}"); echo "  $R" | cut -c1-200
 check "$(waitjob missing)" "['failed']" "a URL that is not there"
-sleep 6
-CAT=$(curl -s -b "$W/root.jar" "$C/api/v1/components")
+for _ in $(seq 40); do CAT=$(curl -s -b "$W/root.jar" "$C/api/v1/components"); case "$CAT" in *missing*) break ;; esac; sleep 1; done
+curl -s "$REG/v1/media/jobs" | cut -c1-1200 | sed 's/^/  jobs: /'
 echo "$CAT" | j '[(c["id"],c["health"],c["detail"][:100]) for c in d if "wrongsum" in c["id"] or "missing" in c["id"]]' | cut -c1-400
 check "$(echo "$CAT" | j 'all(c["health"]=="error" for c in d if "wrongsum" in c["id"] or "missing" in c["id"]) and sum(1 for c in d if "wrongsum" in c["id"] or "missing" in c["id"])==2')" True "both failed rows on the catalog"
 
