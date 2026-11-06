@@ -2340,8 +2340,10 @@ Items 1 and 5 done in v0.8.0; 3 superseded by 4. Item 2 here: `127.0.0.1:9962/me
 - Verified with `sc-build deploy/verify-cilium-metrics.sh` (0 failed): a stand-in agent in v1.20.2's names, real apiserver and console, Chromium. Totals across labels, a rate on the next scrape, a map at 93% warning and gone again, no metrics no failure, no agent no card. Not seen: a real agent (needs root and BPF)
 - [ ] Item 4 (flows) and #17's leftovers: a gRPC client, and the agent's unix socket. A decision for the owner: asked on #4 (recommended: a gRPC client for the relay only; leave the socket out). The counters ship with the next golden: none requested, as the issue is not done
 
-### A stormimds plugin (#11): waiting on the owner
-Read from stormimds 986f887: since its #12 the kubelet answers for guests on a node, so `/admin/instances` is empty there and writes 409; the console has no admin key mounted; a node guest gets default keys and no user-data (stormimds#20, rustkube-node#168). So the plugin as filed would be empty on every node. Asked on #11: A, the VM page from `/vmInstance`; B, as filed; C, close and refile (recommended: A). Nothing built yet. Not checked: whether the kubelet takes the console's token on `/vmInstance`.
+### What a guest is told (#11)
+Master, for the owner, 2026-11-06: option A: on the VM page from the kubelet (`/vmInstance/{address}`), a small stormimds health card, no admin key; if the kubelet refuses the console's token, file the grant on its owner. Read from rustkube-node 993db53: the route needs only an authenticated bearer (TokenReview), and answers `instance_id`, `hostname`, `local_ipv4`, `region`, `zone`, `tags`, `labels`, `network.interfaces`, `launched_at`; 404 no machine at that address; 503 not synced or stale. Keys and user-data wait on rustkube-node#168 and stormimds#20 (proposed `public_keys`, `user_data`). stormimds 986f887: `/admin/health` on loopback :8169, open.
+- [ ] `vm/src/identity.rs`, `GET /vms/{ns}/{name}/identity`, `[vm] stormimds_url`, the `vm:imds` row
+- [ ] VM page card; `blade` suite reads it on a real node; `verify-vm-net.sh` with a stand-in kubelet; docs; dist; image
 
 ### Scale, cordon and drain (#36)
 Read from rustkube 6c4fe56: `/scale` is served (#86), `pods/eviction` too (`pkg/apiserver/src/eviction.rs`, 429 on a budget), so nothing to file. Its budget check and delete are not atomic, so evictions go one at a time. As the viewer. A node's verbs need admin here and an identity, as #77's rack; scaling is an operator's, like deleting a pod.
