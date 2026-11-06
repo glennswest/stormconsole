@@ -2135,6 +2135,15 @@ placement), its `parent` chain, `/digest` (its `seal`: `sha256`, `verdict`, `che
   image, a node with two engines' worth of clones. Blade reruns wait on stormcos#271 (#76)
 - Upstream: stormblock#535 (the seal record and made-at on the volume). A VM disk's clone time waits on it
 
+### Disk buses are the ones stormvm takes (#38)
+stormvm's `from_kube` (stormvm-spec `kube.rs`, read at 59dc498) takes `virtio | sata | scsi | nvme` and refuses the rest:
+"bus usb is not one this node has". Adding a disk and the settings field accepted `usb` and refused `nvme`, and Create took
+any word. A cdrom needs `sata | scsi` (`validate.rs`); the console writes no cdrom, so nothing here can break that.
+- [ ] `disks::BUSES`, one list and one refusal: Create (offered and checked), Add disk, Settings; the Add disk form offers nvme
+- [ ] `deploy/verify-vm-disk-bus.sh`: real apiserver and console, what it holds through stormvm's real `from_kube`, Chromium
+- [ ] Docs, changelog, dist; close; golden
+- Not here: a bus *save* in Settings still replaces the disks array, whichever bus (#118)
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
