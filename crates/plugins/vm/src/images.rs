@@ -259,12 +259,15 @@ fn merge_imported(cat: &mut Catalogue, items: &[serde_json::Value]) {
 pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue {
     let base = base.trim_end_matches('/');
     let mut choices: Vec<Choice> = Vec::new();
+    // Why the operator would not say (#55). A refusal parses as a list of nothing, and
+    // is not an empty catalogue.
+    let mut refused: Option<String> = None;
     let mut local: std::collections::HashSet<String> = Default::default();
 
     // 1. What this node has. First, because it is the only kind that boots
     //    without waiting for anything.
     if !node.is_empty() {
-        if let Ok(r) = http.get(format!("{base}/api/v1/nodes/{node}/images")).send().await {
+        if let Ok(r) = answered(http.get(format!("{base}/api/v1/nodes/{node}/images")).send().await, &mut refused).await {
             if let Ok(list) = r.json::<NodeImages>().await {
                 for i in list.items {
                     if i.name.is_empty() {
@@ -284,7 +287,7 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
     // Which catalogue references already have an image, so step 3 does not
     // offer "golden this" for something already goldened.
     let mut goldened: std::collections::HashSet<String> = Default::default();
-    if let Ok(r) = http.get(format!("{base}/api/v1/images")).send().await {
+    if let Ok(r) = answered(http.get(format!("{base}/api/v1/images")).send().await, &mut refused).await {
         if let Ok(list) = r.json::<ImageList>().await {
             fleet_ok = true;
             for i in list.items {
@@ -320,7 +323,7 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
 
     // 3. What could be goldened but has not been. These take the longest —
     //    a download, a decode and a seal — so they come last and say so.
-    if let Ok(r) = http.get(format!("{base}/api/v1/catalog")).send().await {
+    if let Ok(r) = answered(http.get(format!("{base}/api/v1/catalog")).send().await, &mut refused).await {
         if let Ok(list) = r.json::<CatalogList>().await {
             fleet_ok = true;
             for i in list.items {
@@ -350,7 +353,9 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
     }
 
     let note = if choices.is_empty() {
-        if fleet_ok {
+        if let Some(why) = refused {
+            format!("the image operator at {base} would not say: {why} — type a registry image name")
+        } else if fleet_ok {
             "the image operator has no images and an empty catalogue".into()
         } else {
             format!("no answer from the image operator at {base} — type a registry image name")
@@ -359,6 +364,34 @@ pub async fn fetch(http: &reqwest::Client, base: &str, node: &str) -> Catalogue 
         String::new()
     };
     Catalogue { choices, note }
+}
+
+/// A response the caller can read, or why not: a refusal is kept, in the operator's words.
+async fn answered(sent: Result<reqwest::Response, reqwest::Error>, refused: &mut Option<String>) -> Result<reqwest::Response, ()> {
+    let r = match sent {
+        Ok(r) => r,
+        Err(e) => {
+            // TLS failures name their cause; "no answer" stays what a shut port is.
+            let why = console_core::dial::chain(&e);
+            if why.to_lowercase().contains("certificate") {
+                *refused = Some(why);
+            }
+            return Err(());
+        }
+    };
+    if r.status().is_success() {
+        return Ok(r);
+    }
+    *refused = Some(refusal(r).await);
+    Err(())
+}
+
+async fn refusal(r: reqwest::Response) -> String {
+    let status = r.status();
+    match r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string)) {
+        Some(e) => format!("it answered {}: {e}", status.as_u16()),
+        None => format!("it answered {status}"),
+    }
 }
 
 /// Make sure a node has a local copy of a golden, and say what happened.
@@ -393,6 +426,9 @@ pub async fn ensure_local(
     // what matters is whether the volume exists, and a placement that was
     // deleted leaves the volume behind on purpose.
     if let Ok(r) = http.get(format!("{base}/api/v1/nodes/{node}/images")).send().await {
+        if matches!(r.status().as_u16(), 401 | 403) {
+            return Err(format!("the image operator at {base} would not say: {}", refusal(r).await));
+        }
         if let Ok(list) = r.json::<NodeImages>().await {
             if list.items.iter().any(|i| i.name == golden) {
                 return Ok(true);
@@ -563,6 +599,25 @@ mod tests {
         assert_eq!(choice.value, "media-846574c8a97c", "the value is a volume");
         assert_eq!(choice.label, "fedora-43-x86_64", "the label is readable");
         assert!(!is_reference(&choice.value), "a volume is not a catalogue reference");
+    }
+
+    #[tokio::test]
+    async fn a_refusal_is_said_and_is_not_an_empty_catalogue() {
+        // The operator's 401, whose body would otherwise parse as a list of nothing.
+        let no = || async { (axum::http::StatusCode::UNAUTHORIZED, r#"{"error":"authenticate: a client certificate"}"#) };
+        let app = axum::Router::new()
+            .route("/api/v1/images", axum::routing::get(no))
+            .route("/api/v1/catalog", axum::routing::get(no))
+            .route("/api/v1/nodes/{n}/images", axum::routing::get(no));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let got = fetch(&reqwest::Client::new(), &base, "").await;
+        assert!(got.choices.is_empty());
+        assert!(got.note.contains("it answered 401: authenticate"), "{}", got.note);
+        assert!(!got.note.contains("empty catalogue"), "{}", got.note);
+        let e = ensure_local(&reqwest::Client::new(), &base, "n1", "media-a").await.unwrap_err();
+        assert!(e.contains("it answered 401: authenticate"), "{e}");
     }
 
     #[tokio::test]

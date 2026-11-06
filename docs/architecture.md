@@ -843,6 +843,15 @@ that stops answering keeps what it last said, marked as such. `GET
 time, counts and every finding that is not as it should be. It is read-only on
 both sides.
 
+### The image operator over TLS (#55)
+
+vmcloud-image-operator#16 makes :9099 TLS with a credential; plain HTTP answers health only. `[vmimages] ca_file/cert_file/key_file` is one
+client (`console_core::tls`, HTTP/1.1) for everything that asks it: the plugin's poll and proxy, and the VM form's root disks, placements and
+catalogue builds. The credential is the console's client pair, authorised by the operator as User `stormconsole` (stormcos
+`89-vmimages-console.yaml`), so no shared token is held. The browser's own credential is never forwarded, because a bearer outranks the
+certificate it rides with. No files is the plain client, for an operator still on `allowAnonymous`, so one release can carry either side.
+A refusal is said in the operator's words: its body parses as an empty list, which is a different answer.
+
 ### RAID sets (#67)
 
 `#/raid` is this node's engine's shelves and sets (stormblock#252, `docs/raid-sets.md`): `GET /api/plugins/sb/raid` over `/shelves`,

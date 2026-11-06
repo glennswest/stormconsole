@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The image operator over TLS (#55)
+- **feat:** `[vmimages] ca_file/cert_file/key_file`: the Images pages and the VM form's root disks reach vmcloud-image-operator over TLS with the console's client pair, verified against that CA and no other, and followed when renewed. Plain `http://` still works, for an operator not yet switched. Half a pair, or certificates with an `http://` url, is exit 78.
+- **fix:** an operator that refuses is said in its own words on the card and in the VM form, where a 401 used to read as an empty catalogue.
+
 ### 2026-11-06 — RAID sets (#67)
 - **feat:** Storage → RAID sets (`#/raid`, replacing the Arrays list): this node's shelves, each set's state, rebuild and scrub progress, its members by bay with a failed one marked, and the spares.
 - **feat:** fail a member, replace a slot, add a spare (storage-admin, typed confirmation, sent as the viewer) and start a scrub, which only reads and counts.

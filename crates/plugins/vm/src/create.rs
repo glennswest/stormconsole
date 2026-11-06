@@ -509,7 +509,7 @@ pub async fn create(
     // nothing connecting it back to the choice made here.
     let mut placing = false;
     if let Some(base) = inner.image_operator.clone() {
-        match images::ensure_local(&inner.http, &base, form.node.trim(), &form.golden).await {
+        match images::ensure_local(&inner.operator(), &base, form.node.trim(), &form.golden).await {
             Ok(true) => {}
             Ok(false) => placing = !form.node.trim().is_empty(),
             Err(e) => {
@@ -713,7 +713,7 @@ async fn golden_from_reference(
     }
     let url = format!("{}/api/v1/images", base.trim_end_matches('/'));
     let r = inner
-        .http
+        .operator()
         .post(&url)
         .json(&body)
         .send()
@@ -760,7 +760,7 @@ async fn golden_from_reference(
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let Ok(r) = inner.http.get(&one).send().await else { continue };
+        let Ok(r) = inner.operator().get(&one).send().await else { continue };
         let Ok(v) = r.json::<Value>().await else { continue };
         if let Some(g) = golden_of(&v) {
             return Ok(g);
@@ -807,7 +807,7 @@ async fn golden_from_reference(
     // makes a local copy appear, and without it there is no placement to wait
     // for and the name would never resolve.
     if !node.trim().is_empty() {
-        if let Ok(r) = inner.http.get(&one).send().await {
+        if let Ok(r) = inner.operator().get(&one).send().await {
             if let Ok(v) = r.json::<Value>().await {
                 if !failed_phase(&v) {
                     if let Some(local) = v

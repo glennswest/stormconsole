@@ -2325,6 +2325,12 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
   `fetch`: an image with `localName`, one falling back to its name with `aarch64` added, one with `arch: null`), clippy `-D warnings` on the crate;
   the default `sc-build`. Not seen on a real operator. It shows the architecture, and does not refuse a mismatch: that needs the node's
 
+### The image operator over TLS (#55)
+Settled on the issue (vmcloud-image-operator 382cf1f, stormcos b71a818): https with the node CA, the console's own client pair, User `stormconsole` by SubjectAccessReview on `storm.io`. So no shared token; #82's
+viewer-token path is not needed here. `[stormcluster]`'s shape (#89). Callers: the plugin's poll and proxy, and the VM form's `fetch`, `ensure_local` and `golden_from_reference`.
+- [x] `[vmimages]` keys, `proxy::router_tls`, one client shared; a refusal said, not read as an empty list
+- [ ] `deploy/verify-vmimages-tls.sh`: real operator and apiserver, each config; Chromium; tell stormcos#320 the keys; golden
+
 ### Shelves and RAID sets (#67)
 stormblock bcbe3e0 (`docs/raid-sets.md`, `mgmt/api/{shelves,arrays}.rs`, `raid/rebuild.rs`). The engine's "shelf" is a set's pool. Named RAID sets in the nav,
 because Hardware → Shelves is already the drive map's. The engine holds fail, replace and `POST /spares` for its admin, so all three go through #82's guard.

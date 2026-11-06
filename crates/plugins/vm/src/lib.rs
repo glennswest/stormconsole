@@ -131,6 +131,8 @@ struct Inner {
     /// Polled rather than asked on demand: `creators()` is synchronous, and
     /// a create form must not wait on an upstream that may be slow or gone.
     image_operator: Option<String>,
+    /// How that operator is reached: TLS and a client pair since vmcloud-image-operator#16 (#55).
+    operator_tls: Arc<console_core::tls::Client>,
     /// The node's registry, for imported disks (#44).
     registry: Option<Arc<console_core::dial::Reach>>,
     images: images::Cache,
@@ -142,6 +144,14 @@ struct Inner {
 
 pub struct VmPlugin {
     inner: Arc<Inner>,
+}
+
+impl Inner {
+    /// The client for the image operator, its files as they are now.
+    fn operator(&self) -> reqwest::Client {
+        self.operator_tls.refresh();
+        self.operator_tls.get()
+    }
 }
 
 impl VmPlugin {
@@ -185,11 +195,20 @@ impl VmPlugin {
                 http: reqwest::Client::new(),
                 access,
                 image_operator,
+                operator_tls: Arc::new(console_core::tls::Client::http1("vmimages", Default::default())),
                 registry: None,
                 images: images::Cache::new(),
                 keys_ns: "default".into(),
             }),
         }
+    }
+
+    /// How the image operator is reached (#55). Before the plugin is shared.
+    pub fn with_operator_tls(mut self, tls: Arc<console_core::tls::Client>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.operator_tls = tls;
+        }
+        self
     }
 
     /// Where users' SSH-key Secrets live. Before the plugin is shared.
@@ -416,7 +435,7 @@ impl ConsolePlugin for VmPlugin {
                     // "already on this node" grouping needs a node, so it is
                     // answered per request by the images route below.
                     let mut cat = match &base {
-                        Some(base) => images::fetch(&inner.http, base, "").await,
+                        Some(base) => images::fetch(&inner.operator(), base, "").await,
                         None => Default::default(),
                     };
                     if let Some(reg) = &inner.registry {

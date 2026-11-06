@@ -271,11 +271,15 @@ async fn main() {
     // Cloud images: what could be goldened, what has been, and where the
     // copies are. Beside sbregistry in the nav, because both answer "where
     // does an image come from" and a person should find one list.
+    // One client to :9099 for the plugin and the VM form: HTTP/1.1, as the operator's listener follows
+    // stormcluster's, which offers h2 and cannot speak it (stormcluster#30).
+    let vmimages_tls = Arc::new(console_core::tls::Client::http1("vmimages", config.vmimages_tls()));
     if config.vmimages.enabled {
         // With the apiserver, so an image's own events can be drawn beside it.
-        plugins.push(Arc::new(plugin_vmimages::VmImagesPlugin::with_kube(
+        plugins.push(Arc::new(plugin_vmimages::VmImagesPlugin::with_tls(
             &config.vmimages_url(),
             kube.clone(),
+            vmimages_tls.clone(),
         )));
     }
     // VMs are kube objects here — the plugin watches the same apiserver
@@ -294,6 +298,7 @@ async fn main() {
             namespace_access.clone(),
             image_operator,
         )
+        .with_operator_tls(vmimages_tls.clone())
         .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))
         .with_registry(config.sbregistry.enabled.then(|| registry_reach.clone()))));
     }

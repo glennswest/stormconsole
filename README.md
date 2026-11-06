@@ -210,7 +210,8 @@ Full example: [config/config.toml](config/config.toml).
 | `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | asked over HTTPS first when `[node_tls]` is set, verified against the node CA |
 | `[sbregistry] token_file` | the engine's token, for a registry on this machine | a robot account's token, sent as a bearer on every read, the imports and the proxy, and followed when it changes. `*=pull` for the views, `*=admin` for the create forms and imports. Never sent over plain HTTP to another machine (#35) |
 | `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |
-| `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
+| `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` (`https://` when `ca_file` is set) | |
+| `[vmimages] ca_file / cert_file / key_file` | — | :9099 is TLS with a credential since vmcloud-image-operator#16: trust only this CA, present the console's client pair, for the Images pages and the VM form's root disks; re-read when they change; a refusal is the card's error in the operator's words; half a pair, or certificates with an `http://` url, exit 78 |
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
 | `[fastetcd] ca_file / cert_file / key_file` | none | mutual TLS on the client port (#47): fastetcd is verified against `ca_file` only (no built-in roots) and the console presents the pair. `cert_file` and `key_file` go together; any of them with a non-`https://` url is a config error (exit 78). Reread when a file changes; a missing or bad file is said on the datastore's card, naming it, and the console runs on. On a node: the stormcert node CA and the `stormconsole-etcd` pair under `/data/stormcert`, `url = "https://127.0.0.1:2379"` |
 | `[stormipmi] enabled / url / token_file` | on / `http://127.0.0.1:9097` / — | stormipmi's `api.tokenFile`, held server-side |

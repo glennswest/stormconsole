@@ -53,7 +53,8 @@ struct Picks {
 
 struct Inner {
     base: String,
-    client: reqwest::Client,
+    /// :9099, TLS and a client pair since vmcloud-image-operator#16 (#55); plain with no files.
+    tls: Arc<console_core::tls::Client>,
     /// The apiserver, for the events the operator records against each image.
     ///
     /// The operator writes `CloudImage` events -- resolved, importing,
@@ -79,10 +80,19 @@ impl VmImagesPlugin {
     /// The same, with the apiserver that holds each image's events.
     /// `conn` is the apiserver connection the kubernetes plugin uses (#33).
     pub fn with_kube(url: &str, conn: Option<std::sync::Arc<console_core::apiserver::Conn>>) -> Self {
+        Self::with_tls(url, conn, Arc::new(console_core::tls::Client::http1("vmimages", Default::default())))
+    }
+
+    /// The same, reaching the operator through `tls` (#55), which the VM create form shares.
+    pub fn with_tls(
+        url: &str,
+        conn: Option<std::sync::Arc<console_core::apiserver::Conn>>,
+        tls: Arc<console_core::tls::Client>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 base: url.trim_end_matches('/').to_string(),
-                client: reqwest::Client::new(),
+                tls,
                 kube: conn.map(plugin_kubernetes::Client::new),
                 state: RwLock::new(State {
                     health: Health::Unknown,
@@ -180,7 +190,7 @@ impl ConsolePlugin for VmImagesPlugin {
     fn routes(&self) -> axum::Router {
         axum::Router::new().nest(
             "/proxy",
-            console_core::proxy::router(self.inner.client.clone(), self.inner.base.clone()),
+            console_core::proxy::router_tls(self.inner.tls.clone(), self.inner.base.clone()),
         )
     }
 
@@ -246,16 +256,27 @@ impl ConsolePlugin for VmImagesPlugin {
 }
 
 async fn get(inner: &Inner, path: &str) -> Result<Value, String> {
+    inner.tls.refresh();
+    if let Some(e) = inner.tls.error() {
+        return Err(e);
+    }
     let resp = inner
-        .client
+        .tls
+        .get()
         .get(format!("{}{path}", inner.base))
         .timeout(Duration::from_secs(5))
         .send()
         .await
-        .map_err(|e| {
-            use std::error::Error as _;
-            e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
-        })?;
+        .map_err(|e| console_core::dial::chain(&e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        // 401, 403 and 503 are said in the operator's words: an empty catalogue is another answer.
+        let words: Value = resp.json().await.unwrap_or(Value::Null);
+        return Err(match words.get("error").and_then(Value::as_str) {
+            Some(e) => format!("it answered {}: {e}", status.as_u16()),
+            None => format!("it answered {status}"),
+        });
+    }
     resp.json().await.map_err(|e| e.to_string())
 }
 
@@ -273,7 +294,7 @@ async fn poll(inner: &Inner) {
         Err(e) => {
             let mut s = inner.state.write().await;
             s.health = Health::Error;
-            s.detail = format!("unreachable: {e}");
+            s.detail = if inner.tls.is_tls() || e.starts_with("it answered") { e } else { format!("unreachable: {e}") };
             s.components = vec![operator(Health::Error, &s.detail, vec![], &[])];
             return;
         }

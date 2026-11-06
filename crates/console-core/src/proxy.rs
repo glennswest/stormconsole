@@ -142,6 +142,24 @@ async fn engine_handler(
     forward_as(&client, engine.base(), &method, &path, uri.query(), &headers, body, bearer).await
 }
 
+/// Everything under this router goes to `upstream` through `tls`, whose files are followed as they
+/// change (#55). The browser's own credential is never carried: the upstream sees the console's pair.
+pub fn router_tls(tls: Arc<crate::tls::Client>, upstream: String) -> Router {
+    Router::new().route("/{*path}", any(tls_handler)).with_state((tls, upstream))
+}
+
+async fn tls_handler(
+    State((tls, upstream)): State<(Arc<crate::tls::Client>, String)>,
+    Path(path): Path<String>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    tls.refresh();
+    forward(&tls.get(), &upstream, &method, &path, uri.query(), &headers, body).await
+}
+
 /// Everything under this router goes to one [`Reach`]: its dial, and its credential where it may go (#35).
 pub fn router_reach(reach: Arc<crate::dial::Reach>) -> Router {
     Router::new().route("/{*path}", any(reach_handler)).with_state(reach)

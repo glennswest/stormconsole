@@ -464,6 +464,12 @@ pub struct VmImages {
     /// fleet's goldens, and which nodes carry a local copy. On a node it
     /// is the operator beside the control plane; elsewhere, name it.
     pub url: Option<String>,
+    /// :9099 is TLS with a credential since vmcloud-image-operator#16 (#55): the node CA its serving
+    /// certificate is checked against (only this CA), and the console's client pair. Re-read when they
+    /// change. With a CA the default url is `https://127.0.0.1:9099`.
+    pub ca_file: Option<String>,
+    pub cert_file: Option<String>,
+    pub key_file: Option<String>,
 }
 
 impl Default for VmImages {
@@ -760,6 +766,16 @@ impl Config {
                 self.stormcluster_url()
             ));
         }
+        let vi = &self.vmimages;
+        if vi.cert_file.is_some() != vi.key_file.is_some() {
+            return Err("[vmimages] cert_file and key_file go together: set both, or neither".into());
+        }
+        if (vi.ca_file.is_some() || vi.cert_file.is_some()) && !self.vmimages_url().starts_with("https://") {
+            return Err(format!(
+                "[vmimages] ca_file/cert_file are set but url is {:?}: certificates are only used over https://",
+                self.vmimages_url()
+            ));
+        }
         let f = &self.fastetcd;
         if f.cert_file.is_some() != f.key_file.is_some() {
             return Err("[fastetcd] cert_file and key_file go together: set both, or neither".into());
@@ -826,7 +842,10 @@ impl Config {
     }
 
     pub fn vmimages_url(&self) -> String {
-        self.vmimages.url.clone().unwrap_or_else(|| "http://127.0.0.1:9099".to_string())
+        self.vmimages.url.clone().unwrap_or_else(|| {
+            let scheme = if self.vmimages.ca_file.is_some() { "https" } else { "http" };
+            format!("{scheme}://127.0.0.1:9099")
+        })
     }
 
     pub fn sbregistry_url(&self) -> String {
@@ -921,6 +940,16 @@ impl Config {
     /// The `[stormblock]` TLS files (#160).
     pub fn stormblock_tls(&self) -> console_core::tls::TlsFiles {
         let f = &self.stormblock;
+        console_core::tls::TlsFiles {
+            ca: f.ca_file.as_ref().map(Into::into),
+            cert: f.cert_file.as_ref().map(Into::into),
+            key: f.key_file.as_ref().map(Into::into),
+        }
+    }
+
+    /// The `[vmimages]` TLS files (#55).
+    pub fn vmimages_tls(&self) -> console_core::tls::TlsFiles {
+        let f = &self.vmimages;
         console_core::tls::TlsFiles {
             ca: f.ca_file.as_ref().map(Into::into),
             cert: f.cert_file.as_ref().map(Into::into),
@@ -1244,6 +1273,24 @@ data_dir    = \"/var/lib/stormconsole\"
                 assert!(default.contains(p), "{name} on {p} is on the node page and not in [fleet] stormd_ports' default");
             }
         }
+    }
+
+    #[test]
+    fn vmimages_tls_files() {
+        let c = Config::parse(
+            "[vmimages]\nca_file = \"/data/stormcert/ca.crt\"\n\
+             cert_file = \"/data/stormcert/stormconsole-client.crt\"\nkey_file = \"/data/stormcert/stormconsole-client.key\"\n",
+        )
+        .unwrap();
+        assert_eq!(c.vmimages_url(), "https://127.0.0.1:9099", "a CA makes the default https");
+        assert!(c.vmimages_tls().cert.is_some() && c.vmimages_tls().key.is_some());
+        let plain = Config::parse("").unwrap();
+        assert_eq!(plain.vmimages_url(), "http://127.0.0.1:9099", "plain until the operator switches");
+        assert!(plain.vmimages_tls().is_empty());
+        let e = Config::parse("[vmimages]\ncert_file = \"c\"\n").unwrap_err();
+        assert!(e.contains("[vmimages] cert_file and key_file go together"), "{e}");
+        let e = Config::parse("[vmimages]\nurl = \"http://x:9099\"\nca_file = \"ca\"\n").unwrap_err();
+        assert!(e.contains("only used over https://"), "{e}");
     }
 
     #[test]

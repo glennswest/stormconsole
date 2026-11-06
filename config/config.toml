@@ -150,6 +150,13 @@ enabled = true
 # vmcloud-image-operator: the cloud-image catalogue, the VM goldens made
 # from it, and each node's local copies. Also the VM create form's
 # root-disk list.
+# url = "http://127.0.0.1:9099"           # https:// by default when ca_file is set
+# :9099 is TLS with a credential since vmcloud-image-operator#16: the node CA
+# and the console's client pair, which the operator authorises as User
+# stormconsole (stormcos 89-vmimages-console.yaml). Re-read when renewed.
+# ca_file = "/data/stormcert/ca.crt"
+# cert_file = "/data/stormcert/stormconsole-client.crt"
+# key_file = "/data/stormcert/stormconsole-client.key"
 # url = "http://127.0.0.1:9099"
 
 [fastetcd]
