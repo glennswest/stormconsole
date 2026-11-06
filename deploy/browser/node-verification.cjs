@@ -27,6 +27,9 @@ walk('node verification', async (t) => {
   t.check(/release 12\.61/.test(b), 'the release')
   t.check(!/golden/i.test(b), 'in the console\'s words', (b.match(/.{0,30}golden.{0,30}/i) || [''])[0])
   await t.shot(page, 'verification-failed')
+  await page.getByRole('button', { name: /Refresh/ }).click()
+  await t.pause(800)
+  t.check(/expected e7db, found aa11/.test(await t.text(page)), 'Refresh asks again and it is still there')
 
   t.check(await t.open(page, '#/node/storm-d', /first pass is running/), 'before the first pass: says so')
   t.check(await t.open(page, '#/node/storm-e', /did not answer on :9103/), 'no sectionsystems: says so')

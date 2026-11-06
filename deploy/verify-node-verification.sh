@@ -145,7 +145,8 @@ until_row storm-b FAILED 70 || true
 say "the Nodes page's rows"
 contains "$(row storm-b)" "error | FAILED, 2 problems" "failed: an error, its problems counted"
 contains "$(row storm-b)" "ago | error" "how long ago, in the error's colour"
-contains "$(row storm-c)" "ok | passed" "passed"
+contains "$(row storm-c)" "| passed, " "passed"
+contains "$(row storm-c)" "| ok" "in the passed colour"
 contains "$(row storm-d)" "first pass running | muted" "before its first pass, nothing against it"
 contains "$(row storm-e)" "none" "nothing on :9103: no verdict"
 case "$(row storm-e)" in error*) check error "not error" "no answer does not fail a node";; *) echo "  ok   no answer does not fail a node";; esac

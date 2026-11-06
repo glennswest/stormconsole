@@ -47,7 +47,6 @@
 
   async function load() {
     busy = true
-    asked += 1
     try {
       data = await get(`/api/plugins/fleet/nodes/${encodeURIComponent(host)}`)
       error = ''
@@ -62,6 +61,12 @@
   $effect(() => {
     if (host) load()
   })
+
+  // Not in load(): the effect above calls it, and would then depend on this.
+  function refresh() {
+    asked += 1
+    load()
+  }
 
   // A service's own console, through this origin. The node's address never
   // reaches the browser.
@@ -82,7 +87,7 @@
       <a class="sc-btn" href={`#/logs?host=${encodeURIComponent(host)}`}>
         <Icon name="logs" size={13} /> Logs
       </a>
-      <button onclick={load} disabled={busy} title="Probe this node again">
+      <button onclick={refresh} disabled={busy} title="Probe this node again">
         <Icon name="refresh" size={13} /> {busy ? 'Probing…' : 'Refresh'}
       </button>
     {/snippet}
