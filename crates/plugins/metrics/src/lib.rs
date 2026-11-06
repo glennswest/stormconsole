@@ -272,7 +272,7 @@ async fn chart(inner: &Inner, p: &Panel, q: Result<String, String>, range: (i64,
     let (lines, over) = panels::lines(result, p.legend);
     let mut out = with(base, "over", json!(over));
     if lines.is_empty() {
-        let up = list.is_some_and(|l| l.iter().any(|t| t.job == p.job && t.up));
+        let up = list.is_some_and(|l| l.iter().any(|t| t.job == p.job && t.health == "up"));
         out["note"] = json!(panels::unreported(p).filter(|_| up).unwrap_or_else(|| empty_note(p.job, list)));
     }
     out["series"] = json!(lines);
