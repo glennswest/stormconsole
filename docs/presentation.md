@@ -178,6 +178,6 @@ Open, and why it matters:
   project-only user cannot write them.
 - **#64** — fastetcd serves the v3 gateway and traffic counters now
   (v1.8.0); the datastore page has not yet been checked against it.
-- Upstream data still coming: stormblock#152, stormvm#16, #41.
+- Upstream data still coming: stormblock#152, stormvm#16.
 
 Docs: README (operational), `docs/architecture.md` (design), CHANGELOG.

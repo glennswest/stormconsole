@@ -24,7 +24,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use console_core::members::Membership;
-use console_core::{ComponentSummary, ConsolePlugin, Health, Metric, NavSection};
+use console_core::{ComponentSummary, ConsolePlugin, Health, Metric, NavSection, Sample};
 use futures_util::stream::Stream;
 use serde_json::json;
 use tokio::sync::{broadcast, RwLock};
@@ -245,6 +245,23 @@ impl ConsolePlugin for LogsPlugin {
             .route("/summary", get(summary))
             .route("/stream", get(stream))
             .with_state(self.inner.clone())
+    }
+
+    async fn samples(&self) -> Vec<Sample> {
+        let Some(store) = self.inner.store.read().await.as_ref().map(|s| s.stats()) else { return vec![] };
+        let gauge = |name, help, value: u64| Sample { name, help, counter: false, value: value as f64 };
+        vec![
+            gauge("stormconsole_logs_entries", "Distinct lines in the log ring.", store.entries),
+            // What is retained: eviction takes these away, so not a counter.
+            gauge("stormconsole_logs_occurrences", "Lines received that the log ring still accounts for.", store.occurrences),
+            Sample {
+                name: "stormconsole_logs_duplicates_total",
+                help: "Lines folded into one the log ring already had.",
+                counter: true,
+                value: store.suppressed as f64,
+            },
+            gauge("stormconsole_logs_hosts", "Hosts heard on the log group and in scope.", self.inner.scoped_hosts().await.len() as u64),
+        ]
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {

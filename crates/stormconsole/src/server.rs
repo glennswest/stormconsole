@@ -90,6 +90,7 @@ pub fn router(state: AppState) -> Router {
         // credentials and only wants to know what is deployed.
         .route("/api/version", get(version))
         .route("/readyz", get(readyz))
+        .route("/metrics", get(metrics))
         .route("/api/summary", get(summary))
         .route("/api/v1/components", get(components))
         .route("/api/v1/console/nav", get(nav))
@@ -294,6 +295,13 @@ async fn summary(State(state): State<AppState>) -> Response {
         ],
     }))
     .into_response()
+}
+
+/// Prometheus's text format. A scrape that answers is a console that is up,
+/// so this is a route of its own and never the app's HTML (#41).
+async fn metrics(State(state): State<AppState>) -> Response {
+    let text = crate::metrics::render(env!("CARGO_PKG_VERSION"), &state.registry.stats().await);
+    ([(header::CONTENT_TYPE, crate::metrics::CONTENT_TYPE)], text).into_response()
 }
 
 async fn ws_components(State(state): State<AppState>, ws: WebSocketUpgrade, req: Request) -> Response {

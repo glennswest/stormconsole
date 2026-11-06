@@ -6,6 +6,7 @@ mod audit;
 mod auth;
 mod config;
 mod listen;
+mod metrics;
 #[cfg(test)]
 mod rbac;
 mod server;

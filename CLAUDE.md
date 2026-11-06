@@ -2384,6 +2384,11 @@ Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `sel
 - Not seen: an incomplete answer or an apiserver without the review against a real one (stubs only); a real node
 - Left: the Create menu, a VM page's settings/disks/snapshots/keys and the Terminal look only at the console role (#259)
 
+### `/metrics`, for real (#41)
+`/metrics` was open and answered the app's HTML with 200, so a scraper read a healthy target with no series. Serve the series the issue names, behind the same gate as the rest (owner: nothing anonymous but health). "received" in the log ring is what is retained, and falls on eviction, so it is a gauge; only `duplicates` is a counter.
+- [ ] `crates/stormconsole/src/metrics.rs`; `Registry::stats`; `ConsolePlugin::samples` (logs); the gate; docs
+- [ ] `deploy/verify-console-metrics.sh`: a real ironprom scraping it with a token; the medium suite; golden; ask stormcos for the job
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

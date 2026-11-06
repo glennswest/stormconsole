@@ -1,6 +1,7 @@
 //! The plugin host: merges navigation, aggregates the component feed,
 //! pushes snapshots to subscribers, and drives plugin background work.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ use tracing::warn;
 use crate::access::{Access, Viewer};
 use crate::nav::{merge, NavSection};
 use crate::plugin::ConsolePlugin;
+use crate::plugin::Sample;
 use crate::storage::{self, Decision, Guarded, Reviewer};
 
 pub struct Registry {
@@ -19,6 +21,27 @@ pub struct Registry {
     snapshot: RwLock<Arc<Vec<ComponentSummary>>>,
     tx: broadcast::Sender<Arc<Vec<ComponentSummary>>>,
     reviewer: Reviewer,
+    refreshes: AtomicU64,
+    refresh_micros: AtomicU64,
+}
+
+/// What `/metrics` says about the feed (#41).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FeedStats {
+    pub refreshes: u64,
+    /// How long the last build of the feed took.
+    pub refresh_seconds: f64,
+    /// Websockets being pushed the feed.
+    pub clients: usize,
+    pub plugins: Vec<PluginStat>,
+    pub samples: Vec<Sample>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginStat {
+    pub name: String,
+    pub health: Health,
+    pub components: usize,
 }
 
 /// What the console says about one request before it is made: whether it
@@ -39,7 +62,14 @@ impl Registry {
     /// to everyone. [`Registry::with_reviewer`] gives it one.
     pub fn new(plugins: Vec<Arc<dyn ConsolePlugin>>) -> Self {
         let (tx, _) = broadcast::channel(16);
-        Self { plugins, snapshot: RwLock::new(Arc::new(Vec::new())), tx, reviewer: Reviewer::new(None) }
+        Self {
+            plugins,
+            snapshot: RwLock::new(Arc::new(Vec::new())),
+            tx,
+            reviewer: Reviewer::new(None),
+            refreshes: AtomicU64::new(0),
+            refresh_micros: AtomicU64::new(0),
+        }
     }
 
     /// Ask this reviewer whether a viewer is a storage-admin (#82).
@@ -300,6 +330,7 @@ impl Registry {
     /// owning `has_many` edges to its components), then every plugin's own
     /// slice. Publishes only when the snapshot changed.
     pub async fn refresh(&self) {
+        let started = std::time::Instant::now();
         let mut all: Vec<ComponentSummary> = Vec::new();
         for p in self.plugins.iter().filter(|p| p.present()) {
             let slice = p.components().await;
@@ -335,6 +366,33 @@ impl Registry {
             let arc = Arc::new(all);
             *self.snapshot.write().await = arc.clone();
             let _ = self.tx.send(arc);
+        }
+        self.refresh_micros.store(started.elapsed().as_micros() as u64, Ordering::Relaxed);
+        self.refreshes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The feed's own numbers, from the last build: each plugin's card holds
+    /// what its health and count were then.
+    pub async fn stats(&self) -> FeedStats {
+        let snapshot = self.components().await;
+        let plugins = snapshot
+            .iter()
+            .filter_map(|c| {
+                let name = c.id.strip_prefix("plugin:")?;
+                let components = c.relations.first().map_or(0, |r| r.targets.len());
+                Some(PluginStat { name: name.to_string(), health: c.health, components })
+            })
+            .collect();
+        let mut samples = Vec::new();
+        for p in self.plugins.iter().filter(|p| p.present()) {
+            samples.extend(p.samples().await);
+        }
+        FeedStats {
+            refreshes: self.refreshes.load(Ordering::Relaxed),
+            refresh_seconds: self.refresh_micros.load(Ordering::Relaxed) as f64 / 1e6,
+            clients: self.tx.receiver_count(),
+            plugins,
+            samples,
         }
     }
 
@@ -535,6 +593,34 @@ mod tests {
                 link: None,
             }]
         }
+    }
+
+    #[tokio::test]
+    async fn the_feed_counts_itself_and_a_plugin_adds_its_own() {
+        struct Counts;
+        #[async_trait::async_trait]
+        impl ConsolePlugin for Counts {
+            fn name(&self) -> &'static str {
+                "cnt"
+            }
+            async fn components(&self) -> Vec<ComponentSummary> {
+                vec![]
+            }
+            async fn samples(&self) -> Vec<crate::Sample> {
+                vec![crate::Sample { name: "n", help: "h", counter: false, value: 2.0 }]
+            }
+        }
+        let r = Registry::new(vec![Arc::new(Counts), Arc::new(Offering)]);
+        assert_eq!(r.stats().await.refreshes, 0);
+        r.refresh().await;
+        r.refresh().await;
+        let rx = r.subscribe();
+        let s = r.stats().await;
+        assert_eq!((s.refreshes, s.clients, s.samples.len()), (2, 1, 1));
+        drop(rx);
+        assert_eq!(r.stats().await.clients, 0, "a socket gone is not counted");
+        let of = |n: &str| s.plugins.iter().find(|p| p.name == n).map(|p| p.components);
+        assert_eq!((of("cnt"), of("off")), (Some(0), Some(1)));
     }
 
     fn row_action(id: &str, method: &str, path: &str) -> stormview::Action {

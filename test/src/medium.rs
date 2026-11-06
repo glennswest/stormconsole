@@ -36,6 +36,7 @@ pub async fn run(ctx: &Ctx, r: &mut Report) {
     r.run("vm-refuses-a-system-namespace", vm_system_namespace(ctx, &feed)).await;
     r.run("proxy-stays-on-its-upstream", proxy_guard(ctx, &feed)).await;
     r.run("unknown-plugin-route", unknown_route(ctx)).await;
+    r.run("metrics", metrics(ctx)).await;
 }
 
 fn body(a: &crate::console::Answer) -> String {
@@ -339,6 +340,17 @@ async fn proxy_guard(ctx: &Ctx, feed: &[Value]) -> Outcome {
     match ctx.console.get("/api/plugins/ipmi/proxy/readyz").await {
         Ok(a) if a.status == 404 => Outcome::Pass("a path outside the Machines API: 404".into()),
         Ok(a) => Outcome::Fail(format!("HTTP {}: {}", a.status, body(&a))),
+        Err(e) => Outcome::Fail(e),
+    }
+}
+
+/// A scraper reads series, never the app's HTML (#41).
+async fn metrics(ctx: &Ctx) -> Outcome {
+    match ctx.console.get("/metrics").await {
+        Ok(a) if a.status == 200 && a.content_type.starts_with("text/plain") && a.text.contains("stormconsole_build_info") => {
+            Outcome::Pass(format!("{} series lines", a.text.lines().filter(|l| !l.starts_with('#')).count()))
+        }
+        Ok(a) => Outcome::Fail(format!("HTTP {} {}", a.status, a.content_type)),
         Err(e) => Outcome::Fail(e),
     }
 }

@@ -376,10 +376,10 @@ async fn gate(state: AppState, mut req: Request, next: Next) -> Response {
     let path = req.uri().path();
     // `/api/version` is the release the nodes booted, which the masthead
     // shows before anyone signs in; it names nothing a session protects.
-    // There is no `/metrics`: the console exports none.
+    // `/metrics` is not among them (#41): what is anonymous is health.
     let open = matches!(path, "/healthz" | "/readyz" | "/api/summary" | "/api/version")
         || path.starts_with("/api/v1/auth/")
-        || !path.starts_with("/api") && !path.starts_with("/ws");
+        || (!path.starts_with("/api") && !path.starts_with("/ws") && path != "/metrics");
     if open {
         return next.run(req).await;
     }

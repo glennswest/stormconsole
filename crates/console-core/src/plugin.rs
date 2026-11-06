@@ -10,6 +10,16 @@ use crate::create::Creator;
 use crate::events::Events;
 use crate::nav::NavSection;
 
+/// One number for `/metrics`. The name carries the unit and its meaning; a
+/// counter only ever rises, so something that can fall is not one.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sample {
+    pub name: &'static str,
+    pub help: &'static str,
+    pub counter: bool,
+    pub value: f64,
+}
+
 #[async_trait]
 pub trait ConsolePlugin: Send + Sync {
     /// Stable short name. Prefixes this plugin's component ids
@@ -75,6 +85,12 @@ pub trait ConsolePlugin: Send + Sync {
     /// has no opinion. See [`Offers`].
     async fn offers(&self, _viewer: &Viewer) -> Offers {
         Offers::all()
+    }
+
+    /// What this plugin adds to `/metrics`, beyond its health and its count
+    /// of components, which every plugin has.
+    async fn samples(&self) -> Vec<Sample> {
+        vec![]
     }
 
     /// What happened to one object, asked by component id.

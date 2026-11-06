@@ -1984,8 +1984,13 @@ create, rather than showing nothing.
   the README. Fleet-discovered endpoints (every node's stormdrive) need
   none.
 - **Health** — `/healthz` (process, `ok`), `/readyz` (plugins; 503 on
-  Error). **No metrics endpoint** — and `/metrics` falls through to the
-  app with 200 HTML (#41). Any other path under `/api/` or `/ws/` that no
+  Error). **`/metrics`** (#41) is the console's own numbers in Prometheus's
+  text format: each plugin's health and count of components, the feed's build
+  time, websocket clients, and what a plugin adds through
+  `ConsolePlugin::samples` (the log ring's). It takes a credential when
+  authentication is on, since only health is anonymous. The log ring's
+  occurrences are what it still retains and fall on eviction, so that is a
+  gauge; duplicates are the counter. Any other path under `/api/` or `/ws/` that no
   route serves answers a JSON **404** (`{"error": "no such route: …"}`),
   never the app; everything else is the SPA.
 - **stormd summary** — `GET /api/summary` in stormd's plugin-card shape, so
@@ -2082,7 +2087,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
-| stormconsole | #4 Hubble flows and agent metrics (unblocked); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #4 Hubble flows and agent metrics (unblocked); #42 where SSH keys live; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

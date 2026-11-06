@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — `/metrics` (#41)
+- **feat:** `/metrics` serves Prometheus series: each plugin's health and count of components, how long the feed takes to build, websocket clients, the log ring's entries, occurrences, duplicates and hosts.
+- **fix:** `/metrics` answered 200 with the app's HTML, so a scraper read a healthy target with no series. It also was open: it now takes a credential when authentication is on, like everything but health.
+
 ### 2026-11-06 — Asking the apiserver what a viewer may do (#45)
 - **feat:** a row no longer offers what the apiserver would refuse: a `view` member sees a pod with no Delete, and machines and Deployments with no Start, Stop or Scale. A node's Cordon and Drain need the admin role and a kubernetes identity as well. A reader is offered no write at all.
 - **feat:** a project's Access tab shows Isolate, Add member, Remove and Delete, and the YAML tabs of a pod and a project show Edit, only to someone the apiserver would let do it.

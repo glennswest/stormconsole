@@ -37,6 +37,6 @@ pub use events::{Event, Events};
 pub use create::{Creator, Field, FieldOption};
 pub use feed::{Feed, FeedPlugin, FeedState};
 pub use nav::{NavItem, NavKind, NavSection};
-pub use plugin::ConsolePlugin;
+pub use plugin::{ConsolePlugin, Sample};
 pub use probe::{Probe, ProbeState};
-pub use registry::{Guard, Registry};
+pub use registry::{FeedStats, Guard, PluginStat, Registry};
