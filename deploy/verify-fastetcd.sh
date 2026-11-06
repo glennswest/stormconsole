@@ -198,6 +198,6 @@ check "$(nctl put /after ok 2>&1)" OK "writes again"
 sleep 7
 check "$(comps 's.get("health")' $Q)" ok "the store is healthy again"
 
-grep -hiE " (WARN|ERROR) " "$W"/c*.log | cut -c1-180 | sort | uniq -c | sort -rn | head -8 | sed 's/^/  console: /'
+{ grep -hiE " (WARN|ERROR) " "$W"/c*.log || true; } | cut -c1-180 | sort | uniq -c | sort -rn | sed -n 1,8p | sed 's/^/  console: /'
 say "$FAILED failed"
 exit "$FAILED"
