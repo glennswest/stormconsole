@@ -1956,7 +1956,13 @@ are the source; the catalog adds names. No sealed-at in either.
 Owner on stormcos#203: writes "listed resource by resource", the settings of the components it manages. Read from
 the code: `client.rs` falls back to the console's own token for anyone with no identity, so the role bounds them too.
 - [x] `deploy/rbac/stormconsole.yaml`, `docs/rbac.md`, `crates/stormconsole/src/rbac.rs`
-- [ ] `deploy/verify-rbac.sh`: real apiserver; post on stormcos#76; golden
+- [x] `deploy/verify-rbac.sh`: real apiserver; post on stormcos#76; golden
+- Verified with `sc-build deploy/verify-rbac.sh` (0 failed): rustkube main, anonymous off, every optional CRD served.
+  With no role the apiserver refuses the ServiceAccount and no project reaches the console. With the file applied:
+  SelfSubjectAccessReview for each listed write yes and each withheld one no, the card healthy, no 403 in the log, a
+  machine's Start through the console. Found live: rustkube's self-provisioner lets any token make a project and
+  be its admin, which no Role can take away; docs/rbac.md says so
+- Not seen: a real node's stormcert token. #42 (the keys' move) has not used the storm-users rules yet
 
 ### Image words and names per the glossary (#85)
 stormcos `docs/GLOSSARY.md`: a pod's or service's clone is its container; instance is a VM's disk. Read from
