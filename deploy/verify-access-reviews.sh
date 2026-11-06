@@ -129,7 +129,7 @@ can() { as "$1" "$K8S/projects/shop" | j 'sorted(k for k, v in d["can"].items() 
 check "$(can alice)" "['delete', 'isolate', 'members']" "alice, admin"
 check "$(can bob)" "[]" "bob, view"
 check "$(can dave)" "[]" "dave, a reader"
-echo "  erin, edit: $(can erin)"
+check "$(can erin)" "['isolate']" "erin, edit: isolation, not members or the project"
 check "$(can root)" "['delete', 'isolate', 'members']" "root"
 editable() { as "$1" "$K8S/object/pod/shop/web-0" | j 'd["editable"]'; }
 check "$(editable alice)" True "a pod's YAML: alice"
@@ -152,6 +152,9 @@ check "$(as alice -o /dev/null -w '%{http_code}' -X PUT -H 'content-type: applic
 Y=$(as alice "$K8S/object/pod/shop/web-2" | j 'd["yaml"]')
 check "$(as alice -o /dev/null -w '%{http_code}' -X PUT -H 'content-type: application/yaml' --data-binary "$Y" "$K8S/object/pod/shop/web-2")" 200 "a pod's YAML saved by alice"
 check "$(code erin -X POST "$K8S/pods/shop/web-1/delete")" 200 "erin's delete"
+check "$(code erin -X POST -d '{"dns":true}' "$K8S/projects/shop/isolate")" 200 "erin's isolate, offered"
+check "$(code erin -X POST -d '{"who":"x","role":"view"}' "$K8S/projects/shop/members")" 403 "erin's member, not offered"
+check "$(code erin -X DELETE "$K8S/projects/shop")" 403 "erin's project delete, not offered"
 check "$(code dan -X POST "$K8S/pods/shop/web-2/delete")" "$(code bob -X POST "$K8S/pods/shop/web-2/delete")" "dan's delete, by hand: refused as bob's is"
 check "$(kc -o /dev/null -w '%{http_code}' "$API/api/v1/namespaces/shop/pods/web-2")" 200 "web-2 is still there"
 

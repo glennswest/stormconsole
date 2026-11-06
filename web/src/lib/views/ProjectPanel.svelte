@@ -148,7 +148,7 @@
       </div>
       <p class="dim">admin manages the project and its members; edit changes what is in it; view reads it.</p>
     {:else}
-      <p class="dim">You may read who is in this project, not change it.</p>
+      <p class="dim">You may not change who is in this project.</p>
     {/if}
   </section>
 

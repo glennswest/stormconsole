@@ -772,7 +772,11 @@ async fn edit_object(
                 .and_then(Value::as_str)
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("apiserver returned {}", status.as_u16()));
-            let code = if status.as_u16() == 409 { StatusCode::CONFLICT } else { StatusCode::BAD_GATEWAY };
+            let code = match status.as_u16() {
+                409 => StatusCode::CONFLICT,
+                403 => StatusCode::FORBIDDEN,
+                _ => StatusCode::BAD_GATEWAY,
+            };
             (code, Json(json!({"error": msg}))).into_response()
         }
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
@@ -839,6 +843,11 @@ async fn delete_pod(
         .await
     {
         Ok(status) if status.is_success() => Json(json!({"deleted": format!("{ns}/{name}")}))
+            .into_response(),
+        Ok(status) if status.as_u16() == 403 => (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": format!("the apiserver says you may not delete pod {name} in {ns}")})),
+        )
             .into_response(),
         Ok(status) => (StatusCode::BAD_GATEWAY, Json(json!({"error": status.as_u16()})))
             .into_response(),
