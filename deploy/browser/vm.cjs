@@ -30,6 +30,8 @@ walk(`vm: ${MODE}`, async (t) => {
     t.check(await t.open(page, '#/vm/default/quiet', /no address yet/), 'quiet: no address yet')
     t.check(/does not report the guest agent/.test(await page.locator('.card[aria-label="Guest agent"]').innerText()), 'quiet: a node that says nothing about it is said, not called absent', await page.locator('.card[aria-label="Guest agent"]').innerText())
     t.check(await t.open(page, '#/vms', /10\.155\.0\.15/), 'the list carries the addresses')
+    t.check(/NAT, not pod/.test(await t.text(page)), 'and says NAT, not pod')
+    await t.shot(page, 'vm-list')
     t.check(!/stormimds/.test(await t.text(page)), "stormimds's row is not a machine")
     const told = page.locator('.card[aria-label="What the guest is told"]')
     await t.open(page, '#/vm/default/bridged', /192\.168\.8\.61/)
@@ -43,8 +45,6 @@ walk(`vm: ${MODE}`, async (t) => {
     t.check(await t.until(async () => /no identity and no keys/.test(await told.innerText())), 'nat: no registration says so', await told.innerText().catch(() => ''))
     await t.open(page, '#/vm/default/quiet', /no address yet/)
     t.check(await t.until(async () => /no address for this guest yet/.test(await told.innerText())), 'quiet: no address, no identity', await told.innerText().catch(() => ''))
-    t.check(/NAT, not pod/.test(await t.text(page)), 'and says NAT, not pod')
-    await t.shot(page, 'vm-list')
   }
 
   if (MODE === 'keys') {

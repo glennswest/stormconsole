@@ -169,15 +169,15 @@ RC11=0
 kl() { curl -sk -X POST "https://127.0.0.1:10250/_$1" >/dev/null; }
 check "$(told bridged 'd["verdict"]["state"]')" answered "bridged: the node answers"
 check "$(told bridged '[(i["address"],i["state"]) for i in d["items"]]')" "[('192.168.8.61', 'answered'), ('fd00:8::61', 'nobody')]" "per address: v4 first, and its v6 has no answer"
-check "$(told bridged 'd["items"][0]["hostname"], d["items"][0]["zone"]')" "('bridged-host', 'storm-06f96d')" "what it is told, as the kubelet says it"
-check "$(told bridged 'd["items"][0]["told"]["keys"], d["items"][0]["told"]["userDataBytes"]')" "([], None)" "no keys or user-data in the answer yet"
+check "$(told bridged 'd["items"][0]["hostname"], d["items"][0]["zone"]')" "bridged-host storm-06f96d" "what it is told, as the kubelet says it"
+check "$(told bridged 'd["items"][0]["told"]["keys"], d["items"][0]["told"]["userDataBytes"]')" "[] None" "no keys or user-data in the answer yet"
 check "$(told nat 'd["verdict"]["state"]')" nobody "nat: no answer for its address"
 check "$(told quiet 'd["verdict"]["state"]')" noaddress "quiet: no address yet"
 check "$(told stopped 'd["verdict"]["state"]')" stopped "stopped: no guest to ask"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$C/api/plugins/vm/vms/default/nope/identity")" 404 "no such machine"
 kl another; check "$(told bridged 'd["verdict"]["state"]')" another "an address answering as another machine"; kl normal
 kl cold; check "$(told bridged 'd["verdict"]["state"]')" wait "a node not synced: wait, not nobody"; kl normal
-kl refuse; check "$(told bridged 'd["verdict"]["state"], d["items"][0]["state"]')" "('refused', 'refused')" "a refused credential: said, and not read as nobody"; kl normal
+kl refuse; check "$(told bridged 'd["verdict"]["state"], d["items"][0]["state"]')" "refused refused" "a refused credential: said, and not read as nobody"; kl normal
 kl keys
 K=$(curl -s "$C/api/plugins/vm/vms/default/bridged/identity")
 check "$(echo "$K" | python3 -c 'import json,sys; t=json.load(sys.stdin)["items"][0]["told"]; print(t["keys"], t["userDataBytes"])')" "['ssh-ed25519 alice@laptop'] 22" "when the node passes keys and user-data: who, and how much"
