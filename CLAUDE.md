@@ -1818,7 +1818,9 @@ viewer), not the console's credential the issue's first text named.
 - Not done on a real drive or real stormdrive: no drive to format on a build VM
 - **Owner (2026-11-06):** no sign-in = root with every role, console-wide; "one switch"; once someone signs in, today's rules apply. So `Viewer::root`, set only by `auth::viewer` when the console has no authentication. Not the node's bearer, and no format exemption for signed-in users: both were in the first cut, and "one switch" replaced them
 - [x] Reviewer, Terminal, node verbs, rack, Secret keys in Environment, `rights()` by the switch; `deploy/verify-no-signin.sh`
-- [ ] sc-build; image; shipped
+- [x] sc-build; image; shipped
+- Verified with `sc-build deploy/verify-no-signin.sh` (0 failed): rustkube from main, anonymous off. No authentication on a cluster-admin credential: every action offered and done against the real objects (project, scale, cordon, rack, YAML, isolate, member, VM start, pod delete); the storage guard allows, and still wants the typed word. On a read-only credential: offered, and the apiserver's 403 said. A console with sign-ins as the control: dana (admin, no identity), an unsigned caller and the node's bearer keep today's rules. Chromium. `verify-pod-terminal.sh`: a real shell through the real pods/exec with no sign-in, a Secret's value still nowhere. `verify-drive-format.sh`: a format started with no sign-in, on a stand-in. Also `verify-storage-guard`, `verify-drive-offer`, `verify-day2`, `verify-node-rack`, default `sc-build`
+- Not seen: forge1, a real drive, a real kubelet
 - **On a real node:** root goes on the console's credential, so what it can do is what that credential and each component's gate allow. A real stormdrive with its default gate answers a credential-less format 401; with `[api] admin_gate = "audit"` it passes. With the master
 
 ### Enclosures hold shelves; a backplane is never "no shelf" (#166) ✅ 2026-11-05
