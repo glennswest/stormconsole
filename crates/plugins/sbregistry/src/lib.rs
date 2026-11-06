@@ -37,7 +37,6 @@ struct Engine {
 struct Inner {
     /// The registry, its dial and its credential (#35).
     reach: Arc<console_core::dial::Reach>,
-    client: reqwest::Client,
     state: RwLock<State>,
     engine: std::sync::OnceLock<Engine>,
     /// The last answer and when: the feed and every open page share it.
@@ -69,7 +68,6 @@ impl SbregistryPlugin {
         Self {
             inner: Arc::new(Inner {
                 reach,
-                client: reqwest::Client::new(),
                 engine: std::sync::OnceLock::new(),
                 holdings: tokio::sync::Mutex::new(None),
                 state: RwLock::new(State {
