@@ -2386,8 +2386,10 @@ Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `sel
 
 ### `/metrics`, for real (#41)
 `/metrics` was open and answered the app's HTML with 200, so a scraper read a healthy target with no series. Serve the series the issue names, behind the same gate as the rest (owner: nothing anonymous but health). "received" in the log ring is what is retained, and falls on eviction, so it is a gauge; only `duplicates` is a counter.
-- [ ] `crates/stormconsole/src/metrics.rs`; `Registry::stats`; `ConsolePlugin::samples` (logs); the gate; docs
-- [ ] `deploy/verify-console-metrics.sh`: a real ironprom scraping it with a token; the medium suite; golden; ask stormcos for the job
+- [x] `crates/stormconsole/src/metrics.rs`; `Registry::stats`; `ConsolePlugin::samples` (logs); the gate; docs
+- [x] `deploy/verify-console-metrics.sh`: a real ironprom scraping it with a token; the medium suite; golden; ask stormcos for the job
+- Verified with `sc-build deploy/verify-console-metrics.sh` (0 failed), `deploy/verify-tests.sh`, `verify-auth.sh`, default `sc-build`. ironprom from main: `up` 1 with the token and with authentication off, 0 with the wrong token or none (saying 401), series by label, a rate over the counter. Six of one line and three others: 5 duplicates, 4 entries, 9 occurrences. A real websocket 0, 1, 0. A plugin with no apiserver in `unknown`/`error` by label
+- Not seen: a real node, or a scrape over TLS with a client certificate (the gate is the same one; #127's rig covers that path for logs). Nothing scrapes :9094 until stormcos adds the job
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
