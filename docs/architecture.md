@@ -959,6 +959,10 @@ one. **This is not hotplug**: stormvm serves no device verb
 (stormvm#18), so the guest sees a new disk at its next boot and every
 layer says so. The root disk and the seed refuse to be removed.
 
+**Disk buses (#38).** `disks::BUSES` is `virtio`, `nvme`, `scsi`, `sata`: what stormvm's `from_kube` takes, and the one list
+behind Create, Add disk and the settings field. Anything else (`usb`) is refused here, because stormvm would refuse it at the
+node and the machine could never start. The console writes no cdrom, which stormvm allows only on `sata` or `scsi`.
+
 The card merges the definition's disks with the running instance's, each
 saying whether it is `attached`. Reading either alone can state only half
 the truth: the instance alone loses a disk the moment it is added, and

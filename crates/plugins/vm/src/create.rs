@@ -55,7 +55,7 @@ pub fn creators(catalogue: &Catalogue) -> Vec<Creator> {
                 Field::text("cores", "vCPU").default("2"),
                 Field::text("memory", "Memory").default("4Gi"),
                 root_disk(catalogue),
-                Field::select("bus", "Disk bus", &["virtio", "nvme", "scsi", "sata"]),
+                Field::select("bus", "Disk bus", &crate::disks::BUSES),
                 // Where the guest's address comes from, which decides
                 // whether anything can reach it.
                 Field::select("network", "Network", &["pod", "stormbr0"])
@@ -204,7 +204,7 @@ pub fn instance(f: &Form) -> Result<Value, String> {
         return Err("vCPU must be at least 1".into());
     }
     let memory = if f.memory.trim().is_empty() { "4Gi" } else { f.memory.trim() };
-    let bus = if f.bus.trim().is_empty() { "virtio" } else { f.bus.trim() };
+    let bus = if f.bus.trim().is_empty() { "virtio" } else { crate::disks::check_bus(f.bus.trim())? };
     // A project, always (#28). Never `default` by omission; the handler
     // refuses system namespaces before this is reached.
     let ns = f.namespace.trim();

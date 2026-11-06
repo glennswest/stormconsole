@@ -564,6 +564,7 @@
                 />
                 <select bind:value={newDisk.bus} aria-label="Disk bus">
                   <option value="virtio">virtio</option>
+                  <option value="nvme">nvme</option>
                   <option value="scsi">scsi</option>
                   <option value="sata">sata</option>
                 </select>

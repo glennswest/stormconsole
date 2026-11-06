@@ -461,9 +461,7 @@ pub fn patch(field: &str, value: &str) -> Result<Value, String> {
             Ok(template(json!({"domain": {"memory": {"guest": m}}})))
         }
         "bus" => {
-            if !["virtio", "sata", "scsi", "usb"].contains(&value) {
-                return Err(format!("{value:?} is not a disk bus this console offers"));
-            }
+            let value = crate::disks::check_bus(value.trim())?;
             Ok(template(json!({"domain": {"devices": {"disks": [{"disk": {"bus": value}}]}}})))
         }
         "memory_floor" => {
@@ -794,6 +792,8 @@ mod tests {
         assert!(patch("cores", "0").unwrap_err().contains("at least one"));
         assert!(patch("memory", "lots").unwrap_err().contains("4Gi"));
         assert!(patch("bus", "ide").unwrap_err().contains("not a disk bus"));
+        assert!(patch("bus", "usb").unwrap_err().contains("not a disk bus"));
+        assert!(patch("bus", "nvme").is_ok());
         // The network is no longer refused — it is the thing somebody wants
         // to change about a machine that came up unreachable.
         assert!(patch("network", "br0").is_ok());

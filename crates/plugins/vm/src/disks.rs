@@ -26,6 +26,22 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+/// The disk buses a machine can have: exactly what stormvm's `from_kube` takes
+/// (stormvm-spec `kube.rs`). Anything else, `usb` among them, is refused at the
+/// node, so a machine holding it can never start (#38). This console writes no
+/// cdrom, so stormvm's other rule, a cdrom only on `sata` or `scsi`, cannot be
+/// broken from here.
+pub const BUSES: [&str; 4] = ["virtio", "nvme", "scsi", "sata"];
+
+/// A bus somebody asked for, or the refusal that names the ones there are.
+pub fn check_bus(bus: &str) -> Result<&str, String> {
+    if BUSES.contains(&bus) {
+        Ok(bus)
+    } else {
+        Err(format!("{bus:?} is not a disk bus this console offers \u{2014} {}", BUSES.join(", ")))
+    }
+}
+
 /// What a new disk is backed by. Deliberately small: these are the three
 /// a console can offer honestly, and anything else is the YAML tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,8 +113,7 @@ pub fn add(spec: &Value, a: &Add) -> Result<Value, String> {
     let source = Source::parse(a.source.trim())?;
     let bus = match a.bus.trim() {
         "" => "virtio",
-        b if ["virtio", "sata", "scsi", "usb"].contains(&b) => b,
-        b => return Err(format!("{b:?} is not a disk bus this console offers")),
+        b => check_bus(b)?,
     };
 
     let mut disks = array(spec, "/domain/devices/disks");
@@ -308,6 +323,28 @@ mod tests {
             bus: "ide".into()
         })
         .contains("not a disk bus"));
+    }
+
+    #[test]
+    fn only_the_buses_stormvm_takes() {
+        for bus in BUSES {
+            let p = add(&spec(), &Add {
+                name: "data".into(),
+                source: "empty".into(),
+                from: "1Gi".into(),
+                bus: bus.into(),
+            })
+            .unwrap();
+            assert_eq!(p.pointer("/spec/template/spec/domain/devices/disks/2/disk/bus").unwrap(), bus);
+        }
+        let usb = add(&spec(), &Add {
+            name: "data".into(),
+            source: "empty".into(),
+            from: "1Gi".into(),
+            bus: "usb".into(),
+        })
+        .unwrap_err();
+        assert!(usb.contains("\"usb\" is not a disk bus") && usb.contains("nvme"), "{usb}");
     }
 
     #[test]

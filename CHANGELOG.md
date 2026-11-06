@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Disk buses are the ones stormvm takes (#38)
+- **fix:** Create, Add disk and the disk bus setting take `virtio`, `nvme`, `scsi` or `sata`, what stormvm accepts. `usb`, which
+  made a machine that could never start, is refused with the list; Add disk offers `nvme`; Create now refuses a bus it does not
+  offer instead of writing it.
+
 ### 2026-11-05 — Import a VM disk by URL (#44)
 - **feat:** Create → Disk from a URL, on Images and Virtual machines: a qcow2, raw, vmdk, ova or iso by URL, with an optional
   sha256. The registry fetches and verifies it and the engine seals it; progress shows on Images → Catalog, and a machine's
