@@ -441,7 +441,7 @@ export function idsForRoute(href) {
     return feed.components.filter((c) => c.kind === 'node').map((c) => c.id).sort()
   }
   if (path === '#/vms') {
-    let ids = withPrefix('vm:')
+    let ids = withPrefix('vm:').filter((id) => id !== 'vm:imds')
     if (ns) ids = ids.filter((id) => id.split(':')[2]?.startsWith(`${ns}/`))
     return ids
   }

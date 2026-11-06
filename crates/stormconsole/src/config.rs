@@ -447,6 +447,10 @@ pub struct Vm {
     /// `accessCredentials` can only name a Secret in the machine's own.
     #[serde(default)]
     pub ssh_keys_namespace: Option<String>,
+    /// This node's stormimds, for a row saying whether it answers (#11). Its admin port, on loopback;
+    /// only its health, which needs no key.
+    #[serde(default)]
+    pub stormimds_url: Option<String>,
 }
 
 impl Default for Vm {

@@ -99,12 +99,26 @@ k POST /apis/kubevirt.io/v1/namespaces/default/virtualmachines \
     \"spec\":{\"running\":false,\"template\":{\"metadata\":{},\"spec\":$(spec '')}}}"
 curl -sf "$API/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances/nat" | python3 -c 'import json,sys; print("nat as stored:", json.dumps(json.load(sys.stdin)["status"]))'
 
+mkdir -p "$W/imds/admin"; echo ok > "$W/imds/admin/health"
+say "a node to ask, and a stand-in kubelet in rustkube-node's shape (#11)"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$W/kl.key" -out "$W/kl.crt" -days 1 -subj /CN=kl 2>/dev/null
+k POST /api/v1/nodes '{"apiVersion":"v1","kind":"Node","metadata":{"name":"storm-06f96d"}}'
+k PATCH /api/v1/nodes/storm-06f96d/status '{"status":{"addresses":[{"type":"InternalIP","address":"127.0.0.1"}]}}' application/merge-patch+json
+UID_B=$(curl -sf "$API/apis/kubevirt.io/v1/namespaces/default/virtualmachineinstances/bridged" | python3 -c 'import json,sys; print(json.load(sys.stdin)["metadata"]["uid"])')
+python3 deploy/vm-identity.standin.py "$W/kl.crt" "$W/kl.key" "$UID_B" > "$W/standin.log" 2>&1 &
+for _ in $(seq 40); do curl -sk -o /dev/null https://127.0.0.1:10250/healthz && break; sleep 0.25; done
+python3 -m http.server --directory "$W/imds" 18169 >/dev/null 2>&1 &
+IMDS=$!
+
 say "a console over the cluster"
 cat > "$W/c.toml" <<EOF
 listen_addr = "127.0.0.1:19096"
 data_dir = "$W/c"
 [kubernetes]
 server = "$API"
+insecure_skip_tls_verify = true
+[vm]
+stormimds_url = "http://127.0.0.1:18169"
 [fleet]
 enabled = false
 [logs]
@@ -147,6 +161,39 @@ for i in d["interfaces"]:
 '
 done
 
+say "what a guest is told (#11)"
+C=http://127.0.0.1:19096
+told() { curl -s "$C/api/plugins/vm/vms/default/$1/identity" | python3 -c "import json,sys; d=json.load(sys.stdin); print($2)"; }
+check() { if [ "$1" = "$2" ]; then echo "  ok   $3"; else echo "  FAIL $3 — got: $1"; RC11=1; fi; }
+RC11=0
+kl() { curl -sk -X POST "https://127.0.0.1:10250/_$1" >/dev/null; }
+check "$(told bridged 'd["verdict"]["state"]')" answered "bridged: the node answers"
+check "$(told bridged '[(i["address"],i["state"]) for i in d["items"]]')" "[('192.168.8.61', 'answered'), ('fd00:8::61', 'nobody')]" "per address: v4 first, and its v6 has no answer"
+check "$(told bridged 'd["items"][0]["hostname"], d["items"][0]["zone"]')" "('bridged-host', 'storm-06f96d')" "what it is told, as the kubelet says it"
+check "$(told bridged 'd["items"][0]["told"]["keys"], d["items"][0]["told"]["userDataBytes"]')" "([], None)" "no keys or user-data in the answer yet"
+check "$(told nat 'd["verdict"]["state"]')" nobody "nat: no answer for its address"
+check "$(told quiet 'd["verdict"]["state"]')" noaddress "quiet: no address yet"
+check "$(told stopped 'd["verdict"]["state"]')" stopped "stopped: no guest to ask"
+check "$(curl -s -o /dev/null -w '%{http_code}' "$C/api/plugins/vm/vms/default/nope/identity")" 404 "no such machine"
+kl another; check "$(told bridged 'd["verdict"]["state"]')" another "an address answering as another machine"; kl normal
+kl cold; check "$(told bridged 'd["verdict"]["state"]')" wait "a node not synced: wait, not nobody"; kl normal
+kl refuse; check "$(told bridged 'd["verdict"]["state"], d["items"][0]["state"]')" "('refused', 'refused')" "a refused credential: said, and not read as nobody"; kl normal
+kl keys
+K=$(curl -s "$C/api/plugins/vm/vms/default/bridged/identity")
+check "$(echo "$K" | python3 -c 'import json,sys; t=json.load(sys.stdin)["items"][0]["told"]; print(t["keys"], t["userDataBytes"])')" "['ssh-ed25519 alice@laptop'] 22" "when the node passes keys and user-data: who, and how much"
+check "$(echo "$K" | grep -c -E 'AAAAsecret|hunter2' || true)" 0 "and never the key or the content"
+kl normal
+row() { curl -s "$C/api/v1/components" | python3 -c "import json,sys; print([(c['health'],c['detail']) for c in json.load(sys.stdin) if c['id']=='vm:imds'])"; }
+for _ in $(seq 20); do case "$(row)" in *ok*) break;; esac; sleep 1; done
+case "$(row)" in *"'ok'"*"169.254.169.254"*) echo "  ok   the stormimds row: up";; *) echo "  FAIL stormimds row: $(row)"; RC11=1;; esac
+kill $IMDS; wait $IMDS 2>/dev/null || true
+for _ in $(seq 20); do case "$(row)" in *idle*) break;; esac; sleep 1; done
+case "$(row)" in *"'idle'"*"not started"*) echo "  ok   nothing there, nothing supervising: not started";; *) echo "  FAIL stormimds row: $(row)"; RC11=1;; esac
+python3 -m http.server 8269 --bind 127.0.0.1 --directory "$W/imds" >/dev/null 2>&1 &
+for _ in $(seq 25); do case "$(row)" in *error*) break;; esac; sleep 1; done
+case "$(row)" in *"'error'"*"did not answer"*) echo "  ok   its stormd up and it silent: an error";; *) echo "  FAIL stormimds row: $(row)"; RC11=1;; esac
+kill $! 2>/dev/null || true
+
 say "the pages in a browser (#58)"
 RC=0
 deploy/browser/run.sh "$W" vm.cjs "http://127.0.0.1:19096" MODE=net || RC=1
@@ -154,4 +201,5 @@ deploy/browser/run.sh "$W" vm.cjs "http://127.0.0.1:19096" MODE=net || RC=1
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/c.log | grep -v 'no users and no auth_token' | head -20 || true
 say "done"
+[ "$RC11" = 0 ] || exit 1
 exit $RC

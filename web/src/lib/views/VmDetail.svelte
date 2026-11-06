@@ -61,6 +61,7 @@
   }
 
   let vm = $state(null)
+  let identity = $state(null)
   let error = $state('')
   let loaded = $state(false)
   let acting = $state('')
@@ -75,6 +76,10 @@
     error = ''
     try {
       vm = await get(`/api/plugins/vm/vms/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`)
+      // Apart: a slow or absent kubelet must not hold up the page.
+      get(`/api/plugins/vm/vms/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/identity`)
+        .then((v) => (identity = v))
+        .catch((e) => (identity = { error: e.message }))
     } catch (e) {
       error = e.message
       vm = null
@@ -501,6 +506,34 @@
                 <li><span>{t.phase}</span> <span class="dim" title={t.phaseTransitionTimestamp}>{t.phaseTransitionTimestamp ? `${ago(t.phaseTransitionTimestamp)} ago` : ''}</span></li>
               {/each}
             </ul>
+          {/if}
+        </div>
+
+        <div class="card" aria-label="What the guest is told">
+          <h2>What the guest is told</h2>
+          {#if !identity}
+            <p class="dim">Asking the node…</p>
+          {:else if identity.error}
+            <p class="warn">{identity.error}</p>
+          {:else}
+            <p class:ok={identity.verdict.state === 'answered'} class:warn={identity.verdict.state !== 'answered' && identity.verdict.state !== 'stopped'} data-testid="told-verdict">{identity.verdict.sentence}</p>
+            {#each identity.items as i (i.address)}
+              <h3 class="mono">{i.address}</h3>
+              {#if i.state === 'answered' || i.state === 'another'}
+                {#if i.state === 'another'}<p class="warn">{i.sentence}</p>{/if}
+                <dl>
+                  <dt>Instance</dt><dd class="mono">{i.instanceId}</dd>
+                  <dt>Hostname</dt><dd class="mono">{i.hostname ?? '—'}</dd>
+                  <dt>Address</dt><dd class="mono">{i.localIpv4 ?? '—'}</dd>
+                  <dt>Zone</dt><dd class="mono">{[i.region, i.zone].filter(Boolean).join(' / ') || '—'}</dd>
+                  {#if i.serviceAccount}<dt>Service account</dt><dd class="mono">{i.serviceAccount}</dd>{/if}
+                  <dt>SSH keys</dt><dd>{#if i.told.keys.length}{#each i.told.keys as k (k)}<div class="mono">{k}</div>{/each}{:else}<span class="dim">{i.told.keysSentence}</span>{/if}</dd>
+                  <dt>User-data</dt><dd>{#if i.told.userDataBytes != null}{i.told.userDataBytes} bytes{:else}<span class="dim">{i.told.userDataSentence}</span>{/if}</dd>
+                </dl>
+              {:else}
+                <p class="dim">{i.sentence}{#if i.said} <span class="mono">({i.said})</span>{/if}</p>
+              {/if}
+            {/each}
           {/if}
         </div>
 

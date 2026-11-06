@@ -301,6 +301,7 @@ async fn main() {
         )
         .with_operator_tls(vmimages_tls.clone())
         .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))
+        .with_stormimds(Some(config.vm.stormimds_url.clone().unwrap_or_else(|| "http://127.0.0.1:8169".to_string())))
         .with_registry(config.sbregistry.enabled.then(|| registry_reach.clone()))));
     }
     // This node's pod network on the flowsdn edition (#83): the agent's

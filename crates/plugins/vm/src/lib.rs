@@ -28,6 +28,7 @@ pub mod console;
 mod create;
 pub mod disks;
 pub mod facts;
+mod identity;
 pub mod images;
 pub mod keys;
 mod keystore;
@@ -136,6 +137,9 @@ struct Inner {
     /// The node's registry, for imported disks (#44).
     registry: Option<Arc<console_core::dial::Reach>>,
     images: images::Cache,
+    /// This node's stormimds, for its row (#11): `/admin/health`, which needs no key.
+    stormimds: Option<String>,
+    stormimds_row: RwLock<Option<ComponentSummary>>,
     /// Where each user's SSH-key Secret lives (#26); copies go to the
     /// namespaces their machines are in, because `accessCredentials` can
     /// only name a Secret in the machine's own.
@@ -198,6 +202,8 @@ impl VmPlugin {
                 operator_tls: Arc::new(console_core::tls::Client::http1("vmimages", Default::default())),
                 registry: None,
                 images: images::Cache::new(),
+                stormimds: None,
+                stormimds_row: RwLock::new(None),
                 keys_ns: "default".into(),
             }),
         }
@@ -212,6 +218,14 @@ impl VmPlugin {
     }
 
     /// Where users' SSH-key Secrets live. Before the plugin is shared.
+    /// This node's stormimds, for a row saying whether it answers (#11).
+    pub fn with_stormimds(mut self, url: Option<String>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.stormimds = url;
+        }
+        self
+    }
+
     pub fn with_keys_namespace(mut self, ns: &str) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
             if !ns.trim().is_empty() {
@@ -260,6 +274,7 @@ impl ConsolePlugin for VmPlugin {
             .route("/machines/{ns}/{name}", delete(delete_machine))
             .route("/instances/{ns}/{name}/stop", post(delete_instance))
             .route("/vms/{ns}/{name}", get(detail))
+            .route("/vms/{ns}/{name}/identity", get(identity_of))
             .route("/vms/{ns}/{name}/settings", get(settings_of).put(settings_set))
             .route("/vms/{ns}/{name}/disks", post(disk_add))
             .route("/vms/{ns}/{name}/disks/{disk}", delete(disk_remove))
@@ -278,10 +293,12 @@ impl ConsolePlugin for VmPlugin {
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
-        components::map_with(
+        let mut rows = components::map_with(
             &self.inner.store.snapshot().await,
             &*self.inner.stormvm_vms.read().await,
-        )
+        );
+        rows.extend(self.inner.stormimds_row.read().await.clone());
+        rows
     }
 
     async fn health(&self) -> Health {
@@ -425,6 +442,20 @@ impl ConsolePlugin for VmPlugin {
                     plugin_kubernetes::watch(client, spec, store, token).await;
                 });
             }
+        }
+        if let Some(url) = self.inner.stormimds.clone() {
+            let inner = self.inner.clone();
+            let token = shutdown.clone();
+            tokio::spawn(async move {
+                loop {
+                    let row = stormimds_row(&inner.http, &url).await;
+                    *inner.stormimds_row.write().await = Some(row);
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                        _ = token.cancelled() => return,
+                    }
+                }
+            });
         }
         // Keep the root-disk list current (stormcos: wire new VM to the image
         // operator). A console that offered a dropdown built once at startup
@@ -1024,6 +1055,91 @@ async fn network_set(
 /// Everything a VM page shows, in one answer: the definition, the running
 /// instance, the disks with what backs each, the interfaces, and the two
 /// console doors' state.
+/// stormimds's stormd on a node (the port layout: :8169 + 100).
+const STORMIMDS_STORMD: u16 = 8269;
+const KUBELET_PORT: u16 = 10250;
+
+async fn stormimds_row(http: &reqwest::Client, url: &str) -> ComponentSummary {
+    let asked = http.get(format!("{url}/admin/health")).timeout(Duration::from_secs(3)).send().await;
+    let (health, detail) = match asked {
+        Ok(r) if r.status().is_success() => (Health::Ok, identity::service_sentence(true, false, "")),
+        Ok(r) => (Health::Error, identity::service_sentence(false, false, &format!("it answered {}", r.status()))),
+        Err(e) if console_core::upstream::not_started(url, STORMIMDS_STORMD).await => {
+            let _ = e;
+            (Health::Idle, identity::service_sentence(false, true, ""))
+        }
+        Err(e) => (Health::Error, identity::service_sentence(false, false, &console_core::dial::chain(&e))),
+    };
+    ComponentSummary {
+        id: "vm:imds".into(),
+        kind: "service".into(),
+        label: "stormimds".into(),
+        health,
+        detail,
+        metrics: vec![],
+        actions: vec![],
+        relations: vec![],
+        link: None,
+    }
+}
+
+/// `GET /vms/{ns}/{name}/identity`: what the node tells this guest (#11), asked as stormimds asks it.
+/// A person's own bearer, else the console's, like the pod page's hop to the kubelet.
+async fn identity_of(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((ns, name)): Path<(String, String)>,
+) -> Response {
+    if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
+        return refusal;
+    }
+    let key = format!("{ns}/{name}");
+    let instance = inner.store.object("vmi", &key).await;
+    if instance.is_none() && inner.store.object("vm", &key).await.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no virtual machine {key}")}))).into_response();
+    }
+    let Some(instance) = instance else {
+        return Json(json!({"verdict": identity::verdict(false, &[]), "items": []})).into_response();
+    };
+    let addresses = identity::addresses(&instance);
+    let node = instance.pointer("/status/nodeName").and_then(Value::as_str).unwrap_or("");
+    let uid = instance.pointer("/metadata/uid").and_then(Value::as_str).unwrap_or("");
+    let Some(client) = &inner.client else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"}))).into_response();
+    };
+    let host = match client.get(&format!("/api/v1/nodes/{node}")).await {
+        Ok(n) => identity::node_address(&n),
+        Err(_) => None,
+    };
+    let Some(host) = host.filter(|_| !addresses.is_empty()) else {
+        let rows: Vec<Value> = if addresses.is_empty() {
+            vec![]
+        } else {
+            addresses.iter().map(|a| json!({"address": a, "state": "unknown", "sentence": format!("The address of node {node:?} could not be read, so its kubelet could not be asked.")})).collect()
+        };
+        return Json(json!({"verdict": identity::verdict(true, &rows), "node": node, "items": rows})).into_response();
+    };
+    let h = if host.contains(':') { format!("[{host}]") } else { host };
+    let http = client.conn().http();
+    let token = viewer.token.clone().or_else(|| client.token());
+    let mut items = Vec::new();
+    for a in &addresses {
+        let mut req = http.get(format!("https://{h}:{KUBELET_PORT}/vmInstance/{a}")).timeout(Duration::from_secs(5));
+        if let Some(t) = &token {
+            req = req.bearer_auth(t);
+        }
+        items.push(match req.send().await {
+            Ok(r) => {
+                let status = r.status().as_u16();
+                let body: Value = r.json().await.unwrap_or(Value::Null);
+                identity::answer(a, status, &body, uid)
+            }
+            Err(e) => json!({"address": a, "state": "unknown", "sentence": format!("The kubelet on {node} did not answer: {}", console_core::dial::chain(&e))}),
+        });
+    }
+    Json(json!({"verdict": identity::verdict(true, &items), "node": node, "items": items})).into_response()
+}
+
 async fn detail(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
