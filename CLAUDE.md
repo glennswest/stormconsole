@@ -2423,8 +2423,12 @@ image holds (30.58 MB fit, 30.72 MB did not). The build log says `cp: error writ
 left on device`, the build sealed it anyway (stormcentral#716), and the read-back's sha256 differs from the recorded one.
 A good binary cut to 90% segfaults with no output (139), as the node does.
 - [x] A first line on stderr at start, before anything else can fail; test (4f1a97d)
-- [ ] Master: `component edit stormconsole --set golden_size=64M`, spoil the cut images; stormcentral#716 told
-- [ ] After the edit: image; `component fetch` must read back the recorded sha256, and the fetched binary run
+- [x] Master: `golden_size=64M` set (2026-11-06); stormcentral#716 told. Nothing here stops a binary outgrowing 64M: the
+      build still seals a failed copy until #716 is fixed. Content is 33.8 MB
+- [x] Image golden-stormconsole-328f866fa569 (ba19ec4): no `cp` error in its log, 67108864 bytes, 576 tests;
+      `component fetch` reads back the recorded sha256 (cf09a156…, 21410832 bytes), and that binary printed its first line and
+      answered /healthz 200 with a minimal config on stormcentral's VM
+- Not seen: a real node. It carries the unfinished flows work of #4 (a175138..ba19ec4), which was on main. #272's done-when is on a node
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
