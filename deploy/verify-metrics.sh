@@ -184,6 +184,7 @@ python3 -m http.server 9191 --bind 127.0.0.1 >/dev/null 2>&1 &
 for _ in $(seq 40); do [ "$(cardh)" = "['error']" ] && break; sleep 1; done
 check "$(cardh)" "['error']" "its stormd up and ironprom silent: an error"
 
+[ -z "${SHOTS_OUT:-}" ] || tar czf "$SHOTS_OUT" -C "$W" shots
 say "console logs (warnings and errors only)"
 grep -hE 'WARN|ERROR' "$W/c.log" | grep -v 'no users, no auth_token' | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200 | sort -u -k3 | head -12 || true
 tar czf "$HERE/metrics-shots.tgz" -C "$W" shots 2>/dev/null || true

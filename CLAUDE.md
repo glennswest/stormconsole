@@ -2328,7 +2328,9 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
 ### A VM's metrics (#14)
 Settings done (v0.10.0, v0.11.0, #50). The metrics half waited on cadvisor's container-to-VM key, and no longer needs it: stormvm#48 serves `/metrics` per VM in KubeVirt's names with `namespace`, `name`, ironprom scrapes it (stormcos `ironprom-node.yml`), and #46 charts part of it. Left: allocated against touched, operations, packets, a tab on the VM's page, and a stale "nothing counts its interfaces".
 - [x] `metrics/panels.rs` VM panels; `EntityCharts.svelte` shared with the Metrics page; the tab; `facts.rs`
-- [ ] `verify-metrics.sh` extended; docs; dist; close; golden
+- [x] `verify-metrics.sh` extended; docs; dist; close; golden
+- Verified with `sc-build deploy/verify-metrics.sh` (0 failed): ironprom from main scraping a stand-in in stormvm `metrics.rs`'s families and labels. All 11 charts through ironprom's real PromQL, including the memory panel's `__name__` regex, named allocated, in use and balloon; the tab in Chromium. Also `verify-vm-net.sh`, default `sc-build`. Settings were verified at v0.10.0, v0.11.0 and #50
+- Not seen: a real stormvm on a real guest (no hypervisor on a build VM), a machine on another node (this node's ironprom only). Left: stormvm#19 (memory resize) and disk hotplug, which the form already says are not live
 
 ### Full Cilium, what is left (#4)
 Items 1 and 5 done in v0.8.0; 3 superseded by 4. Item 2 here: `127.0.0.1:9962/metrics`, names from Cilium v1.20.2's `metrics.rst`. There is no policy-verdict counter at the agent, so `drop_count_total{reason="Policy denied"}`.
