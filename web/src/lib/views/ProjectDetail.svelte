@@ -301,7 +301,7 @@
       <YamlPanel
         yaml={data.yaml}
         label="Project {name}"
-        savePath={`/api/plugins/k8s/object/ns/${encodeURIComponent(name)}`}
+        savePath={data.editable ? `/api/plugins/k8s/object/ns/${encodeURIComponent(name)}` : ''}
       />
     {/if}
   {/if}

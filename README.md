@@ -131,6 +131,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-audit.sh` | who did what (#15) — a real apiserver and console with users of each role: acts allowed and refused, sign-ins, nothing secret kept, an administrator's to read, kept across a restart; Chromium |
 | `verify-stormd-tls.sh` | each stormd and stormdrive over TLS (#49) — real stormds, with a node CA and a stranger's, and plain, and a real stormdrive: the feed, a process action, the node page and API health through a client pair; an untrusted one never read |
 | `verify-rbac.sh` | the console's apiserver role (#78) — a real apiserver with anonymous off and every optional CRD: a console with only `deploy/rbac/stormconsole.yaml`, with no role as the control, each listed write allowed and each withheld one refused |
+| `verify-access-reviews.sh` | what a viewer sees and is offered (#45) — a real apiserver with anonymous off; seven users by console role and project role: each row's actions, the project page and YAML Edit, compared with what the apiserver then does; a change of rights through the console and behind its back; Chromium |
 | `verify-runs-on.sh` | what a container or VM disk runs on and was cloned from (#75) — a real engine (its images, clones and seal record) and apiserver, pods with the annotations a kubelet writes, stand-ins for stormcentral and for an engine slow with a digest; Chromium |
 | `verify-pod-page.sh` | the pod page — real fastetcd + rustkube v0.15.3, a stand-in kubelet (containerLogs, `/metrics/cadvisor`, `/stats/summary` in rustkube-node's shape) and stormcentral; probes configured and observed from `Unhealthy` events, volumes and a bound claim, the Events table, stats over time (CPU as a counter's rate, memory, network); the API with curl and every tab in Chromium, screenshots in `shots.tgz`; and the words (#70) — stand-in registry, engine and image operator, every page that shows a registry image searched for “golden” |
 
@@ -416,9 +417,9 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 - **Watch deletes of custom resources** need rustkube ≥ v0.15.2
   (rustkube#100): against an older apiserver a deleted VM instance or
   snapshot stays on a watching console until it relists.
-- **Actions the viewer may not take are still offered** and answered by
-  the apiserver's 403; rustkube serves `SelfSubjectRulesReview` (v0.9.0)
-  and the console does not ask it yet (#45).
+- **Not every button asks first** (#45 covers rows, the project page and
+  YAML Edit): the Create menu and a VM page's settings, disks and snapshots
+  still look only at the console role, and the apiserver's 403 answers (#259).
 - **Where SSH keys live** — `[vm] ssh_keys_namespace` defaults to
   `default`, a system project where a project-only user cannot write
   (#42, a decision).

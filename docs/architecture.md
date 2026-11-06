@@ -146,20 +146,20 @@ platform. The authorization model, in the order it runs:
    kubernetes bearer. The auth middleware puts the `Viewer` on every
    request's extensions; console-core makes it an axum extractor, so a
    plugin route reads it without knowing anything about sessions.
-2. **The question.** `NamespaceAccess` asks rustkube **as the viewer**:
-   `GET /api/v1/namespaces` first, since a 200 is the self-scoped answer
-   OpenShift's project list gives. rustkube's RBAC makes that
-   all-or-nothing, so a
-   403 falls back to one probe per known namespace — `GET
-   /api/v1/namespaces/{ns}/pods?limit=1`, **not** the Namespace object,
-   because a Namespace is cluster-scoped and a RoleBinding cannot grant
-   access to one. Answers are cached 30s: a feed that redraws every two
-   seconds would otherwise be a denial of service on the apiserver by way
-   of a UI. One `NamespaceAccess` is shared by the kubernetes and vm
-   plugins, so the same question is asked once and cannot be answered two
-   ways. rustkube serves `SelfSubjectAccessReview` and
-   `SelfSubjectRulesReview` since v0.9.0 (rustkube#59); the console does not
-   ask them yet (#45), so it cannot hide an action before it 403s.
+2. **The question.** `NamespaceAccess` asks rustkube **as the viewer**,
+   `SelfSubjectRulesReview`: once with no namespace, which answers for the
+   cluster's bindings, then once per known namespace unless that was the
+   wildcard rule. A viewer sees a namespace on `list namespaces` at cluster
+   scope, or on `list pods` in it, **not** `get` on the Namespace object,
+   because a Namespace is cluster-scoped and a RoleBinding cannot grant access
+   to one. A rules answer marked `incomplete` (or failed) is settled by one
+   `SelfSubjectAccessReview`. An apiserver that does not serve the review gets
+   the older questions: `GET /api/v1/namespaces`, then on a 403 `GET
+   /api/v1/namespaces/{ns}/pods?limit=1` per namespace. Answers are cached 30s
+   per token: a feed that redraws every two seconds would otherwise be a denial
+   of service on the apiserver by way of a UI. One `NamespaceAccess` is shared
+   by the kubernetes and vm plugins, so the same question is asked once and
+   cannot be answered two ways.
 3. **Reads.** `/api/v1/components` and `/ws/components` are filtered per
    viewer, with surviving relations re-pointed, so a hidden object is
    unreachable by REST, by socket and by following an edge. A plugin route
@@ -168,6 +168,15 @@ platform. The authorization model, in the order it runs:
 4. **Writes.** Every mutation carries the viewer's own bearer, so the
    apiserver's RBAC decides. A viewer whose Role has no `delete` verb is
    refused by the apiserver rather than by the console's guess about them.
+   **What is offered (#45)** comes from the same rules answer: `ConsolePlugin::
+   offers` drops the row actions a plugin would carry to the apiserver and have
+   refused (kubernetes and vm), and the registry drops every write for a reader,
+   whom the host's gate would stop. The project page's `can` (members, isolate,
+   delete) and `editable` on YAML are the same answer. It is a display choice:
+   the request is still decided where it lands, so what cannot be determined
+   (an incomplete answer, a failed review, no review served) stays offered,
+   where #82's storage gate, which is an enforcement, fails closed. Someone with
+   no identity acts on the console's credential, so that is whose rights count.
    The *watches* keep the console's own credential — they have to see the
    whole cluster to serve anybody.
    **The console's own credential (#33)** is one `console_core::apiserver::
@@ -2073,7 +2082,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
-| stormconsole | #4 Hubble flows and agent metrics (unblocked); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #4 Hubble flows and agent metrics (unblocked); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

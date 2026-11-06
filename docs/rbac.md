@@ -47,8 +47,10 @@ Nothing is needed for the rest:
 
 - **The kubelet** (`/stats/summary`, `/metrics/cadvisor`) only authenticates the token with a TokenReview, so the
   role grants nothing there (rustkube-node `server.rs`).
-- **Access reviews** (`selfsubjectaccessreviews`) and the namespace probe are asked as the viewer. Someone with no
-  identity is refused before any call is made.
+- **Access reviews** (`selfsubjectrulesreviews`, `selfsubjectaccessreviews`) need no rule: the apiserver lets any
+  authenticated token ask (`system:basic-user`). They are asked as the viewer. Destructive storage refuses someone with
+  no identity before any call is made; for what a row offers (#45), someone with no identity is asked about with the
+  console's own token, because that is what their request would go out on, so this role bounds what they are offered.
 
 ## Writes
 

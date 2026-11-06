@@ -27,6 +27,7 @@ use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use stormview::Action;
 
 /// The identity behind one request. Anonymous when the console serves
 /// without authentication, which is the single-node default.
@@ -137,6 +138,32 @@ impl Access {
 
     pub fn is_unrestricted(&self) -> bool {
         matches!(self, Access::Unrestricted)
+    }
+}
+
+/// Which actions to offer one viewer, as a plugin knows from whoever decides
+/// them. A display choice, unlike [`Access`]: the request is still decided
+/// where it lands, this only spares somebody a button that would be refused
+/// (#45). A test on the action rather than on its component, because a
+/// component of one plugin may carry an action another plugin serves.
+#[derive(Clone)]
+pub struct Offers(Option<Arc<dyn Fn(&Action) -> bool + Send + Sync>>);
+
+impl Offers {
+    pub fn all() -> Self {
+        Self(None)
+    }
+
+    pub fn only(test: impl Fn(&Action) -> bool + Send + Sync + 'static) -> Self {
+        Self(Some(Arc::new(test)))
+    }
+
+    pub fn is_all(&self) -> bool {
+        self.0.is_none()
+    }
+
+    pub fn allows(&self, action: &Action) -> bool {
+        self.0.as_ref().is_none_or(|t| t(action))
     }
 }
 

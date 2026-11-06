@@ -54,6 +54,7 @@
 
   let pod = $state(null)
   let yaml = $state('')
+  let yamlEditable = $state(false)
   let error = $state('')
   let loaded = $state(false)
 
@@ -74,6 +75,7 @@
     try {
       const o = await get(`/api/plugins/k8s/object/pod/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`)
       yaml = o.yaml
+      yamlEditable = o.editable
     } catch (e) {
       yaml = `# ${e.message}`
     }
@@ -759,7 +761,7 @@
         {/if}
       </section>
     {:else}
-      <YamlPanel {yaml} label="Pod {name} in {ns}" savePath={`/api/plugins/k8s/object/pod/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`} />
+      <YamlPanel {yaml} label="Pod {name} in {ns}" savePath={yamlEditable ? `/api/plugins/k8s/object/pod/${encodeURIComponent(ns)}/${encodeURIComponent(name)}` : ''} />
     {/if}
   {/if}
 </div>

@@ -38,7 +38,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use console_core::{
-    Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Probe, Viewer,
+    Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Offers, Probe, Viewer,
 };
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
@@ -68,7 +68,7 @@ const CILIUM_AGENT_METRICS: &str = "http://127.0.0.1:9962/metrics";
 // `VirtualMachineInstance` the kubelet reconciles (stormvm docs/kube.md) —
 // so the VM plugin watches the apiserver with the same client and the
 // same list+watch loop rather than growing a second one.
-pub use authz::NamespaceAccess;
+pub use authz::{NamespaceAccess, Need};
 pub use cache::{watch_resource as watch, ResourceSpec, Store as KubeStore};
 pub use client::{RkClient as Client, RkError};
 
@@ -396,6 +396,17 @@ impl ConsolePlugin for KubernetesPlugin {
         Access::limited(move |id| visible_to(id, &hidden), count, note)
     }
 
+    /// What this plugin's routes would carry to the apiserver and have
+    /// refused. A node's verbs are refused here too (#36).
+    async fn offers(&self, viewer: &Viewer) -> Offers {
+        let rights = self.inner.access.rights(viewer).await;
+        let nodes = dayto::node_refusal(viewer.has_role("admin"), viewer.token.is_some()).is_none();
+        Offers::only(move |a| {
+            let Some(need) = Need::of_action(a) else { return true };
+            (nodes || need.resource != "nodes") && rights.as_ref().is_none_or(|r| r.may(&need))
+        })
+    }
+
     async fn run(&self, shutdown: CancellationToken) {
         let Some(client) = self.inner.client.clone() else {
             shutdown.cancelled().await;
@@ -588,8 +599,21 @@ async fn namespace_detail(
         "limitRanges": limits.iter().map(limit_row).collect::<Vec<_>>(),
         "events": events,
         "yaml": to_yaml(&object),
+        "editable": may_edit(&inner, &viewer, "ns", &ns).await,
     }))
     .into_response()
+}
+
+/// Would Save on this object's YAML get through? The replace `edit_object` does.
+async fn may_edit(inner: &Inner, viewer: &Viewer, kind: &str, key: &str) -> bool {
+    let Some(spec) = cache::spec(kind) else { return false };
+    if !viewer.may_write() {
+        return false;
+    }
+    match Need::of_api_path(&spec.object_path(key), "update") {
+        Some(need) => inner.access.may(viewer, &need).await,
+        None => true,
+    }
 }
 
 async fn objects_in(inner: &Inner, kind: &str, ns: &str) -> Vec<Value> {
@@ -674,7 +698,7 @@ async fn object(
     if let Some(refusal) = refuse_key(&inner, &viewer, &kind, &key).await {
         return refusal;
     }
-    let editable = cache::spec(&kind).is_some();
+    let editable = may_edit(&inner, &viewer, &kind, &key).await;
     match inner.store.object(&kind, &key).await {
         Some(v) => Json(json!({
             "kind": kind,

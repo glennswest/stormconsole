@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Asking the apiserver what a viewer may do (#45)
+- **feat:** a row no longer offers what the apiserver would refuse: a `view` member sees a pod with no Delete, and machines and Deployments with no Start, Stop or Scale. A node's Cordon and Drain need the admin role and a kubernetes identity as well. A reader is offered no write at all.
+- **feat:** a project's Access tab shows Isolate, Add member, Remove and Delete, and the YAML tabs of a pod and a project show Edit, only to someone the apiserver would let do it.
+- **refactor:** what a viewer sees comes from `SelfSubjectRulesReview` rather than listing namespaces and then pods in each one. A cluster-admin costs one question. The old questions stay for an apiserver that does not serve the review.
+- **fix:** an identity the apiserver does not accept no longer costs a request per namespace.
+
 ### 2026-11-06 — A VM's metrics, on its page (#14)
 - **feat:** a Metrics tab on a machine's page: CPU and time waiting for the host, memory allocated against in use, each disk's bytes and operations, each interface's bytes and packets, over a window. It replaces the link off to the Metrics page, which has the same charts.
 - **fix:** the machine's page no longer says nothing counts its interfaces: stormvm has since stormvm#48.

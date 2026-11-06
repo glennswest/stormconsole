@@ -2,7 +2,7 @@
   // A project's ownership and fences (#28): who is in it and as what, whether
   // it is isolated, and deleting it. Everything is asked as the viewer, so a
   // project's `view` member sees the members and cannot change them — the
-  // apiserver's RBAC answers, and this page shows the answer.
+  // apiserver's RBAC answers, and `can` is that answer before the click (#45).
   import { get, call, postJson } from '../api.js'
   import { noteActivity, loadProjects, k8sns, selectNamespace } from '../stores.svelte.js'
 
@@ -107,7 +107,7 @@
         <p class="dim">Not isolated: traffic in and out is whatever other policies allow.</p>
       {/if}
       <p class="dim">Two NetworkPolicies (<span class="mono">storm-isolate</span>, and <span class="mono">storm-isolate-dns</span> for DNS). Cilium enforces them on its endpoints, so a VM behind the hypervisor's NAT (stormvm#16) or on a host bridge is outside them.</p>
-      {#if data.write && !p.system}
+      {#if data.can.isolate && !p.system}
         <label class="check"><input type="checkbox" bind:checked={dns} /> allow DNS to the cluster resolver</label>
         <div class="row">
           <button disabled={busy} onclick={isolate}>{p.isolated ? 'Update isolation' : 'Isolate this project'}</button>
@@ -131,14 +131,14 @@
               <td class="dim">{m.kind}{m.namespace ? ` in ${m.namespace}` : ''}</td>
               <td><span class="role {m.role}">{m.role}</span></td>
               <td class="acts">
-                {#if data.write}<button class="danger" disabled={busy} onclick={() => removeMember(m)}>Remove</button>{/if}
+                {#if data.can.members}<button class="danger" disabled={busy} onclick={() => removeMember(m)}>Remove</button>{/if}
               </td>
             </tr>
           {/each}
         </tbody>
       </table>
     {/if}
-    {#if data.write}
+    {#if data.can.members}
       <div class="row add">
         <input bind:value={who} placeholder="user, or system:serviceaccount:<project>:<name>" aria-label="Member" />
         <select bind:value={role} aria-label="Role">
@@ -147,10 +147,12 @@
         <button disabled={busy || !who.trim()} onclick={addMember}>Add member</button>
       </div>
       <p class="dim">admin manages the project and its members; edit changes what is in it; view reads it.</p>
+    {:else}
+      <p class="dim">You may read who is in this project, not change it.</p>
     {/if}
   </section>
 
-  {#if data.write && !p.system}
+  {#if data.can.delete && !p.system}
     <section class="card danger-zone">
       <h2>Delete project</h2>
       <p class="dim">Deletes the project and everything in it.</p>

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use stormview::{ComponentSummary, Health};
 use tokio_util::sync::CancellationToken;
 
-use crate::access::{Access, Viewer};
+use crate::access::{Access, Offers, Viewer};
 use crate::create::Creator;
 use crate::events::Events;
 use crate::nav::NavSection;
@@ -69,6 +69,12 @@ pub trait ConsolePlugin: Send + Sync {
     /// an authorization result and not a display choice.
     async fn access(&self, _viewer: &Viewer) -> Access {
         Access::Unrestricted
+    }
+
+    /// Which actions, of any plugin's, to offer this viewer. The default
+    /// has no opinion. See [`Offers`].
+    async fn offers(&self, _viewer: &Viewer) -> Offers {
+        Offers::all()
     }
 
     /// What happened to one object, asked by component id.

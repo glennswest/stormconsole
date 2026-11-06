@@ -34,7 +34,7 @@ use axum::Json;
 use console_core::Viewer;
 use serde_json::{json, Value};
 
-use crate::Inner;
+use crate::{Inner, Need};
 
 pub const API: &str = "/apis/project.openshift.io/v1";
 pub const RBAC: &str = "/apis/rbac.authorization.k8s.io/v1";
@@ -485,9 +485,26 @@ pub(crate) async fn detail(State(inner): State<Arc<Inner>>, viewer: Viewer, Path
         "members": members,
         "membersError": members_error,
         "roles": ROLES,
-        "write": viewer.may_write(),
+        "can": can(&inner, &viewer, &name).await,
     }))
     .into_response()
+}
+
+/// Which of the page's changes this viewer would get through (#45): the
+/// requests the routes below make, as RBAC spells them. To RBAC a Project is
+/// its own namespace.
+async fn can(inner: &Inner, viewer: &Viewer, name: &str) -> Value {
+    let Some(rights) = inner.access.rights(viewer).await.filter(|_| viewer.may_write()) else {
+        let write = viewer.may_write();
+        return json!({"members": write, "isolate": write, "delete": write});
+    };
+    let may = |group: &str, resource: &str, verb: &str| rights.may(&Need::new(group, resource, verb).within(name));
+    json!({
+        "members": may("rbac.authorization.k8s.io", "rolebindings", "create"),
+        "isolate": may("networking.k8s.io", "networkpolicies", "create"),
+        "delete": rights.may(&Need::new("project.openshift.io", "projects", "delete").within(name).named(name))
+            || rights.may(&Need::new("", "namespaces", "delete").named(name)),
+    })
 }
 
 #[derive(serde::Deserialize)]

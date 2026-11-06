@@ -49,7 +49,7 @@ use axum::{Json, Router};
 use console_core::{
     Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Viewer,
 };
-use plugin_kubernetes::{Client, KubeStore, NamespaceAccess, ResourceSpec};
+use plugin_kubernetes::{Client, KubeStore, NamespaceAccess, Need, ResourceSpec};
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -402,6 +402,13 @@ impl ConsolePlugin for VmPlugin {
         Access::limited(move |id| visible_to(id, &hidden), count, note)
     }
 
+    /// What a machine's row would carry to the apiserver and have refused.
+    async fn offers(&self, viewer: &Viewer) -> console_core::Offers {
+        let Some(shared) = &self.inner.access else { return console_core::Offers::all() };
+        let Some(rights) = shared.rights(viewer).await else { return console_core::Offers::all() };
+        console_core::Offers::only(move |a| need_of(a).is_none_or(|n| rights.may(&n)))
+    }
+
     async fn run(&self, shutdown: CancellationToken) {
         // The watches need an apiserver; the console doors do not. Guarding
         // both on the client meant a node with no rustkube reported its
@@ -611,6 +618,25 @@ async fn lifecycle_verb(
         }
     }
     Json(json!({"message": lifecycle::done(verb, ns, name, &plan, phase)})).into_response()
+}
+
+/// What a machine's row action needs of the apiserver, as `lifecycle_verb`
+/// and `delete_machine` ask it. The hypervisor's own verbs are stormvm's.
+fn need_of(a: &console_core::Action) -> Option<Need> {
+    let rest = a.path.strip_prefix("/api/plugins/vm/")?;
+    let parts: Vec<&str> = rest.split('/').collect();
+    match parts.as_slice() {
+        ["machines", ns, name, "start" | "stop" | "restart"] => {
+            Some(Need::new("kubevirt.io", "virtualmachines", "patch").within(ns).named(name))
+        }
+        ["machines", ns, name] if a.method.eq_ignore_ascii_case("DELETE") => {
+            Some(Need::new("kubevirt.io", "virtualmachines", "delete").within(ns).named(name))
+        }
+        ["instances", ns, name, "stop"] => {
+            Some(Need::new("kubevirt.io", "virtualmachineinstances", "delete").within(ns).named(name))
+        }
+        _ => None,
+    }
 }
 
 async fn start(

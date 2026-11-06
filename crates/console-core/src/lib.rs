@@ -32,7 +32,7 @@ pub mod upstream;
 pub mod value;
 pub mod words;
 
-pub use access::{Access, Scope, Viewer};
+pub use access::{Access, Offers, Scope, Viewer};
 pub use events::{Event, Events};
 pub use create::{Creator, Field, FieldOption};
 pub use feed::{Feed, FeedPlugin, FeedState};

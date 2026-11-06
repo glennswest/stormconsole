@@ -109,7 +109,35 @@ impl Registry {
     /// straight back.
     pub async fn components_for(&self, viewer: &Viewer) -> Arc<Vec<ComponentSummary>> {
         let all = self.scoped_for(viewer).await;
-        self.strip_storage(viewer, all).await
+        let all = self.strip_storage(viewer, all).await;
+        self.strip_refused(viewer, all).await
+    }
+
+    /// Drop the actions this viewer would be refused (#45): every write for
+    /// someone who holds no writing role here, which the host's gate would
+    /// stop, and whatever a plugin knows its upstream would say no to.
+    /// The shared Arc comes straight back when nothing is withheld.
+    async fn strip_refused(&self, viewer: &Viewer, all: Arc<Vec<ComponentSummary>>) -> Arc<Vec<ComponentSummary>> {
+        let mut tests = Vec::new();
+        for p in &self.plugins {
+            let o = p.offers(viewer).await;
+            if !o.is_all() {
+                tests.push(o);
+            }
+        }
+        let reader = !viewer.may_write();
+        if tests.is_empty() && !reader {
+            return all;
+        }
+        let offered = |a: &stormview::Action| !(reader && writes(a)) && tests.iter().all(|t| t.allows(a));
+        if all.iter().all(|c| c.actions.iter().all(offered)) {
+            return all;
+        }
+        let mut out = all.as_ref().clone();
+        for c in &mut out {
+            c.actions.retain(offered);
+        }
+        Arc::new(out)
     }
 
     /// Drop every destructive storage action this viewer may not take
@@ -327,6 +355,11 @@ impl Registry {
     }
 }
 
+/// Would this action be a write to the host's gate (`refuse_read_only`)?
+fn writes(a: &stormview::Action) -> bool {
+    a.path.starts_with("/api/plugins/") && !["GET", "HEAD", "OPTIONS"].iter().any(|m| a.method.eq_ignore_ascii_case(m))
+}
+
 /// An action in the feed, classified by the rule the host enforces.
 fn classify_action(a: &stormview::Action) -> Option<Guarded> {
     let method = axum::http::Method::from_bytes(a.method.to_ascii_uppercase().as_bytes()).ok()?;
@@ -502,6 +535,55 @@ mod tests {
                 link: None,
             }]
         }
+    }
+
+    fn row_action(id: &str, method: &str, path: &str) -> stormview::Action {
+        stormview::Action { id: id.into(), label: id.into(), method: method.into(), path: path.into(), enabled: true, danger: false, tone: None }
+    }
+
+    struct Offering;
+
+    #[async_trait::async_trait]
+    impl ConsolePlugin for Offering {
+        fn name(&self) -> &'static str {
+            "off"
+        }
+        async fn components(&self) -> Vec<ComponentSummary> {
+            vec![ComponentSummary {
+                id: "off:x".into(),
+                kind: "x".into(),
+                label: "x".into(),
+                health: Health::Ok,
+                detail: String::new(),
+                metrics: vec![],
+                actions: vec![
+                    row_action("open", "GET", "#/x"),
+                    row_action("look", "GET", "/api/plugins/off/look"),
+                    row_action("change", "POST", "/api/plugins/off/change"),
+                    row_action("refused", "POST", "/api/plugins/off/refused"),
+                ],
+                relations: vec![],
+                link: None,
+            }]
+        }
+        async fn offers(&self, _viewer: &Viewer) -> crate::access::Offers {
+            crate::access::Offers::only(|a| a.id != "refused")
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_action_is_not_offered_and_a_reader_is_offered_no_write() {
+        let r = Registry::new(vec![Arc::new(Offering)]);
+        r.refresh().await;
+        let ids = |v: Arc<Vec<ComponentSummary>>| {
+            v.iter().find(|c| c.id == "off:x").unwrap().actions.iter().map(|a| a.id.clone()).collect::<Vec<_>>()
+        };
+        let operator = Viewer { user: Some("o".into()), roles: vec!["operator".into()], ..Default::default() };
+        assert_eq!(ids(r.components_for(&operator).await), ["open", "look", "change"]);
+        let reader = Viewer { user: Some("r".into()), roles: vec!["viewer".into()], ..Default::default() };
+        assert_eq!(ids(r.components_for(&reader).await), ["open", "look"]);
+        // The feed itself is untouched for the next viewer.
+        assert_eq!(r.components().await.iter().find(|c| c.id == "off:x").unwrap().actions.len(), 4);
     }
 
     /// With nobody to ask, nobody is a storage-admin: the drive is shown,
