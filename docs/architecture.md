@@ -504,6 +504,7 @@ form asks for a name and the registry for a repository (`media/<name>`). It send
 once, resumably and verified, and answers at once; the job's progress is already on Images → Catalog (#19). Only http and
 https are taken. Sealed media then joins the VM form's root-disk list (`images::add_imported`, within a minute), by volume.
 A registry with auth on wants admin for this, and the console holds no registry credential (#35), so it says the 401.
+An imported disk is on this node's registry; nothing copies it to another node yet.
 
 **Audit (#15).** One record per act, in the host and by path (`crates/stormconsole/src/audit.rs`), for the reason the
 write gate is there: a route added without a call would be a hole, and the proxies could never have been listed. It

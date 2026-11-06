@@ -301,7 +301,7 @@ impl ConsolePlugin for SbregistryPlugin {
                         .hint("detect reads the image's own bytes, and a format that contradicts them is refused"),
                 ],
             )
-            .describe("A disk from elsewhere, as a registry image a virtual machine can use. It is fetched here once and verified")
+            .describe("A disk from elsewhere, as a registry image a virtual machine can use. It is fetched to this node once and verified, so a machine using it needs to run here")
             .at(&["#/images", "#/vms"]),
             Creator::form(
                 "reg:clone",

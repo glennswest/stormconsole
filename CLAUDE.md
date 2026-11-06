@@ -1956,7 +1956,16 @@ are the source; the catalog adds names. No sealed-at in either.
 sbregistry `POST /v1/media` with `hold: true` answers 202 and `/v1/media/jobs` has the progress, which the catalog already
 merges (#19). What is missing is the form and the root-disk list.
 - [x] `reg` plugin `POST /media`; `vm` `images::add_imported`
-- [ ] `deploy/verify-disk-import.sh`: real engine and registry, raw and qcow2, Chromium; dist; golden
+- [x] `deploy/verify-disk-import.sh`: real engine and registry, raw and qcow2, Chromium; dist; golden
+- Verified with `sc-build deploy/verify-disk-import.sh` (0 failed): a real engine and registry fetching from a local web
+  server. A raw image with its sha256; a hand-written qcow2 detected, the guest's cluster on the volume and not the file;
+  a wrong sha256 and a missing URL failed with whose fault, as rows on the catalog; `file:`, a path as a name, a short
+  sha256 and a reader refused. The form in Chromium, the root-disk list, a machine whose root disk is that volume.
+  The rig found the registry refusing a bare sha256 (fixed)
+- Not seen: a machine booting on one (no hypervisor on a build VM), vmdk or ova (the engine's, unit-tested there), a real
+  download of gigabytes, a registry with auth on (its 401 is a unit test, #35). An import is on this node's registry:
+  with the image operator on, a machine pinned to another node gets its "no image in the catalogue" sentence; an
+  unpinned one placed elsewhere fails at start. Multi-node is not addressed
 
 ### Login, users and roles: what is left of #15
 Steps 1 and 2 are done (7408a47). Since then: the per-node bearer as the escape hatch (#102), certificate identity (#127),

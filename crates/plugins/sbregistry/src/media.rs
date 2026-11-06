@@ -59,7 +59,8 @@ pub fn request(i: &Import) -> Result<Value, String> {
     };
     let mut body = json!({"repository": format!("media/{name}"), "name": name, "url": url, "hold": true});
     if !sha.is_empty() {
-        body["sha256"] = json!(sha);
+        // The registry takes a digest with its algorithm, and refuses a bare one.
+        body["sha256"] = json!(format!("sha256:{sha}"));
     }
     if let Some(f) = format {
         body["format"] = json!(f);
@@ -98,7 +99,7 @@ mod tests {
         let sha = "A".repeat(64);
         let b = asked("http://x/a.img", "mine", &format!("sha256:{sha}"), "raw").unwrap();
         assert_eq!((b["name"].as_str(), b["format"].as_str()), (Some("mine"), Some("raw")));
-        assert_eq!(b["sha256"], "a".repeat(64));
+        assert_eq!(b["sha256"], format!("sha256:{}", "a".repeat(64)));
     }
 
     #[test]
