@@ -89,7 +89,7 @@ impl Registry {
     }
 
     fn part_of_build(&self) -> impl Iterator<Item = &Arc<dyn ConsolePlugin>> {
-        self.plugins.iter().filter(|p| self.build.as_ref().is_none_or(|b| b.enabled(p.name())))
+        self.plugins.iter().filter(|p| p.present() && self.build.as_ref().is_none_or(|b| b.enabled(p.name())))
     }
 
     /// `GET /api/v1/console/build`: the network, and the plugins of this build.

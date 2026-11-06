@@ -26,6 +26,13 @@ pub trait ConsolePlugin: Send + Sync {
     /// ("k8s:pod:default/web") and its API mount ("/api/plugins/k8s/…").
     fn name(&self) -> &'static str;
 
+    /// Whether this plugin has anything on this node right now (#121, a diskless node has no
+    /// record of itself). One that does not is not on the navigator, in the feed or in the
+    /// health. Its routes stay. Whether it is part of this build at all is [`crate::build::Build`]'s.
+    fn present(&self) -> bool {
+        true
+    }
+
     /// Navigation contribution; sections with the same label merge across
     /// plugins.
     fn nav(&self) -> Vec<NavSection> {
