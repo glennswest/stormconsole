@@ -54,6 +54,8 @@ fn wanted(f: &Flow, list: &[flow::FlowFilter]) -> bool {
         })
 }
 
+// The stream's item type is tonic's, large Err and all.
+#[allow(clippy::result_large_err)]
 fn wrap(f: Flow) -> Result<GetFlowsResponse, Status> {
     Ok(GetFlowsResponse { node_name: f.node_name.clone(), time: f.time, response_types: Some(ResponseTypes::Flow(f)) })
 }
