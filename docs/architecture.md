@@ -499,7 +499,7 @@ card, shelf — gets the same question from the server. `GET
 /api/v1/console/guard` answers the same thing up front, for a client that
 wants to ask first.
 
-**Importing a disk (#44).** Create → Import a disk posts `/api/plugins/reg/media`, a route rather than the proxy because the
+**Importing a disk (#44).** Create → Disk from a URL posts `/api/plugins/reg/media`, a route rather than the proxy because the
 form asks for a name and the registry for a repository (`media/<name>`). It sends `hold: true`, so the registry fetches
 once, resumably and verified, and answers at once; the job's progress is already on Images → Catalog (#19). Only http and
 https are taken. Sealed media then joins the VM form's root-disk list (`images::add_imported`, within a minute), by volume.

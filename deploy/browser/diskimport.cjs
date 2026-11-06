@@ -12,15 +12,15 @@ walk('disk import', async (t) => {
   }
 
   t.check(await t.open(page, '#/images', /Catalog|Images/), 'the catalog opens')
-  await openCreate(/Import a disk/)
+  await openCreate(/Disk from a URL/)
   await field('URL').locator('input').fill(`${U}/nothere-either.img`)
   await field('Name').locator('input').fill('Bad Name')
   await t.shot(page, 'import-form')
-  await dialog.getByRole('button', { name: /^Create|Import/ }).last().click()
+  await dialog.getByRole('button', { name: /^Create Disk from a URL$/ }).last().click()
   t.check(await t.until(async () => /not a usable name/.test(await dialog.innerText())), 'a bad name is said on the form', await dialog.innerText())
   await field('Name').locator('input').fill('walked')
   await field('URL').locator('input').fill(`${U}/guest.qcow2`)
-  await dialog.getByRole('button', { name: /^Create|Import/ }).last().click()
+  await dialog.getByRole('button', { name: /^Create Disk from a URL$/ }).last().click()
   t.check(await t.until(async () => !(await dialog.isVisible())), 'accepted, the form closes')
   t.check(await t.until(async () => /importing walked|Catalog|media/.test(await t.text(page))), 'it says so')
 

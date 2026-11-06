@@ -21,7 +21,7 @@
 //! shape of bug as `CHANGE-ME` and harder to see.
 //!
 //! **Import.** Bringing an existing qcow2 or raw disk in is what makes replacing a hypervisor a
-//! migration rather than a rebuild. Create → Import a disk (#44, the registry plugin) fetches one by
+//! migration rather than a rebuild. Create → Disk from a URL (#44, the registry plugin) fetches one by
 //! URL into a sealed image, and [`images::add_imported`] offers it here as a root disk.
 
 use std::collections::BTreeMap;
@@ -374,7 +374,7 @@ pub fn seed_secret_name(name: &str) -> String {
 fn root_disk(catalogue: &Catalogue) -> Field {
     if catalogue.choices.is_empty() {
         let hint = if catalogue.note.is_empty() {
-            "a registry image to clone copy-on-write, e.g. rocky-10-cloud".to_string()
+            "a registry image to clone, e.g. rocky-10-cloud. Your own disk: Create → Disk from a URL".to_string()
         } else {
             catalogue.note.clone()
         };
@@ -414,6 +414,7 @@ fn root_disk(catalogue: &Catalogue) -> Field {
         .collect();
     Field::choices("golden", "Root disk", options)
         .required()
+        .hint("Your own disk: Create → Disk from a URL")
 }
 
 /// What the form submitted, with one piece of belt and braces.

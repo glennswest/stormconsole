@@ -4,7 +4,7 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-11-05 — Import a VM disk by URL (#44)
-- **feat:** Create → Import a disk, on Images and Virtual machines: a qcow2, raw, vmdk, ova or iso by URL, with an optional
+- **feat:** Create → Disk from a URL, on Images and Virtual machines: a qcow2, raw, vmdk, ova or iso by URL, with an optional
   sha256. The registry fetches and verifies it and the engine seals it; progress shows on Images → Catalog, and a machine's
   root-disk list offers it once sealed.
 

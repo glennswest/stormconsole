@@ -291,7 +291,7 @@ impl ConsolePlugin for SbregistryPlugin {
             .at(&["#/grid?id=reg:registry&rel=goldens"]),
             Creator::form(
                 "reg:media",
-                "Import a disk",
+                "Disk from a URL",
                 "/api/plugins/reg/media",
                 vec![
                     Field::text("url", "URL").hint("http or https: a qcow2, raw, vmdk, ova or iso image").required(),
