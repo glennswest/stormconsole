@@ -246,7 +246,7 @@ impl Default for Kubernetes {
             token: None,
             token_file: None,
             ca_file: None,
-            insecure_skip_tls_verify: false,
+            insecure_skip_tls_verify: false, hubble_relay: None,
             system_namespaces: vec![],
         }
     }
