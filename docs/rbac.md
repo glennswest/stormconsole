@@ -73,8 +73,9 @@ as the install token (#66), is unaffected:
 
 - **Existing projects:** their members and isolation policies, and deleting them.
 - **Workloads in them:** Import YAML and templates, editing or deleting any object through the generic YAML routes,
-  deleting a pod.
+  deleting a pod, scaling a Deployment or StatefulSet.
 - **Machines in them:** creating and deleting a virtual machine.
+- **Nodes:** cordon, uncordon and drain, which the console itself refuses with no identity, as it does a node's rack.
 - **Secrets:** every Secret outside the keys home, including a project's Secrets tab.
 
 ## The one write this role does not bound: new projects

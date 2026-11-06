@@ -161,7 +161,6 @@ Every key and default: README §Configuration.
 
 ## Planned — not built
 
-- Scale a workload; cordon, uncordon, drain outside the Cluster page — **#36**
 - A cluster change reaching a real node: the Cluster page writes the objects, and
   it needs the node lifecycle API (**stormcos#38**)
 - Cilium flows and Hubble — shipped in the image, not read yet (**#4**)

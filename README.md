@@ -381,8 +381,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   promote, demote and drain as `cluster.storm.io` objects (#63, #88), and
   stormcluster reconciles them. Changing a real node needs the node lifecycle
   API (stormcos#38, open), and the console has not been seen doing it on one.
-- **Scale a workload; cordon/uncordon and drain outside the Cluster page** —
-  not built (#36).
 - **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293); the page's Flows tab says so, and shows
   the counts of what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile. **Another node's flowsdn agent** — its API
   is loopback only, so each node's console shows its own. Endpoint and

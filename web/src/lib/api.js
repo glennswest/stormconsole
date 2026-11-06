@@ -36,6 +36,12 @@ export async function call(method, path, confirmed, body) {
   const resp = await fetch(path, { method: method || 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}))
+    // A button anywhere can ask for the one thing a route needs (a replica count, #36).
+    if (resp.status === 400 && data.ask && body === undefined) {
+      const typed = window.prompt(data.ask.label, data.ask.current ?? '')
+      if (typed === null) throw new Error('cancelled')
+      return call(method, path, confirmed, { [data.ask.field]: typed })
+    }
     if (resp.status === 428 && data.guard && confirmed === undefined) {
       return call(method, path, typedConfirm(data.guard), body)
     }

@@ -260,6 +260,27 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
             if unschedulable { " · cordoned" } else { "" }
         );
         let mut c = base("node", key, key, health, detail);
+        // The apiserver's cordon; a cluster member's is the Cluster page's (#36).
+        let verb = if unschedulable { "uncordon" } else { "cordon" };
+        c.actions.push(console_core::Action {
+            id: verb.into(),
+            label: if unschedulable { "Uncordon".into() } else { "Cordon".into() },
+            method: "POST".into(),
+            path: format!("/api/plugins/k8s/nodes/{key}/{verb}"),
+            enabled: true,
+            danger: false,
+            tone: None,
+        });
+        // What a drain would do is shown before it does it, on the node's page.
+        c.actions.push(console_core::Action {
+            id: "drain".into(),
+            label: "Drain…".into(),
+            method: "GET".into(),
+            path: format!("#/node/{key}"),
+            enabled: true,
+            danger: false,
+            tone: None,
+        });
         c.metrics.push(Metric::new("pods", pods_on.len().to_string()));
         // Where it is in the room (#32): the Drives page groups a rack's
         // 1,600 drives by this. A label, because nothing measures it.
@@ -946,6 +967,17 @@ fn workload(kind: &'static str, key: &str, desired: i64, ready: i64) -> Componen
     let mut c = base(kind, key, name, health, format!("{ready}/{desired} ready"));
     c.metrics.push(Metric::new("ready", format!("{ready}/{desired}")));
     c.relations.extend(ns_relation(key));
+    if crate::dayto::scalable(kind).is_some() {
+        c.actions.push(console_core::Action {
+            id: "scale".into(),
+            label: "Scale".into(),
+            method: "POST".into(),
+            path: format!("/api/plugins/k8s/scale/{kind}/{key}"),
+            enabled: true,
+            danger: false,
+            tone: None,
+        });
+    }
     c
 }
 

@@ -566,8 +566,12 @@ is a thin typed layer over the standard REST paths.
 - **Actions** (as the viewer): delete a pod, delete any object through
   `DELETE /api/plugins/k8s/raw/{/api|/apis…}`, import YAML (`/apply`,
   always into a project), edit an object (`PUT /object/{kind}/{key}`,
-  `resourceVersion` as the guard), and the project verbs. **Not built:**
-  scale, cordon/uncordon, drain (#36).
+  `resourceVersion` as the guard), the project verbs, and scale, cordon,
+  uncordon and drain (#36, `dayto.rs`). Scale is the `/scale` subresource, a number on the row. A node's
+  verbs need `admin` here and a kubernetes identity, and never go on the console's credential. A drain is
+  `kubectl drain`'s: cordon, then an Eviction per pod, one at a time so a budget can say no. A DaemonSet's and a
+  mirror pod stay, a pod with no controller stays unless asked for, and what could not be evicted is listed.
+  The node's page shows all of that first. A cluster member's drain is stormcluster's (the Cluster page).
 - **Cilium**: the agent's API is a unix socket and Hubble is gRPC, neither
   reachable from a golden, so Cilium is read through its CRDs on the
   apiserver — `cilium.io/v2` endpoints (state, address, identity, edge to

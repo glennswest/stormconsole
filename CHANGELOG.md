@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Scale, cordon and drain (#36)
+- **feat:** a number on a Deployment's or StatefulSet's row scales it, through the apiserver's `/scale`, as the viewer.
+- **feat:** a node's row cordons or uncordons it. Its page shows what a drain would do, then cordons and evicts through `policy/v1`, listing whatever a disruption budget or the apiserver refused. A DaemonSet's pods and mirror pods stay; a pod with no controller stays unless asked for. A node's verbs need the admin role and a kubernetes identity.
+
 ### 2026-11-06 — The image operator over TLS (#55)
 - **feat:** `[vmimages] ca_file/cert_file/key_file`: the Images pages and the VM form's root disks reach vmcloud-image-operator over TLS with the console's client pair, verified against that CA and no other, and followed when renewed. Plain `http://` still works, for an operator not yet switched. Half a pair, or certificates with an `http://` url, is exit 78.
 - **fix:** an operator that refuses is said in its own words on the card and in the VM form, where a 401 used to read as an empty catalogue.

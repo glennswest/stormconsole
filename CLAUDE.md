@@ -2325,6 +2325,11 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
   `fetch`: an image with `localName`, one falling back to its name with `aarch64` added, one with `arch: null`), clippy `-D warnings` on the crate;
   the default `sc-build`. Not seen on a real operator. It shows the architecture, and does not refuse a mismatch: that needs the node's
 
+### Scale, cordon and drain (#36)
+Read from rustkube 6c4fe56: `/scale` is served (#86), `pods/eviction` too (`pkg/apiserver/src/eviction.rs`, 429 on a budget), so nothing to file. Its budget check and delete are not atomic, so evictions go one at a time. As the viewer. A node's verbs need admin here and an identity, as #77's rack; scaling is an operator's, like deleting a pod.
+- [x] `kubernetes/src/dayto.rs`: routes, plan, drain; row actions; `ScaleField`; `NodeDrain`; a route's `ask` answered by `call`
+- [ ] `deploy/verify-day2.sh`: real apiserver and controller-manager; users; Chromium; docs; dist; golden
+
 ### The image operator over TLS (#55)
 Settled on the issue (vmcloud-image-operator 382cf1f, stormcos b71a818): https with the node CA, the console's own client pair, User `stormconsole` by SubjectAccessReview on `storm.io`. So no shared token; #82's
 viewer-token path is not needed here. `[stormcluster]`'s shape (#89). Callers: the plugin's poll and proxy, and the VM form's `fetch`, `ensure_local` and `golden_from_reference`.

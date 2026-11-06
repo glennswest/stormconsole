@@ -32,6 +32,7 @@
   import Icon from './Icon.svelte'
   import ResourceTable from './ResourceTable.svelte'
   import CopyButton from './CopyButton.svelte'
+  import ScaleField from './ScaleField.svelte'
 
   // A metric whose value is addresses — IP or MAC, one or a list — gets a copy
   // button (#24). Decided on the value rather than the label, so any
@@ -337,8 +338,12 @@
   // plugin that grows a new action does not have to be known about here.
   const FIRST = ['console', 'start']
 
+  // The count a workload's row asks for (#36), from its `ready` metric: ready/desired.
+  const desired = (row) => Number((row.metrics || []).find((m) => m.label === 'ready')?.value?.split('/')[1] ?? 0)
+
   function split(row) {
-    const acts = row.actions || []
+    // Scale is a field on the row, not one of its buttons.
+    const acts = (row.actions || []).filter((a) => a.id !== 'scale')
     const safe = acts.filter((a) => !a.danger)
     const ranked = [
       ...FIRST.map((id) => safe.find((a) => a.id === id)).filter(Boolean),
@@ -509,6 +514,15 @@
             {/each}
           </td>
           <td class="acts" onclick={(e) => e.stopPropagation()}>
+            {#each (row.actions || []).filter((a) => a.id === 'scale') as a}
+              <ScaleField
+                action={a}
+                label={row.label}
+                current={desired(row)}
+                ondone={(d) => { say('ok', d?.message || `Scaled ${row.label}`); noteActivity({ reason: 'Scale', message: d?.message || '', source: row.label }) }}
+                onerror={(e) => say('err', `Scale ${row.label}: ${e.message}`)}
+              />
+            {/each}
             {#each acts.inline as a}
               <button
                 class:ok={a.id === 'start'}

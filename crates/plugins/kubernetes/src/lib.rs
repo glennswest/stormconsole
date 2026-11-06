@@ -14,6 +14,7 @@ pub mod authz;
 pub mod cache;
 pub mod client;
 mod components;
+mod dayto;
 mod rack;
 mod env;
 mod exec;
@@ -225,6 +226,10 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/pods/{ns}/{name}", get(podpage::detail))
             .route("/nodes/{name}/rack", get(rack::read).put(rack::write))
+            .route("/nodes/{name}/cordon", post(dayto::cordon))
+            .route("/nodes/{name}/uncordon", post(dayto::uncordon))
+            .route("/nodes/{name}/drain", get(dayto::drain_plan).post(dayto::drain))
+            .route("/scale/{kind}/{ns}/{name}", post(dayto::scale))
             .route("/pods/{ns}/{name}/log", get(podpage::log))
             .route("/pods/{ns}/{name}/env", get(env::env))
             .route("/pods/{ns}/{name}/exec", get(exec::exec))
@@ -452,7 +457,7 @@ async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> R
     Json(json!({"network": netview::network_of(&snap), "items": netview::endpoints(&snap, hidden.as_ref())})).into_response()
 }
 
-async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
+pub(crate) async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
     let (hidden, _) = inner.access.hidden(viewer).await?;
     hidden.contains(ns).then(|| {
         (

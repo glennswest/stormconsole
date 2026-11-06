@@ -20,6 +20,7 @@
   import Icon from '../components/Icon.svelte'
   import NodeRack from './NodeRack.svelte'
   import NodeVerification from './NodeVerification.svelte'
+  import NodeDrain from './NodeDrain.svelte'
 
   const host = $derived(route.current.params.host)
 
@@ -154,6 +155,7 @@
     </section>
 
     <NodeVerification {host} {asked} />
+    {#if nodeRow}<NodeDrain {host} {asked} />{/if}
 
     {#if data.services.length === 0}
       <EmptyState
