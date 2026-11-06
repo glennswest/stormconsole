@@ -378,8 +378,8 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   A VM's traffic counters: stormvm#48.
 - **A cluster change reaching a real node** — the Cluster page writes join,
   promote, demote and drain as `cluster.storm.io` objects (#63, #88), and
-  stormcluster reconciles them. It needs the node lifecycle API to change a
-  node (stormcos#38), so a join there stops at that step and says so.
+  stormcluster reconciles them. Changing a real node needs the node lifecycle
+  API (stormcos#38, open), and the console has not been seen doing it on one.
 - **Scale a workload; cordon/uncordon and drain outside the Cluster page** —
   not built (#36).
 - **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293); the page's Flows tab says so, and shows

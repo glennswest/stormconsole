@@ -2297,8 +2297,10 @@ the Cluster page writes (#63, #88). stormcos#38 stays open for the node lifecycl
 closed 10-01. The health path is fixed: stormcos#102 and stormcentral#226 are closed and the registry has `health = "/healthz"`, so the
 docs' "not yet right" goes rather than gaining a reference. stormd no longer probes from `health` (stormcentral#607).
 - [x] README, architecture, presentation, the fleet crate's note, this file; the deck's stale status; `deploy/check-slides.sh`
-- [ ] The deck fits: 5 of 11 slides overflowed, which nothing could measure before (#239)
-- [ ] sc-build; close; golden
+- [x] The deck fits: 5 of 11 slides overflowed, which nothing could measure before (#239)
+- [x] sc-build; close; golden
+- Verified: `sc-build deploy/check-slides.sh docs/presentation.md` (all 11 fit); default `sc-build`; each claim read against the upstream
+  issues, stormcos `docs/CLUSTER.md` and the live registry (`health = /healthz`). Docs only, plus one crate comment: no behaviour changed
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
