@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Starting a format with no sign-in (#165)
+- **BREAKING:** an administrator with no kubernetes identity (a console with no sign-in, or the node's bearer) is root and a storage admin: destructive storage actions are offered and go through on the console's own credential. Starting a format from the Format page has no storage-admin check for anyone. Owner's decision, for now. The typed confirmation stays.
+
 ### 2026-11-06 — `/metrics` (#41)
 - **feat:** `/metrics` serves Prometheus series: each plugin's health and count of components, how long the feed takes to build, websocket clients, the log ring's entries, occurrences, duplicates and hosts.
 - **fix:** `/metrics` answered 200 with the app's HTML, so a scraper read a healthy target with no series. It also was open: it now takes a credential when authentication is on, like everything but health.

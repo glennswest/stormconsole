@@ -468,6 +468,8 @@ changing rather than an exception worth carving. Namespace scoping
 
 #### Destructive storage: storage-admins only (#82)
 
+**Changed for now (owner, #165, 2026-11-06):** an administrator with no kubernetes identity, which is a console with no sign-in or the node's bearer, is root, and root is a storage admin: the review is not asked, and the request goes on the console's own credential. Starting a format from the Format page is not reviewed for anyone. The typed confirmation, the write gate and each component's own gate stay. The rest of this section is the rule for someone with a kubernetes identity.
+
 stormcos#250 ships two ClusterRoles over `storage.storm.io`:
 `storage-admin` (every verb) and `storage-viewer` (get, list, watch),
 neither aggregated into admin/edit/view. Destroying storage is decided by

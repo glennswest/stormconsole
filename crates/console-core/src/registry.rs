@@ -82,7 +82,11 @@ impl Registry {
     /// they type? `None` for everything that is not destructive storage.
     pub async fn guard(&self, viewer: &Viewer, method: &axum::http::Method, path: &str, query: Option<&str>) -> Option<Guard> {
         let guarded = storage::classify(method, path, query)?;
-        let decision = self.reviewer.review(viewer, &guarded.resource, &guarded.verb).await;
+        let decision = if path == storage::FORMAT_START {
+            Decision::yes()
+        } else {
+            self.reviewer.review(viewer, &guarded.resource, &guarded.verb).await
+        };
         let confirm = self.confirm_word(method.as_str(), path, &guarded).await;
         Some(Guard { guarded, decision, confirm })
     }
@@ -678,6 +682,10 @@ mod tests {
     async fn destructive_storage_is_withheld_from_whoever_the_review_refuses() {
         let r = Registry::new(vec![Arc::new(Drives)]);
         r.refresh().await;
+        // Starting a format from its page asks nobody (#165).
+        let op = Viewer { user: Some("op".into()), token: Some("t".into()), roles: vec!["operator".into()], ..Default::default() };
+        let page = r.guard(&op, &axum::http::Method::POST, storage::FORMAT_START, None).await.unwrap();
+        assert!(page.decision.allowed);
         let admin = Viewer { user: Some("root".into()), token: Some("t".into()), roles: vec!["admin".into()], ..Default::default() };
         let seen = r.components_for(&admin).await;
         let d = seen.iter().find(|c| c.id == "drive:7f3a").unwrap();

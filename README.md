@@ -285,6 +285,7 @@ warns about that on every start.
   themselves — the projects they see and every write they make are the
   apiserver's RBAC answer. Without one the console says so
   (`/api/v1/console/access`).
+- **With no sign-in the console acts as root, a storage admin** (owner, #165): authentication off or the node's bearer passes the check below, and the Format page's start is not checked for anyone. The typed confirmation stays, and a component's own gate still decides.
 - **Destructive storage is for storage-admins** (#82, stormcos#250):
   format, sanitize, wipe, partition and the destructive test on a drive (on
   any node), the drive worker's jobs; RAID set create, destroy, member

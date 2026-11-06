@@ -189,9 +189,9 @@ check "alice sees Delete on the volume" test "$(feed_actions alice volume)" = "d
 check "bob (storage-viewer) sees the drives, with Locate only" test "$(feed_actions bob drive)" = "locate-on"
 check "bob sees the volume, with no Delete" test "$(feed_actions bob volume)" = ""
 check "bob sees both drives" test "$(curl -s -b "$W/jar.bob" "$C/api/v1/components" | python3 -c 'import json,sys; print(sum(c["kind"]=="drive" for c in json.load(sys.stdin)))')" = 2
-check "the console's own token is shown no destructive action" \
+check "the console's own token is root (#165), and is shown them" \
   test "$(curl -s -H "Authorization: Bearer $CONSOLE_TOKEN" "$C/api/v1/components" | python3 -c '
-import json,sys; print(" ".join(sorted({a["id"] for c in json.load(sys.stdin) if c["kind"]=="drive" for a in c.get("actions",[])})))')" = "locate-on"
+import json,sys; print(" ".join(sorted({a["id"] for c in json.load(sys.stdin) if c["kind"]=="drive" for a in c.get("actions",[])})))')" = "format-4k locate-on test-destructive"
 
 FMT=$(path_of format-4k drive sdb)
 FMT_B=$(path_of format-4k drive sdc)
@@ -218,8 +218,8 @@ r=$(as bob POST "$FMT" ZC1234); echo "  bob: $r"
 check "bob's format: 403 naming why" bash -c '[[ "$1" == 403* && "$1" == *"not a storage-admin"* ]]' _ "$r"
 r=$(as carol POST "$FMT" ZC1234); echo "  carol: $r"
 check "carol, a console reader, is refused even with storage-admin (403)" bash -c '[[ "$1" == 403* && "$1" == *reader* ]]' _ "$r"
-r=$(curl -s -w ' %{http_code}' -X POST -H "Authorization: Bearer $CONSOLE_TOKEN" -H 'X-Storm-Confirm: ZC1234' "$C$FMT"); echo "  console token: $r"
-check "the console's own token is refused: no kubernetes identity" bash -c '[[ "$1" == *"no kubernetes identity"* && "$1" == *403 ]]' _ "$r"
+r=$(curl -s -w ' %{http_code}' -X POST -H "Authorization: Bearer $CONSOLE_TOKEN" "$C$FMT"); echo "  console token, no word: $r"
+check "the console's own token is root, and still types the word" bash -c '[[ "$1" == *"type ZC1234"* && "$1" == *428 ]]' _ "$r"
 r=$(as alice POST "$FMT"); echo "  alice, no word: $r"
 check "alice without the word: 428, type ZC1234" bash -c '[[ "$1" == 428* && "$1" == *"type ZC1234 to format a drive"* ]]' _ "$r"
 r=$(as alice POST "$FMT" sdb); echo "  alice, wrong word: $r"

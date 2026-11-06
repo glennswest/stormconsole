@@ -439,8 +439,9 @@ async fn format_history(State(inner): State<Arc<Inner>>, axum::extract::Query(q)
     }
 }
 
-/// Start formats (#165). The host has already asked the apiserver whether this
-/// viewer is a storage-admin (#82); this checks the phrase against the serials
+/// Start formats (#165). The host asks nobody whether this viewer may (the
+/// owner's call, for now); stormdrive's own gate still decides. This checks the
+/// phrase against the serials
 /// it reads now, sends one all-or-nothing request per node and format, as the
 /// viewer, and records who asked for what.
 async fn format_start(

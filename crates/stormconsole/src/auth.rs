@@ -423,17 +423,16 @@ async fn gate(state: AppState, mut req: Request, next: Next) -> Response {
 ///
 /// 1. **The apiserver's yes, as this person.** A SelfSubjectAccessReview
 ///    for `storage.storm.io`, the resource and the verb, with the viewer's
-///    own kubernetes bearer. No console role substitutes for it, including
-///    `admin` and the console's own token: they carry no kubernetes
-///    identity, and the console's service account must not hold
-///    storage-admin. With authentication off nobody is signed in, so
-///    nobody may.
+///    own kubernetes bearer. An administrator with no kubernetes identity is
+///    root, a storage admin by default (owner, #165): authentication off, or
+///    the node's bearer. Starting a format from its page is not reviewed at
+///    all, for now.
 /// 2. **The object's name, typed.** `X-Storm-Confirm` must be the drive's
 ///    serial (or the object's name), so a stray click, a script replaying a
 ///    URL or a generic button cannot do it. 428 names what to type.
 ///
 /// Once both hold, the request carries [`ActAs`] and the proxy sends the
-/// viewer's bearer upstream, so the component's own check decides too.
+/// viewer's bearer upstream, or for root the console's own, so the component's own check decides too.
 /// Every one that goes through is logged: who, what, which object.
 ///
 /// [`ActAs`]: console_core::storage::ActAs
@@ -467,15 +466,11 @@ async fn storage_gate(state: &AppState, who: &Viewer, mut req: Request, next: Ne
         };
         return (StatusCode::PRECONDITION_REQUIRED, Json(json!({"error": error, "guard": g}))).into_response();
     }
-    // `allowed` is only ever true for a viewer with a token.
-    let Some(token) = who.token.clone() else {
-        return (StatusCode::FORBIDDEN, Json(json!({"error": "no kubernetes identity to act as"}))).into_response();
-    };
     tracing::info!(
         user, %method, path, what = %g.guarded.what, object = %g.confirm,
         "storage: {} {} on {} as {user}", g.guarded.verb, g.guarded.resource, g.confirm
     );
-    req.extensions_mut().insert(console_core::storage::ActAs(token));
+    req.extensions_mut().insert(console_core::storage::ActAs(who.token.clone()));
     next.run(req).await
 }
 

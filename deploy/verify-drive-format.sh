@@ -139,8 +139,10 @@ check "$(fmt 'r["d2"]["planned"]["protection"], r["d2"]["bay"], r["d2"]["whyNot"
 check "$(fmt 'r["d5"]["whyNot"]')" "in the fleet — leave (drain) first" "a fleet drive: stormdrive's words"
 
 say "who may start one"
-check "$(post bob format "$one")" "403" "storage-viewer: 403"
-check "$(post dana format "$one")" "403" "console admin with no identity: 403"
+# Owner, #165: no storage-admin check on starting one. The phrase and the write gate stay.
+wrong='{"drives":[{"node":"storm-b","id":"b1","block_size":4096,"protection":"type1"}],"confirm":"nope"}'
+check "$(post bob format "$wrong")" "428" "storage-viewer: past the console's check, stopped by the phrase"
+check "$(post dana format "$wrong")" "428" "console admin with no identity: likewise"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d "$one" "$C/api/plugins/drive/format" )" "401" "nobody signed in: 401"
 check "$(post alice '' "$one")" "428" "alice with no confirmation: 428"
 check "$(post alice format '{"drives":[{"node":"storm-b","id":"b1","block_size":4096,"protection":"type1"}],"confirm":"nope"}')" "428" "the wrong phrase: 428"
@@ -154,6 +156,10 @@ check "$(post alice format "$body")" "207" "a fleet drive: stormdrive refuses, a
 check "$(python3 -c 'import json; r=json.load(open("'"$W/out"'"))["results"][0]; print(r["ok"], r["status"], "in the fleet" in r["error"])')" "False 409 True" "in its words"
 bearer() { curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["bearer"])'; }
 check "$(bearer)" "$ALICE" "what reached stormdrive carried alice's bearer"
+check "$(post bob format "$body")" "207" "bob's goes to stormdrive, whose gate is what decides"
+check "$(bearer)" "$BOB" "carrying his bearer"
+check "$(post dana format "$body")" "207" "dana's too"
+check "$(bearer)" "None" "root has no bearer to send"
 
 say "the page: choosing, confirming, starting (#58)"
 RC=0
@@ -177,6 +183,23 @@ check "$state" "running" "still running after the restart"
 say "the page: following it to the read-back"
 deploy/browser/run.sh "$W" driveformat.cjs "$C" PHASE=follow || RC=1
 check "$(curl -s "http://127.0.0.1:$D2/_writes" | python3 -c 'import json,sys; w=json.load(sys.stdin)[-1]; print(w["bearer"]==sys.argv[1], w["body"]["drives"])' "$ALICE")" "True ['b1']" "the other node's format went there, as alice"
+
+say "no sign-in at all: what forge1 runs (#165)"
+python3 - "$W/c.toml" "$W/open.toml" "$W/open" <<'TOML'
+import re, sys
+s = open(sys.argv[1]).read()
+s = re.sub(r'\[\[api\.users\]\]\n(?:(?!\[).*\n)*', '', s)
+s = re.sub(r'listen_addr = .*', 'listen_addr = "127.0.0.1:19166"', s)
+s = re.sub(r'data_dir = .*', f'data_dir = "{sys.argv[3]}"', s)
+open(sys.argv[2], 'w').write(s)
+TOML
+mkdir -p "$W/open"
+"$BIN" --config "$W/open.toml" >"$W/open.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:19166/healthz && break; sleep 0.5; done
+sleep 3
+check "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19166/api/v1/components)" "200" "this console asks for no sign-in"
+deploy/browser/run.sh "$W" driveformat.cjs http://127.0.0.1:19166 PHASE=nologin || RC=1
+check "$(curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; w=json.load(sys.stdin)[-1]; print(w["body"]["drives"], w["bearer"])')" "['d3'] None" "one request for the drive, with no bearer"
 
 # The screenshots, for whoever asks: SC_BUILD_OUT=format-shots.tgz.
 tar czf format-shots.tgz -C "$W" shots

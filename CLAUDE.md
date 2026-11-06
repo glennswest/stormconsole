@@ -1816,11 +1816,8 @@ viewer), not the console's credential the issue's first text named.
   and the default `sc-build`. The walk found two page bugs (guard's flat answer,
   the phrase's layout)
 - Not done on a real drive or real stormdrive: no drive to format on a build VM
-- **Open: who can start one on a real node.** A 12.61 console has auth off or the
-  node bearer, neither a kubernetes identity, so #82 refuses every format there
-  ("nobody is signed in"). `install_token_file` would give one (stormcos#256) and
-  turns auth on, which waits on stormcentral#807. Following a format works
-  regardless, however it was started. Asked on the issue
+- **Owner (2026-11-06):** no storage-admin check on starting a format; with no sign-in the console acts as root, a storage admin. So `Reviewer::review` says yes to an admin with no kubernetes identity, and `storage::FORMAT_START` is not reviewed
+- [ ] sc-build; image; shipped. stormdrive's own gate still refuses a write with no credential on a real node: told the master
 
 ### Enclosures hold shelves; a backplane is never "no shelf" (#166) ✅ 2026-11-05
 Owner (2026-11-05): "You can have shelfs in enclosures is fine". Enclosure: the
