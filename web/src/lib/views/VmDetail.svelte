@@ -531,7 +531,7 @@
                   <dt>User-data</dt><dd>{#if i.told.userDataBytes != null}{i.told.userDataBytes} bytes{:else}<span class="dim">{i.told.userDataSentence}</span>{/if}</dd>
                 </dl>
               {:else}
-                <p class="dim">{i.sentence}{#if i.said} <span class="mono">({i.said})</span>{/if}</p>
+                <p class="dim">{i.sentence}{#if i.said}{' '}<span class="mono">({i.said})</span>{/if}</p>
               {/if}
             {/each}
           {/if}

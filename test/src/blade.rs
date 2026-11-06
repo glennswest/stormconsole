@@ -467,8 +467,12 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
             };
             r.record("vm-told", outcome, 0, Some(a.body.clone()));
         }
-        Ok(a) => r.record("vm-told", Outcome::Fail(format!("HTTP {}", a.status)), 0, None),
-        Err(e) => r.record("vm-told", Outcome::Fail(e), 0, None),
+        Ok(a) => {
+            r.record("vm-told", Outcome::Fail(format!("HTTP {}", a.status)), 0, None);
+        }
+        Err(e) => {
+            r.record("vm-told", Outcome::Fail(e), 0, None);
+        }
     }
     r.record(
         "vm-serial",
