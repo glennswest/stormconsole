@@ -2396,8 +2396,12 @@ Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `sel
 
 ### Disk I/O, read and write apart (#265)
 Read from the sources (2026-11-06): stormvm has the split; the standalone cadvisor has it per cgroup path, and for `/` as diskstats sectors and operations; the kubelet's `/metrics/cadvisor` has none (filed rustkube-node#323); stormdrive has bytes for NVMe only, no operations (filed stormdrive#120); the engine by operation, not bytes (stormblock#536).
-- [ ] `panels.rs`: disk panels on drives, containers, a new node level, a pod, a drive; `unreported`; `only=disk`; the pod's Stats tab
-- [ ] `verify-metrics.sh`: a real cadvisor and real I/O for the node, stand-ins at different read and write rates; docs; dist; image
+- [x] `panels.rs`: disk panels on drives, containers, a new node level, a pod, a drive; `unreported`; `only=disk`; the pod's Stats tab
+- [x] `verify-metrics.sh`: a real cadvisor and real I/O for the node, stand-ins at different read and write rates; docs; dist; image
+- Verified with `sc-build deploy/verify-metrics.sh` (0 failed), default `sc-build`. A real cadvisor scraped by a real ironprom: real writes as bytes/s and ops/s per whole disk. Stand-ins in cAdvisor's and stormdrive's names at 4:1, so a chart showing the wrong direction fails; alice sees only her project; empty charts name what they wait on. Chromium, the Stats tab included
+- Found: cadvisor's `/` rows for partitions read 0 under real writes, and its tmpfs rows (cadvisor#30); use the root cgroup's io.stat rows, and leave out `device=""`, which the legend read as "total"
+- Not seen: a real node (a node's root cgroup having io.stat is what the Node tab rests on), a real SMART counter
+- Left: pods and containers on a real node wait on rustkube-node#323; drive operations and non-NVMe bytes on stormdrive#120, whose names are proposed; volume bytes on stormblock#536. Cgroup rows by path are not shown: they can't be limited to a project
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

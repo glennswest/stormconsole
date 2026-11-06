@@ -65,6 +65,10 @@ walk(`metrics (${PHASE})`, async (t) => {
 
   t.check(await t.open(page, '#/pod/shop/web', /Overview/), 'the pod page')
   await page.locator('nav.tabs button', { hasText: 'Stats' }).click()
+  const disk = page.locator('[data-testid=disk-io]')
+  t.check(await t.until(async () => (await disk.locator('section.chart svg').count()) === 4, 30000), "the pod's Stats tab charts its disk reads and writes apart", await disk.innerText().catch(() => ''))
+  t.check(/Disk reads/.test(await disk.innerText()) && /Disk writes/.test(await disk.innerText()) && /Disk read operations/.test(await disk.innerText()) && /Disk write operations/.test(await disk.innerText()), 'bytes and operations, each way', await disk.innerText())
+  await t.shot(page, 'pod-stats-disk')
   await page.getByRole('link', { name: /Its series in ironprom/ }).click()
   t.check(await t.until(async () => /Pod web in shop/i.test(await t.text(page)) && (await page.locator('section.chart svg').count()) === 8, 30000), 'a pod links to its series', (await t.text(page)).slice(0, 300))
   t.check(!/vault/.test(await page.locator('main').innerHTML()), 'its own and no other pod')

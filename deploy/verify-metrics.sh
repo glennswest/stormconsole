@@ -189,7 +189,7 @@ check "$(until_lines vms read_ops)" "['secret / vm2', 'shop / vm1']" "VM read op
 
 say "the node's disks: a real cadvisor (#265)"
 dd if=/dev/zero of="$W/io.bin" bs=1M count=200 oflag=direct 2>/dev/null; dd if="$W/io.bin" of=/dev/null bs=1M iflag=direct 2>/dev/null
-for c in disk_read disk_write disk_read_ops disk_write_ops; do L=$(until_lines node $c); echo "  $c: $L"; holds "$L" "/dev/" "the node's $c, by device"; case "$L" in *shm*|*sda3*) check "$L" "whole disks" "no partition or tmpfs row";; esac; done
+for c in disk_read disk_write disk_read_ops disk_write_ops; do L=$(until_lines node $c); echo "  $c: $L"; holds "$L" "/dev/" "the node's $c, by device"; case "$L" in *shm*|*sda3*|*total*) check "$L" "whole disks" "no partition, tmpfs or unnamed row";; esac; done
 for _ in $(seq 30); do dd if=/dev/zero of="$W/io.bin" bs=1M count=50 oflag=direct 2>/dev/null; RN=$(rate level=node disk_write); WO=$(rate level=node disk_write_ops); [ "$RN" != None ] && python3 -c "import sys; sys.exit(0 if $RN > 100000 else 1)" && break; sleep 2; done
 echo "  node writes: $RN B/s, $WO ops/s"; check "$(python3 -c "print($RN > 100000 and $WO > 0)" 2>/dev/null)" True "real writes, as a rate of bytes and of operations"
 rm -f "$W/io.bin"
