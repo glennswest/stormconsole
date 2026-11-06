@@ -97,7 +97,7 @@ impl ConsolePlugin for HistoryPlugin {
 
     fn nav(&self) -> Vec<NavSection> {
         // Beside API health: this node, asked what has happened to it.
-        vec![NavSection::new("Compute", 20).admin().item_at("History", "#/history", 11)]
+        vec![NavSection::new("Compute", 20).admin().item_at("History", "#/history", 11).item_at("Boot and flow-over", "#/boot", 12)]
     }
 
     fn node_api(&self) -> Option<Router> {

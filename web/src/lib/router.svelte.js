@@ -29,6 +29,8 @@ const routes = [
   // This node's boots, installs, drives and hardware, kept across installs
   // (#121); the part and the record travel in the query.
   { pattern: '#/history', name: 'history' },
+  // The boot and the flow-over, full page, to watch and record (#271).
+  { pattern: '#/boot', name: 'boot' },
   // The datastore's keyspace; the prefix and an opened key travel in the
   // query because both are full of '/'.
   { pattern: '#/etcd/keys', name: 'etcdkeys' },

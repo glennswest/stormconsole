@@ -31,6 +31,7 @@
   import StorageView from './lib/views/StorageView.svelte'
   import RaidView from './lib/views/RaidView.svelte'
   import HistoryView from './lib/views/HistoryView.svelte'
+  import BootView from './lib/views/BootView.svelte'
   import NetworkView from './lib/views/NetworkView.svelte'
   import UpdateView from './lib/views/UpdateView.svelte'
   import RegistryView from './lib/views/RegistryView.svelte'
@@ -83,6 +84,8 @@
   <!-- one tick while the session check runs -->
 {:else if auth.required && !auth.authenticated}
   <Login />
+{:else if route.current.name === 'boot'}
+  <BootView />
 {:else}
   <div
     class="shell"

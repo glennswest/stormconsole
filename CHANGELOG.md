@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — A Boot and flow-over page (#271)
+- **feat:** `#/boot`, a full page to watch and record: the phases since the kernel started with their seconds, how long to every service running, and the flow-over live, percent, MB/s with a sparkline, time left, then "Running from its own disk".
+
 ### 2026-11-06 — Disk reads and writes apart (#265)
 - **feat:** a Node tab on the Metrics page: this node's disks, reads and writes apart, in bytes/s and operations/s. Containers, a pod (its Stats tab too), drives and VMs have the same split.
 - **feat:** where a source has yet to report it, the chart names what it waits on: rustkube-node#323 for pods and containers, stormdrive#120 for drive operations and non-NVMe bytes.

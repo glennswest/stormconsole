@@ -318,6 +318,38 @@ mkdir -p "$W/empty"
 console d 19404 "" "$W/empty"
 check "$(q http://127.0.0.1:19404/api/v1/history '(d["available"], "not mounted" in d["note"])')" "(False, True)" "said as not mounted"
 
+say "the Boot and flow-over page (#271): real timeline; a stand-in engine in stormblock's shape; a real engine"
+node web/src/lib/boot.test.mjs
+SD2="$W/sd-boot"; mkdir -p "$SD2"
+"$WRITER" "$SD2" "$BOOT3" "$now" "$CMD" 12.61 - 'pid1|||1 start|2800' 'phase|early|11||2810' 'phase|modules|1800||2900' 'phase|network|900||4800' \
+  'phase|coldplug|1200||5800' 'started|stormdrive|||7000' 'started|stormblock|||7100' 'all-running|||2 service(s)|9400'
+python3 "$HERE/deploy/boot-flow.standin.py" 19411 > "$W/standin.log" 2>&1 &
+wait_for http://127.0.0.1:19411/api/v1/health
+console_engine() { # name port engine-url system-data
+  sed -e "s|^listen_addr.*|listen_addr = \"127.0.0.1:$2\"|" -e "s|^data_dir.*|data_dir = \"$W/$1\"|" -e "s|^system_data.*|system_data = \"$4\"|" \
+    -e "/^\[stormblock\]/,/^enabled = false/c [stormblock]\nurl = \"$3\"\ntoken_file = \"$W/no-token\"" "$W/a.toml" > "$W/$1.toml"
+  mkdir -p "$W/$1"; "$BIN" --config "$W/$1.toml" > "$W/$1.log" 2>&1 &
+  wait_for "http://127.0.0.1:$2/healthz"
+}
+console_engine e 19405 http://127.0.0.1:19411 "$SD2"
+check "$(curl -sf http://127.0.0.1:19405/api/v1/console/nav | grep -c '#/boot')" 1 "Boot and flow-over is in the navigator"
+say "a real engine with no flow-over: its real health"
+(cd "$W/stormblock" && CARGO_TARGET_DIR="$W/sb-target" cargo build -q --bin stormblock)
+mkdir -p "$W/sb/data"; truncate -s 2G "$W/sb/d1.img"
+printf '[management]\nlisten_addr = "127.0.0.1:19412"\ndata_dir = "%s/sb/data"\nnode_name = "verify-boot"\n' "$W" > "$W/sb/stormblock.toml"
+RUST_LOG=stormblock=warn "$W/sb-target/debug/stormblock" --config "$W/sb/stormblock.toml" --device "$W/sb/d1.img" --volume seed:16M --data-dir "$W/sb/data" --no-iscsi \
+  --nvmeof-addr 127.0.0.1:4412 --nvmeof-nqn nqn.2026-11.lo.test:boot > "$W/engine.log" 2>&1 &
+for _ in $(seq 300); do curl -sf -o /dev/null http://127.0.0.1:19412/api/v1/health && break; sleep 0.2; done
+H=$(curl -s http://127.0.0.1:19412/api/v1/health); echo "$H" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("  ", {k: d.get(k) for k in ("status","flow_over_remaining","flow_over","slabs")})' | cut -c1-240
+printf '%s' "$(cat "$W/sb/data/api_token")" > "$W/no-token"
+console_engine f 19406 http://127.0.0.1:19412 "$SD2"
+console_engine g 19407 http://127.0.0.1:1 "$SD2"
+console_engine h 19408 http://127.0.0.1:19411 "$W/not-there"
+for spec in "moving http://127.0.0.1:19405" "none http://127.0.0.1:19406" "gone http://127.0.0.1:19407"; do
+  set -- $spec; BR=0; env PHASE="$1" FLOW=http://127.0.0.1:19411 "$HERE/deploy/browser/run.sh" "$W" boot.cjs "$2" || BR=1; check "$BR" 0 "the Boot page: $1"
+done
+BR=0; env PHASE=bare FLOW=http://127.0.0.1:19411 "$HERE/deploy/browser/run.sh" "$W" boot.cjs http://127.0.0.1:19408 || BR=1; check "$BR" 0 "the Boot page: no system-data"
+
 say "the page, in Chromium"
 BR=0
 env BOOT1="$BOOT1" BOOT2="$BOOT2" BOOT3="$BOOT3" ALONE="$ALONE" INSTALL="$INSTALL" DRIVE="$DK" BARE=http://127.0.0.1:19403 \
