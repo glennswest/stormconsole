@@ -2449,6 +2449,13 @@ Only etcd 3.5.17 and fastetcd v1.2.0 had been through the plugin's gateway path,
 - [x] `deploy/verify-fastetcd.sh`: three real members at the latest tag, checked against etcdctl; what it found fixed; dist; golden
 - Filed fastetcd#187 (MemberList has client URLs only for the member answering)
 
+### One console for every build (#285)
+Owner, 2026-11-06: "lets keep all builds the same. only diff is on cillium builds vs flowsdn then console should only have the one that is built in." #161 hid flowsdn on cilium; Cilium still shows on flowsdn (Network Flows, Network nodes, the Create entries, the Hubble sentence, the metrics job and panel, "Cilium enforces it"). The pod page and a VM's policies read only Cilium's objects. Read: DaemonSets `kube-system/cilium` (stormcos `60-cilium-agent.yaml`), `kube-system/flowsdn` (flowsdn `62-flowsdn-agent.yaml`); `ironprom-node.yml` lists the cilium jobs on every build, so a flowsdn node has them down.
+- [ ] `console_core::build`: `Network` (moved from flowsdn's `Edition`), `Build`: the manifest, then an ordered list of sources (beacon, DaemonSet, CRDs, agent answering); `enabled(plugin)` the one list, replacing `present()`; `GET /api/v1/console/build`
+- [ ] k8s: other network's kinds hidden in the store and catalogue; nav, creators, flows, agent by network; pod row and page from either's objects; fsid rows. Metrics: jobs and panels. VM: policies, relation. Neutral sentences
+- [ ] SPA: build store, moved routes, Flows cards, no "not this edition" page
+- [ ] `deploy/verify-one-build.sh` walking a cilium and a flowsdn console, each with the other's CRDs and agent present too; each source on its own; docs, changelog, dist; image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
