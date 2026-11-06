@@ -396,8 +396,8 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   stormcos binds `/run/stormpump` and `/system-data` into the console
   (stormcos#525) the page asks each stormd instead, missing PID 1's own
   probes, and shows no history; it says which.
-- **Cilium flows, Hubble, agent metrics** — the image ships them
-  (stormpump#11, closed); the console does not read them yet (#4).
+- **Cilium flows, per-module agent health and a Service's datapath backends** — the image ships them
+  (stormpump#11, closed); the console reads none yet (#4). The agent's counters are on the card.
 - **VM metrics over time** — cadvisor is not wired (#14; per-VM stats
   keyed to the VMI are cadvisor#15); **VM hotplug and
   memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —

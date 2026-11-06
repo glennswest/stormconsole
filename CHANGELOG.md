@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The Cilium agent's counters on the card (#4)
+- **feat:** the pod network's card shows what this node's agent forwarded, dropped (with a rate) and denied by policy, and the fullest BPF map. A map 90% full turns the card to a warning. An agent serving no metrics has none, and is not a failure.
+
 ### 2026-11-06 — Scale, cordon and drain (#36)
 - **feat:** a number on a Deployment's or StatefulSet's row scales it, through the apiserver's `/scale`, as the viewer.
 - **feat:** a node's row cordons or uncordons it. Its page shows what a drain would do, then cordons and evicts through `policy/v1`, listing whatever a disruption budget or the apiserver refused. A DaemonSet's pods and mirror pods stay; a pod with no controller stays unless asked for. A node's verbs need the admin role and a kubernetes identity.

@@ -9,6 +9,7 @@
 //! into a project, #28) and edit, and projects — list, request, members,
 //! isolation, delete (`projects.rs`).
 
+mod agentmetrics;
 pub mod apply;
 pub mod authz;
 pub mod cache;
@@ -60,6 +61,8 @@ const RECENT_CAP: usize = 60;
 /// The Cilium agent's health server (`cilium-health-api`), bound to
 /// loopback on every node that runs the agent.
 const CILIUM_AGENT_HEALTH: &str = "http://127.0.0.1:9879/healthz";
+/// Its counters: `prometheus-serve-addr`, loopback since stormcos#482 (#4).
+const CILIUM_AGENT_METRICS: &str = "http://127.0.0.1:9962/metrics";
 
 // A VM on this platform is a kube object — a KubeVirt
 // `VirtualMachineInstance` the kubelet reconciles (stormvm docs/kube.md) —
@@ -78,6 +81,8 @@ struct Inner {
     /// works exactly when the console runs on the node — which is the
     /// only place the answer means anything (#4).
     agent: Probe,
+    /// The agent's last scrape. `None` when it did not answer: no agent, or one that serves none.
+    agent_metrics: tokio::sync::RwLock<Option<agentmetrics::Reading>>,
     store: Arc<Store>,
     http: reqwest::Client,
     access: Arc<authz::NamespaceAccess>,
@@ -155,6 +160,7 @@ impl KubernetesPlugin {
                 client,
                 probe,
                 agent: Probe::new(CILIUM_AGENT_HEALTH),
+                agent_metrics: Default::default(),
                 store: store.clone(),
                 http: http.clone(),
                 access: authz::NamespaceAccess::new(conn, store),
@@ -267,6 +273,9 @@ impl ConsolePlugin for KubernetesPlugin {
         }];
         let agent = inner.agent.state().await;
         out.extend(components::map(&inner.store.snapshot().await, Some((agent.health, agent.detail))));
+        if let (Some(r), Some(card)) = (inner.agent_metrics.read().await.as_ref(), out.iter_mut().find(|c| c.id == "k8s:cilium")) {
+            agentmetrics::onto_card(card, r);
+        }
         out
     }
 
@@ -421,6 +430,26 @@ impl ConsolePlugin for KubernetesPlugin {
             let token = shutdown.clone();
             tokio::spawn(async move {
                 inner.agent.run(inner.http.clone(), Duration::from_secs(15), token).await;
+            });
+        }
+        {
+            let inner = self.inner.clone();
+            let token = shutdown.clone();
+            tokio::spawn(async move {
+                loop {
+                    let got = match inner.http.get(CILIUM_AGENT_METRICS).timeout(Duration::from_secs(3)).send().await {
+                        Ok(r) if r.status().is_success() => r.text().await.ok(),
+                        _ => None,
+                    };
+                    {
+                        let mut kept = inner.agent_metrics.write().await;
+                        *kept = got.map(|text| kept.clone().unwrap_or_default().next(agentmetrics::parse(&text), std::time::Instant::now()));
+                    }
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(15)) => {}
+                        _ = token.cancelled() => return,
+                    }
+                }
             });
         }
         // Through the connection's own client, so `/version` is asked of the

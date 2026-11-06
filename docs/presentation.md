@@ -163,7 +163,7 @@ Every key and default: README §Configuration.
 
 - A cluster change reaching a real node: the Cluster page writes the objects, and
   it needs the node lifecycle API (**stormcos#38**)
-- Cilium flows and Hubble — shipped in the image, not read yet (**#4**)
+- Cilium flows — shipped in the image, not read yet (**#4**)
 - VM metrics over time — cadvisor not wired (**#14**)
 - Users and groups without a file — **#15**
 - Remote plugins — a component contributing its own UI — designed only

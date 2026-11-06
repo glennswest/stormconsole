@@ -539,7 +539,10 @@ Flows — allowed and denied, the actual answer to "why can nothing reach
 this" — and per-module agent health come from Hubble and the agent's own
 REST API. The image enables both (stormpump#11, closed: the agent's
 metrics address is set and hubble-relay ships as a golden, gRPC :4245);
-the console reads neither yet (#4).
+the console reads neither yet (#4). The agent's counters are on the card
+(`agentmetrics.rs`, `127.0.0.1:9962`): forwarded, dropped with a rate, what policy denied (the
+agent has no verdict counter, so `drop_count_total{reason="Policy denied"}`) and the fullest BPF map, which warns
+at 90%. No agent, or one serving no metrics, simply has none. Over time is the Metrics page's (#46).
 
 ## Built-in plugins
 
