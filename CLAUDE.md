@@ -1817,7 +1817,10 @@ viewer), not the console's credential the issue's first text named.
   the phrase's layout)
 - Not done on a real drive or real stormdrive: no drive to format on a build VM
 - **Owner (2026-11-06):** no storage-admin check on starting a format; with no sign-in the console acts as root, a storage admin. So `Reviewer::review` says yes to an admin with no kubernetes identity, and `storage::FORMAT_START` is not reviewed
-- [ ] sc-build; image; shipped. stormdrive's own gate still refuses a write with no credential on a real node: told the master
+- [x] sc-build; image; shipped
+- Verified with `sc-build deploy/verify-drive-format.sh` (0 failed): a console with authentication off, no sign-in, Chromium: the page opens with no refusal, a drive chosen, the serial typed, one request reaching the stand-in stormdrive with no bearer, the run shown. bob (storage-viewer) and dana (no identity) get past the console and bob's bearer goes on. Also `verify-storage-guard.sh`, `verify-drive-offer.sh`, default `sc-build`
+- **Not working on a real node yet:** a real stormdrive from main with its default gate answers that request 401 "a storage-admin bearer is required"; with `[api] admin_gate = "audit"` it lets it through. A node's stormdrive enforces, and the console has no credential it would take. The master has the choice
+- Not seen: a real drive, or forge1
 
 ### Enclosures hold shelves; a backplane is never "no shelf" (#166) ✅ 2026-11-05
 Owner (2026-11-05): "You can have shelfs in enclosures is fine". Enclosure: the
