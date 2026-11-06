@@ -74,7 +74,8 @@ pub fn row(f: &Flow, seen: Option<&HashSet<String>>) -> Option<Value> {
     let (src_ip, dst_ip) = f.ip.as_ref().map_or(("", ""), |i| (i.source.as_str(), i.destination.as_str()));
     let (protocol, dest_port) = port(f);
     let verdict = flow::Verdict::try_from(f.verdict).map_or("VERDICT_UNKNOWN", |v| v.as_str_name());
-    let drop = flow::DropReason::try_from(f.drop_reason_desc).ok().filter(|d| *d != flow::DropReason::DropReasonUnknown).map(|d| d.as_str_name());
+    // 0 is proto3's "not set": the flow was not dropped.
+    let drop = (f.drop_reason_desc != 0).then(|| flow::DropReason::try_from(f.drop_reason_desc).ok().map(|d| d.as_str_name())).flatten();
     Some(json!({
         "time": f.time.map(|t| t.seconds * 1000 + i64::from(t.nanos) / 1_000_000),
         "verdict": verdict,
