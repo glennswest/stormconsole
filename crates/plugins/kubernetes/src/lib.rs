@@ -878,6 +878,9 @@ async fn raw_delete(
     }
     match client.delete(&path, viewer.token.as_deref()).await {
         Ok(status) if status.is_success() => Json(json!({"deleted": path})).into_response(),
+        Ok(status) if status.as_u16() == 403 => {
+            (StatusCode::FORBIDDEN, Json(json!({"error": format!("the apiserver says you may not delete {path}")}))).into_response()
+        }
         Ok(status) => (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("apiserver returned {}", status.as_u16())})))
             .into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),

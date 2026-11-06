@@ -153,6 +153,7 @@ Y=$(as alice "$K8S/object/pod/shop/web-2" | j 'd["yaml"]')
 check "$(as alice -o /dev/null -w '%{http_code}' -X PUT -H 'content-type: application/yaml' --data-binary "$Y" "$K8S/object/pod/shop/web-2")" 200 "a pod's YAML saved by alice"
 check "$(code erin -X POST "$K8S/pods/shop/web-1/delete")" 200 "erin's delete"
 check "$(code erin -X POST -d '{"dns":true}' "$K8S/projects/shop/isolate")" 200 "erin's isolate, offered"
+check "$(code erin -X DELETE "$K8S/projects/shop/isolate")" 200 "and removing it"
 check "$(code erin -X POST -d '{"who":"x","role":"view"}' "$K8S/projects/shop/members")" 403 "erin's member, not offered"
 check "$(code erin -X DELETE "$K8S/projects/shop")" 403 "erin's project delete, not offered"
 check "$(code dan -X POST "$K8S/pods/shop/web-2/delete")" "$(code bob -X POST "$K8S/pods/shop/web-2/delete")" "dan's delete, by hand: refused as bob's is"
