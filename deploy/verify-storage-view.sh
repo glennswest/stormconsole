@@ -56,6 +56,8 @@ python3 "$HERE/deploy/storage-view.standin.py" 19401 > "$W/standin.log" 2>&1 &
 cat > "$W/drive.toml" <<EOF
 listen_addr = "127.0.0.1:19402"
 data_dir = "$W/drive-data"
+[stormblock]
+enabled = false
 EOF
 mkdir -p "$W/drive-data"
 "$W/bin/stormdrive" --config "$W/drive.toml" > "$W/drive.log" 2>&1 &
@@ -96,7 +98,7 @@ D=$(dr drives)
 check "$(echo "$D" | j '[(x["node"],x["serial"],x["bay"],x["health"],x["temperatureC"],x["wearPct"]) for x in d["items"]]')" "[('this node', 'ZC900', 7, 'warning', 44, 12)]" "the stand-in's drive, reduced"
 check "$(echo "$D" | grep -c -E 'long history|plannedFormat' || true)" 0 "its history stays behind"
 check "$(echo "$D" | j '{n["node"]:n["ok"] for n in d["nodes"]}=={"this node":True,"real":True,"dead":False}')" True "the real stormdrive answers, in its own shape"
-holds "$(echo "$D" | j '[n["error"] for n in d["nodes"] if n["node"]=="dead"]')" "" "the dead one is named"
+check "$(echo "$D" | j '[bool(n["error"]) for n in d["nodes"] if n["node"]=="dead"]')" "[True]" "the dead one is named, with why"
 E_=$(dr enclosures)
 check "$(echo "$E_" | j '[(x["node"],x["driveCount"],x["powerSupplies"],x["maxTemperatureC"]) for x in d["items"]]')" "[('this node', 24, {'ok': 1, 'total': 2}, 51)]" "an enclosure"
 
