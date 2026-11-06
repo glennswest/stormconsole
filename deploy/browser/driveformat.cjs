@@ -20,7 +20,10 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
     const running = p.locator('[data-testid=running]')
     t.check(await t.until(async () => /sdc/.test(await running.innerText())), 'and a format starts, and shows', await running.innerText().catch(() => ''))
     await t.shot(p, 'format-nologin')
-  } else if (process.env.PHASE === 'start') {
+    return
+  }
+
+  if (process.env.PHASE === 'start') {
     // No storage-admin check on starting a format (#165): nobody is refused for that.
     for (const who of ['bob', 'dana']) {
       const p = await t.page(who)
