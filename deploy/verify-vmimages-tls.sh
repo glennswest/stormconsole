@@ -179,9 +179,9 @@ import json,sys
 d=json.load(sys.stdin)
 print([c.get('path') or c.get('endpoint') for c in (d.get('creators',[]) if isinstance(d,dict) else d) if c.get('id')=='vm:vm'][0])")
 echo "  $VPATH"
-VC=$(curl -s -m 60 -o "$W/vm.out" -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"name":"v1","namespace":"vm1","cores":"1","memory":"1Gi","golden":"fedora:42"}' "$C$VPATH?project=vm1"); echo "  create: $VC $(cut -c1-200 "$W/vm.out")"
+VC=$(curl -s -m 60 -o "$W/vm.out" -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"name":"v1","namespace":"vm1","cores":"1","memory":"1Gi","golden":"alma:10"}' "$C$VPATH?project=vm1"); echo "  create: $VC $(cut -c1-200 "$W/vm.out")"
 OBJ=$(kc "$KAPI/apis/storm.io/v1alpha1/cloudimages" | j '[i["spec"].get("reference") for i in d["items"]]' 2>/dev/null || echo none); echo "  CloudImages now: $OBJ"
-contains "$OBJ" "fedora:42" "the VM form's create asked the operator for it, through the same client"
+contains "$OBJ" "alma:10" "the VM form's create asked the operator for it, through the same client"
 # A browser's credential must not reach the operator: a bearer outranks the certificate.
 check "$(code -H 'Authorization: Bearer not-the-operators' "$PX/catalog")" 200 "the browser's Authorization is not forwarded"
 BR=0; env WANT=read "$HERE/deploy/browser/run.sh" "$W" vmimages-tls.cjs "$C" || BR=1
