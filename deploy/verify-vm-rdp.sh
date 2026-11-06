@@ -77,7 +77,10 @@ CONSOLE=$(token kube-system stormconsole); CAROL=$(token shop carol); DAVE=$(tok
 
 say "a machine with a real framebuffer, and the gateway on its registered ports"
 RUN="$W/r"; VM="$RUN/shop/vm1"; mkdir -p "$VM"
-qemu-system-x86_64 -name vm1 -machine accel=kvm:tcg -m 128 -display none -nic none -vnc "unix:$VM/vnc.sock" -monitor none -pidfile "$W/qemu.pid" -daemonize
+# A boot sector that echoes each key to the screen, so what is typed in the browser is on the guest's screen: `mov ah,0;
+# int 16h; mov ah,0eh; int 10h; jmp start`.
+python3 -c "import sys; sys.stdout.buffer.write(bytes.fromhex('b400cd16b40ecd10ebf6').ljust(510, b'\0') + b'\x55\xaa')" > "$W/echo.img"
+qemu-system-x86_64 -name vm1 -machine accel=kvm:tcg -m 128 -display none -nic none -drive "file=$W/echo.img,format=raw" -vnc "unix:$VM/vnc.sock" -monitor none -pidfile "$W/qemu.pid" -daemonize
 QEMU=$(cat "$W/qemu.pid")
 printf '{"namespace":"shop","name":"vm1","uid":"u","vnc_socket":"%s/vnc.sock","vmm":"qemu"}\n' "$VM" > "$VM/vm.json"
 cat > "$W/stormrdp.toml" <<TOML

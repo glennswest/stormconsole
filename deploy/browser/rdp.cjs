@@ -46,12 +46,25 @@ walk(`rdp (${PHASE})`, async (t) => {
   const painted = async () => ((await canvas()) || { colours: 0 }).colours
   t.check(await t.until(async () => (await painted()) > 1, 40000), "the machine's screen is drawn: more than one colour", String(await painted()))
   await t.shot(page, 'rdp-connected')
-  // This guest has no disk and stops at "No bootable device", so its screen holds still until something reaches it.
-  const still = (await canvas()).sum
-  await page.waitForTimeout(3000)
-  t.check((await canvas()).sum === still, 'the halted guest draws nothing by itself')
+  // The guest is a boot sector echoing keys: once booted its screen holds still until something reaches it.
+  let still = null
+  const settled = await t.until(async () => {
+    const a = (await canvas()).sum
+    await page.waitForTimeout(2500)
+    const b = (await canvas()).sum
+    still = b
+    return a === b
+  }, 60000)
+  t.check(settled, 'the guest has booted, and draws nothing by itself')
+  const at = await box.locator('.screen').boundingBox()
+  await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2)
+  await page.keyboard.type('stormconsole', { delay: 60 })
+  t.check(await t.until(async () => (await canvas()).sum !== still, 15000), 'what is typed in the browser reaches the guest, which draws it')
+  await page.waitForTimeout(1500)
+  await t.shot(page, 'rdp-typed')
+  const typed = (await canvas()).sum
   await box.getByRole('button', { name: 'Ctrl+Alt+Del' }).click()
-  t.check(await t.until(async () => (await canvas()).sum !== still, 20000), 'Ctrl+Alt+Del reaches the guest: it reboots')
+  t.check(await t.until(async () => (await canvas()).sum !== typed, 20000), 'Ctrl+Alt+Del reaches the guest: it reboots, and what was typed goes')
   await box.getByRole('button', { name: 'Disconnect' }).click()
   t.check(await t.until(async () => /Disconnected\./.test(await box.innerText()), 20000), 'Disconnect says so, not a failure', await box.innerText())
   t.check((await state.innerText()).toLowerCase() === 'idle', 'and it is over')
