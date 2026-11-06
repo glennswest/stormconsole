@@ -2329,7 +2329,12 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
 Settled on the issue (vmcloud-image-operator 382cf1f, stormcos b71a818): https with the node CA, the console's own client pair, User `stormconsole` by SubjectAccessReview on `storm.io`. So no shared token; #82's
 viewer-token path is not needed here. `[stormcluster]`'s shape (#89). Callers: the plugin's poll and proxy, and the VM form's `fetch`, `ensure_local` and `golden_from_reference`.
 - [x] `[vmimages]` keys, `proxy::router_tls`, one client shared; a refusal said, not read as an empty list
-- [ ] `deploy/verify-vmimages-tls.sh`: real operator and apiserver, each config; Chromium; tell stormcos#320 the keys; golden
+- [x] `deploy/verify-vmimages-tls.sh`: real operator and apiserver, each config; Chromium; tell stormcos#320 the keys; golden
+- Verified with `sc-build deploy/verify-vmimages-tls.sh` (0 failed): operator 6f1bec4 on TLS only (plain 403, TLS with nothing 401), rustkube main with stormcos's grant to User `stormconsole`, an openssl node CA and a stranger's. The pair: card, catalogue,
+  a real CloudImage through the proxy and through the VM form's create, the browser's Authorization not forwarded. A pair with no grant: the apiserver's reason on the card and form. CA alone 401, plain 403, stranger `UnknownIssuer`, each in words. Not minted, minted, swapped: no restart. `allowAnonymous`: plain and
+  TLS consoles both work. Half a pair and http + CA exit 78. Chromium on the catalogue, Create VM's root disks and a refusal
+- Not seen: a real node's stormcert pairs. An image building to sealed (no registry in the rig); placements (`ensure_local`) by unit test and the same client only
+- Left to stormcos: the four keys in the registry config; then the operator drops `allowAnonymous` (vmcloud-image-operator#16). #82's viewer-token path is not used: the console acts as itself here
 
 ### Shelves and RAID sets (#67)
 stormblock bcbe3e0 (`docs/raid-sets.md`, `mgmt/api/{shelves,arrays}.rs`, `raid/rebuild.rs`). The engine's "shelf" is a set's pool. Named RAID sets in the nav,

@@ -172,6 +172,16 @@ MADE=$(code -X POST -H 'content-type: application/json' -d '{"reference":"fedora
 contains "2" "${MADE:0:1}" "making an image through the proxy is accepted"
 OBJ=$(kc "$KAPI/apis/storm.io/v1alpha1/cloudimages" | j '[i["spec"].get("reference") for i in d["items"]]' 2>/dev/null || echo none); echo "  CloudImages at the apiserver: $OBJ"
 contains "$OBJ" "fedora:43" "a real CloudImage, the write authorised as User stormconsole"
+# The VM form's own path to the operator: a catalogue reference nobody has built.
+k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"vm1"}}'
+VPATH=$(curl -s "$C/api/v1/console/creators" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print([c.get('path') or c.get('endpoint') for c in (d.get('creators',[]) if isinstance(d,dict) else d) if c.get('id')=='vm:vm'][0])")
+echo "  $VPATH"
+VC=$(curl -s -m 60 -o "$W/vm.out" -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"name":"v1","namespace":"vm1","cores":"1","memory":"1Gi","golden":"fedora:42"}' "$C$VPATH?project=vm1"); echo "  create: $VC $(cut -c1-200 "$W/vm.out")"
+OBJ=$(kc "$KAPI/apis/storm.io/v1alpha1/cloudimages" | j '[i["spec"].get("reference") for i in d["items"]]' 2>/dev/null || echo none); echo "  CloudImages now: $OBJ"
+contains "$OBJ" "fedora:42" "the VM form's create asked the operator for it, through the same client"
 # A browser's credential must not reach the operator: a bearer outranks the certificate.
 check "$(code -H 'Authorization: Bearer not-the-operators' "$PX/catalog")" 200 "the browser's Authorization is not forwarded"
 BR=0; env WANT=read "$HERE/deploy/browser/run.sh" "$W" vmimages-tls.cjs "$C" || BR=1
@@ -199,7 +209,8 @@ cert_file = \"$K/nobody.crt\"
 key_file = \"$K/nobody.key\""
 until_card "answered 403" 30 || true
 echo "  card: $(card)" | cut -c1-220
-contains "$(card)" "error | it answered 403" "the card is the error, in the operator's words"
+contains "$(card)" "error |" "the card is the error"
+contains "$(card)" "it answered 403: somebody-else may not list" "in the operator's words, with the apiserver's reason"
 until_form "would not say" 40 || true
 contains "$(form)" "would not say: it answered 403" "the VM form says so"
 absent "$(form)" "empty catalogue" "and does not call it an empty catalogue"
@@ -208,12 +219,12 @@ check "$(code "$PX/catalog")" 403 "the proxy gives the operator's answer"
 say "the CA and no pair: its 401"
 console "ca_file = \"$K/ca.crt\""
 until_card "answered 401" 30 || true
-contains "$(card)" "error | it answered 401" "401, in its words"
+contains "$(card)" "it answered 401: a credential is required" "401, in its words"
 
 say "plain http://: its 403"
 console 'url = "http://127.0.0.1:9099"'
 until_card "answered 403" 30 || true
-contains "$(card)" "error | it answered 403" "403, in its words"
+contains "$(card)" "it answered 403: plain HTTP answers" "403, in its words"
 BR=0; env WANT=refused "$HERE/deploy/browser/run.sh" "$W" vmimages-tls.cjs "$C" || BR=1
 check "$BR" 0 "the walk, refused"
 
