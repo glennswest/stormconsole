@@ -254,10 +254,10 @@ wait_for $E/healthz
 sleep 7
 for u in root alice; do curl -s -o /dev/null -c "$W/$u.jar" -H 'content-type: application/json' -d "{\"username\":\"$u\",\"password\":\"pw\"}" "$E/api/v1/auth/login"; done
 snap() { curl -s -b "$W/$1.jar" "$E/api/plugins/flowsdn/snapshot"; }
-check "$(snap root | py 'import json,sys; d=json.load(sys.stdin)["snapshot"]; print(sorted(e["namespace"] for e in d["endpoints"]), len(d["verdicts"]))')" "['"'"'lab'"'"', '"'"'shop'"'"', '"'"'shop'"'"'] 5" "an administrator sees every project"
+check "$(snap root | py 'import json,sys; d=json.load(sys.stdin)["snapshot"]; print(sorted(e["namespace"] for e in d["endpoints"]), len(d["verdicts"]))')" "['lab', 'shop', 'shop'] 5" "an administrator sees every project"
 A_=$(snap alice)
-check "$(echo "$A_" | py 'import json,sys; d=json.load(sys.stdin); s=d["snapshot"]; print(sorted(e["pod"] for e in s["endpoints"]), d["hidden"]>=1)')" "['"'"'db-0'"'"', '"'"'web-7d9'"'"'] True" "alice: her project's endpoints, and told some are withheld"
-check "$(echo "$A_" | py 'import json,sys; v=json.load(sys.stdin)["snapshot"]["verdicts"]; print(sorted((r["endpoint"],r["verdict"]) for r in v if r["endpoint"]), sum(r["endpoint"] is None for r in v))')" "[(1, '"'"'allowed'"'"'), (1, '"'"'audit'"'"')] 1" "alice: her endpoints' verdicts and the node's, not the other project's, not one that could be anyone's"
+check "$(echo "$A_" | py 'import json,sys; d=json.load(sys.stdin); s=d["snapshot"]; print(sorted(e["pod"] for e in s["endpoints"]), d["hidden"]>=1)')" "['db-0', 'web-7d9'] True" "alice: her project's endpoints, and told some are withheld"
+check "$(echo "$A_" | py 'import json,sys; v=json.load(sys.stdin)["snapshot"]["verdicts"]; print(sorted((r["endpoint"],r["verdict"]) for r in v if r["endpoint"]), sum(r["endpoint"] is None for r in v))')" "[(1, 'allowed'), (1, 'audit')] 1" "alice: her endpoints' verdicts and the node's, not the other project's, not one that could be anyone's"
 check "$(echo "$A_" | grep -c 'batch-x' || true)" 0 "the other project's pod is nowhere in her answer"
 check "$(curl -s -b "$W/alice.jar" "$E/api/v1/components" | grep -c 'batch-x' || true)" 0 "nor in the feed"
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/alice.jar" "$E/api/plugins/flowsdn/endpoint/3")" 404 "nor by asking for it"
