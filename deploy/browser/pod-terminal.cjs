@@ -37,7 +37,9 @@ walk(`pod terminal (${PHASE})`, async (t) => {
 
   // alice
   await connect.click()
-  t.check(await seen(/\$ /), 'a prompt', await screen())
+  const ok = await seen(/\$ /)
+  t.check(ok, 'a prompt', `${await screen()} | ${await page.locator('p.result').innerText().catch(() => 'no result line')}`)
+  if (!ok) return
   await type('echo hello-$((40+2)) in $CONTAINER')
   t.check(await seen(/hello-42 in app/), 'a real shell, in the first container', await screen())
   await t.shot(page, 'terminal')
