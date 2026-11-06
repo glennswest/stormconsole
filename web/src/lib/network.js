@@ -54,3 +54,12 @@ export function fromLine(rows, network) {
   if (froms.length) return `from: ${froms.join(', ')}`
   return network ? `from: ${network}` : ''
 }
+
+/// Where the address of the other network's page lands on this node (#285). Nothing while the
+/// node has not said.
+export function notHere(path, network) {
+  if (!network) return null
+  if (network === 'cilium') return { '#/flowsdn': '#/network/endpoints', '#/k8s/fsid': '#/k8s/cid' }[path] || null
+  if (network === 'flowsdn') return { '#/network/flows': '#/flowsdn', '#/k8s/cn': '#/flowsdn', '#/k8s/cid': '#/k8s/fsid' }[path] || null
+  return { '#/flowsdn': '#/network/endpoints', '#/network/flows': '#/network/endpoints', '#/k8s/cn': '#/network/endpoints', '#/k8s/cid': '#/network/endpoints', '#/k8s/fsid': '#/network/endpoints' }[path] || null
+}

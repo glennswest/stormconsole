@@ -114,7 +114,7 @@ async fn a_kubernetes_agent_becomes_rows_that_lead_with_the_pod() {
 #[tokio::test]
 async fn a_standalone_agent_serves_no_kubernetes_routes_and_that_is_not_an_error() {
     let (url, _h) = agent(false).await;
-    let p = FlowsdnPlugin::new(&url, "/nonexistent/manifest.json", None);
+    let p = FlowsdnPlugin::new(&url, Build::new("/nonexistent/manifest.json"), None);
     p.poll().await;
     let s = p.snapshot().await;
     assert!(s.reachable);
@@ -128,7 +128,7 @@ async fn a_standalone_agent_serves_no_kubernetes_routes_and_that_is_not_an_error
 #[tokio::test]
 async fn an_agent_that_stops_answering_keeps_its_last_good_answer() {
     let (url, h) = agent(true).await;
-    let p = FlowsdnPlugin::new(&url, &manifest(&tmp("stale"), r#"{"edition":"flowsdn"}"#), None);
+    let p = FlowsdnPlugin::new(&url, Build::new(&manifest(&tmp("stale"), r#"{"edition":"flowsdn"}"#)), None);
     p.poll().await;
     h.abort();
     let _ = h.await;
@@ -150,24 +150,23 @@ async fn silence_is_an_error_on_a_flowsdn_node_and_not_on_a_node_of_unknown_edit
     let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", l.local_addr().unwrap());
     drop(l);
-    let flowsdn = FlowsdnPlugin::new(&url, &manifest(&tmp("silent"), r#"{"edition":"flowsdn"}"#), None);
+    let flowsdn = FlowsdnPlugin::new(&url, Build::new(&manifest(&tmp("silent"), r#"{"edition":"flowsdn"}"#)), None);
     flowsdn.poll().await;
     let (h, why) = flowsdn.snapshot().await.health();
     assert_eq!(h, Health::Error);
     assert!(why.contains("no flowsdn agent answers") && why.contains("nothing answers"), "{why}");
 
-    let unknown = FlowsdnPlugin::new(&url, "/nonexistent/manifest.json", None);
+    let unknown = FlowsdnPlugin::new(&url, Build::new("/nonexistent/manifest.json"), None);
     unknown.poll().await;
     let (h, why) = unknown.snapshot().await.health();
     assert_eq!(h, Health::Unknown);
-    assert!(why.contains("cilium-edition node has none"), "{why}");
+    assert!(why.contains("no flowsdn agent answers"), "{why}");
 }
 
 #[tokio::test]
 async fn a_cilium_node_says_not_this_edition_and_asks_nothing() {
     let (url, _h) = agent(true).await;
-    let p = FlowsdnPlugin::new(&url, &manifest(&tmp("cilium"), r#"{"edition":"cilium"}"#), None);
-    assert!(!p.present(), "no page on a cilium node");
+    let p = FlowsdnPlugin::new(&url, Build::new(&manifest(&tmp("cilium"), r#"{"edition":"cilium"}"#)), None);
     p.poll().await;
     let s = p.snapshot().await;
     assert!(s.answered.is_none(), "the agent is not asked");
@@ -235,13 +234,17 @@ fn ids_are_encoded_for_the_agents_path() {
     assert_eq!(encode_id("../v1/config"), "..%2Fv1%2Fconfig");
 }
 
-#[test]
-fn it_shows_on_a_flowsdn_node_and_nowhere_else() {
-    let (f, c, u) = (Edition::Flowsdn(String::new()), Edition::Cilium(String::new()), Edition::Unknown(String::new()));
-    assert!(shows(&f, false), "an agent that is down on a flowsdn node is a fault to show");
-    assert!(!shows(&c, false) && !shows(&c, true));
-    assert!(!shows(&u, false), "nothing said and nothing answering: a cilium node looks like this");
-    assert!(shows(&u, true), "only a flowsdn node has an agent");
+#[tokio::test]
+async fn an_agent_answering_is_what_says_flowsdn_where_nothing_else_does() {
+    let (url, _h) = agent(true).await;
+    let build = Build::new("/nonexistent/manifest.json");
+    let p = FlowsdnPlugin::new(&url, build.clone(), None);
+    build.add_source(p.network_source());
+    build.refresh().await;
+    assert!(!build.enabled(NAME), "nothing has answered yet");
+    p.poll().await;
+    build.refresh().await;
+    assert!(build.enabled(NAME), "only a flowsdn node has an agent");
 }
 
 #[test]

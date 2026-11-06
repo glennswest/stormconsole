@@ -216,12 +216,17 @@ enabled = true
 
 [flowsdn]
 enabled = true
-# This node's pod network on the flowsdn edition: endpoints, IPAM, the
-# agent's health and modules, its config, Services and node routes, from
-# the agent's read-only listener (`http-listen`, loopback only). A node
-# whose release manifest names the cilium edition shows "not this edition"
-# and no page.
+# This node's pod network on a flowsdn build: endpoints, IPAM, the agent's
+# health and modules, its config, Services and node routes, from the agent's
+# read-only listener (`http-listen`, loopback only). Nothing of it shows on a
+# node that does not run flowsdn.
 # url = "http://127.0.0.1:9878"
+
+[build]
+# What this node's build carries. One image serves every build; the only
+# difference is the pod network, and the node says which: this manifest, else
+# its beacon's release, the agent's DaemonSet, the CRDs served, an agent
+# answering. Only that network's pages show.
 # release_manifest = "/etc/stormcos/release/manifest.json"
 
 [health]

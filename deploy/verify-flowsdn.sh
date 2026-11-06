@@ -107,6 +107,7 @@ enabled = false
 enabled = false
 [flowsdn]
 url = "$3"
+[build]
 release_manifest = "$4"
 EOF
   mkdir -p "$W/$1"
@@ -204,7 +205,7 @@ check "$(curl -sf $B/api/plugins/flowsdn/snapshot | py 'import json,sys; s=json.
 say "C: a cilium node"
 feed $C
 check "$(py "import json; print(len([c for c in json.load(open('$W/feed.json')) if c['id'].startswith('flowsdn:') or c['id'] == 'plugin:flowsdn']))")" "0" "no card and no row (#161)"
-check "$(curl -sf $C/api/plugins/flowsdn/snapshot | py 'import json,sys; print(json.load(sys.stdin)["sentence"].startswith("not this edition"))')" "True" "the page, opened by hand, says not this edition"
+check "$(curl -sf $C/api/plugins/flowsdn/snapshot | py 'import json,sys; print(json.load(sys.stdin)["sentence"].startswith("not this edition"))')" "True" "the agent's snapshot, asked by hand, says not this edition"
 check "$(navitem $C)" "False" "no navigator item"
 check "$(wc -l < "$W/agent-c.log" | tr -d ' ')" "0" "the agent there was never asked"
 
@@ -246,7 +247,7 @@ mkdir -p "$W/e"
 { printf 'listen_addr = "127.0.0.1:19135"\ndata_dir = "%s/e"\n[api]\n' "$W"
   for u in "root admin $ADMIN" "alice viewer $ALICE"; do set -- $u; printf '[[api.users]]\nname = "%s"\npassword_hash = "%s"\nroles = ["%s"]\nkube_token = "%s"\n' "$1" "$HASH" "$2" "$3"; done
   printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\ninsecure_skip_tls_verify = true\n' "$KAPI" "$ADMIN"
-  printf '[flowsdn]\nurl = "http://127.0.0.1:19880"\nrelease_manifest = "%s/flowsdn.json"\n' "$W"
+  printf '[flowsdn]\nurl = "http://127.0.0.1:19880"\n[build]\nrelease_manifest = "%s/flowsdn.json"\n' "$W"
   for s in fleet logs stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormipmi stormcluster health history stormupdate ironprom; do printf '[%s]\nenabled = false\n' "$s"; done
 } > "$W/e.toml"
 "$BIN" --config "$W/e.toml" > "$W/e.log" 2>&1 &

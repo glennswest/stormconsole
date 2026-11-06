@@ -1,6 +1,6 @@
 // The neutral network pages' model (#168), with plain node: `node web/src/lib/network.test.mjs`.
 import assert from 'node:assert/strict'
-import { mergeEndpoints, inProject, search, rulesLine, enforcement, selectsLine, fromLine } from './network.js'
+import { notHere, mergeEndpoints, inProject, search, rulesLine, enforcement, selectsLine, fromLine } from './network.js'
 
 const obj = { project: 'shop', name: 'web-1', ingress: null, from: 'flowsdn', state: 'ready' }
 const agent = { project: 'shop', name: 'web-1', ingress: true, from: 'flowsdn', state: 'ready' }
@@ -41,3 +41,16 @@ assert.equal(fromLine([{ from: 'cilium' }, { from: 'cilium' }], ''), 'from: cili
 assert.equal(fromLine([], 'flowsdn'), 'from: flowsdn')
 assert.equal(fromLine([], ''), '')
 console.log('network.test.mjs PASS')
+
+// The other network's addresses land on this one's (#285).
+assert.equal(notHere('#/flowsdn', 'flowsdn'), null)
+assert.equal(notHere('#/flowsdn', 'cilium'), '#/network/endpoints')
+assert.equal(notHere('#/k8s/fsid', 'cilium'), '#/k8s/cid')
+assert.equal(notHere('#/network/flows', 'cilium'), null)
+assert.equal(notHere('#/network/flows', 'flowsdn'), '#/flowsdn')
+assert.equal(notHere('#/k8s/cid', 'flowsdn'), '#/k8s/fsid')
+assert.equal(notHere('#/k8s/cn', 'flowsdn'), '#/flowsdn')
+assert.equal(notHere('#/flowsdn', 'unknown'), '#/network/endpoints')
+assert.equal(notHere('#/network/flows', 'unknown'), '#/network/endpoints')
+assert.equal(notHere('#/flowsdn', ''), null, 'not said yet: stays')
+assert.equal(notHere('#/k8s/pod', 'flowsdn'), null)

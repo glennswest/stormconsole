@@ -98,6 +98,8 @@ mkdir -p "$W/c"
 { printf 'listen_addr = "127.0.0.1:19094"\ndata_dir = "%s/c"\n[api]\n' "$W"
   user root admin "$ADMIN"; user alice viewer "$ALICE"
   printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\nca_file = "%s/ca.crt"\n' "$KAPI" "$ADMIN" "$W"
+  echo '{"version":"12.61","components":{"stormcos-cilium":{}}}' > "$W/cilium.json"
+  printf '[build]\nrelease_manifest = "%s/cilium.json"\n' "$W"
   printf '[ironprom]\nurl = "%s"\n[stormdrive]\nurl = "http://127.0.0.1:19201"\n' "$PROM"
   for s in fleet logs stormstorage stormblock sbregistry vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
 } > "$W/c.toml"

@@ -857,6 +857,16 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
         c.actions.push(delete_action(&format!("/apis/flowsdn.io/v1alpha1/flowsdnclusterwidenetworkpolicies/{key}")));
         out.push(c);
     }
+    // Identities are what a pod row's reference leads to; the card is the flowsdn plugin's.
+    for (key, obj) in of("fsid") {
+        let labels = obj.get("security-labels");
+        let mut c = base("fsid", key, key, Health::Ok, labels_summary(labels, 3));
+        let ns = labels.and_then(|l| l.get("k8s:io.kubernetes.pod.namespace")).and_then(Value::as_str);
+        if let Some(ns) = ns {
+            c.relations.push(Relation::belongs_to("namespace", format!("k8s:ns:{ns}")));
+        }
+        out.push(c);
+    }
     for (key, obj) in of("netpol") {
         let (ns, name) = split_key(key);
         let mut c = base("netpol", key, name, Health::Ok, policy_summary(obj));
@@ -1539,6 +1549,16 @@ mod tests {
         let snap: Snapshot = HashMap::new();
         let out = map(&snap, Some((Health::Error, "unreachable: connection refused".into())));
         assert!(out.iter().all(|c| c.id != "k8s:cilium"), "no CRDs and no agent means no card");
+    }
+
+    /// The pod row reads whichever network's objects there are, in the same shapes (#285).
+    #[test]
+    fn flowsdns_identities_have_rows_and_no_cilium_card() {
+        let mut snap = Snapshot::new();
+        snap.insert("fsid", HashMap::from([("7".to_string(), json!({"security-labels": {"k8s:app": "web", "k8s:io.kubernetes.pod.namespace": "shop"}}))]));
+        let out = map(&snap, None);
+        assert!(out.iter().any(|c| c.id == "k8s:fsid:7"));
+        assert!(out.iter().all(|c| c.id != "k8s:cilium"));
     }
 
     #[test]

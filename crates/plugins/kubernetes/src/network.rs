@@ -90,11 +90,16 @@ pub fn selecting_labels(snap: &Snapshot, ns: &str, labels: &HashMap<String, Stri
     let empty = HashMap::new();
     let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
     let mut out = Vec::new();
-    for (kind, id_prefix) in [("cnp", "k8s:cnp:"), ("ccnp", "k8s:ccnp:"), ("netpol", "k8s:netpol:")]
-    {
+    for (kind, id_prefix) in [
+        ("cnp", "k8s:cnp:"),
+        ("ccnp", "k8s:ccnp:"),
+        ("fsnp", "k8s:fsnp:"),
+        ("fscnp", "k8s:fscnp:"),
+        ("netpol", "k8s:netpol:"),
+    ] {
         for (key, obj) in of(kind) {
             // A namespaced policy only ever selects in its own namespace.
-            if kind != "ccnp" {
+            if kind != "ccnp" && kind != "fscnp" {
                 let Some((pns, _)) = key.split_once('/') else { continue };
                 if pns != ns {
                     continue;
@@ -138,6 +143,12 @@ pub(crate) fn selects(policy: &Value, labels: &HashMap<String, String>) -> bool 
     false
 }
 
+/// A workload's endpoint, and the kind its identity is under: whichever network's objects
+/// there are (the store leaves out the other's, #285). The same schemas (flowsdn `docs/crds.md`).
+pub fn endpoint<'a>(snap: &'a Snapshot, key: &str) -> Option<(&'a Value, &'static str)> {
+    [("cep", "cid"), ("fsep", "fsid")].into_iter().find_map(|(ep, id)| Some((snap.get(ep)?.get(key)?, id)))
+}
+
 /// Attach the network's view of one workload to its component.
 ///
 /// `key` is `ns/name` — the same key the endpoint, the pod and the machine
@@ -146,7 +157,7 @@ pub(crate) fn selects(policy: &Value, labels: &HashMap<String, String>) -> bool 
 pub fn describe(snap: &Snapshot, key: &str, c: &mut ComponentSummary) {
     let empty = HashMap::new();
     let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
-    let Some(cep) = of("cep").get(key) else { return };
+    let Some((cep, identities)) = endpoint(snap, key) else { return };
     let Some((ns, _)) = key.split_once('/') else { return };
 
     // Whether the datapath is actually programmed for it. A pod can be
@@ -165,7 +176,7 @@ pub fn describe(snap: &Snapshot, key: &str, c: &mut ComponentSummary) {
 
     let identity = cep.pointer("/status/identity/id").and_then(Value::as_i64);
     if let Some(id) = identity {
-        let cid = of("cid").get(&id.to_string());
+        let cid = of(identities).get(&id.to_string());
         // The number, and what it resolves to. The number alone is what
         // the endpoint list already showed, and it answers nothing.
         let labels = cid.map(identity_labels).unwrap_or_default();
@@ -174,7 +185,7 @@ pub fn describe(snap: &Snapshot, key: &str, c: &mut ComponentSummary) {
                 .tone("muted"),
         );
         if cid.is_some() {
-            c.relations.push(Relation::belongs_to("identity", format!("k8s:cid:{id}")));
+            c.relations.push(Relation::belongs_to("identity", format!("k8s:{identities}:{id}")));
         }
         let policies = selecting(snap, ns, cid);
         // No policy selecting a workload is an answer, not an absence:
@@ -223,7 +234,7 @@ pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Opt
                 return Some(Outside {
                     why: "nat",
                     sentence: format!(
-                        "interface {name} is a NAT inside the hypervisor, not a Cilium endpoint \
+                        "interface {name} is a NAT inside the hypervisor, not a network endpoint \
                          (stormvm#16): no network policy and no project isolation reaches it"
                     ),
                 })
@@ -259,7 +270,7 @@ pub fn outside_policy(vmi: &Value, ceps: Option<&HashMap<String, Value>>) -> Opt
         if !ceps.contains_key(&format!("{ns}/{name}")) {
             return Some(Outside {
                 why: "no-endpoint",
-                sentence: "Cilium has no endpoint for it, so no network policy and no project \
+                sentence: "The pod network has no endpoint for it, so no network policy and no project \
                            isolation is applied to its traffic"
                     .into(),
             });

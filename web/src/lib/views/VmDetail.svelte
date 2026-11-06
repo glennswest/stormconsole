@@ -10,7 +10,7 @@
   // my VM booting?".
   import { onDestroy } from 'svelte'
   import { route } from '../router.svelte.js'
-  import { feed } from '../stores.svelte.js'
+  import { build, feed } from '../stores.svelte.js'
   import { get, call, postJson, wsUrl, ansiToHtml } from '../api.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
@@ -664,7 +664,7 @@
               </tbody>
             </table>
           {/if}
-          <!-- Policy is enforced on Cilium endpoints, and a machine behind
+          <!-- Policy is enforced on the network's endpoints, and a machine behind
                the hypervisor's NAT or on a host bridge is not one (#51):
                said here, plainly, rather than listing policies as if they
                applied. -->
@@ -685,14 +685,16 @@
           {/if}
         </div>
 
-        <div class="card" aria-label="Flows" style="grid-column: 1 / -1">
-          <h2>Flows</h2>
-          {#if vm.policy && !vm.policy.applies}
-            <p class="dim">This machine is not on the pod network, so the network does not see its traffic. {vm.policy.sentence}</p>
-          {:else}
-            <FlowTable {ns} pod={name} last={50} />
-          {/if}
-        </div>
+        {#if build.network === 'cilium'}
+          <div class="card" aria-label="Flows" style="grid-column: 1 / -1">
+            <h2>Flows</h2>
+            {#if vm.policy && !vm.policy.applies}
+              <p class="dim">This machine is not on the pod network, so the network does not see its traffic. {vm.policy.sentence}</p>
+            {:else}
+              <FlowTable {ns} pod={name} last={50} />
+            {/if}
+          </div>
+        {/if}
 
         <!-- The questions the pod page answers, asked of a machine (#69). -->
         <div class="card">

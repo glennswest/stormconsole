@@ -188,21 +188,3 @@ fn a_service_frontend_reads_as_address_and_backends() {
     assert!(s.realized);
     assert!(!Service::from_agent(&json!({"spec": {"id": 0}})).realized);
 }
-
-#[test]
-fn the_edition_comes_from_the_release() {
-    let p = "/etc/stormcos/release/manifest.json";
-    assert!(matches!(Edition::from_manifest(r#"{"edition":"flowsdn"}"#, p), Edition::Flowsdn(_)));
-    assert!(Edition::from_manifest(r#"{"network":"cilium"}"#, p).is_cilium());
-    assert!(matches!(Edition::from_manifest(r#"{"version":"12.13-flowsdn","components":{}}"#, p), Edition::Flowsdn(_)));
-    assert!(matches!(
-        Edition::from_manifest(r#"{"version":"12.13","components":{"flowsdn":{"commit":"b02c59f"}}}"#, p),
-        Edition::Flowsdn(_)
-    ));
-    assert!(Edition::from_manifest(r#"{"version":"12.13","components":{"stormcos-cilium":{},"stormd":{}}}"#, p).is_cilium());
-    assert!(Edition::from_manifest(r#"{"version":"12.13","components":{"stormd":{}}}"#, p).is_cilium());
-    assert!(matches!(Edition::from_manifest(r#"{"components":{"stormd":{}}}"#, p), Edition::Unknown(_)));
-    assert!(Edition::from_release("12.61").is_cilium());
-    assert!(matches!(Edition::from_release("12.61-flowsdn"), Edition::Flowsdn(_)));
-    assert!(matches!(Edition::from_manifest("not json", p), Edition::Unknown(_)));
-}

@@ -1,5 +1,5 @@
 <script>
-  // The pod network on a flowsdn-edition node (#83, flowsdn#297): what the
+  // The pod network on a flowsdn node (#83, flowsdn#297): what the
   // agent on *this* node says. Its API listens only on the node's loopback,
   // so another node's agent is that node's console's to show.
   //
@@ -46,7 +46,6 @@
   onDestroy(() => clearTimeout(timer))
 
   const snap = $derived(data?.snapshot)
-  const cilium = $derived(snap?.edition?.name === 'cilium')
   const endpoints = $derived(snap?.endpoints || [])
   const nodes = $derived([...new Set(endpoints.map((e) => e.node).filter(Boolean))].sort())
   const namespaces = $derived([...new Set(endpoints.map((e) => e.namespace).filter(Boolean))].sort())
@@ -116,16 +115,14 @@
     crumbs={[{ label: 'Networking' }, { label: 'Pod network (flowsdn)' }]}
     title="Pod network"
     scope={data?.node ? `flowsdn on ${data.node}` : 'flowsdn'}
-    count={snap && !cilium ? endpoints.length : null}
+    count={snap ? endpoints.length : null}
   >
     {#snippet status()}{#if data}<StatusPill health={data.health} />{/if}{/snippet}
   </PageHeader>
 
   {#if error}<p class="error">{error}</p>{/if}
 
-  {#if data && cilium}
-    <EmptyState icon="network" title="Not this edition" hint={data.sentence} />
-  {:else if data}
+  {#if data}
     <p class="lede">
       <span class="dim">{data.sentence}</span>
       {#if snap.answered && !snap.reachable}

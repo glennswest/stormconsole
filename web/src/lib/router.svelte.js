@@ -1,6 +1,7 @@
 // A hash router in one file. Routes are '#/path/:param' patterns; the
 // current match is reactive state any component can read.
 
+import { notHere } from './network.js'
 const routes = [
   { pattern: '#/', name: 'overview' },
   { pattern: '#/logs', name: 'logs' },
@@ -71,12 +72,23 @@ const MOVED = {
   '#/k8s/cnp': '#/network/policies',
   '#/k8s/ccnp': '#/network/policies',
   '#/k8s/cep': '#/network/endpoints',
+  '#/k8s/fsnp': '#/network/policies',
+  '#/k8s/fscnp': '#/network/policies',
+  '#/k8s/fsep': '#/network/endpoints',
+}
+
+// Which network this node runs, once it has said (#285): the other's pages are not here.
+let network = ''
+
+export function setNetwork(name) {
+  network = name
+  follow()
 }
 
 function follow() {
   // A moved list keeps what it was asked for: a project's link says which project.
   const [path, query] = (location.hash || '').split('?')
-  const to = MOVED[path]
+  const to = MOVED[path] || notHere(path, network)
   if (to) location.replace(query ? `${to}?${query}` : to)
   return !!to
 }

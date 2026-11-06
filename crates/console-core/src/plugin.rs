@@ -26,13 +26,6 @@ pub trait ConsolePlugin: Send + Sync {
     /// ("k8s:pod:default/web") and its API mount ("/api/plugins/k8s/…").
     fn name(&self) -> &'static str;
 
-    /// Whether this plugin means anything on this node right now (#161). One
-    /// that does not is not on the navigator, in the feed or in the health:
-    /// a node with no such thing has no card saying so. Its routes stay.
-    fn present(&self) -> bool {
-        true
-    }
-
     /// Navigation contribution; sections with the same label merge across
     /// plugins.
     fn nav(&self) -> Vec<NavSection> {

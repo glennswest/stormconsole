@@ -49,6 +49,8 @@ pub struct Config {
     #[serde(default)]
     pub flowsdn: Flowsdn,
     #[serde(default)]
+    pub build: Build,
+    #[serde(default)]
     pub health: ApiHealth,
     #[serde(default)]
     pub history: NodeHistory,
@@ -513,10 +515,17 @@ impl Default for Fastetcd {
     }
 }
 
-/// This node's pod network on the flowsdn edition (#83): the agent's
-/// read-only HTTP listener, which only ever binds the node's loopback
-/// (flowsdn#297), and the release manifest that says which edition the
-/// node booted — a cilium node has no agent and says so.
+/// What this node's build carries (#285): the release manifest says which
+/// pod network it runs.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Build {
+    /// Unset means `/etc/stormcos/release/manifest.json`.
+    pub release_manifest: Option<String>,
+}
+
+/// This node's pod network on a flowsdn build (#83): the agent's read-only
+/// HTTP listener, which only ever binds the node's loopback (flowsdn#297).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Flowsdn {
@@ -525,13 +534,11 @@ pub struct Flowsdn {
     /// The agent's `http-listen`. Unset means `http://127.0.0.1:9878`, the
     /// edition manifests' value.
     pub url: Option<String>,
-    /// Unset means `/etc/stormcos/release/manifest.json`.
-    pub release_manifest: Option<String>,
 }
 
 impl Default for Flowsdn {
     fn default() -> Self {
-        Self { enabled: true, url: None, release_manifest: None }
+        Self { enabled: true, url: None }
     }
 }
 
@@ -880,8 +887,8 @@ impl Config {
         self.flowsdn.url.clone().unwrap_or_else(|| "http://127.0.0.1:9878".to_string())
     }
 
-    pub fn flowsdn_release_manifest(&self) -> String {
-        self.flowsdn.release_manifest.clone().unwrap_or_else(|| "/etc/stormcos/release/manifest.json".to_string())
+    pub fn release_manifest(&self) -> String {
+        self.build.release_manifest.clone().unwrap_or_else(|| "/etc/stormcos/release/manifest.json".to_string())
     }
 
     /// The listener's TLS files, when :9094 serves TLS (#48, #127).
@@ -1113,7 +1120,7 @@ data_dir    = \"/var/lib/stormconsole\"
         assert_eq!(c.vmimages_url(), "http://127.0.0.1:9099");
         assert_eq!(c.stormdrive_url(), "http://127.0.0.1:9092");
         assert_eq!(c.flowsdn_url(), "http://127.0.0.1:9878");
-        assert_eq!(c.flowsdn_release_manifest(), "/etc/stormcos/release/manifest.json");
+        assert_eq!(c.release_manifest(), "/etc/stormcos/release/manifest.json");
         assert!(c.health.enabled);
         assert_eq!(c.health_summary_file(), "/run/stormpump/health.json");
         assert_eq!(c.health_history_dir(), "/system-data/history/api");

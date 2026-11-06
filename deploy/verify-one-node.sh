@@ -110,6 +110,7 @@ url = "http://127.0.0.1:19193"
 url = "http://127.0.0.1:19102"
 [flowsdn]
 url = "http://127.0.0.1:19878"
+[build]
 release_manifest = "$W/no-such-manifest.json"
 TOML
 for s in stormblock sbregistry vm vmimages fastetcd stormipmi health; do printf '[%s]\nenabled = false\n' "$s" >> "$W/c.toml"; done

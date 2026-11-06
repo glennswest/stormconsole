@@ -15,13 +15,11 @@
 //!   route that fails keeps its last good answer — the agent restarts, and
 //!   a view that empties itself every time it does is worse than one that
 //!   says how old it is.
-//! - **Only on a flowsdn node** (#161). A cilium-edition node has no flowsdn
+//! - **Only on a flowsdn node** (#161, #285). A cilium node has no flowsdn
 //!   agent, and the console says nothing about one: no navigator item, no
-//!   row, no card, no health. The release manifest says which edition the
-//!   node booted; where it is not readable, this node's own beacon names its
-//!   release, whose flavour says the same. Until something says, the plugin
-//!   shows only once an agent has answered. The page, opened by hand, still
-//!   says "not this edition".
+//!   row, no card, no health, and the page's address lands elsewhere.
+//!   [`console_core::build`] says which network the node runs. Until something
+//!   says, this plugin asks, and an agent answering is what says flowsdn.
 //! - **Rows lead with the pod.** An endpoint is `namespace/pod` on a node;
 //!   the numeric identity is a metric, not the name (flowsdn#297).
 //! - **Scoped like pods.** An endpoint or Service in a namespace the viewer
@@ -32,7 +30,6 @@
 pub mod model;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -42,15 +39,16 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use console_core::build::{Build, NetworkSource};
 use console_core::{Access, ComponentSummary, ConsolePlugin, Health, Metric, NavSection, Relation, Viewer};
 use plugin_kubernetes::NamespaceAccess;
-use plugin_logs::LogHosts;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-pub use model::{Verdict, Edition, Endpoint, Healthz, Module, Pool, Service};
+pub use console_core::build::Network as Edition;
+pub use model::{Verdict, Endpoint, Healthz, Module, Pool, Service};
 
 pub const NAME: &str = "flowsdn";
 
@@ -132,15 +130,8 @@ impl Snapshot {
             let sentence = format!("no flowsdn agent answers at {} ({})", self.url, self.error);
             return match self.edition {
                 Edition::Flowsdn(_) => (Health::Error, sentence),
-                // A node whose edition the console cannot read: silence is
-                // what a cilium node gives too, so it is not called broken.
-                _ => (
-                    Health::Unknown,
-                    format!(
-                        "{sentence}. A cilium-edition node has none, and a flowsdn node from before \
-                         flowsdn eda35249a55e serves no loopback port"
-                    ),
-                ),
+                // Not known to be a flowsdn node: silence is not a fault here.
+                _ => (Health::Unknown, sentence),
             };
         }
         if !self.reachable {
@@ -290,35 +281,22 @@ pub fn encode_id(id: &str) -> String {
 
 struct Inner {
     base: String,
-    manifest: String,
+    build: Arc<Build>,
     client: reqwest::Client,
     snap: RwLock<Snapshot>,
     access: Option<Arc<NamespaceAccess>>,
-    /// Where this node's own beacon is heard, for its release.
-    hosts: Option<LogHosts>,
-    /// This node runs flowsdn, as far as is known (#161).
-    present: AtomicBool,
+}
+
+/// An agent answering says flowsdn: only a flowsdn node has one.
+#[async_trait]
+impl NetworkSource for Inner {
+    async fn network(&self) -> Option<Edition> {
+        self.snap.read().await.answered.map(|_| Edition::Flowsdn(format!("a flowsdn agent answers at {}", self.base)))
+    }
 }
 
 pub struct FlowsdnPlugin {
     inner: Arc<Inner>,
-}
-
-/// Whether the plugin shows: the edition's word, else whether an agent has
-/// answered, which only a flowsdn node has.
-pub fn shows(edition: &Edition, answered: bool) -> bool {
-    match edition {
-        Edition::Flowsdn(_) => true,
-        Edition::Cilium(_) => false,
-        Edition::Unknown(_) => answered,
-    }
-}
-
-fn read_edition(path: &str) -> Edition {
-    match std::fs::read_to_string(path) {
-        Ok(t) => Edition::from_manifest(&t, path),
-        Err(e) => Edition::Unknown(format!("{path}: {e}")),
-    }
 }
 
 /// What a failed request was, in a sentence: the cause, not reqwest's
@@ -340,12 +318,10 @@ fn describe(e: &reqwest::Error) -> String {
 }
 
 impl FlowsdnPlugin {
-    /// `url` is the agent's loopback listener; `manifest` the release
-    /// manifest that names the edition.
-    pub fn new(url: &str, manifest: &str, access: Option<Arc<NamespaceAccess>>) -> Self {
+    /// `url` is the agent's loopback listener; `build` says which network the node runs.
+    pub fn new(url: &str, build: Arc<Build>, access: Option<Arc<NamespaceAccess>>) -> Self {
         let base = url.trim_end_matches('/').to_string();
-        let edition = read_edition(manifest);
-        let present = AtomicBool::new(shows(&edition, false));
+        let edition = build.network();
         // The agent serves one request per connection and closes it, over
         // HTTP/1.1, in a two-second budget: no pool, no h2, a short timeout.
         let client = reqwest::Client::builder()
@@ -354,27 +330,19 @@ impl FlowsdnPlugin {
             .timeout(Duration::from_secs(3))
             .build()
             .unwrap_or_default();
-        Self {
-            inner: Arc::new(Inner {
-                snap: RwLock::new(Snapshot::new(&base, edition)),
-                base,
-                manifest: manifest.to_string(),
-                client,
-                access,
-                hosts: None,
-                present,
-            }),
-        }
+        let inner = Arc::new(Inner {
+            snap: RwLock::new(Snapshot::new(&base, edition)),
+            base,
+            build,
+            client,
+            access,
+        });
+        Self { inner }
     }
 
-    /// The log collector, for this node's beacon: the console's unit may not
-    /// mount the release volume the manifest is on. Called right after
-    /// construction, before anything shares the plugin.
-    pub fn with_hosts(mut self, hosts: Option<LogHosts>) -> Self {
-        if let Some(inner) = Arc::get_mut(&mut self.inner) {
-            inner.hosts = hosts;
-        }
-        self
+    /// An agent answering, for what the build asks.
+    pub fn network_source(&self) -> Arc<dyn NetworkSource> {
+        self.inner.clone()
     }
 
     /// One poll, then the cache. Public for the tests' stand-in agent.
@@ -415,27 +383,8 @@ impl Inner {
         }
     }
 
-    /// The manifest's word, else this node's beacon's.
-    async fn edition(&self) -> Edition {
-        let edition = read_edition(&self.manifest);
-        if !matches!(edition, Edition::Unknown(_)) {
-            return edition;
-        }
-        let Some(hosts) = &self.hosts else { return edition };
-        match hosts.own_beacon().await.as_ref().and_then(|b| b.release().map(str::to_string)) {
-            Some(r) if !r.is_empty() => Edition::from_release(&r),
-            _ => edition,
-        }
-    }
-
     async fn poll(&self) {
-        self.poll_agent().await;
-        let s = self.snap.read().await;
-        self.present.store(shows(&s.edition, s.answered.is_some()), Ordering::Relaxed);
-    }
-
-    async fn poll_agent(&self) {
-        let edition = self.edition().await;
+        let edition = self.build.network();
         if edition.is_cilium() {
             let mut s = self.snap.write().await;
             s.edition = edition;
@@ -529,10 +478,6 @@ impl Inner {
 impl ConsolePlugin for FlowsdnPlugin {
     fn name(&self) -> &'static str {
         NAME
-    }
-
-    fn present(&self) -> bool {
-        self.inner.present.load(Ordering::Relaxed)
     }
 
     fn nav(&self) -> Vec<NavSection> {

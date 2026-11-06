@@ -39,7 +39,7 @@ function check(ok, what, extra = '') {
   await page.getByText('No network policy applies to this machine.').waitFor({ timeout: 15000 })
   const net = await page.locator('.card', { hasText: 'Asked for' }).innerText()
   console.log(net.split('\n').map((l) => `    | ${l}`).join('\n'))
-  check(net.includes('NAT inside the hypervisor, not a Cilium endpoint (stormvm#16)'), 'why, with stormvm#16')
+  check(net.includes('NAT inside the hypervisor, not a network endpoint (stormvm#16)'), 'why, with stormvm#16')
   check(net.includes('shop is isolated, and this machine is outside that isolation'), 'the project is isolated and it is outside')
   check(net.includes('allow-web') && !net.includes('allow-db'), 'would be selected by allow-web, not allow-db')
   check(net.includes('They will apply once stormvm#16'), 'and when they will apply')

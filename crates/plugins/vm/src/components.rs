@@ -240,7 +240,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             c.metrics.push(Metric::new("network", value).tone(tone));
         }
         // Whether network policy reaches this machine at all (#51). A NAT
-        // inside the hypervisor or a host bridge is not a Cilium endpoint,
+        // inside the hypervisor or a host bridge is not a network endpoint,
         // so no NetworkPolicy and no project isolation applies to it — and a
         // row pointing at an endpoint, whose policies the renderer would
         // list as selecting it, describes a fence that is not there.

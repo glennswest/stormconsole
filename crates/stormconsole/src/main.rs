@@ -130,6 +130,9 @@ async fn run() {
     let mut namespace_access = None;
     // Which machines are this cluster's: its apiserver's Node objects (#161).
     let mut membership = None;
+    let mut kube_network = None;
+    // What this node's build carries (#285): one image, and the node says which network.
+    let build = console_core::build::Build::new(&config.release_manifest());
     // One connection to the apiserver for everything that speaks to it as
     // the console (#33): the bearer from `token_file` follows its renewals,
     // and the certificate is checked against `ca_file`.
@@ -146,7 +149,7 @@ async fn run() {
         }
     }
     if let Some(conn) = kube.clone() {
-        let mut k8s = plugin_kubernetes::KubernetesPlugin::new(Some(conn));
+        let mut k8s = plugin_kubernetes::KubernetesPlugin::new(Some(conn)).with_build(build.clone());
         if let Some(url) = &config.kubernetes.hubble_relay {
             k8s = k8s.with_hubble_relay(url.clone());
         }
@@ -165,6 +168,7 @@ async fn run() {
         k8s.namespace_access().set_system_namespaces(config.kubernetes.system_namespaces.clone());
         namespace_access = Some(k8s.namespace_access());
         membership = Some(k8s.membership());
+        kube_network = Some(k8s.network_source());
         plugins.push(k8s);
     }
     let logs = config.logs.enabled.then(|| {
@@ -317,18 +321,17 @@ async fn run() {
         .with_operator_tls(vmimages_tls.clone())
         .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))
         .with_stormimds(Some(config.vm.stormimds_url.clone().unwrap_or_else(|| "http://127.0.0.1:8169".to_string())))
-        .with_registry(config.sbregistry.enabled.then(|| registry_reach.clone()))));
+        .with_registry(config.sbregistry.enabled.then(|| registry_reach.clone()))
+        .with_build(build.clone())));
     }
     // This node's pod network on the flowsdn edition (#83): the agent's
     // loopback API, endpoints scoped by namespace like the pods they are.
     // On any other node it stays out of sight (#161).
+    let mut flowsdn_agent = None;
     if config.flowsdn.enabled {
-        plugins.push(Arc::new(plugin_flowsdn::FlowsdnPlugin::new(
-            &config.flowsdn_url(),
-            &config.flowsdn_release_manifest(),
-            namespace_access.clone(),
-        )
-        .with_hosts(log_hosts.clone())));
+        let flowsdn = plugin_flowsdn::FlowsdnPlugin::new(&config.flowsdn_url(), build.clone(), namespace_access.clone());
+        flowsdn_agent = Some(flowsdn.network_source());
+        plugins.push(Arc::new(flowsdn));
     }
     // Every API on this node and an alert when one stalls (#123): PID 1's
     // summary, or each stormd on the fleet's ports when it is not bound in.
@@ -344,7 +347,7 @@ async fn run() {
     if config.ironprom.enabled {
         let none = Arc::new(console_core::token::FileToken::fixed(None));
         let reach = Arc::new(console_core::dial::Reach::new(&config.ironprom_url(), node_dial.clone(), none));
-        plugins.push(Arc::new(plugin_metrics::MetricsPlugin::new(reach, namespace_access.clone())));
+        plugins.push(Arc::new(plugin_metrics::MetricsPlugin::new(reach, namespace_access.clone()).with_build(build.clone())));
     }
     // What the cluster runs and an update's steps, with an admin's acts (#164).
     if config.stormupdate.enabled {
@@ -361,9 +364,22 @@ async fn run() {
     // Destructive storage is asked of the apiserver as the viewer (#82);
     // with kubernetes off there is nobody to ask, and nobody may.
     let reviewer = console_core::storage::Reviewer::new(kube.clone());
-    let registry = Arc::new(Registry::new(plugins).with_reviewer(reviewer));
+    // Where the manifest cannot be read, in the order they are believed (#285).
+    if let Some(hosts) = &log_hosts {
+        build.add_source(Arc::new(hosts.clone()));
+    }
+    for source in [kube_network, flowsdn_agent].into_iter().flatten() {
+        build.add_source(source);
+    }
+    let registry = Arc::new(Registry::new(plugins).with_reviewer(reviewer).with_build(build.clone()));
     let shutdown = CancellationToken::new();
     tokio::spawn(registry.clone().run(shutdown.clone()));
+    tokio::spawn(async move {
+        loop {
+            build.refresh().await;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
 
     let state = server::AppState {
         auth_required: config.auth_required(),

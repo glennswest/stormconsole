@@ -428,22 +428,21 @@ pub fn endpoints_summary(eps: &Value, pod_name: &str, pod_ips: &[String]) -> Val
     json!({"ready": ready, "notReady": not_ready, "thisPod": this})
 }
 
-/// What Cilium knows of this pod: its endpoint, its identity, and the
+/// What the network knows of this pod: its endpoint, its identity, and the
 /// policies that select it (the same evaluation the pod row uses).
-pub fn cilium(snap: &Snapshot, key: &str) -> Value {
+pub fn endpoint(snap: &Snapshot, key: &str) -> Value {
     let empty = HashMap::new();
     let of = |kind: &str| snap.get(kind).unwrap_or(&empty);
-    let Some(cep) = of("cep").get(key) else { return Value::Null };
+    let Some((cep, identities)) = network::endpoint(snap, key) else { return Value::Null };
     let ns = key.split_once('/').map(|(n, _)| n).unwrap_or("");
     let id = cep.pointer("/status/identity/id").and_then(Value::as_i64);
-    let cid = id.and_then(|i| of("cid").get(&i.to_string()));
+    let cid = id.and_then(|i| of(identities).get(&i.to_string()));
     let addressing: Vec<Value> = cep
         .pointer("/status/networking/addressing")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
     json!({
-        "endpoint": format!("k8s:cep:{key}"),
         "state": s(cep, "/status/state"),
         "identity": id,
         "identityLabels": cid.map(network::identity_labels).unwrap_or_default(),
@@ -805,7 +804,7 @@ pub fn detail(snap: &Snapshot, ns: &str, pod: &Value) -> Value {
             "hostNetwork": host_network,
             "dns": dns(pod),
             "services": services(snap, ns, pod),
-            "cilium": cilium(snap, &key),
+            "endpoint": endpoint(snap, &key),
             "interfaces": network_status(pod),
             "attachments": attachments(snap, ns, pod),
         },

@@ -214,6 +214,23 @@ pub struct Store {
     /// How many kinds this store is meant to hold, so "3/5 synced" is
     /// honest for a store that is not this plugin's own.
     kinds: usize,
+    /// Which network this node runs (#285): the other's objects are not read out, whatever
+    /// the apiserver serves. A store with none hides nothing.
+    build: std::sync::OnceLock<Arc<console_core::build::Build>>,
+}
+
+/// The kinds of each network's own objects.
+const CILIUM_KINDS: &[&str] = &["cep", "cn", "cid", "cnp", "ccnp"];
+const FLOWSDN_KINDS: &[&str] = &["fsep", "fsid", "fsnp", "fscnp"];
+
+/// Whether this network leaves this kind out: it is the other network's.
+pub fn other_networks(network: &console_core::build::Network, kind: &str) -> bool {
+    use console_core::build::Network;
+    match network {
+        Network::Cilium(_) => FLOWSDN_KINDS.contains(&kind),
+        Network::Flowsdn(_) => CILIUM_KINDS.contains(&kind),
+        Network::Unknown(_) => false,
+    }
 }
 
 impl Default for Store {
@@ -244,7 +261,38 @@ pub fn object_key(obj: &Value) -> Option<String> {
 
 impl Store {
     pub async fn snapshot(&self) -> HashMap<&'static str, HashMap<String, Value>> {
-        self.objects.read().await.clone()
+        let mut all = self.objects.read().await.clone();
+        all.retain(|kind, _| !self.hidden(kind));
+        all
+    }
+
+    /// Whether this kind is the other network's (#285).
+    pub fn hidden(&self, kind: &str) -> bool {
+        self.build.get().is_some_and(|b| other_networks(&b.network(), kind))
+    }
+
+    pub fn set_build(&self, build: Arc<console_core::build::Build>) {
+        let _ = self.build.set(build);
+    }
+
+    /// What the objects themselves say this cluster runs, the other's left in: the agent's
+    /// DaemonSet (stormcos `60-cilium-agent.yaml`, flowsdn `62-flowsdn-agent.yaml`), else the
+    /// CRDs served. Both at once says nothing.
+    pub async fn network_served(&self) -> Option<console_core::build::Network> {
+        use console_core::build::Network;
+        let objects = self.objects.read().await;
+        let named = |name: &str| objects.get("ds").and_then(|ds| ds.keys().find(|k| k.rsplit('/').next() == Some(name)).cloned());
+        match (named("cilium"), named("flowsdn")) {
+            (Some(k), None) => return Some(Network::Cilium(format!("DaemonSet {k}"))),
+            (None, Some(k)) => return Some(Network::Flowsdn(format!("DaemonSet {k}"))),
+            _ => {}
+        }
+        let served = |kinds: &[&str]| kinds.iter().any(|k| objects.contains_key(k));
+        match (served(CILIUM_KINDS), served(FLOWSDN_KINDS)) {
+            (true, false) => Some(Network::Cilium("the apiserver serves cilium.io".into())),
+            (false, true) => Some(Network::Flowsdn("the apiserver serves flowsdn.io".into())),
+            _ => None,
+        }
     }
 
     pub async fn synced_kinds(&self) -> (usize, usize) {
@@ -255,17 +303,26 @@ impl Store {
     /// One kind's objects, keyed as the store keys them (`ns/name`, or
     /// `name` for a cluster-scoped kind).
     pub async fn kind(&self, kind: &str) -> HashMap<String, Value> {
+        if self.hidden(kind) {
+            return HashMap::new();
+        }
         self.objects.read().await.get(kind).cloned().unwrap_or_default()
     }
 
     /// One kind's objects, or `None` when the kind is not (yet) known to be
     /// served — "no Cilium" and "Cilium, no endpoints" are different answers.
     pub async fn kind_if_present(&self, kind: &str) -> Option<HashMap<String, Value>> {
+        if self.hidden(kind) {
+            return None;
+        }
         self.objects.read().await.get(kind).cloned()
     }
 
     /// One object, or None when the kind is not watched or the key is gone.
     pub async fn object(&self, kind: &str, key: &str) -> Option<Value> {
+        if self.hidden(kind) {
+            return None;
+        }
         self.objects.read().await.get(kind)?.get(key).cloned()
     }
 

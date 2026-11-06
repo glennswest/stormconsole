@@ -20,6 +20,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use console_core::build::{Build, Network};
 use console_core::dial::Reach;
 use console_core::{ComponentSummary, ConsolePlugin, Health, Metric, NavSection, Viewer};
 use panels::{Entity, Panel};
@@ -61,6 +62,24 @@ struct Inner {
     reach: Arc<Reach>,
     access: Option<Arc<NamespaceAccess>>,
     seen: RwLock<Seen>,
+    build: Option<Arc<Build>>,
+}
+
+/// Whether this network has this job. ironprom's config lists the cilium jobs on every build
+/// (stormcos `ironprom-node.yml`), so on another they are down for no reason a person can act on
+/// (#285). A network's jobs show only where the node is known to run it.
+fn carried(network: &Network, job: &str) -> bool {
+    match job {
+        "cilium-agent" | "cilium-operator" | "hubble" => network.is_cilium(),
+        j if j.starts_with("flowsdn") => network.is_flowsdn(),
+        _ => true,
+    }
+}
+
+impl Inner {
+    fn network(&self) -> Network {
+        self.build.as_ref().map(|b| b.network()).unwrap_or(Network::Unknown("not asked".into()))
+    }
 }
 
 pub struct MetricsPlugin {
@@ -69,7 +88,15 @@ pub struct MetricsPlugin {
 
 impl MetricsPlugin {
     pub fn new(reach: Arc<Reach>, access: Option<Arc<NamespaceAccess>>) -> Self {
-        Self { inner: Arc::new(Inner { reach, access, seen: RwLock::new(Seen::default()) }) }
+        Self { inner: Arc::new(Inner { reach, access, seen: RwLock::new(Seen::default()), build: None }) }
+    }
+
+    /// What this node's build carries (#285). Right after construction.
+    pub fn with_build(mut self, build: Arc<Build>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.build = Some(build);
+        }
+        self
     }
 }
 
@@ -112,7 +139,9 @@ async fn poll(inner: &Inner) {
     let mut s = inner.seen.write().await;
     s.not_started = not_started;
     match got {
-        Ok(t) => {
+        Ok(mut t) => {
+            let network = inner.network();
+            t.retain(|t| carried(&network, &t.job));
             s.targets = Some(t);
             s.error.clear();
         }
@@ -195,7 +224,12 @@ async fn targets(State(inner): State<Arc<Inner>>) -> Response {
             })
         })
         .collect();
-    let levels: Vec<Value> = panels::LEVELS.iter().map(|l| json!({"id": l.id, "title": l.title})).collect();
+    let network = inner.network();
+    let levels: Vec<Value> = panels::LEVELS
+        .iter()
+        .filter(|l| l.panels.iter().any(|p| carried(&network, p.job)))
+        .map(|l| json!({"id": l.id, "title": l.title}))
+        .collect();
     Json(json!({
         "read": s.targets.is_some(),
         "not_started": s.not_started,
@@ -320,7 +354,8 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
     let start = end - window;
     let mut out = Vec::with_capacity(list.len());
     let wanted = q.only.as_deref() != Some("disk");
-    for p in list.iter().filter(|p| wanted || p.id.starts_with("disk_")) {
+    let network = inner.network();
+    for p in list.iter().filter(|p| (wanted || p.id.starts_with("disk_")) && carried(&network, p.job)) {
         let query = panels::query(p, entity.as_ref(), visible.as_deref());
         out.push(chart(&inner, p, query, (start, end, step), targets.as_deref()).await);
     }
@@ -370,6 +405,18 @@ mod tests {
 
     fn target(job: &str, health: &str, error: &str) -> Target {
         Target { job: job.into(), url: format!("http://x/{job}"), health: health.into(), error: error.into(), last_scrape: String::new(), seconds: 0.0 }
+    }
+
+    #[test]
+    fn a_network_job_shows_only_on_its_own_network() {
+        let (c, f, u) = (Network::Cilium(String::new()), Network::Flowsdn(String::new()), Network::Unknown(String::new()));
+        for job in ["cilium-agent", "cilium-operator", "hubble"] {
+            assert!(carried(&c, job) && !carried(&f, job) && !carried(&u, job), "{job}");
+        }
+        assert!(!carried(&c, "flowsdn-agent") && carried(&f, "flowsdn-agent") && !carried(&u, "flowsdn-agent"));
+        for n in [&c, &f, &u] {
+            assert!(carried(n, "stormdrive") && carried(n, "stormlb") && carried(n, "coredns"));
+        }
     }
 
     #[test]

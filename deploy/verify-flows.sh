@@ -93,10 +93,12 @@ fi
 say "the console"
 H=$(printf pw | "$BIN" --hash-password)
 user() { printf '[[api.users]]\nname = "%s"\npassword_hash = "%s"\nroles = ["%s"]\nkube_token = "%s"\n' "$1" "$H" "$2" "$3"; }
+echo '{"version":"12.61","components":{"stormcos-cilium":{}}}' > "$W/cilium.json"
 conf() { # listen dir relay
   mkdir -p "$2"
   printf 'listen_addr = "127.0.0.1:%s"\ndata_dir = "%s"\n[api]\nauth_token = "own-4"\n' "$1" "$2"
   user alice viewer "$BOB"; user root admin "$ROOT"
+  printf '[build]\nrelease_manifest = "%s/cilium.json"\n' "$W"
   printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\ninsecure_skip_tls_verify = true\nhubble_relay = "%s"\n[logs]\nmcast_group = "239.255.42.66:25666"\n[fleet]\nmcast_group = "239.255.42.66:25666"\nstormd_ports = []\n' "$API" "$ADMIN" "$3"
   for s in stormdrive stormstorage stormblock sbregistry vmimages stormcluster stormipmi fastetcd flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
 }

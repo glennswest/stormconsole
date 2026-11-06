@@ -106,7 +106,7 @@
       {:else}
         <p class="dim">Not isolated: traffic in and out is whatever other policies allow.</p>
       {/if}
-      <p class="dim">Two NetworkPolicies (<span class="mono">storm-isolate</span>, and <span class="mono">storm-isolate-dns</span> for DNS). Cilium enforces them on its endpoints, so a VM behind the hypervisor's NAT (stormvm#16) or on a host bridge is outside them.</p>
+      <p class="dim">Two NetworkPolicies (<span class="mono">storm-isolate</span>, and <span class="mono">storm-isolate-dns</span> for DNS). The pod network enforces them on its endpoints, so a VM behind the hypervisor's NAT (stormvm#16) or on a host bridge is outside them.</p>
       {#if data.can.isolate && !p.system}
         <label class="check"><input type="checkbox" bind:checked={dns} /> allow DNS to the cluster resolver</label>
         <div class="row">

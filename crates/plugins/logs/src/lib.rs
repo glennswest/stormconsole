@@ -165,6 +165,15 @@ impl LogHosts {
     }
 }
 
+/// This node's beacon names its release, and the release's name says the network (#285).
+#[async_trait]
+impl console_core::build::NetworkSource for LogHosts {
+    async fn network(&self) -> Option<console_core::build::Network> {
+        let beacon = self.own_beacon().await?;
+        Some(console_core::build::Network::from_release(beacon.release().filter(|r| !r.is_empty())?))
+    }
+}
+
 impl LogsPlugin {
     pub fn hosts(&self) -> LogHosts {
         LogHosts(self.inner.clone())

@@ -124,17 +124,25 @@ async fn scope(inner: &Inner, viewer: &Viewer, a: &Ask, follow: bool) -> Scope {
     Scope::Query(hubble::Query { scope, verdict, last: a.last.unwrap_or(100).clamp(1, MOST), follow }, seen)
 }
 
+/// This node's network has no relay to ask (#285).
+fn not_here() -> Value {
+    json!({"available": false, "reason": "This node's network serves no flows.", "items": []})
+}
+
 /// Why the relay gave nothing: its own words beside what they mean here.
 fn no_relay(url: &str, why: &str) -> Value {
     json!({
         "available": false,
-        "reason": format!("Hubble relay did not answer at {url}: {why}. It runs on a cilium node; a flowsdn node has its own Flows tab."),
+        "reason": format!("Hubble relay did not answer at {url}: {why}."),
         "items": [],
     })
 }
 
 /// `GET /flows?ns=&pod=&verdict=&last=`
 pub async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Query<Ask>) -> Response {
+    if !inner.network().is_cilium() {
+        return Json(not_here()).into_response();
+    }
     let (q, seen) = match scope(&inner, &viewer, &a, false).await {
         Scope::Query(q, h) => (q, h),
         Scope::Nothing => return Json(json!({"available": true, "items": [], "note": "You may see no project yet."})).into_response(),
@@ -189,6 +197,9 @@ pub async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Que
 
 /// `GET /flows/stream?…`: the flows as they happen, one event each.
 pub async fn stream(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Query<Ask>) -> Response {
+    if !inner.network().is_cilium() {
+        return Json(not_here()).into_response();
+    }
     let (q, seen) = match scope(&inner, &viewer, &a, true).await {
         Scope::Query(q, h) => (q, h),
         Scope::Nothing => return Json(json!({"items": []})).into_response(),

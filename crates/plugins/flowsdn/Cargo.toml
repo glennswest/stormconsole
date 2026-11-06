@@ -9,7 +9,6 @@ repository.workspace = true
 [dependencies]
 console-core.workspace = true
 plugin-kubernetes.workspace = true
-plugin-logs.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 axum.workspace = true

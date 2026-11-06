@@ -105,6 +105,8 @@ pub const RESOURCES: &[ResourceSpec] = &[
 const VM_API: &str = "/apis/kubevirt.io/v1";
 
 struct Inner {
+    /// Which network this node runs, for whose policies it asks about (#285).
+    build: Option<Arc<console_core::build::Build>>,
     client: Option<Client>,
     store: Arc<KubeStore>,
     /// This node's stormvm, for the console doors only — the objects come
@@ -170,6 +172,14 @@ impl VmPlugin {
     }
 
     /// Where the node's registry answers, so an imported disk (#44) is offered as a root disk.
+    /// What this node's build carries (#285). Right after construction.
+    pub fn with_build(mut self, build: Arc<console_core::build::Build>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.build = Some(build);
+        }
+        self
+    }
+
     /// Right after construction.
     pub fn with_registry(mut self, registry: Option<Arc<console_core::dial::Reach>>) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -205,6 +215,7 @@ impl VmPlugin {
                 images: images::Cache::new(),
                 stormimds: None,
                 stormimds_row: RwLock::new(None),
+                build: None,
                 keys_ns: "default".into(),
             }),
         }
@@ -302,6 +313,12 @@ impl ConsolePlugin for VmPlugin {
             &*self.inner.stormvm_vms.read().await,
         );
         rows.extend(self.inner.stormimds_row.read().await.clone());
+        // The endpoint reference is to Cilium's row; flowsdn's endpoints are on its own page (#285).
+        if !self.inner.build.as_ref().is_some_and(|b| b.network().is_cilium()) {
+            for r in &mut rows {
+                r.relations.retain(|x| x.name != "endpoint");
+            }
+        }
         rows
     }
 
@@ -1265,15 +1282,22 @@ async fn policy(
         return json!({"applies": false, "why": o.why, "sentence": o.sentence});
     };
     let token = viewer.token.as_deref();
-    // The same three kinds the pod's view evaluates; one the apiserver
-    // does not serve, or the viewer may not read, contributes nothing.
+    // The same kinds the pod's view evaluates; one the apiserver does not
+    // serve, or the viewer may not read, contributes nothing. Only this
+    // node's network's (#285).
+    let network = inner.build.as_ref().map(|b| b.network());
     let mut snap: std::collections::HashMap<&'static str, std::collections::HashMap<String, Value>> =
         std::collections::HashMap::new();
     for (kind, path) in [
         ("netpol", format!("/apis/networking.k8s.io/v1/namespaces/{ns}/networkpolicies")),
         ("cnp", format!("/apis/cilium.io/v2/namespaces/{ns}/ciliumnetworkpolicies")),
         ("ccnp", "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies".to_string()),
+        ("fsnp", format!("/apis/flowsdn.io/v1alpha1/namespaces/{ns}/flowsdnnetworkpolicies")),
+        ("fscnp", "/apis/flowsdn.io/v1alpha1/flowsdnclusterwidenetworkpolicies".to_string()),
     ] {
+        if network.as_ref().is_some_and(|n| plugin_kubernetes::cache::other_networks(n, kind)) {
+            continue;
+        }
         let Ok(list) = client.get_as(&path, token).await else { continue };
         let items = list["items"].as_array().cloned().unwrap_or_default();
         let objs = items

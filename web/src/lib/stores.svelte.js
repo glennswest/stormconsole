@@ -8,6 +8,7 @@ import { sameRelation } from './ui/words.js'
 import { unreadShelfKeys } from './drivemap.js'
 import { DEFAULT_STYLE, styleId } from './ui/styles.js'
 import { get, postJson, reconnectingSocket } from './api.js'
+import { setNetwork } from './router.svelte.js'
 import { setDefaultTheme } from 'stormview/theme'
 
 export const feed = $state({
@@ -265,6 +266,29 @@ export function startFeed() {
   get('/api/v1/console/access')
     .then((a) => Object.assign(access, a))
     .catch(() => {})
+
+  loadBuild()
+}
+
+// What this node's build carries (#285): the node says, and it can say late (the beacon, the
+// DaemonSet), so it is asked again, and what depends on it is read again when it changes.
+export const build = $state({ network: '', plugins: [] })
+
+function loadBuild() {
+  get('/api/v1/console/build')
+    .then((b) => {
+      const changed = build.network && build.network !== b.network.name
+      build.network = b.network.name
+      build.plugins = b.plugins
+      setNetwork(b.network.name)
+      if (changed) {
+        get('/api/v1/console/nav').then((s) => { nav.sections = s }).catch(() => {})
+        get('/api/v1/console/creators').then((l) => { creators.list = l }).catch(() => {})
+        get('/api/plugins/k8s/kinds').then((l) => { kinds.list = Array.isArray(l) ? l : [] }).catch(() => {})
+      }
+    })
+    .catch(() => {})
+    .finally(() => setTimeout(loadBuild, 10000))
 }
 
 // --- View preferences -------------------------------------------------

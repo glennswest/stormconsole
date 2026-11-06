@@ -38,6 +38,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use console_core::build::Network;
 use console_core::{
     Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Offers, Probe, Viewer,
 };
@@ -95,6 +96,27 @@ struct Inner {
     stormcentral: Option<podpage::Stormcentral>,
     /// Hubble relay, for flows (#4).
     hubble_relay: String,
+    /// Which network this node runs (#285).
+    build: Option<Arc<console_core::build::Build>>,
+}
+
+impl Inner {
+    fn network(&self) -> console_core::build::Network {
+        self.build.as_ref().map(|b| b.network()).unwrap_or(console_core::build::Network::Unknown("not asked".into()))
+    }
+}
+
+/// The objects, then Cilium's agent answering (#285).
+#[async_trait]
+impl console_core::build::NetworkSource for Inner {
+    async fn network(&self) -> Option<console_core::build::Network> {
+        if let Some(n) = self.store.network_served().await {
+            return Some(n);
+        }
+        let agent = self.agent.state().await;
+        matches!(agent.health, Health::Ok | Health::Warn)
+            .then(|| console_core::build::Network::Cilium(format!("a cilium agent answers at {CILIUM_AGENT_HEALTH}")))
+    }
 }
 
 pub struct KubernetesPlugin {
@@ -129,6 +151,20 @@ impl KubernetesPlugin {
     /// stormcentral, for the provenance of a `stormpump://` image on the
     /// pod page. Called right after `new`, before anything shares the
     /// plugin.
+    /// What this node's build carries (#285). Called right after `new`.
+    pub fn with_build(mut self, build: Arc<console_core::build::Build>) -> Self {
+        self.inner.store.set_build(build.clone());
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.build = Some(build);
+        }
+        self
+    }
+
+    /// The objects and the agent, for what the build asks.
+    pub fn network_source(&self) -> Arc<dyn console_core::build::NetworkSource> {
+        self.inner.clone()
+    }
+
     /// Where Hubble relay answers (#4).
     pub fn with_hubble_relay(mut self, url: String) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -179,6 +215,7 @@ impl KubernetesPlugin {
                 stats: Arc::new(stats::Stats::new()),
                 stormcentral: None,
                 hubble_relay: "http://127.0.0.1:4245".to_string(),
+                build: None,
             }),
         }
     }
@@ -191,6 +228,13 @@ impl ConsolePlugin for KubernetesPlugin {
     }
 
     fn nav(&self) -> Vec<NavSection> {
+        let networking = NavSection::new("Networking", 25)
+            .admin()
+            .item("Services", "#/k8s/svc")
+            .item("Routes", "#/k8s/route")
+            .item("Network attachments", "#/k8s/nad")
+            .item("Network Policies", "#/network/policies")
+            .item("Network Endpoints", "#/network/endpoints");
         vec![
             // Projects are the top of the console (#28): where somebody's
             // own work lives, and the first thing they choose.
@@ -206,19 +250,18 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item_at("Jobs", "#/k8s/job", 50)
                 .item_at("CronJobs", "#/k8s/cronjob", 60)
                 .item_at("Config maps", "#/k8s/cm", 70),
-            // Diagnosis, all of it. A person reaching for Cilium
-            // identities, endpoints and clusterwide policies is asking why
-            // something cannot be reached, not shipping a workload (#16).
-            NavSection::new("Networking", 25)
-                .admin()
-                .item("Services", "#/k8s/svc")
-                .item("Routes", "#/k8s/route")
-                .item("Network attachments", "#/k8s/nad")
-                .item("Network Policies", "#/network/policies")
-                .item("Network Endpoints", "#/network/endpoints")
-                .item("Network Flows", "#/network/flows")
-                .item("Network nodes", "#/k8s/cn")
-                .item("Identities", "#/k8s/cid"),
+            // Diagnosis, all of it. A person reaching for identities,
+            // endpoints and clusterwide policies is asking why something
+            // cannot be reached, not shipping a workload (#16). The last of
+            // them are the network's own, so only the node's (#285).
+            match self.inner.network() {
+                Network::Cilium(_) => networking
+                    .item("Network Flows", "#/network/flows")
+                    .item("Network nodes", "#/k8s/cn")
+                    .item("Identities", "#/k8s/cid"),
+                Network::Flowsdn(_) => networking.item("Identities", "#/k8s/fsid"),
+                Network::Unknown(_) => networking,
+            },
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
             NavSection::new("Observe", 30).admin().item("Events", "#/k8s/events"),
             // What no project owns (#28): the cluster-scoped kinds. A
@@ -234,7 +277,12 @@ impl ConsolePlugin for KubernetesPlugin {
     }
 
     fn creators(&self) -> Vec<Creator> {
-        apply::creators()
+        let mut all = apply::creators();
+        // Only the node's network has these (#285).
+        if !self.inner.network().is_cilium() {
+            all.retain(|c| c.id != "k8s:cnp" && c.id != "k8s:ccnp");
+        }
+        all
     }
 
     fn routes(&self) -> Router {
@@ -286,8 +334,14 @@ impl ConsolePlugin for KubernetesPlugin {
             relations: vec![],
             link: None,
         }];
-        let agent = inner.agent.state().await;
-        out.extend(components::map(&inner.store.snapshot().await, Some((agent.health, agent.detail))));
+        // Cilium's agent is said on a cilium node only (#285).
+        let agent = if inner.network().is_cilium() {
+            let agent = inner.agent.state().await;
+            Some((agent.health, agent.detail))
+        } else {
+            None
+        };
+        out.extend(components::map(&inner.store.snapshot().await, agent));
         if let (Some(r), Some(card)) = (inner.agent_metrics.read().await.as_ref(), out.iter_mut().find(|c| c.id == "k8s:cilium")) {
             agentmetrics::onto_card(card, r);
         }
@@ -463,9 +517,13 @@ impl ConsolePlugin for KubernetesPlugin {
             let token = shutdown.clone();
             tokio::spawn(async move {
                 loop {
-                    let got = match inner.http.get(CILIUM_AGENT_METRICS).timeout(Duration::from_secs(3)).send().await {
-                        Ok(r) if r.status().is_success() => r.text().await.ok(),
-                        _ => None,
+                    let got = if inner.network().is_cilium() {
+                        match inner.http.get(CILIUM_AGENT_METRICS).timeout(Duration::from_secs(3)).send().await {
+                            Ok(r) if r.status().is_success() => r.text().await.ok(),
+                            _ => None,
+                        }
+                    } else {
+                        None
                     };
                     {
                         let mut kept = inner.agent_metrics.write().await;
@@ -548,8 +606,10 @@ fn visible_to(id: &str, hidden: &std::collections::HashSet<String>) -> bool {
 /// The kind catalogue: what this plugin watches, what to call it, and
 /// whether the namespace selector applies. One declaration, in
 /// `cache::RESOURCES`, instead of a copy of it in every view (#5).
-async fn kinds() -> Response {
-    Json(cache::catalogue()).into_response()
+async fn kinds(State(inner): State<Arc<Inner>>) -> Response {
+    let mut all = cache::catalogue();
+    all.retain(|k| !inner.store.hidden(k["kind"].as_str().unwrap_or("")));
+    Json(all).into_response()
 }
 
 /// Everything a namespace page needs, in one answer (#6): the object
@@ -568,7 +628,7 @@ async fn namespace_detail(
             .into_response();
     };
     let mut inventory = Vec::new();
-    for spec in RESOURCES.iter().filter(|r| r.inventory) {
+    for spec in RESOURCES.iter().filter(|r| r.inventory && !inner.store.hidden(r.kind)) {
         let count = inner.store.count_in(spec.kind, &ns).await;
         inventory.push(json!({
             "kind": spec.kind,

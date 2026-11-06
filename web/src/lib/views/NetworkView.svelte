@@ -7,7 +7,7 @@
   import { onDestroy } from 'svelte'
   import { get } from '../api.js'
   import { route } from '../router.svelte.js'
-  import { k8sns } from '../stores.svelte.js'
+  import { build, k8sns } from '../stores.svelte.js'
   import { mergeEndpoints, inProject, search, rulesLine, enforcement, selectsLine, fromLine } from '../network.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
@@ -28,8 +28,8 @@
       if (policies) {
         rows = objects.items
       } else {
-        // Only a flowsdn node's agent answers; elsewhere this is an empty list or no plugin.
-        const agent = await get('/api/plugins/flowsdn/network-endpoints').catch(() => null)
+        // Only a flowsdn node has an agent to ask.
+        const agent = build.network === 'flowsdn' ? await get('/api/plugins/flowsdn/network-endpoints').catch(() => null) : null
         rows = mergeEndpoints(objects.items, agent?.items)
         network = network || agent?.network || ''
         scope = agent?.items?.length ? agent.scope : ''

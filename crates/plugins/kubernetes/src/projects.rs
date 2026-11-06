@@ -246,7 +246,10 @@ async fn outside_policy(inner: &Inner, ns: &str, token: Option<&str>) -> Vec<Val
     let Ok(list) = client.get_as(&format!("{KUBEVIRT}/namespaces/{ns}/virtualmachineinstances"), token).await else {
         return vec![];
     };
-    let ceps = inner.store.kind_if_present("cep").await;
+    let ceps = match inner.store.kind_if_present("cep").await {
+        Some(c) => Some(c),
+        None => inner.store.kind_if_present("fsep").await,
+    };
     outside_of(list["items"].as_array().map(Vec::as_slice).unwrap_or_default(), ceps.as_ref())
 }
 
@@ -601,7 +604,7 @@ pub(crate) async fn isolate(
     Json(json!({
         "message": format!(
             "{name} is isolated: its pods and the machines on the pod network reach each other \
-             and nothing else{}. Cilium enforces it.{}",
+             and nothing else{}. The pod network enforces it.{}",
             if i.dns { ", and may resolve names through the cluster DNS" } else { " — not even DNS" },
             exception(&outside),
         ),

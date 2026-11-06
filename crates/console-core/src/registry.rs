@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::access::{Access, Viewer};
+use crate::build::Build;
 use crate::nav::{merge, NavSection};
 use crate::plugin::ConsolePlugin;
 use crate::plugin::Sample;
@@ -21,6 +22,7 @@ pub struct Registry {
     snapshot: RwLock<Arc<Vec<ComponentSummary>>>,
     tx: broadcast::Sender<Arc<Vec<ComponentSummary>>>,
     reviewer: Reviewer,
+    build: Option<Arc<Build>>,
     refreshes: AtomicU64,
     refresh_micros: AtomicU64,
 }
@@ -67,6 +69,7 @@ impl Registry {
             snapshot: RwLock::new(Arc::new(Vec::new())),
             tx,
             reviewer: Reviewer::new(None),
+            build: None,
             refreshes: AtomicU64::new(0),
             refresh_micros: AtomicU64::new(0),
         }
@@ -76,6 +79,24 @@ impl Registry {
     pub fn with_reviewer(mut self, reviewer: Reviewer) -> Self {
         self.reviewer = reviewer;
         self
+    }
+
+    /// What this node's build carries (#285). A plugin it leaves out is not on the
+    /// navigator, in the feed or in the health. Its routes stay. With none, every plugin is.
+    pub fn with_build(mut self, build: Arc<Build>) -> Self {
+        self.build = Some(build);
+        self
+    }
+
+    fn part_of_build(&self) -> impl Iterator<Item = &Arc<dyn ConsolePlugin>> {
+        self.plugins.iter().filter(|p| self.build.as_ref().is_none_or(|b| b.enabled(p.name())))
+    }
+
+    /// `GET /api/v1/console/build`: the network, and the plugins of this build.
+    pub fn build_answer(&self) -> serde_json::Value {
+        let network = self.build.as_ref().map(|b| b.network()).unwrap_or(crate::build::Network::Unknown("not asked".into()));
+        let plugins: Vec<&str> = self.part_of_build().map(|p| p.name()).collect();
+        serde_json::json!({"network": network, "plugins": plugins})
     }
 
     /// Is this request destructive storage, may this viewer, and what must
@@ -111,7 +132,7 @@ impl Registry {
     }
 
     pub fn nav(&self) -> Vec<NavSection> {
-        merge(self.plugins.iter().filter(|p| p.present()).flat_map(|p| p.nav()).collect())
+        merge(self.part_of_build().flat_map(|p| p.nav()).collect())
     }
 
     /// Every plugin's creators, each stamped with its owner.
@@ -332,7 +353,7 @@ impl Registry {
     pub async fn refresh(&self) {
         let started = std::time::Instant::now();
         let mut all: Vec<ComponentSummary> = Vec::new();
-        for p in self.plugins.iter().filter(|p| p.present()) {
+        for p in self.part_of_build() {
             let slice = p.components().await;
             for c in &slice {
                 if !c.id.starts_with(&format!("{}:", p.name())) && c.id != p.name() {
@@ -384,7 +405,7 @@ impl Registry {
             })
             .collect();
         let mut samples = Vec::new();
-        for p in self.plugins.iter().filter(|p| p.present()) {
+        for p in self.part_of_build() {
             samples.extend(p.samples().await);
         }
         FeedStats {

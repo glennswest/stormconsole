@@ -1,6 +1,6 @@
 // The pod network page in a browser (#83), over deploy/verify-flowsdn.sh's
 // stand-in flowsdn agent: every tab, the filters, an endpoint opened live,
-// and a cilium node's console saying it is not this edition. (The
+// and a cilium node's console having no such page. (The
 // navigator's item is checked through the nav feed by the rig: admin
 // sections start shut.)
 const { walk } = require('./lib.cjs')
@@ -60,11 +60,11 @@ walk('flowsdn', async (t) => {
   t.check(rows.some((r) => /endpoint 99, no longer here/.test(r)), 'an endpoint no longer here')
   await t.shot(page, 'flowsdn-flows')
 
-  // A cilium node: no page in the navigator, and the page says why.
+  // A cilium node: no page in the navigator, and its address lands on the network's page (#285).
   if (CILIUM) {
     const c = await page.context().newPage()
     await c.goto(`${CILIUM}/#/flowsdn`)
-    t.check(await t.until(async () => /Not this edition/i.test(await c.locator('main').innerText())), 'cilium node: Not this edition')
+    t.check(await t.until(async () => c.url().includes('#/network/endpoints')), 'cilium node: the address lands on Network Endpoints', c.url())
     await c.screenshot({ path: `${process.env.SHOTS || '.'}/flowsdn-cilium.png` }).catch(() => {})
   }
 })

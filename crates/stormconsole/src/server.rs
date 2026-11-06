@@ -94,6 +94,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/summary", get(summary))
         .route("/api/v1/components", get(components))
         .route("/api/v1/console/nav", get(nav))
+        .route("/api/v1/console/build", get(build))
         .route("/api/v1/console/audit", get(audit))
         .route("/api/v1/console/creators", get(creators))
         .route("/api/v1/console/access", get(access))
@@ -213,6 +214,11 @@ async fn guard(State(state): State<AppState>, Query(q): Query<GuardQuery>, req: 
 struct GuardQuery {
     method: String,
     path: String,
+}
+
+/// What this node's build carries (#285): its network, and the plugins of it.
+async fn build(State(state): State<AppState>) -> Response {
+    Json(state.registry.build_answer()).into_response()
 }
 
 async fn nav(State(state): State<AppState>) -> Response {

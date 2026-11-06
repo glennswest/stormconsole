@@ -14,65 +14,6 @@ fn s<'a>(v: &'a Value, path: &str) -> Option<&'a str> {
     v.pointer(path).and_then(Value::as_str).filter(|s| !s.is_empty())
 }
 
-/// Which pod network this node runs, from the release it booted.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(tag = "name", content = "why", rename_all = "lowercase")]
-pub enum Edition {
-    Flowsdn(String),
-    Cilium(String),
-    /// The manifest could not be read or did not say.
-    Unknown(String),
-}
-
-impl Edition {
-    /// What a release's name says: a flowsdn release is `<n>-flowsdn`, and
-    /// the only other flavour is the plain `<n>`, which is cilium
-    /// (stormcos docs/NETWORK-TYPE.md). A node's beacon carries this name.
-    pub fn from_release(release: &str) -> Self {
-        if release.ends_with("-flowsdn") {
-            Edition::Flowsdn(format!("release {release}"))
-        } else {
-            Edition::Cilium(format!("release {release}"))
-        }
-    }
-
-    /// Read from the release manifest stormcos ships at
-    /// `/etc/stormcos/release/manifest.json`. An `edition` (or `network`)
-    /// field wins; then the components it was built from; then the name of
-    /// the release ([`Self::from_release`]).
-    pub fn from_manifest(text: &str, path: &str) -> Self {
-        let Ok(doc) = serde_json::from_str::<Value>(text) else {
-            return Edition::Unknown(format!("{path} is not JSON"));
-        };
-        for key in ["edition", "network"] {
-            if let Some(e) = doc.get(key).and_then(Value::as_str) {
-                let why = format!("{path} says {key} = {e}");
-                return match e {
-                    "flowsdn" => Edition::Flowsdn(why),
-                    "cilium" => Edition::Cilium(why),
-                    _ => Edition::Unknown(why),
-                };
-            }
-        }
-        if let Some(c) = doc.get("components").and_then(Value::as_object) {
-            if c.keys().any(|k| k.starts_with("flowsdn")) {
-                return Edition::Flowsdn(format!("{path} lists the flowsdn component"));
-            }
-            if c.keys().any(|k| k.contains("cilium")) {
-                return Edition::Cilium(format!("{path} lists cilium and no flowsdn"));
-            }
-        }
-        if let Some(v) = doc.get("version").and_then(Value::as_str).filter(|v| !v.is_empty()) {
-            return Self::from_release(v);
-        }
-        Edition::Unknown(format!("{path} names no pod network"))
-    }
-
-    pub fn is_cilium(&self) -> bool {
-        matches!(self, Edition::Cilium(_))
-    }
-}
-
 /// One endpoint: a pod's attachment to the flowsdn network on this node.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Endpoint {

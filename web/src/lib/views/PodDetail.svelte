@@ -9,7 +9,7 @@
   // image with no digest is not an image with no digest.
   import { onDestroy } from 'svelte'
   import { route } from '../router.svelte.js'
-  import { feed } from '../stores.svelte.js'
+  import { build, feed } from '../stores.svelte.js'
   import { get, call, formatBytes } from '../api.js'
   import { ago } from '../ui/time.js'
   import PageHeader from '../components/PageHeader.svelte'
@@ -597,15 +597,15 @@
         </div>
         <div class="card">
           <h2>Pod network</h2>
-          {#if !pod.network.cilium}
+          {#if !pod.network.endpoint}
             <p class="none">{pod.network.hostNetwork ? 'Host network: the pod network does not manage this interface.' : 'No network endpoint for this pod.'}</p>
           {:else}
             <dl>
-              <dt>Datapath</dt><dd class:ok={pod.network.cilium.state === 'ready'} class:warn={pod.network.cilium.state !== 'ready'}>{pod.network.cilium.state || '—'}</dd>
-              <dt>Identity</dt><dd class="mono">{pod.network.cilium.identity ?? '—'}{#if pod.network.cilium.identityLabels} · {pod.network.cilium.identityLabels}{/if}</dd>
+              <dt>Datapath</dt><dd class:ok={pod.network.endpoint.state === 'ready'} class:warn={pod.network.endpoint.state !== 'ready'}>{pod.network.endpoint.state || '—'}</dd>
+              <dt>Identity</dt><dd class="mono">{pod.network.endpoint.identity ?? '—'}{#if pod.network.endpoint.identityLabels} · {pod.network.endpoint.identityLabels}{/if}</dd>
               <dt>Policies</dt>
               <dd>
-                {#each pod.network.cilium.policies as p (p)}<div class="mono"><a href={`#/grid?id=${encodeURIComponent(p)}`}>{p.replace(/^k8s:/, '')}</a></div>{:else}<span class="dim">none select it</span>{/each}
+                {#each pod.network.endpoint.policies as p (p)}<div class="mono"><a href={`#/grid?id=${encodeURIComponent(p)}`}>{p.replace(/^k8s:/, '')}</a></div>{:else}<span class="dim">none select it</span>{/each}
               </dd>
             </dl>
           {/if}
@@ -719,14 +719,16 @@
           {:else}<span class="dim">No container declares a port.</span>{/each}
         </p>
       </section>
-      <section class="card" aria-label="Flows" style="margin-top: 12px">
-        <h2>Flows</h2>
-        {#if pod.network.hostNetwork}
-          <p class="dim">This pod is on the host network, so it has no endpoint of its own, and its traffic is not told apart from the node's.</p>
-        {:else}
-          <FlowTable {ns} pod={name} last={50} />
-        {/if}
-      </section>
+      {#if build.network === 'cilium'}
+        <section class="card" aria-label="Flows" style="margin-top: 12px">
+          <h2>Flows</h2>
+          {#if pod.network.hostNetwork}
+            <p class="dim">This pod is on the host network, so it has no endpoint of its own, and its traffic is not told apart from the node's.</p>
+          {:else}
+            <FlowTable {ns} pod={name} last={50} />
+          {/if}
+        </section>
+      {/if}
     {:else if tab === 'Stats'}
       <p class="dim"><a href={`#/metrics?entity=pod&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its series in ironprom, over longer windows</a></p>
       <PodStats {base} {ns} {name} containers={pod.containers} />
