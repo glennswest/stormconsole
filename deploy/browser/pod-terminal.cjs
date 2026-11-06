@@ -28,7 +28,7 @@ walk(`pod terminal (${PHASE})`, async (t) => {
   }
   if (PHASE === 'bob') {
     await connect.click()
-    t.check(await t.until(async () => /forbidden/i.test(await t.text(page))), 'view, not edit: the apiserver says no, in its words', (await t.text(page)).slice(0, 400))
+    t.check(await t.until(async () => /forbidden/i.test(await t.text(page))), 'view, not edit: the apiserver says no, in its words', await page.locator('p.result').innerText().catch(() => 'no result line'))
     await tab('Environment')
     t.check(await t.until(async () => /could not be read/.test(await t.text(page))), 'a Secret he may not read is said to be', (await t.text(page)).slice(0, 500))
     t.check(/from-configmap/.test(await t.text(page)), 'a ConfigMap he may read has its value')

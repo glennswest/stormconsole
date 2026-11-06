@@ -105,6 +105,9 @@ class Kubelet(BaseHTTPRequestHandler):
         self.session(argv, container)
         self.close_connection = True
 
+    # rustkube's proxy sends a WebSocket's upgrade as a POST, and the real kubelet takes both (its docs/api.md).
+    do_POST = do_GET
+
     def session(self, argv, container):
         pid, master = pty.fork()
         if pid == 0:
