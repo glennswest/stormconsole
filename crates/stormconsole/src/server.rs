@@ -29,6 +29,8 @@ pub struct AppState {
     pub install: Arc<auth::InstallToken>,
     /// The apiserver connection every caller shares (#33).
     pub kube: Option<Arc<console_core::apiserver::Conn>>,
+    /// Who did what (#15).
+    pub audit: Arc<crate::audit::Audit>,
 }
 
 impl AppState {
@@ -91,6 +93,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/summary", get(summary))
         .route("/api/v1/components", get(components))
         .route("/api/v1/console/nav", get(nav))
+        .route("/api/v1/console/audit", get(audit))
         .route("/api/v1/console/creators", get(creators))
         .route("/api/v1/console/access", get(access))
         .route("/api/v1/console/guard", get(guard))
@@ -212,7 +215,31 @@ struct GuardQuery {
 }
 
 async fn nav(State(state): State<AppState>) -> Response {
-    Json(state.registry.nav()).into_response()
+    let mut sections = state.registry.nav();
+    match sections.iter().position(|s| s.label == "Observe") {
+        Some(i) => {
+            let s = sections.remove(i);
+            sections.insert(i, s.item("Audit", "#/audit"));
+        }
+        None => sections.push(console_core::nav::NavSection::new("Observe", 30).admin().item("Audit", "#/audit")),
+    }
+    Json(sections).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct AuditQuery {
+    who: Option<String>,
+    capability: Option<String>,
+    limit: Option<usize>,
+}
+
+/// `GET /api/v1/console/audit` (#15): an administrator's. It says who others are and what they did.
+async fn audit(State(state): State<AppState>, viewer: Viewer, Query(q): Query<AuditQuery>) -> Response {
+    if !viewer.has_role("admin") {
+        return (StatusCode::FORBIDDEN, Json(json!({"error": "the audit is an administrator's to read"}))).into_response();
+    }
+    let items = state.audit.read(q.who.as_deref(), q.capability.as_deref(), q.limit.unwrap_or(500).min(2000));
+    Json(json!({"items": items, "auth_required": state.auth_required})).into_response()
 }
 
 async fn creators(State(state): State<AppState>) -> Response {

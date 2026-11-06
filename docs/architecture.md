@@ -499,9 +499,16 @@ card, shelf — gets the same question from the server. `GET
 /api/v1/console/guard` answers the same thing up front, for a client that
 wants to ask first.
 
-Still open (#15): users and groups that can be managed without editing a
-file on an immutable root, certificate identity from `stormcert`, and an
-audit of the capabilities that matter — consoles, deletes, goldens.
+**Audit (#15).** One record per act, in the host and by path (`crates/stormconsole/src/audit.rs`), for the reason the
+write gate is there: a route added without a call would be a hole, and the proxies could never have been listed. It
+records consoles opened, sign-ins and everything that is not a read, allowed or refused, as who, from where, what, on
+what and how it ended, under `<data_dir>/audit.jsonl` (two files of 4 MiB at most) and as a log line. It keeps the path
+and never the query or body, since a console door's `?token=` is in the query. `#/audit` and
+`GET /api/v1/console/audit` are an administrator's. It records a console opening, not how long it stayed open.
+
+Still open (#15): users and groups managed without editing a file on an immutable root. Where they live and how they
+get an apiserver identity is the owner's decision. Certificate identity is #127, and the escape hatch for a node whose
+apiserver is down is the per-node bearer (#102).
 
 ### The network's view, inside the views people use
 

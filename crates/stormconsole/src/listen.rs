@@ -64,6 +64,8 @@ pub struct Peer {
     pub tls: bool,
     /// The certificate the client presented, if it presented one.
     pub cert: Option<CertIdentity>,
+    /// Where it came from (#15).
+    pub addr: Option<std::net::IpAddr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -463,7 +465,8 @@ pub fn listen(tcp: TcpListener, tls: Option<Arc<Tls>>) -> io::Result<Listener> {
             let _ = stream.set_nodelay(true);
             let (tx, tls) = (tx.clone(), tls.clone());
             tokio::spawn(async move {
-                if let Some(conn) = open(stream, tls).await {
+                if let Some(mut conn) = open(stream, tls).await {
+                    conn.peer.addr = Some(addr.ip());
                     let _ = tx.send((conn, addr)).await;
                 }
             });
@@ -481,7 +484,7 @@ async fn open(stream: TcpStream, tls: Option<Arc<Tls>>) -> Option<Conn> {
     let mut first = [0u8; 1];
     let n = tokio::time::timeout(HANDSHAKE, stream.peek(&mut first)).await.ok()?.ok()?;
     if n == 0 || first[0] != 0x16 {
-        return Some(Conn { io: Io::Plain(stream), peer: Peer { tls_on: true, tls: false, cert: None } });
+        return Some(Conn { io: Io::Plain(stream), peer: Peer { tls_on: true, tls: false, cert: None, addr: None } });
     }
     let (server, clients) = tls.current();
     let server = server?;
@@ -492,7 +495,7 @@ async fn open(stream: TcpStream, tls: Option<Arc<Tls>>) -> Option<Conn> {
         .peer_certificates()
         .filter(|c| !c.is_empty())
         .map(|chain| tls.identify(chain, clients.as_ref()));
-    Some(Conn { io: Io::Tls(Box::new(s)), peer: Peer { tls_on: true, tls: true, cert } })
+    Some(Conn { io: Io::Tls(Box::new(s)), peer: Peer { tls_on: true, tls: true, cert, addr: None } })
 }
 
 #[cfg(test)]
@@ -536,7 +539,7 @@ mod tests {
     #[test]
     fn only_a_verified_mapped_certificate_has_a_role() {
         let ok = CertIdentity { cn: "stormcentral".into(), orgs: vec![], refused: None, role: Some("viewer".into()) };
-        let peer = Peer { tls_on: true, tls: true, cert: Some(ok.clone()) };
+        let peer = Peer { tls_on: true, tls: true, cert: Some(ok.clone()), addr: None };
         assert_eq!(peer.cert_role(), Some(("stormcentral", "viewer")));
         let refused = CertIdentity { refused: Some("UnknownIssuer".into()), ..ok.clone() };
         assert_eq!(Peer { cert: Some(refused), ..peer.clone() }.cert_role(), None);

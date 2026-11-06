@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — Who did what: an audit (#15)
+- **feat:** every console opened, sign-in and change, allowed or refused, is recorded with who, from where and how it
+  ended, in `<data_dir>/audit.jsonl` and the log. `#/audit` (Observe → Audit) and `GET /api/v1/console/audit` are an
+  administrator's. The query and body are never kept.
+
 ### 2026-11-05 — Each stormd and stormdrive over TLS (#49)
 - **feat:** `[node_tls] ca_file/cert_file/key_file/require`: the stormd feed, its actions, the node page, API health,
   stormdrive and stormstorage ask each port over HTTPS first and present the console's client pair. A port still

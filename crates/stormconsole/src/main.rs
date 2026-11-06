@@ -2,6 +2,7 @@
 //! hands them to the console-core registry, and serves the UI and API on
 //! one port.
 
+mod audit;
 mod auth;
 mod config;
 mod listen;
@@ -336,6 +337,7 @@ async fn main() {
         registry,
         config: config.clone(),
         kube: kube.clone(),
+        audit: Arc::new(audit::Audit::new(config.data_dir())),
     };
 
     let bind = config.bind();

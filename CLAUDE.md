@@ -1952,6 +1952,13 @@ are the source; the catalog adds names. No sealed-at in either.
   release disks; `build-*` is an assumption. Registry over TLS is still #104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
+### Login, users and roles: what is left of #15
+Steps 1 and 2 are done (7408a47). Since then: the per-node bearer as the escape hatch (#102), certificate identity (#127),
+install-token sign-in (#66). Left: the audit (no decision needed) and users without a file (the owner's decision).
+- [x] `crates/stormconsole/src/audit.rs`, in the host; `#/audit`
+- [ ] `deploy/verify-audit.sh`; real serial door through `verify-machines.sh`; dist; golden
+- [ ] The decision on users, asked on #15
+
 ### Each stormd and stormdrive over TLS (#49)
 stormd#32 and stormdrive#19 landed: HTTPS, and a node-CA client certificate or a bearer. stormcos mounts the node CA and
 `stormconsole-client` already (#294). stormcos#371 moves stormds one at a time, so a port may be either.

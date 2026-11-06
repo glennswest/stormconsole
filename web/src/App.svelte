@@ -26,6 +26,7 @@
   import ClusterView from './lib/views/ClusterView.svelte'
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import HealthView from './lib/views/HealthView.svelte'
+  import AuditView from './lib/views/AuditView.svelte'
   import HistoryView from './lib/views/HistoryView.svelte'
   import NetworkView from './lib/views/NetworkView.svelte'
   import UpdateView from './lib/views/UpdateView.svelte'
@@ -59,6 +60,7 @@
     cluster: ClusterView,
     flowsdn: FlowsdnView,
     health: HealthView,
+    audit: AuditView,
     history: HistoryView,
     networkpolicies: NetworkView,
     networkendpoints: NetworkView,

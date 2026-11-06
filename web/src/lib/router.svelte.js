@@ -4,6 +4,7 @@
 const routes = [
   { pattern: '#/', name: 'overview' },
   { pattern: '#/logs', name: 'logs' },
+  { pattern: '#/audit', name: 'audit' },
   // component ids carry ':' and '/', so the grid root travels in the query:
   // #/grid?id=<component>&rel=<relation>
   { pattern: '#/grid', name: 'grid' },

@@ -120,6 +120,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-etcd-tls.sh` | the datastore over mutual TLS (#47) — fastetcd built from its tag with `--client-cert-auth`, an openssl node CA and pairs (ECDSA and RSA, PKCS#8, as stormcert writes them); stormcos's shape healthy with members and the keyspace, each misconfiguration an error with its cause, a pair minted late and renewed picked up without a restart, the two config errors |
 | `verify-auth.sh` | what is open, the bearer, token and reader sessions |
 | `verify-storage-guard.sh` | destructive storage (#82) — real fastetcd + rustkube with the release's `storage-admin`/`storage-viewer` roles, stand-in stormdrives (here and storm-b) and engine recording each write's bearer; who is shown and refused what, the typed serial, whose bearer arrives, the audit line, a binding removed; Format in Chromium as a storage-admin and a storage-viewer |
+| `verify-audit.sh` | who did what (#15) — a real apiserver and console with users of each role: acts allowed and refused, sign-ins, nothing secret kept, an administrator's to read, kept across a restart; Chromium |
 | `verify-stormd-tls.sh` | each stormd and stormdrive over TLS (#49) — real stormds, with a node CA and a stranger's, and plain, and a real stormdrive: the feed, a process action, the node page and API health through a client pair; an untrusted one never read |
 | `verify-rbac.sh` | the console's apiserver role (#78) — a real apiserver with anonymous off and every optional CRD: a console with only `deploy/rbac/stormconsole.yaml`, with no role as the control, each listed write allowed and each withheld one refused |
 | `verify-runs-on.sh` | what a container or VM disk runs on and was cloned from (#75) — a real engine (its images, clones and seal record) and apiserver, pods with the annotations a kubelet writes, stand-ins for stormcentral and for an engine slow with a digest; Chromium |
@@ -417,8 +418,7 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   (#42, a decision).
 - **Registry reads carry no credential** — a registry with an auth file and
   no anonymous pull answers the console 401 (#35).
-- **Users and groups without editing a file, certificate identity, audit**
-  — #15 steps 3 and 4.
+- **Users and groups without editing a file** — #15 step 3, the owner's decision.
 - **Remote plugins** (a component contributing its own UI) — designed, not
   built.
 

@@ -345,7 +345,26 @@ fn bearer(req: &Request) -> Option<String> {
 
 /// Everything except health, the version, the auth endpoints and static
 /// assets requires a session or bearer once auth is configured.
-pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
+/// The gate, and a record of every act that came to it, refused or not (#15).
+pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    let upgrade = req.headers().contains_key(header::UPGRADE);
+    let act = crate::audit::act(req.method(), req.uri().path(), upgrade);
+    let Some(act) = act else { return gate(state, req, next).await };
+    let who = viewer(&state, &req);
+    let from = peer_addr(&req);
+    let audit = state.audit.clone();
+    let answer = gate(state, req, next).await;
+    audit.record(&who, from, &act, answer.status().as_u16());
+    answer
+}
+
+fn peer_addr(req: &Request) -> Option<std::net::IpAddr> {
+    req.extensions()
+        .get::<axum::extract::ConnectInfo<crate::listen::Peer>>()
+        .and_then(|axum::extract::ConnectInfo(p)| p.addr)
+}
+
+async fn gate(state: AppState, mut req: Request, next: Next) -> Response {
     // Every request carries who made it, whether or not anything checks:
     // a plugin route reads it to refuse what this identity may not see,
     // and to act as them upstream rather than as the console.
@@ -553,13 +572,22 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 /// Who a session or bearer on the console's own `auth_token` is.
 pub const TOKEN_USER: &str = "token";
 
-pub async fn login(State(state): State<AppState>, Json(body): Json<LoginBody>) -> Response {
+pub async fn login(
+    State(state): State<AppState>,
+    connected: Option<axum::extract::ConnectInfo<crate::listen::Peer>>,
+    Json(body): Json<LoginBody>,
+) -> Response {
+    let from = connected.and_then(|axum::extract::ConnectInfo(p)| p.addr);
     let as_user = state.config.api.users.iter().any(|u| u.name == body.username && verify(u, &body.password));
     // The install token (#66) before the console's own: it is somebody's —
     // the installer's — and the session acts upstream as it.
     let install = (!as_user).then(|| state.install.user_for(&body.password)).flatten();
     let as_token = !as_user && install.is_none() && state.token.matches(&body.password);
     if !as_user && install.is_none() && !as_token {
+        // The name it was given, never the password; which may be a token someone mistyped into
+        // the name field, so a name that long is not kept.
+        let tried = if body.username.len() > 64 { "(too long to be a name)" } else { body.username.as_str() };
+        state.audit.sign_in(tried, from, false);
         return (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid credentials"})))
             .into_response();
     }
@@ -574,6 +602,7 @@ pub async fn login(State(state): State<AppState>, Json(body): Json<LoginBody>) -
         None => (TOKEN_USER.into(), None),
     };
     let user = user.as_str();
+    state.audit.sign_in(user, from, true);
     let id = state.sessions.create(user, kept);
     let cookie = format!(
         "{SESSION_COOKIE}={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
