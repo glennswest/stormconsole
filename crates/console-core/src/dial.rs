@@ -52,7 +52,6 @@ fn classify(text: &str) -> Failed {
 }
 
 /// Every cause in an error's chain, which is where a TLS failure's reason is.
-/// An error and its causes, for a card: one level hides what TLS said.
 pub fn chain(e: &reqwest::Error) -> String {
     let mut out = e.to_string();
     let mut at = e.source();

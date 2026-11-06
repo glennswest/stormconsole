@@ -1949,7 +1949,7 @@ are the source; the catalog adds names. No sealed-at in either.
 - Not seen: forge1 itself (not routable from here), so the cause of its 401 is not
   confirmed; a digest or a release on the page with real data (the rig's images have
   none, so only the model's test covers them); holder names on real pods, VMs and
-  release disks; `build-*` is an assumption. Registry over TLS is still #104
+  release disks; `build-*` is an assumption. Registry over TLS: done since, #35/#104
 - No sealed-at in the engine or the catalog, so the page does not show it
 
 ### Import a VM disk by URL (#44)
@@ -2149,16 +2149,27 @@ any word. A cdrom needs `sata | scsi` (`validate.rs`); the console writes no cdr
   both forms offer the four, a disk added on nvme, Settings says usb is refused
 - Not seen: a machine booting on nvme (no hypervisor on a build VM). A machine already holding usb is not repaired
 
-### The registry with a credential, over TLS (#35, #104)
+### The registry with a credential, over TLS (#35, #104) ✅ 2026-11-05
 Read from stormblock-registry da53e0e (`auth.rs`, docs/auth.md): with an auth file only `/healthz`, `/readyz` and
 `/api/v1/discovery` are open. It takes the engine token as admin, or a robot's `Bearer <token>`; `/v1` reads need `pull` on `*`,
 every `/v1` write `admin`. It refuses a credential over plain HTTP from off the host. stormcos#355 turns TLS and auth on after this.
-- [ ] `console_core::dial::Reach`: an upstream, how to dial it (`[node_tls]`, so a port may be either while a node moves) and its
+- [x] `console_core::dial::Reach`: an upstream, how to dial it (`[node_tls]`, so a port may be either while a node moves) and its
       bearer, never sent over plain HTTP to another machine
-- [ ] `[sbregistry] token_file`; unset, the engine's token for a registry on this machine
-- [ ] Every registry call through it: the polls, holdings, origin, media, the proxy, the VM form's imported disks
-- [ ] The card says a 401 or 403 and what to set
-- [ ] `deploy/verify-registry-auth.sh`: a real registry with auth on, plain and TLS; docs, changelog, dist unchanged; close; golden
+- [x] `[sbregistry] token_file`; unset, the engine's token for a registry on this machine
+- [x] Every registry call through it: the polls, holdings, origin, media, the proxy, the VM form's imported disks
+- [x] The card says a 401 or 403 and what to set
+- [x] `deploy/verify-registry-auth.sh`: a real registry with auth on, plain and TLS; docs, changelog; close; golden
+- Verified with `sc-build deploy/verify-registry-auth.sh` (0 failed): stormblock and the registry from main (da53e0e), auth on, no
+  anonymous pull. No credential: the 401 on the card, the Images page, Made from and an import, each saying what to set. A token
+  file appearing, a rotated robot refused then replaced, a 403 from a robot with no grant on `*`, all with no restart. The engine's
+  token: a real import to sealed, on the catalog, Made from, the VM form's root-disk list. Plain HTTP to this machine's own
+  address: credential held back and said, the registry's log shows none sent. Then the registry on TLS from an openssl node CA: read
+  over HTTPS with `[node_tls]`, also by address; a stranger CA not read; no `[node_tls]` an error naming it. No token in the log or feed
+- Also `verify-registry.sh`, `verify-disk-import.sh`, default `sc-build`
+- Not seen: a real node, its stormcert SANs or stormcos#355's unit. The console's client pair goes over TLS but the registry's
+  certificate login (#117) is not checked here: the bearer is what is used. The fleet part of #104 needed nothing: the node page does not
+  probe :5100 (#21). `[node_tls] require` also ends plain reads of the registry
+- The token's grants bound the proxy: with the engine's token, an operator has the registry's admin through it
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
