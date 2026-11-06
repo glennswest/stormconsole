@@ -201,7 +201,7 @@ async fn main() {
             &config.stormdrive_url(),
             config.stormdrive.nodes.clone(),
             log_hosts.clone(),
-        ).with_dial(node_dial.clone())));;
+        ).with_dial(node_dial.clone())));
     }
     if let Some(p) = stormstorage {
         plugins.push(p);
