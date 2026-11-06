@@ -49,6 +49,12 @@ pub struct Viewer {
     /// can log into without pasting a key — or, worse, without the habit
     /// that grows in its place, which is a password in the cloud-init seed.
     pub ssh_keys: Vec<String>,
+    /// The console's one switch for "nobody signs in here" (owner, #165): it
+    /// runs with no authentication, so whoever reaches it is root, holding every
+    /// role, and nothing asks about a kubernetes identity. It goes upstream on
+    /// the console's own credential. Set by the host and nowhere else; once a
+    /// console has sign-ins, nobody is this.
+    pub root: bool,
 }
 
 /// A plugin's routes get the viewer the host put on the request, so a
@@ -81,6 +87,12 @@ impl Viewer {
     /// them eventually not doing so.
     pub fn has_role(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role || r == "admin")
+    }
+
+    /// Is there someone a request may go upstream as: their own kubernetes
+    /// identity, or root?
+    pub fn may_act_upstream(&self) -> bool {
+        self.root || self.token.is_some()
     }
 
     /// May this viewer change things, as opposed to look at them?

@@ -121,7 +121,7 @@ async fn set_unschedulable(inner: &Inner, viewer: &Viewer, name: &str, on: bool)
 }
 
 async fn cordoning(inner: Arc<Inner>, viewer: Viewer, name: String, on: bool) -> Response {
-    if let Some(why) = node_refusal(viewer.has_role("admin"), viewer.token.is_some()) {
+    if let Some(why) = node_refusal(viewer.has_role("admin"), viewer.may_act_upstream()) {
         return refuse(StatusCode::FORBIDDEN, why);
     }
     match set_unschedulable(&inner, &viewer, &name, on).await {
@@ -244,7 +244,7 @@ pub async fn drain_plan(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(na
         pods.retain(|p| !p.pointer("/metadata/namespace").and_then(Value::as_str).is_some_and(|ns| hidden.contains(ns)));
     }
     let nodes = inner.store.kind("node").await;
-    let why = node_refusal(viewer.has_role("admin"), viewer.token.is_some());
+    let why = node_refusal(viewer.has_role("admin"), viewer.may_act_upstream());
     let mut out = plan(&pods);
     out["node"] = name.clone().into();
     out["cordoned"] = (node.pointer("/spec/unschedulable").and_then(Value::as_bool) == Some(true)).into();
@@ -258,7 +258,7 @@ pub async fn drain_plan(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(na
 /// `POST /nodes/{name}/drain {"unmanaged": false}`: cordon, then evict. What could not be evicted is listed, not
 /// an error: draining again is how it is retried.
 pub async fn drain(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>, body: Bytes) -> Response {
-    if let Some(why) = node_refusal(viewer.has_role("admin"), viewer.token.is_some()) {
+    if let Some(why) = node_refusal(viewer.has_role("admin"), viewer.may_act_upstream()) {
         return refuse(StatusCode::FORBIDDEN, why);
     }
     let Some(client) = &inner.client else { return refuse(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };

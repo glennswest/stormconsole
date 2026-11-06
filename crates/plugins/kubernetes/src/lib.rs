@@ -400,7 +400,7 @@ impl ConsolePlugin for KubernetesPlugin {
     /// refused. A node's verbs are refused here too (#36).
     async fn offers(&self, viewer: &Viewer) -> Offers {
         let rights = self.inner.access.rights(viewer).await;
-        let nodes = dayto::node_refusal(viewer.has_role("admin"), viewer.token.is_some()).is_none();
+        let nodes = dayto::node_refusal(viewer.has_role("admin"), viewer.may_act_upstream()).is_none();
         Offers::only(move |a| {
             let Some(need) = Need::of_action(a) else { return true };
             (nodes || need.resource != "nodes") && rights.as_ref().is_none_or(|r| r.may(&need))

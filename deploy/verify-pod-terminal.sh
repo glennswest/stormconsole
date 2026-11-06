@@ -134,6 +134,22 @@ holds "$(cat "$W/kubelet.log")" "ended app 3" "the kubelet saw the exit"
 holds "$(cat "$W/kubelet.log")" "resized" "and the resizes"
 holds "$(cat "$W/kubelet.log")" "stopped: the client went sidecar" "Disconnect stops the exec"
 
+say "no sign-in: the one switch (#165)"
+P2=19096; C2=http://127.0.0.1:$P2
+mkdir -p "$W/open"
+sed -e '/^\[\[api.users\]\]/,/^\(kube_token\|roles\).*/d' -e '/^kube_token/d' -e "s|^listen_addr.*|listen_addr = \"127.0.0.1:$P2\"|" -e "s|^data_dir.*|data_dir = \"$W/open\"|" "$W/c.toml" > "$W/open.toml"
+grep -q 'api.users' "$W/open.toml" && { echo "  FAIL the open console still has users"; FAILED=$((FAILED+1)); }
+"$BIN" --config "$W/open.toml" > "$W/open.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null "$C2/healthz" && break; sleep 0.5; done
+for _ in $(seq 30); do curl -s -o /dev/null -w '%{http_code}' "$C2/api/plugins/k8s/pods/shop/web" | grep -q 200 && break; sleep 1; done
+check "$(curl -s "$C2/api/plugins/k8s/pods/shop/web" | j 'd["terminal"]["refused"]')" None "the page is told nothing against it"
+BEFORE=$(grep -c started "$W/kubelet.log" || true)
+BR=0; env PHASE=nosignin "$HERE/deploy/browser/run.sh" "$W" pod-terminal.cjs "$C2" || BR=1
+check "$BR" 0 "the walk with no sign-in: a real shell through the real pods/exec"
+[ "$(grep -c started "$W/kubelet.log" || true)" -gt "$BEFORE" ] && echo "  ok   and it reached the kubelet" || { echo "  FAIL it did not reach the kubelet"; FAILED=$((FAILED+1)); }
+check "$(curl -s "$C2/api/plugins/k8s/pods/shop/web/env?container=app" | j "[v['problem'] for v in d['vars'] if v['name']=='PASSWORD']")" "[None]" "a Secret reference is read, as root"
+check "$(curl -s "$C2/api/plugins/k8s/pods/shop/web/env?container=app" | grep -c -E 'hunter2|aHVudGVyMg' || true)" 0 "and its value is still nowhere"
+
 say "the record"
 A=$(curl -s -b "$W/root.jar" "$C/api/v1/console/audit?capability=console")
 echo "$A" | j '[(r["who"],r["object"],r.get("result")) for r in (d["items"] if isinstance(d,dict) else d)]' | cut -c1-500 | sed 's/^/  /'

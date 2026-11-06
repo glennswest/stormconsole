@@ -3,8 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
-### 2026-11-06 — Starting a format with no sign-in (#165)
-- **BREAKING:** an administrator with no kubernetes identity (a console with no sign-in, or the node's bearer) is root and a storage admin: destructive storage actions are offered and go through on the console's own credential. Starting a format from the Format page has no storage-admin check for anyone. Owner's decision, for now. The typed confirmation stays.
+### 2026-11-06 — No sign-in is root (#165)
+- **BREAKING:** a console with no authentication acts as root, with every role, console-wide (owner's decision, until real login: #266, stormcos#802). The Terminal, deletes, YAML, projects, a node's cordon, drain and rack, drive actions including format, VM actions and the storage guard no longer refuse for want of a kubernetes identity or storage-admin, and are all offered. The typed confirmation stays. Requests go on the console's own credential, so the apiserver or a component's own gate can still refuse. A console with sign-ins keeps its rules.
 
 ### 2026-11-06 — `/metrics` (#41)
 - **feat:** `/metrics` serves Prometheus series: each plugin's health and count of components, how long the feed takes to build, websocket clients, the log ring's entries, occurrences, duplicates and hosts.

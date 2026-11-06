@@ -16,7 +16,9 @@ Every apiserver call goes out on one of two credentials:
   does not apply.
 - **The console's own token, otherwise.** That covers everything the console does by itself, and every request
   from someone with no kubernetes identity: a node with auth off, the node's bearer, or a client certificate
-  (`client.rs` `auth`). **This role is all such a person can do.**
+  (`client.rs` `auth`). **This role is all such a person can do.** With auth off they are root and offered everything
+  (#165), so the Terminal, a project delete or a node's cordon are refused by the apiserver unless this credential
+  holds them.
 
 ## Reads
 

@@ -56,11 +56,6 @@ pub const CONFIRM_HEADER: &str = "x-storm-confirm";
 #[derive(Clone, Debug)]
 pub struct ActAs(pub Option<String>);
 
-/// The Format page's start (#165). Owner, 2026-11-06: "for now turn off storage
-/// admin requirement". The apiserver is not asked about it; the typed phrase
-/// and the write gate stay, and stormdrive's own gate still decides.
-pub const FORMAT_START: &str = "/api/plugins/drive/format";
-
 /// The bearer a proxy sends upstream for this request: the viewer's, when
 /// the request is destructive storage and the host let it through; refused
 /// (`Err`) when it is destructive storage and the host did not; else the
@@ -281,7 +276,7 @@ pub struct Decision {
 }
 
 impl Decision {
-    pub fn yes() -> Self {
+    fn yes() -> Self {
         Self { allowed: true, reason: String::new() }
     }
     fn no(reason: impl Into<String>) -> Self {
@@ -312,13 +307,11 @@ impl Reviewer {
 
     /// May this viewer do `verb` on `resource` in [`GROUP`]?
     pub async fn review(&self, viewer: &Viewer, resource: &str, verb: &str) -> Decision {
+        // No sign-in: root, and root is a storage admin (owner, #165).
+        if viewer.root {
+            return Decision::yes();
+        }
         let Some(token) = viewer.token.as_deref() else {
-            // An administrator with no kubernetes identity is root, and root is
-            // a storage admin (owner, #165): a console with no sign-in, or the
-            // node's own bearer. There is nobody for the apiserver to ask about.
-            if viewer.has_role("admin") {
-                return Decision::yes();
-            }
             return Decision::no(match &viewer.user {
                 Some(u) => format!(
                     "{u} has no kubernetes identity in the console's config, so the apiserver cannot be asked whether they are a storage-admin"
@@ -510,12 +503,12 @@ mod tests {
             crate::apiserver::Bearer::None,
             crate::apiserver::Trust::Unverified,
         )));
-        // Root (#165): no sign-in, or the node's bearer. Nothing is asked.
-        assert!(r.review(&Viewer { roles: vec!["admin".into()], ..Viewer::anonymous() }, "volumes", "delete").await.allowed);
-        assert!(r.review(&Viewer { user: Some("token".into()), roles: vec!["admin".into()], ..Default::default() }, "volumes", "delete").await.allowed);
-        let d = r.review(&Viewer::anonymous(), "volumes", "delete").await;
+        // No sign-in is the one switch (#165): nothing is asked.
+        assert!(r.review(&Viewer { root: true, ..Viewer::anonymous() }, "volumes", "delete").await.allowed);
+        // A console with sign-ins keeps its rules, for an administrator too.
+        let d = r.review(&Viewer { roles: vec!["admin".into()], ..Viewer::anonymous() }, "volumes", "delete").await;
         assert!(!d.allowed && d.reason.contains("nobody is signed in"));
-        let d = r.review(&Viewer { user: Some("op".into()), roles: vec!["operator".into()], ..Default::default() }, "volumes", "delete").await;
+        let d = r.review(&Viewer { user: Some("token".into()), roles: vec!["admin".into()], ..Default::default() }, "volumes", "delete").await;
         assert!(!d.allowed && d.reason.contains("no kubernetes identity"));
         let r = Reviewer::new(None);
         let d = r.review(&Viewer { user: Some("a".into()), token: Some("t".into()), ..Default::default() }, "volumes", "delete").await;

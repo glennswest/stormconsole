@@ -139,10 +139,8 @@ check "$(fmt 'r["d2"]["planned"]["protection"], r["d2"]["bay"], r["d2"]["whyNot"
 check "$(fmt 'r["d5"]["whyNot"]')" "in the fleet — leave (drain) first" "a fleet drive: stormdrive's words"
 
 say "who may start one"
-# Owner, #165: no storage-admin check on starting one. The phrase and the write gate stay.
-wrong='{"drives":[{"node":"storm-b","id":"b1","block_size":4096,"protection":"type1"}],"confirm":"nope"}'
-check "$(post bob format "$wrong")" "428" "storage-viewer: past the console's check, stopped by the phrase"
-check "$(post dana format "$wrong")" "428" "console admin with no identity: likewise"
+check "$(post bob format "$one")" "403" "storage-viewer: 403"
+check "$(post dana format "$one")" "403" "signed in, admin, no identity: 403 (no sign-in is the one switch, #165)"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d "$one" "$C/api/plugins/drive/format" )" "401" "nobody signed in: 401"
 check "$(post alice '' "$one")" "428" "alice with no confirmation: 428"
 check "$(post alice format '{"drives":[{"node":"storm-b","id":"b1","block_size":4096,"protection":"type1"}],"confirm":"nope"}')" "428" "the wrong phrase: 428"
@@ -156,10 +154,6 @@ check "$(post alice format "$body")" "207" "a fleet drive: stormdrive refuses, a
 check "$(python3 -c 'import json; r=json.load(open("'"$W/out"'"))["results"][0]; print(r["ok"], r["status"], "in the fleet" in r["error"])')" "False 409 True" "in its words"
 bearer() { curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["bearer"])'; }
 check "$(bearer)" "$ALICE" "what reached stormdrive carried alice's bearer"
-check "$(post bob format "$body")" "207" "bob's goes to stormdrive, whose gate is what decides"
-check "$(bearer)" "$BOB" "carrying his bearer"
-check "$(post dana format "$body")" "207" "dana's too"
-check "$(bearer)" "None" "root has no bearer to send"
 
 say "the page: choosing, confirming, starting (#58)"
 RC=0

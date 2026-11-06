@@ -24,13 +24,14 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
   }
 
   if (process.env.PHASE === 'start') {
-    // No storage-admin check on starting a format (#165): nobody is refused for that.
-    for (const who of ['bob', 'dana']) {
-      const p = await t.page(who)
-      t.check(await t.open(p, '#/drives/format', /NET002/), `${who} sees the drives`)
-      t.check(await t.until(async () => (await p.locator('table.drives input[type=checkbox]').count()) > 0), 'and may choose them')
-      t.check((await p.locator('[data-testid=refused]').count()) === 0, 'with no refusal')
-    }
+    // bob reads and is offered nothing; dana is a console admin with no identity.
+    const bob = await t.page('bob')
+    t.check(await t.open(bob, '#/drives/format', /NET002/), 'bob sees the drives')
+    t.check((await bob.locator('button.danger').count()) === 0 && (await bob.locator('table.drives input[type=checkbox]').count()) === 0, 'and has no way to start a format')
+    t.check(/not start one/.test(await bob.locator('[data-testid=refused]').innerText()), 'and is told', await bob.locator('[data-testid=refused]').innerText())
+    const dana = await t.page('dana')
+    await t.open(dana, '#/drives/format', /NET002/)
+    t.check(/no kubernetes identity/.test(await dana.locator('[data-testid=refused]').innerText()), 'a console admin with no identity is told why', await dana.locator('[data-testid=refused]').innerText())
 
     const page = await t.page('alice')
     t.check(await t.open(page, '#/drives/format', /NET002/), 'alice opens the page')

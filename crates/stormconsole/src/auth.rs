@@ -260,7 +260,9 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
         // silent break for every deployment that has never configured a
         // user. The refusal has to come from having decided to enforce
         // something, not from having decided nothing.
-        return Viewer { roles: vec!["admin".into()], ..Viewer::anonymous() };
+        //
+        // It is also the one switch (#165): this viewer is root.
+        return Viewer { roles: vec!["admin".into()], root: true, ..Viewer::anonymous() };
     }
     if let Some(Signed { user, install }) = signed(state, req) {
         if let Some(t) = install {
@@ -293,6 +295,7 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
                 token: None,
                 roles: vec!["admin".into()],
                 ssh_keys: vec![],
+                root: false,
             };
         }
         if let Some(user) = state.install.user_for(&given) {
@@ -423,10 +426,10 @@ async fn gate(state: AppState, mut req: Request, next: Next) -> Response {
 ///
 /// 1. **The apiserver's yes, as this person.** A SelfSubjectAccessReview
 ///    for `storage.storm.io`, the resource and the verb, with the viewer's
-///    own kubernetes bearer. An administrator with no kubernetes identity is
-///    root, a storage admin by default (owner, #165): authentication off, or
-///    the node's bearer. Starting a format from its page is not reviewed at
-///    all, for now.
+///    own kubernetes bearer. No console role substitutes for it, including
+///    `admin` and the console's own token. The one exception is a console with
+///    no sign-ins at all, where whoever reaches it is root, a storage admin
+///    (owner, #165).
 /// 2. **The object's name, typed.** `X-Storm-Confirm` must be the drive's
 ///    serial (or the object's name), so a stray click, a script replaying a
 ///    URL or a generic button cannot do it. 428 names what to type.

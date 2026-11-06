@@ -231,12 +231,13 @@ pub async fn env(
         let read = read_object(&inner, &ns, "configmaps", &n, viewer.token.as_deref()).await;
         maps.insert(n, read);
     }
-    // Asked only as the person: with no identity the console's own credential would read a Secret.
+    // Asked only as the person, or root: with no identity the console's own credential would read a Secret.
     let mut secrets = BTreeMap::new();
     for n in secret_names {
-        let read = match viewer.token.as_deref() {
-            Some(t) => read_object(&inner, &ns, "secrets", &n, Some(t)).await,
-            None => Err("not asked: this sign-in has no kubernetes identity".to_string()),
+        let read = if viewer.may_act_upstream() {
+            read_object(&inner, &ns, "secrets", &n, viewer.token.as_deref()).await
+        } else {
+            Err("not asked: this sign-in has no kubernetes identity".to_string())
         };
         secrets.insert(n, read);
     }

@@ -3,7 +3,7 @@ const { walk } = require('./lib.cjs')
 const PHASE = process.env.PHASE
 
 walk(`pod terminal (${PHASE})`, async (t) => {
-  const page = await t.page(PHASE)
+  const page = await t.page(PHASE === 'nosignin' ? '' : PHASE)
   const tab = (n) => page.locator('nav.tabs button', { hasText: n }).click()
   t.check(await t.open(page, '#/pod/shop/web', /Overview/), 'the pod page')
   await tab('Terminal')
@@ -16,6 +16,15 @@ walk(`pod terminal (${PHASE})`, async (t) => {
     await page.keyboard.press('Enter')
   }
 
+  if (PHASE === 'nosignin') {
+    // No sign-in: root, on the console's credential (#165).
+    await connect.click()
+    t.check(await seen(/\$ /), 'no sign-in: a prompt', await screen())
+    await type('echo root-$((40+2)) in $CONTAINER')
+    t.check(await seen(/root-42 in app/), 'a real shell', await screen())
+    await page.getByRole('button', { name: 'Disconnect' }).click()
+    return
+  }
   if (PHASE === 'carol') {
     t.check(await t.until(async () => /needs the operator role/.test(await t.text(page))), 'a reader is told why', (await t.text(page)).slice(0, 300))
     t.check((await connect.count()) === 0, 'and has nothing to press')

@@ -1816,11 +1816,10 @@ viewer), not the console's credential the issue's first text named.
   and the default `sc-build`. The walk found two page bugs (guard's flat answer,
   the phrase's layout)
 - Not done on a real drive or real stormdrive: no drive to format on a build VM
-- **Owner (2026-11-06):** no storage-admin check on starting a format; with no sign-in the console acts as root, a storage admin. So `Reviewer::review` says yes to an admin with no kubernetes identity, and `storage::FORMAT_START` is not reviewed
-- [x] sc-build; image; shipped
-- Verified with `sc-build deploy/verify-drive-format.sh` (0 failed): a console with authentication off, no sign-in, Chromium: the page opens with no refusal, a drive chosen, the serial typed, one request reaching the stand-in stormdrive with no bearer, the run shown. bob (storage-viewer) and dana (no identity) get past the console and bob's bearer goes on. Also `verify-storage-guard.sh`, `verify-drive-offer.sh`, default `sc-build`
-- **Not working on a real node yet:** a real stormdrive from main with its default gate answers that request 401 "a storage-admin bearer is required"; with `[api] admin_gate = "audit"` it lets it through. A node's stormdrive enforces, and the console has no credential it would take. The master has the choice
-- Not seen: a real drive, or forge1
+- **Owner (2026-11-06):** no sign-in = root with every role, console-wide; "one switch"; once someone signs in, today's rules apply. So `Viewer::root`, set only by `auth::viewer` when the console has no authentication. Not the node's bearer, and no format exemption for signed-in users: both were in the first cut, and "one switch" replaced them
+- [x] Reviewer, Terminal, node verbs, rack, Secret keys in Environment, `rights()` by the switch; `deploy/verify-no-signin.sh`
+- [ ] sc-build; image; shipped
+- **On a real node:** root goes on the console's credential, so what it can do is what that credential and each component's gate allow. A real stormdrive with its default gate answers a credential-less format 401; with `[api] admin_gate = "audit"` it passes. With the master
 
 ### Enclosures hold shelves; a backplane is never "no shelf" (#166) ✅ 2026-11-05
 Owner (2026-11-05): "You can have shelfs in enclosures is fine". Enclosure: the

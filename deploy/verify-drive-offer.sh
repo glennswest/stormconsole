@@ -178,7 +178,7 @@ say "the console's gate"
 HDR=(-H "X-Storm-Confirm: $WORD")
 check "$(code bob "${HDR[@]}" -d "{\"confirm\":\"$WORD\"}" "$FMT")" 403 "bob, storage-viewer: 403, the word does not help"
 check "$(code carol "${HDR[@]}" -d "{\"confirm\":\"$WORD\"}" "$FMT")" 403 "carol, a console reader who holds storage-admin: 403"
-check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer console-own-153' -H 'content-type: application/json' -d "{\"confirm\":\"$WORD\"}" "$FMT")" 428 "the console's own token is root (#165), and still types the word"
+check "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer console-own-153' -H 'content-type: application/json' "${HDR[@]}" -d "{\"confirm\":\"$WORD\"}" "$FMT")" 403 "the console's own token, no kubernetes identity: 403"
 check "$(code alice -d "{\"confirm\":\"$WORD\"}" "$FMT")" 428 "alice with no word in the header: 428"
 check "$(code alice -H 'X-Storm-Confirm: sda' -d "{\"confirm\":\"$WORD\"}" "$FMT")" 428 "the wrong word: 428"
 check "$(as alice -X POST -H 'content-type: application/json' -d '{}' "$FMT" | j 'd["guard"]["confirm"]')" "$WORD" "it names the word, the engine's too"

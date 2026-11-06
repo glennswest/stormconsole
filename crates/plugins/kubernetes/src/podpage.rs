@@ -90,7 +90,7 @@ pub async fn detail(
         }
     }
     d["keptRuns"] = json!(crate::logruns::KEEP);
-    d["terminal"] = json!({"refused": crate::exec::refusal(viewer.may_write(), viewer.token.is_some())});
+    d["terminal"] = json!({"refused": crate::exec::refusal(viewer.may_write(), viewer.may_act_upstream())});
 
     // What the probes were last seen doing, from this pod's events (#124).
     let events = pod_events(&inner, &ns, &name).await;

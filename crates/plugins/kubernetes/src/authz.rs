@@ -535,7 +535,12 @@ impl NamespaceAccess {
     /// What this viewer's requests may do at the apiserver, or `None` when
     /// that cannot be asked. Someone with no kubernetes identity of their own
     /// acts on the console's credential, so that is whose rights these are.
+    /// Root is offered everything (#165): if the credential falls short, the
+    /// apiserver says so on the request.
     pub async fn rights(&self, viewer: &Viewer) -> Option<Arc<Rights>> {
+        if viewer.root {
+            return None;
+        }
         let conn = self.conn.as_ref()?;
         let token = viewer.token.clone().or_else(|| conn.token())?;
         let known = self.store.namespaces().await;

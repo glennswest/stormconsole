@@ -125,7 +125,7 @@ pub async fn exec(
         Ok(p) => p,
         Err(r) => return r,
     };
-    if let Some(why) = refusal(viewer.may_write(), viewer.token.is_some()) {
+    if let Some(why) = refusal(viewer.may_write(), viewer.may_act_upstream()) {
         return (StatusCode::FORBIDDEN, Json(json!({"error": why}))).into_response();
     }
     let known = ["containers", "initContainers", "ephemeralContainers"].iter().any(|k| {
@@ -136,14 +136,15 @@ pub async fn exec(
     if !known {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("no container {:?} in this pod", q.container)}))).into_response();
     }
-    let Some(token) = viewer.token.clone() else { return StatusCode::FORBIDDEN.into_response() };
+    // Root has no bearer of its own, and goes on the console's (#165).
+    let token = viewer.token.clone().or_else(|| inner.client.as_ref().and_then(|c| c.conn().token()));
     let path = format!("/api/v1/namespaces/{ns}/pods/{name}/exec");
     let params = query(&q.container, &command_of(&q.command));
     ws.protocols([PROTOCOL]).on_upgrade(move |socket| session(inner, socket, path, params, token))
 }
 
-async fn session(inner: Arc<Inner>, mut browser: WebSocket, path: String, params: Vec<(&'static str, String)>, token: String) {
-    let upstream = match dial(&inner, &path, &params, &token).await {
+async fn session(inner: Arc<Inner>, mut browser: WebSocket, path: String, params: Vec<(&'static str, String)>, token: Option<String>) {
+    let upstream = match dial(&inner, &path, &params, token.as_deref()).await {
         Ok(s) => s,
         Err(why) => {
             let _ = browser.send(Browser::Binary(status_frame(&why))).await;
@@ -193,13 +194,14 @@ async fn session(inner: Arc<Inner>, mut browser: WebSocket, path: String, params
 
 type Stream = WebSocketStream<reqwest::Upgraded>;
 
-async fn dial(inner: &Inner, path: &str, params: &[(&'static str, String)], token: &str) -> Result<Stream, String> {
+async fn dial(inner: &Inner, path: &str, params: &[(&'static str, String)], token: Option<&str>) -> Result<Stream, String> {
     let client = inner.client.as_ref().ok_or("no apiserver")?;
     let http = client.conn().http1()?;
-    let asked = http
-        .get(format!("{}{path}", client.base()))
-        .query(params)
-        .bearer_auth(token)
+    let mut asked = http.get(format!("{}{path}", client.base())).query(params);
+    if let Some(t) = token {
+        asked = asked.bearer_auth(t);
+    }
+    let asked = asked
         .header(reqwest::header::CONNECTION, "Upgrade")
         .header(reqwest::header::UPGRADE, "websocket")
         .header("Sec-WebSocket-Version", "13")

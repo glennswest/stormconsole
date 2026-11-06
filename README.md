@@ -131,6 +131,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-audit.sh` | who did what (#15) — a real apiserver and console with users of each role: acts allowed and refused, sign-ins, nothing secret kept, an administrator's to read, kept across a restart; Chromium |
 | `verify-stormd-tls.sh` | each stormd and stormdrive over TLS (#49) — real stormds, with a node CA and a stranger's, and plain, and a real stormdrive: the feed, a process action, the node page and API health through a client pair; an untrusted one never read |
 | `verify-rbac.sh` | the console's apiserver role (#78) — a real apiserver with anonymous off and every optional CRD: a console with only `deploy/rbac/stormconsole.yaml`, with no role as the control, each listed write allowed and each withheld one refused |
+| `verify-no-signin.sh` | no sign-in is root (#165) — a real apiserver: consoles with no authentication on a full and on a read-only credential, offered everything and doing it, the apiserver's refusal said for the read-only one; a signed-in admin with no identity as the control; Chromium |
 | `verify-console-metrics.sh` | `/metrics` (#41) — a real ironprom scraping a real console: `up` and the series with the token, `up` 0 with the wrong one, no anonymous read, log lines and a websocket moving the numbers, a plugin with nothing to talk to in error beside one that is fine, the app's paths still the app |
 | `verify-access-reviews.sh` | what a viewer sees and is offered (#45) — a real apiserver with anonymous off; seven users by console role and project role: each row's actions, the project page and YAML Edit, compared with what the apiserver then does; a change of rights through the console and behind its back; Chromium |
 | `verify-runs-on.sh` | what a container or VM disk runs on and was cloned from (#75) — a real engine (its images, clones and seal record) and apiserver, pods with the annotations a kubelet writes, stand-ins for stormcentral and for an engine slow with a digest; Chromium |
@@ -285,7 +286,7 @@ warns about that on every start.
   themselves — the projects they see and every write they make are the
   apiserver's RBAC answer. Without one the console says so
   (`/api/v1/console/access`).
-- **With no sign-in the console acts as root, a storage admin** (owner, #165): authentication off or the node's bearer passes the check below, and the Format page's start is not checked for anyone. The typed confirmation stays, and a component's own gate still decides.
+- **With no sign-in the console acts as root, with every role** (owner, #165): on a console with no authentication, nothing refuses for want of a kubernetes identity or storage-admin: Terminal, deletes, YAML, projects, a node's verbs, drive and VM actions, and the storage guard below (its typed word stays). It goes on the console's own credential, so the apiserver or a component's own gate can still refuse. Once a console has sign-ins, none of this applies.
 - **Destructive storage is for storage-admins** (#82, stormcos#250):
   format, sanitize, wipe, partition and the destructive test on a drive (on
   any node), the drive worker's jobs; RAID set create, destroy, member

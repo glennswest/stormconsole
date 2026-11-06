@@ -57,7 +57,7 @@ pub async fn read(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): P
         return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no Node {name}")}))).into_response();
     };
     let rack = node.pointer("/metadata/labels").and_then(|l| l.get(LABEL)).cloned().unwrap_or(Value::Null);
-    let why = refusal(viewer.has_role("admin"), viewer.token.is_some());
+    let why = refusal(viewer.has_role("admin"), viewer.may_act_upstream());
     Json(json!({"rack": rack, "may": why.is_none(), "why": why})).into_response()
 }
 
@@ -70,7 +70,7 @@ pub struct Change {
 /// `PUT /nodes/{name}/rack {"rack": "r1"}`; an empty one clears it.
 pub async fn write(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>, Json(change): Json<Change>) -> Response {
     let refuse = |code: StatusCode, why: String| (code, Json(json!({"error": why}))).into_response();
-    if let Some(why) = refusal(viewer.has_role("admin"), viewer.token.is_some()) {
+    if let Some(why) = refusal(viewer.has_role("admin"), viewer.may_act_upstream()) {
         return refuse(StatusCode::FORBIDDEN, why.to_string());
     }
     let rack = change.rack.trim();
