@@ -61,7 +61,4 @@ walk('day 2', async (t) => {
   t.check(await t.until(async () => (await page.locator('.sc-cards').count()) > 0), 'the card view')
   await t.shot(page, 'day2-cards')
 })
-  const opened = page.locator('.full-actions button, .expanded button, [class*=expanded] button', { hasText: /^Scale$/ })
-  if (await opened.count()) await opened.first().click()
-  else await page.evaluate(() => {})
 })

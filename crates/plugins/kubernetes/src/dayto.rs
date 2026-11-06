@@ -212,22 +212,33 @@ pub fn only_node_warning(nodes: &[&Value], name: &str) -> Option<String> {
 
 async fn pods_on(inner: &Inner, viewer: &Viewer, name: &str) -> Result<Vec<Value>, Response> {
     let Some(client) = &inner.client else { return Err(refuse(StatusCode::SERVICE_UNAVAILABLE, "no apiserver")) };
-    match client.get_as(&format!("/api/v1/pods?fieldSelector=spec.nodeName%3D{name}"), viewer.token.as_deref()).await {
-        Ok(v) => Ok(v["items"].as_array().cloned().unwrap_or_default()),
-        Err(e) => Err(refuse(StatusCode::BAD_GATEWAY, e.to_string())),
+    let r = client
+        .get_raw_as(&format!("/api/v1/pods?fieldSelector=spec.nodeName%3D{name}"), viewer.token.as_deref())
+        .await
+        .map_err(|e| refuse(StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let status = r.status();
+    let body: Value = r.json().await.unwrap_or(Value::Null);
+    if !status.is_success() {
+        return Err(upstream(status, &body));
     }
+    Ok(body["items"].as_array().cloned().unwrap_or_default())
 }
 
-/// `GET /nodes/{name}/drain`: what a drain would do, and whether this viewer may. A project this viewer may not
+/// `GET /nodes/{name}/drain`: what a drain would do, and whether this viewer may. From the watched cache, because
+/// someone who may look at a node may not be allowed to list every project's pods. A project this viewer may not
 /// see is counted and not named.
 pub async fn drain_plan(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): Path<String>) -> Response {
     let Some(node) = inner.store.object("node", &name).await else {
         return refuse(StatusCode::NOT_FOUND, format!("no Node {name}"));
     };
-    let mut pods = match pods_on(&inner, &viewer, &name).await {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
+    let mut pods: Vec<Value> = inner
+        .store
+        .kind("pod")
+        .await
+        .into_values()
+        .filter(|p| p.pointer("/spec/nodeName").and_then(Value::as_str) == Some(name.as_str()))
+        .collect();
+    pods.sort_by_key(|p| (p.pointer("/metadata/namespace").map(Value::to_string), p.pointer("/metadata/name").map(Value::to_string)));
     let before = pods.len();
     if let Some((hidden, _)) = inner.access.hidden(&viewer).await {
         pods.retain(|p| !p.pointer("/metadata/namespace").and_then(Value::as_str).is_some_and(|ns| hidden.contains(ns)));

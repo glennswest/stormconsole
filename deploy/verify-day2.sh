@@ -192,7 +192,9 @@ check "$(echo "$R" | j '[p["name"] for p in d["left"]]')" "['solo']" "the pod wi
 contains "$(echo "$R" | j 'd["message"]')" "n1: cordoned, 4 evicted, 1 could not be, 1 with no controller left" "and says so"
 on() { kc "$API/api/v1/pods?fieldSelector=spec.nodeName%3Dn1" | j 'sorted(p["metadata"]["name"] for p in d["items"] if not p["metadata"].get("deletionTimestamp"))'; }
 echo "  on n1 now: $(on)"
-check "$(on)" "$(python3 -c "print(sorted(['ds-agent','mirror-n1','solo','$GUARD']))")" "what stays on the node stayed"
+AGENT=$(names shop agent | head -1); echo "  the DaemonSet controller's own pod: $AGENT"
+check "$(on | sed "s/'$AGENT', //")" "$(python3 -c "print(sorted(['ds-agent','mirror-n1','solo','$GUARD']))")" "what stays on the node stayed"
+contains "$(on)" "agent-" "the real DaemonSet's pod among them"
 until_eq 'pods shop web' 3 60 || true
 AFTER=$(names shop web | tr '\n' ' ')
 check "$(pods shop web)" 3 "the controller-manager brought web back"
