@@ -100,7 +100,7 @@ pub async fn flows(url: &str, q: &Query) -> Result<impl Stream<Item = Result<flo
     Ok(stream.filter_map(|m| async move {
         match m {
             Ok(r) => match r.response_types {
-                Some(ResponseTypes::Flows(f)) => Some(Ok(f)),
+                Some(ResponseTypes::Flow(f)) => Some(Ok(f)),
                 _ => None,
             },
             Err(e) => Some(Err(e.message().to_string())),

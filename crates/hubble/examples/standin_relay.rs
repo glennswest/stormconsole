@@ -55,7 +55,7 @@ fn wanted(f: &Flow, list: &[flow::FlowFilter]) -> bool {
 }
 
 fn wrap(f: Flow) -> Result<GetFlowsResponse, Status> {
-    Ok(GetFlowsResponse { node_name: f.node_name.clone(), time: f.time, response_types: Some(ResponseTypes::Flows(f)) })
+    Ok(GetFlowsResponse { node_name: f.node_name.clone(), time: f.time, response_types: Some(ResponseTypes::Flow(f)) })
 }
 
 struct Relay;

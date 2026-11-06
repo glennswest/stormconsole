@@ -32,10 +32,13 @@ pub struct Ask {
     pub last: Option<u64>,
 }
 
-/// One end of a flow. A project this viewer may not see leaves nothing but that it was one.
-fn side(e: Option<&flow::Endpoint>, ip: &str, names: &[String], hidden: Option<&HashSet<String>>) -> Value {
+/// One end of a flow. A project this viewer may not see leaves nothing but that it was one. An end in no project
+/// (the host, the outside world) has no one to withhold it from. `seen` is the projects they may see, or None for
+/// every one: by what is allowed rather than what is known to be hidden, so a project the console has not heard of
+/// yet is withheld too.
+fn side(e: Option<&flow::Endpoint>, ip: &str, names: &[String], seen: Option<&HashSet<String>>) -> Value {
     let ns = e.map_or("", |e| e.namespace.as_str());
-    if hidden.is_some_and(|h| h.contains(ns)) {
+    if !ns.is_empty() && seen.is_some_and(|s| !s.contains(ns)) {
         return json!({"hidden": true});
     }
     json!({
@@ -61,11 +64,10 @@ fn port(f: &Flow) -> (String, Option<u32>) {
 }
 
 /// A flow as this viewer may have it, or None when neither end is theirs to see.
-pub fn row(f: &Flow, hidden: Option<&HashSet<String>>) -> Option<Value> {
-    let ns = |e: &Option<flow::Endpoint>| e.as_ref().map_or(String::new(), |e| e.namespace.clone());
-    if let Some(h) = hidden {
-        let mine = |n: &str| !n.is_empty() && !h.contains(n);
-        if !mine(&ns(&f.source)) && !mine(&ns(&f.destination)) {
+pub fn row(f: &Flow, seen: Option<&HashSet<String>>) -> Option<Value> {
+    if let Some(s) = seen {
+        let mine = |e: &Option<flow::Endpoint>| e.as_ref().is_some_and(|e| s.contains(&e.namespace));
+        if !mine(&f.source) && !mine(&f.destination) {
             return None;
         }
     }
@@ -77,8 +79,8 @@ pub fn row(f: &Flow, hidden: Option<&HashSet<String>>) -> Option<Value> {
         "time": f.time.map(|t| t.seconds * 1000 + i64::from(t.nanos) / 1_000_000),
         "verdict": verdict,
         "drop": drop,
-        "source": side(f.source.as_ref(), src_ip, &f.source_names, hidden),
-        "destination": side(f.destination.as_ref(), dst_ip, &f.destination_names, hidden),
+        "source": side(f.source.as_ref(), src_ip, &f.source_names, seen),
+        "destination": side(f.destination.as_ref(), dst_ip, &f.destination_names, seen),
         "protocol": protocol,
         "port": dest_port,
         "direction": flow::TrafficDirection::try_from(f.traffic_direction).ok().map(|d| d.as_str_name()),
@@ -101,7 +103,7 @@ enum Scope {
 }
 
 async fn scope(inner: &Inner, viewer: &Viewer, a: &Ask, follow: bool) -> Scope {
-    let (hidden, visible) = (inner.access.hidden(viewer).await.map(|(h, _)| h), inner.access.visible(viewer).await);
+    let visible = inner.access.visible(viewer).await;
     let ns = a.ns.as_deref().filter(|n| !n.is_empty());
     let pod = a.pod.as_deref().filter(|p| !p.is_empty());
     if let Some(n) = ns {
@@ -109,15 +111,16 @@ async fn scope(inner: &Inner, viewer: &Viewer, a: &Ask, follow: bool) -> Scope {
             return Scope::Refused(r);
         }
     }
-    let scope = match (ns, pod, visible) {
+    let scope = match (ns, pod, &visible) {
         (Some(n), Some(p), _) => Some(vec![format!("{n}/{p}")]),
         (Some(n), None, _) => Some(vec![format!("{n}/")]),
         (None, _, Some(list)) if list.is_empty() => return Scope::Nothing,
         (None, _, Some(list)) => Some(list.iter().map(|n| format!("{n}/")).collect()),
         (None, _, None) => None,
     };
+    let seen = visible.map(|l| l.into_iter().collect());
     let verdict = a.verdict.clone().filter(|v| flow::Verdict::from_str_name(v).is_some());
-    Scope::Query(hubble::Query { scope, verdict, last: a.last.unwrap_or(100).clamp(1, MOST), follow }, hidden)
+    Scope::Query(hubble::Query { scope, verdict, last: a.last.unwrap_or(100).clamp(1, MOST), follow }, seen)
 }
 
 /// Why the relay gave nothing: its own words beside what they mean here.
@@ -131,7 +134,7 @@ fn no_relay(url: &str, why: &str) -> Value {
 
 /// `GET /flows?ns=&pod=&verdict=&last=`
 pub async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Query<Ask>) -> Response {
-    let (q, hidden) = match scope(&inner, &viewer, &a, false).await {
+    let (q, seen) = match scope(&inner, &viewer, &a, false).await {
         Scope::Query(q, h) => (q, h),
         Scope::Nothing => return Json(json!({"available": true, "items": [], "note": "You may see no project yet."})).into_response(),
         Scope::Refused(r) => return r,
@@ -157,7 +160,7 @@ pub async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Que
                     if exact.as_ref().is_some_and(|(n, p)| !this_pod(&f, n, p)) {
                         continue;
                     }
-                    items.extend(row(&f, hidden.as_ref()));
+                    items.extend(row(&f, seen.as_ref()));
                 }
                 Err(e) => {
                     error = Some(e);
@@ -185,7 +188,7 @@ pub async fn list(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Que
 
 /// `GET /flows/stream?…`: the flows as they happen, one event each.
 pub async fn stream(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Query<Ask>) -> Response {
-    let (q, hidden) = match scope(&inner, &viewer, &a, true).await {
+    let (q, seen) = match scope(&inner, &viewer, &a, true).await {
         Scope::Query(q, h) => (q, h),
         Scope::Nothing => return Json(json!({"items": []})).into_response(),
         Scope::Refused(r) => return r,
@@ -204,7 +207,7 @@ pub async fn stream(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(a): Q
                 if exact.as_ref().is_some_and(|(n, p)| !this_pod(&f, n, p)) {
                     return None;
                 }
-                row(&f, hidden.as_ref())
+                row(&f, seen.as_ref())
             });
             futures_util::future::ready(got)
         })
@@ -245,9 +248,10 @@ mod tests {
 
     #[test]
     fn a_viewer_sees_a_flow_only_with_one_end_theirs_and_nothing_of_the_other() {
-        let hidden: HashSet<String> = ["secret".to_string()].into();
-        assert!(row(&a_flow(end("secret", "a"), end("secret", "b")), Some(&hidden)).is_none());
-        let r = row(&a_flow(end("shop", "web"), end("secret", "vault")), Some(&hidden)).unwrap();
+        let seen: HashSet<String> = ["shop".to_string()].into();
+        assert!(row(&a_flow(end("secret", "a"), end("secret", "b")), Some(&seen)).is_none());
+        assert!(row(&a_flow(end("shop", "web"), end("not-heard-of-yet", "x")), Some(&seen)).unwrap()["destination"]["hidden"] == true);
+        let r = row(&a_flow(end("shop", "web"), end("secret", "vault")), Some(&seen)).unwrap();
         assert_eq!(r["destination"], json!({"hidden": true}));
         assert_eq!(r["source"]["pod"], "web");
         let text = r.to_string();
@@ -256,9 +260,10 @@ mod tests {
 
     #[test]
     fn with_no_project_on_either_end_a_limited_viewer_is_told_nothing() {
-        let hidden: HashSet<String> = ["secret".to_string()].into();
+        let seen: HashSet<String> = ["shop".to_string()].into();
         let world = flow::Endpoint { labels: vec!["reserved:world".into()], ..Default::default() };
-        assert!(row(&a_flow(world.clone(), world.clone()), Some(&hidden)).is_none());
+        assert!(row(&a_flow(world.clone(), world.clone()), Some(&seen)).is_none());
+        assert_eq!(row(&a_flow(world.clone(), end("shop", "web")), Some(&seen)).unwrap()["source"]["ip"], "10.0.0.1", "the outside world is nobody's to withhold");
         assert!(row(&a_flow(world.clone(), world), None).is_some(), "the whole cluster's viewer has it");
     }
 

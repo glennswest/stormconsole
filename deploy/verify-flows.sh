@@ -68,10 +68,10 @@ k POST $RB/clusterrolebindings '{"apiVersion":"rbac.authorization.k8s.io/v1","ki
 k POST $RB/clusterrolebindings '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding","metadata":{"name":"root-admin"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"cluster-admin"},"subjects":[{"kind":"User","apiGroup":"rbac.authorization.k8s.io","name":"root"}]}'
 ROOT=$(token root '[]')
 ns() { k POST /api/v1/namespaces "{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",\"metadata\":{\"name\":\"$1\"}}"; }
-ns shop; ns other
+ns shop; ns other; ns secret
 bind shop alice admin; bind shop bob view; bind shop erin edit; bind shop dave admin
 pod() { k POST "/api/v1/namespaces/$1/pods" "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"name\":\"$2\"},\"spec\":{\"containers\":[{\"name\":\"c\",\"image\":\"busybox\"}]}}"; }
-pod shop web-0; pod shop web-1; pod shop web-2; pod other theirs
+pod shop web-0; pod shop web; pod shop web-2; pod other theirs; pod secret vault
 k POST /apis/apps/v1/namespaces/shop/deployments '{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"app"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"app"}},"template":{"metadata":{"labels":{"app":"app"}},"spec":{"containers":[{"name":"c","image":"busybox"}]}}}}'
 k POST /apis/kubevirt.io/v1/namespaces/shop/virtualmachines '{"apiVersion":"kubevirt.io/v1","kind":"VirtualMachine","metadata":{"name":"vm1"},"spec":{"running":false,"template":{"spec":{"domain":{"devices":{}}}}}}'
 k POST /api/v1/nodes '{"apiVersion":"v1","kind":"Node","metadata":{"name":"n1"}}'
@@ -122,7 +122,7 @@ check "$(echo "$A" | j '[f["port"] for f in d["items"]][0], d["items"][0]["proto
 check "$(ask root '?verdict=DROPPED' | j 'len(d["items"])')" 1 "the verdict filter reaches the relay"
 check "$(ask root '?verdict=nonsense' | j 'len(d["items"])')" 5 "a word that is no verdict filters nothing rather than failing"
 check "$(ask root '?last=2' | j 'len(d["items"])')" 2 "last"
-check "$(ask root '?ns=shop&pod=web' | ends)" "['web>db', 'web>vault', 'world?>web']" "one pod: both directions, and not web-2, whose name starts the same" || true
+check "$(ask root '?ns=shop&pod=web' | ends)" "['203.0.113.9>web', 'web>db', 'web>vault']" "one pod: both directions, and not web-2, whose name starts the same"
 
 say "alice, view in shop only"
 B=$(ask alice "?last=50")
