@@ -843,6 +843,19 @@ that stops answering keeps what it last said, marked as such. `GET
 time, counts and every finding that is not as it should be. It is read-only on
 both sides.
 
+### RAID sets (#67)
+
+`#/raid` is this node's engine's shelves and sets (stormblock#252, `docs/raid-sets.md`): `GET /api/plugins/sb/raid` over `/shelves`,
+`/arrays`, `/spares` and `/drives`. Each set's state, rebuild and scrub progress, its members by bay (from the labels a drive was
+registered with) with a failed one marked, and the spares. A volume on a set is counted and not named, since it may be another
+project's. A set that is not clean is the engine's health and this node's row: failed an error, degraded or rebuilding a warning.
+
+Fail, replace and add a spare are the storage guard's (#82): storage-admin, a typed word, sent as the viewer. Fail and replace come
+from the member's row in the feed, so the guard withholds them from anyone it refuses. Replace is off on that row, because the page
+asks which drive. Add a spare is classified here (`POST /spares`), as the engine holds it for its admin. A scrub is verify only: `repair`
+is not offered. Only blank offered drives are offered as replacements or spares. Lighting a bay's LED is stormdrive's (stormdrive#44),
+and another node's sets are on that node's console.
+
 ### stormdrive and stormstorage — feed consumers
 
 Both daemons serve the stormview components feed themselves, so neither is

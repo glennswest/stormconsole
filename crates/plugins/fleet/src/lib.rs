@@ -66,6 +66,8 @@ struct Inner {
     storage: Option<Arc<Feed>>,
     /// What each node's verifier last said, and whether it still answers (#74).
     verified: RwLock<BTreeMap<String, (verification::Verdict, bool)>>,
+    /// The worst RAID set on this node's engine (#67).
+    raid: Option<Arc<std::sync::RwLock<Option<String>>>>,
 }
 
 impl Inner {
@@ -145,6 +147,7 @@ impl FleetPlugin {
                 services: RwLock::new(BTreeMap::new()),
                 storage: None,
                 verified: RwLock::new(BTreeMap::new()),
+                raid: None,
             }),
         }
     }
@@ -161,6 +164,14 @@ impl FleetPlugin {
     pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
             inner.dial = dial;
+        }
+        self
+    }
+
+    /// The worst RAID set on this node's engine, for this node's row (#67).
+    pub fn with_raid(mut self, raid: Option<Arc<std::sync::RwLock<Option<String>>>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.raid = raid;
         }
         self
     }
@@ -208,6 +219,19 @@ fn with_verification(node: &mut ComponentSummary, v: &verification::Verdict, ans
         if rank(h) < rank(node.health) {
             node.health = h;
         }
+    }
+}
+
+/// A RAID set that is not clean, on the node it is on. Clean adds nothing to the row.
+fn with_raid(node: &mut ComponentSummary, state: &str) {
+    let (health, tone) = match state {
+        "clean" => return,
+        "failed" => (Health::Error, "error"),
+        _ => (Health::Warn, "warn"),
+    };
+    node.metrics.insert(0, Metric::new("raid", state).tone(tone));
+    if rank(health) < rank(node.health) {
+        node.health = health;
     }
 }
 
@@ -419,6 +443,10 @@ impl ConsolePlugin for FleetPlugin {
             }
         }
         drop(verified);
+        let raid = self.inner.raid.as_ref().and_then(|r| r.read().unwrap_or_else(|e| e.into_inner()).clone());
+        if let (Some(state), Some(n)) = (raid, nodes.iter_mut().find(|n| n.id == "fleet:node:local")) {
+            with_raid(n, &state);
+        }
         let mut all = nodes;
         all.extend(out);
         all
@@ -807,6 +835,20 @@ mod beacon_render_tests {
         assert_eq!(n.detail, "192.168.31.203 · this node · storage 8.9 TB free of 8.9 TB, 206 volumes");
         assert!(n.metrics.iter().any(|m| m.label == "storage vols" && m.value == "206"));
         assert_eq!(n.health, Health::Ok);
+    }
+
+    #[test]
+    fn a_raid_set_that_is_not_clean_is_the_nodes_health() {
+        let mut n = row("fleet:node:local", "node", "here", Health::Ok, vec![]);
+        with_raid(&mut n, "clean");
+        assert_eq!(n.health, Health::Ok);
+        assert!(n.metrics.is_empty());
+        with_raid(&mut n, "rebuilding");
+        assert_eq!(n.health, Health::Warn);
+        assert_eq!(n.metrics[0].value, "rebuilding");
+        let mut n = row("fleet:node:local", "node", "here", Health::Ok, vec![]);
+        with_raid(&mut n, "failed");
+        assert_eq!(n.health, Health::Error);
     }
 
     #[test]

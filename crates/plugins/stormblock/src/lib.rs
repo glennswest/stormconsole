@@ -19,6 +19,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
+pub mod raid;
 pub mod placement;
 pub mod runs_on;
 
@@ -37,6 +38,8 @@ struct Inner {
     state: RwLock<State>,
     /// The last per-drive placement answer and when it was made (#29).
     placement: tokio::sync::Mutex<Option<(std::time::Instant, Value)>>,
+    /// The worst RAID set's state, for the node's row (#67).
+    raid: Arc<std::sync::RwLock<Option<String>>>,
     /// Images whose digest is being read in the engine (#75).
     reading: runs_on::Reading,
 }
@@ -60,9 +63,18 @@ impl StormblockPlugin {
                     components: vec![],
                 }),
                 placement: tokio::sync::Mutex::new(None),
+                raid: Default::default(),
                 reading: Default::default(),
             }),
         }
+    }
+
+    /// Keep the worst RAID set's state here, for whoever shows the node. Right after construction.
+    pub fn with_raid(mut self, raid: Arc<std::sync::RwLock<Option<String>>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.raid = raid;
+        }
+        self
     }
 }
 
@@ -83,7 +95,7 @@ impl ConsolePlugin for StormblockPlugin {
             .item("Volumes", "#/grid?id=sb:engine&rel=volumes")
             .item("Unattached volumes", "#/grid?id=sb:engine&rel=unattached")
             .item("Slabs", "#/grid?id=sb:engine&rel=slabs")
-            .item("Arrays", "#/grid?id=sb:engine&rel=arrays")
+            .item("RAID sets", "#/raid")
             .item("Exports", "#/grid?id=sb:engine&rel=exports")]
     }
 
@@ -124,6 +136,7 @@ impl ConsolePlugin for StormblockPlugin {
             .route("/placement", axum::routing::get(placement_route))
             .route("/runs-on", axum::routing::get(runs_on_route))
             .route("/resources/{kind}", axum::routing::get(resources_route))
+            .route("/raid", axum::routing::get(raid_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -198,6 +211,30 @@ async fn resources_route(
         Err(e) => serde_json::json!({"items": [], "error": format!("the engine did not answer: {e}")}),
     })
     .into_response()
+}
+
+/// `GET /raid` (#67): see [`raid`].
+async fn raid_route(axum::extract::State(inner): axum::extract::State<Arc<Inner>>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let (shelves, arrays, spares, drives) = tokio::join!(
+        list(&inner, "/api/v1/shelves"),
+        list(&inner, "/api/v1/arrays"),
+        list(&inner, "/api/v1/spares"),
+        list(&inner, "/api/v1/drives"),
+    );
+    let arrays = match arrays {
+        Ok(a) => a,
+        Err(e) => {
+            return axum::Json(serde_json::json!({"shelves": [], "arrays": [], "globalSpares": [], "free": [], "error": format!("the engine did not answer: {e}")}))
+                .into_response();
+        }
+    };
+    let mut v = raid::view(&shelves.unwrap_or_default(), &arrays, &spares.unwrap_or_default(), &drives.unwrap_or_default());
+    // An engine from before stormblock#252 has arrays and no shelves or status.
+    if arrays.iter().any(|a| raid::state(a).is_none()) {
+        v["note"] = "this engine does not report a set's state (stormblock#252)".into();
+    }
+    axum::Json(v).into_response()
 }
 
 const RESOURCES: [&str; 4] = ["volumes", "slabs", "drives", "nodes"];
@@ -310,7 +347,14 @@ async fn poll(inner: &Inner) {
     let free: u64 = slabs.iter().filter_map(|s| u64_field(s, "free_bytes")).sum();
     let total: u64 = slabs.iter().filter_map(|s| u64_field(s, "total_bytes")).sum();
     let unhealthy = vols.iter().filter(|c| c.health != Health::Ok).count();
-    let health = if unhealthy > 0 { Health::Warn } else { Health::Ok };
+    // A set that is not clean is the node's health too (#67).
+    let raid_state = raid::worst(&arrays);
+    let raid_health = raid_state.as_deref().map(raid_health).unwrap_or(Health::Ok);
+    let health = match raid_health {
+        Health::Error => Health::Error,
+        _ if unhealthy > 0 || raid_health == Health::Warn => Health::Warn,
+        _ => Health::Ok,
+    };
     let use_line = if knows_use {
         format!("{n_att} attached · {n_un} unattached · {n_img} images")
     } else {
@@ -319,13 +363,17 @@ async fn poll(inner: &Inner) {
         format!("{n_att} volumes · {n_img} images — this engine does not say what is attached (stormblock v18.1.0)")
     };
     let detail = format!(
-        "{use_line}{} · {} slabs · {} free of {}",
+        "{}{use_line}{} · {} slabs · {} free of {}",
+        match raid_state.as_deref() {
+            Some(s) if s != "clean" => format!("RAID {s} · "),
+            _ => String::new(),
+        },
         if unhealthy > 0 { format!(" ({unhealthy} not healthy)") } else { String::new() },
         sl.len(),
         human_bytes(free),
         human_bytes(total)
     );
-    let metrics = vec![
+    let mut metrics = vec![
         Metric::new("attached", n_att.to_string()).tone("accent"),
         Metric::new("unattached", n_un.to_string()).tone(if n_un > 0 { "warn" } else { "muted" }),
         Metric::new("images", n_img.to_string()).tone("muted"),
@@ -333,6 +381,15 @@ async fn poll(inner: &Inner) {
         Metric::new("free", human_bytes(free)),
         Metric::new("exports", ex.len().to_string()),
     ];
+    if let Some(s) = &raid_state {
+        let tone = match raid_health {
+            Health::Error => "error",
+            Health::Warn => "warn",
+            _ => "ok",
+        };
+        metrics.insert(0, Metric::new("raid", s.clone()).tone(tone));
+    }
+    *inner.raid.write().unwrap_or_else(|e| e.into_inner()) = raid_state;
     out.push(engine(health, &detail, metrics, &groups));
     out.extend(vols);
     out.extend(sl);
@@ -407,16 +464,19 @@ pub fn array_members(arrays: &[Value]) -> Vec<ComponentSummary> {
         let set = field(a, &["name"]).filter(|n| !n.is_empty());
         let shelf = field(a, &["pool"]).filter(|p| !p.is_empty());
         for m in a.get("members").and_then(Value::as_array).into_iter().flatten() {
-            let Some(path) = m.get("device_path").and_then(Value::as_str).filter(|p| !p.is_empty()) else {
-                continue;
-            };
+            // A member whose drive is gone has no path and still has a slot, which is the one to act on.
+            let path = m.get("device_path").and_then(Value::as_str).unwrap_or("");
+            let slot = field(m, &["index"]).unwrap_or_default();
             let state = field(m, &["state"]).unwrap_or_else(|| "unknown".into());
             let mut metrics = vec![
                 Metric::new("state", state.clone()),
                 Metric::new("array", aid.clone()),
                 Metric::new("level", level.clone()),
-                Metric::new("path", path),
+                Metric::new("slot", slot.clone()),
             ];
+            if !path.is_empty() {
+                metrics.push(Metric::new("path", path));
+            }
             if let Some(n) = &set {
                 metrics.push(Metric::new("set", n.clone()));
             }
@@ -426,10 +486,38 @@ pub fn array_members(arrays: &[Value]) -> Vec<ComponentSummary> {
             if let Some(sn) = m.pointer("/drive/serial").and_then(Value::as_str).filter(|s| !s.is_empty()) {
                 metrics.push(Metric::new("serial", sn));
             }
+            let at = format!("{PROXY}/api/v1/arrays/{aid}/members/{slot}");
+            let mut actions = Vec::new();
+            if state == "active" {
+                actions.push(Action {
+                    id: "fail".into(),
+                    label: "Fail".into(),
+                    method: "POST".into(),
+                    path: format!("{at}/fail"),
+                    enabled: true,
+                    danger: true,
+                    tone: None,
+                });
+            }
+            // Which drive is the page's to ask, so it is off here. It is on the row all the same: the
+            // storage guard reads who may, and what to type, from the action.
+            actions.push(Action {
+                id: "replace".into(),
+                label: "Replace (on the RAID sets page)".into(),
+                method: "POST".into(),
+                path: format!("{at}/replace"),
+                enabled: false,
+                danger: true,
+                tone: None,
+            });
             out.push(ComponentSummary {
-                id: format!("sb:member:{path}"),
+                id: raid::member_id(a, m),
                 kind: "array-member".into(),
-                label: path.to_string(),
+                label: if path.is_empty() {
+                    format!("{}/{slot}", set.as_deref().unwrap_or(&aid))
+                } else {
+                    path.to_string()
+                },
                 health: match state.as_str() {
                     "active" | "spare" => Health::Ok,
                     "rebuilding" | "degraded" => Health::Warn,
@@ -441,7 +529,7 @@ pub fn array_members(arrays: &[Value]) -> Vec<ComponentSummary> {
                     None => format!("{level} array {aid} · {state}"),
                 },
                 metrics,
-                actions: vec![],
+                actions,
                 relations: vec![Relation::belongs_to("array", format!("sb:array:{aid}"))],
                 link: None,
             });
@@ -774,17 +862,31 @@ fn slab(v: &Value) -> ComponentSummary {
     }
 }
 
+fn raid_health(state: &str) -> Health {
+    match state {
+        "clean" => Health::Ok,
+        "failed" => Health::Error,
+        _ => Health::Warn,
+    }
+}
+
 fn array(v: &Value) -> ComponentSummary {
     let id = field(v, &["id"]).unwrap_or_default();
     let level = field(v, &["level"]).unwrap_or_default();
     let members = field(v, &["member_count"]).unwrap_or_else(|| "0".into());
+    let state = raid::state(v);
+    let name = field(v, &["name"]).filter(|n| !n.is_empty());
     ComponentSummary {
         id: format!("sb:array:{id}"),
         kind: "array".into(),
-        label: format!("{level} × {members}"),
-        health: Health::Ok,
+        label: match &name {
+            Some(n) => format!("{n}: {level} × {members}"),
+            None => format!("{level} × {members}"),
+        },
+        health: state.map(raid_health).unwrap_or(Health::Ok),
         detail: format!(
-            "{} · stripe {}",
+            "{}{} · stripe {}",
+            state.map(|s| format!("{s} · ")).unwrap_or_default(),
             field(v, &["capacity_human"]).unwrap_or_default(),
             field(v, &["stripe_human"]).unwrap_or_default()
         ),
@@ -794,7 +896,7 @@ fn array(v: &Value) -> ComponentSummary {
         ],
         actions: vec![],
         relations: vec![Relation::belongs_to("engine", "sb:engine")],
-        link: None,
+        link: Some("#/raid".into()),
     }
 }
 

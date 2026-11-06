@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — RAID sets (#67)
+- **feat:** Storage → RAID sets (`#/raid`, replacing the Arrays list): this node's shelves, each set's state, rebuild and scrub progress, its members by bay with a failed one marked, and the spares.
+- **feat:** fail a member, replace a slot, add a spare (storage-admin, typed confirmation, sent as the viewer) and start a scrub, which only reads and counts.
+- **feat:** a RAID set that is not clean turns the engine's card and this node's row degraded, or failed when it has lost data.
+- **fix:** making a drive a hot spare is classed as destructive storage, as the engine already holds it.
+
 ### 2026-11-06 — A root disk says its architecture (#59)
 - **fix:** Create VM's root-disk list names every built image's architecture when the operator reports it, so an image on the wrong one can be seen before it fails to boot. Fields read from the image operator and never used are gone, along with the `allow(dead_code)` that hid them.
 

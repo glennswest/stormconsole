@@ -2325,6 +2325,12 @@ reaches nodes with stormcos#227 (open). Polled per member, because passes are ho
   `fetch`: an image with `localName`, one falling back to its name with `aarch64` added, one with `arch: null`), clippy `-D warnings` on the crate;
   the default `sc-build`. Not seen on a real operator. It shows the architecture, and does not refuse a mismatch: that needs the node's
 
+### Shelves and RAID sets (#67)
+stormblock bcbe3e0 (`docs/raid-sets.md`, `mgmt/api/{shelves,arrays}.rs`, `raid/rebuild.rs`). The engine's "shelf" is a set's pool. Named RAID sets in the nav,
+because Hardware → Shelves is already the drive map's. The engine holds fail, replace and `POST /spares` for its admin, so all three go through #82's guard.
+- [x] `stormblock/src/raid.rs`, `GET /raid`; member actions; health on the engine and the node; `#/raid`, `raid.js`
+- [ ] `deploy/verify-raid.sh`: a real engine, real failures and rebuilds, viewers; Chromium; docs; dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

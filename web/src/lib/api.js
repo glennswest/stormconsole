@@ -19,7 +19,7 @@ export async function post(path) {
 /// the drive's serial, or the object's name, and the request goes again
 /// carrying it. The server decides which actions those are and checks the
 /// word, so every button that comes through here gets the same question.
-export async function call(method, path, confirmed) {
+export async function call(method, path, confirmed, body) {
   // A path that is a route opens it, rather than being fetched.
   //
   // Some actions are "go and look at this" -- a serial console, a screen --
@@ -32,11 +32,12 @@ export async function call(method, path, confirmed) {
     return {}
   }
   const headers = confirmed === undefined ? {} : { 'X-Storm-Confirm': confirmed }
-  const resp = await fetch(path, { method: method || 'POST', headers })
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const resp = await fetch(path, { method: method || 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}))
     if (resp.status === 428 && data.guard && confirmed === undefined) {
-      return call(method, path, typedConfirm(data.guard))
+      return call(method, path, typedConfirm(data.guard), body)
     }
     // An offered drive's format (stormblock#154): the engine wants the same
     // word in the body and names the risk when it is not there. The word was

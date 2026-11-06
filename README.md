@@ -65,7 +65,7 @@ page names the API's word once, in the Registry image row's tooltip.
 
 Pages (hash routes): `#/` overview · `#/projects` · `#/k8s/<kind>` ·
 `#/k8s/ns/<name>` (a project's page) · `#/k8s/events` · `#/vms` ·
-`#/network/policies` · `#/network/endpoints` · `#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) · `#/drives/format` ·
+`#/raid` · `#/network/policies` · `#/network/endpoints` · `#/vm/<ns>/<name>` · `#/pod/<ns>/<name>` (`?tab=Logs&container=`) · `#/images` · `#/machines` · `#/drives` (`?group=shelf`, `?group=pool`) · `#/drives/format` ·
 `#/nodes` · `#/node/<host>` · `#/logs` · `#/etcd/keys` · `#/account/keys` ·
 `#/attach/<ns>/<claim>` · `#/grid?id=&rel=`. The masthead carries the
 Project selector, Create, cluster health, the key (your SSH keys),

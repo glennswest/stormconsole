@@ -249,6 +249,8 @@ fn engine(method: &Method, inner: &str, query: Option<&str>) -> Option<Guarded> 
             // A RAID set made from drives, and a slab carved from one.
             ("arrays", []) => return Some(Guarded::new("arrays", "create", "create a RAID set", "arrays")),
             ("slabs", []) => return Some(Guarded::new("slabs", "create", "create a slab", "slabs")),
+            // A spare's superblock is written over the drive, and the engine holds this for its admin (#67).
+            ("spares", []) => return Some(Guarded::new("spares", "create", "make a drive a hot spare", "spares")),
             ("arrays", [_, "members", ..]) => {
                 let what = match s.last().copied() {
                     Some("replace") => "replace a RAID set's member",
@@ -445,6 +447,8 @@ mod tests {
         assert_eq!((g.resource.as_str(), g.verb.as_str()), ("arrays", "create"));
         assert!(c(Method::POST, "/api/plugins/sb/proxy/api/v1/arrays/a1/members/m2/replace").is_some());
         assert!(c(Method::POST, "/api/plugins/sb/proxy/api/v1/arrays/a1/members").is_some());
+        let g = c(Method::POST, "/api/plugins/sb/proxy/api/v1/spares").unwrap();
+        assert_eq!((g.resource.as_str(), g.verb.as_str()), ("spares", "create"));
         assert!(c(Method::DELETE, "/api/plugins/sb/proxy/api/v1/arrays/a1").is_some());
         let g = c(Method::POST, "/api/plugins/sb/proxy/api/v1/slabs").unwrap();
         assert_eq!((g.resource.as_str(), g.verb.as_str()), ("slabs", "create"));

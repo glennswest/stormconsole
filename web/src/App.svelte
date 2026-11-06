@@ -29,6 +29,7 @@
   import AuditView from './lib/views/AuditView.svelte'
   import MetricsView from './lib/views/MetricsView.svelte'
   import StorageView from './lib/views/StorageView.svelte'
+  import RaidView from './lib/views/RaidView.svelte'
   import HistoryView from './lib/views/HistoryView.svelte'
   import NetworkView from './lib/views/NetworkView.svelte'
   import UpdateView from './lib/views/UpdateView.svelte'
@@ -65,6 +66,7 @@
     audit: AuditView,
     metrics: MetricsView,
     storage: StorageView,
+    raid: RaidView,
     history: HistoryView,
     networkpolicies: NetworkView,
     networkendpoints: NetworkView,

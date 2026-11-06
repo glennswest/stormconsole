@@ -182,6 +182,8 @@ async fn main() {
         });
         Arc::new(plugin_stormstorage::plugin(&config.stormstorage_url(), token).dial(node_dial.clone()))
     });
+    // Shared by the engine's plugin, which reads it, and the node's row (#67).
+    let stormblock_raid: Arc<std::sync::RwLock<Option<String>>> = Default::default();
     if config.fleet.enabled {
         plugins.push(Arc::new(
             plugin_fleet::FleetPlugin::new(
@@ -192,6 +194,7 @@ async fn main() {
             )
             .with_dial(node_dial.clone())
             .with_cluster_dial(config.stormcluster_dial())
+            .with_raid(config.stormblock.enabled.then(|| stormblock_raid.clone()))
             .with_storage(stormstorage.as_ref().map(|p| p.feed())),
         ));
     }
@@ -218,7 +221,7 @@ async fn main() {
     // One way to the engine for all who ask it (#160).
     let engine = Arc::new(console_core::engine::Engine::new(&config.stormblock_url(), config.stormblock_tls(), engine_token.clone()));
     if config.stormblock.enabled {
-        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_engine(engine.clone())));
+        plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_engine(engine.clone()).with_raid(stormblock_raid.clone())));
     }
     // The datastore rustkube stands on, so the relation is drawn only
     // when there is an apiserver component to draw it to.
