@@ -2415,6 +2415,15 @@ Read from stormpump f8d74d4 (`history.rs`: `CLOCK_BOOTTIME` ms, a `pid1` event p
 - Found: the engine's `seconds` runs on after the end, so its average decays (stormblock#543): shown only as watched
 - Not seen: a real flow-over or a real node. The page is ready to record once one runs; firmware time is not on it, since the clock starts at the kernel
 
+### Truncated binary in the image: SIGSEGV at start (#284, #272)
+Every image since be7123ba6876 (bfdf56d, 2026-11-05) holds a cut `stormconsole`: binary + stormd passed what a 32M
+image holds (30.58 MB fit, 30.72 MB did not). The build log says `cp: error writing …/usr/sbin/stormconsole: No space
+left on device`, the build sealed it anyway (stormcentral#716), and the read-back's sha256 differs from the recorded one.
+A good binary cut to 90% segfaults with no output (139), as the node does.
+- [ ] A first line on stderr at start, before anything else can fail; test
+- [ ] Master: `component edit stormconsole --set golden_size=64M`, spoil the cut images; stormcentral#716 told
+- [ ] After the edit: image; `component fetch` must read back the recorded sha256, and the fetched binary run
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

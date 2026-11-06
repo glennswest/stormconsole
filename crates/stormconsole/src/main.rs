@@ -49,8 +49,17 @@ fn fatal(what: &str, code: i32) -> ! {
     std::process::exit(code)
 }
 
+/// The first thing it does (#284): one line on stderr, before the runtime or
+/// any config. Under stormd that line says the program itself got to run, so
+/// a crash with this line is the console's, and a crash without it means it
+/// never reached `main` (a cut binary, a bad image).
+fn main() {
+    eprintln!("stormconsole {}: starting, pid {}", env!("CARGO_PKG_VERSION"), std::process::id());
+    run();
+}
+
 #[tokio::main]
-async fn main() {
+async fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

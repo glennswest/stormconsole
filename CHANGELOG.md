@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The console's crash at start (#284, #272)
+- **fix:** the first line on stderr at every start is `stormconsole <version>: starting, pid <n>`, before the runtime or config, so a crash can be told from one that never reached `main`.
+- **docs:** the SIGSEGV on 12.58.4 is not in the code: the binary no longer fits a 32M image, and the image holds a cut copy. The fix is the registry's `golden_size` (stormcentral#716 for the build that sealed it).
+
 ### 2026-11-06 — What a guest is told (#11)
 - **feat:** a VM's page says what the node tells that guest when it asks who it is: instance, hostname, address, zone, and whether its own keys and user-data arrive, per address. "No answer for this address" is why a guest comes up with no identity.
 - **feat:** a stormimds row says whether the metadata service answers, or is not started on this node. `[vm] stormimds_url` moves it from `http://127.0.0.1:8169`.

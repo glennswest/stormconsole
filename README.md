@@ -175,6 +175,8 @@ log level (default `info`). Exit codes: **78** (EX_CONFIG) for a config
 that does not parse or validate, or a `--hash-password` with nothing on
 stdin; **1** when the listen address cannot be bound or the server fails;
 every fatal exit prints one `stormconsole: fatal: <what>` line on stderr.
+The first line on stderr at every start is `stormconsole <version>: starting, pid <n>`:
+a crash without it never reached `main` (a cut binary, a bad image; #284).
 stormd is told not to restart on 78.
 
 ## Configuration
