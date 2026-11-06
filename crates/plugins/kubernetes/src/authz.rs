@@ -36,7 +36,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use console_core::{Action, Viewer};
-use futures_util::{stream, StreamExt};
+use futures_util::future::join_all;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
@@ -360,38 +360,42 @@ async fn ask(base: &str, http: &reqwest::Client, token: &str, known: &[String]) 
     }
 }
 
-async fn reviewed(base: &str, http: &reqwest::Client, token: &str, known: &[String], cluster: Rules) -> Answer {
-    let namespaces = if cluster.everything() {
-        HashMap::new()
-    } else {
-        stream::iter(known)
-            .map(|ns| async move {
-                let rules = match rules_review(base, http, token, Some(ns)).await {
-                    Review::Rules(r) => Some(r),
-                    _ => None,
-                };
-                (ns.clone(), rules)
-            })
-            .buffer_unordered(AT_ONCE)
-            .collect()
-            .await
+async fn namespace_rules(base: &str, http: &reqwest::Client, token: &str, ns: &str) -> (String, Option<Rules>) {
+    let rules = match rules_review(base, http, token, Some(ns)).await {
+        Review::Rules(r) => Some(r),
+        _ => None,
     };
+    (ns.to_string(), rules)
+}
+
+async fn seen(base: &str, http: &reqwest::Client, token: &str, ns: &str) -> Option<String> {
+    access_review(base, http, token, ns).await.then(|| ns.to_string())
+}
+
+async fn reviewed(base: &str, http: &reqwest::Client, token: &str, known: &[String], cluster: Rules) -> Answer {
+    let mut namespaces = HashMap::new();
+    if !cluster.everything() {
+        for some in known.chunks(AT_ONCE) {
+            let asks: Vec<_> = some.iter().map(|ns| namespace_rules(base, http, token, ns)).collect();
+            namespaces.extend(join_all(asks).await);
+        }
+    }
     let rights = Rights { cluster, namespaces };
-    let sees = stream::iter(known)
-        .map(|ns| {
-            let rights = &rights;
-            async move {
-                let yes = match rights.sees(ns) {
-                    Some(yes) => yes,
-                    None => access_review(base, http, token, ns).await,
-                };
-                yes.then(|| ns.clone())
+    let mut sees = HashSet::new();
+    let mut unsettled = Vec::new();
+    for ns in known {
+        match rights.sees(ns) {
+            Some(true) => {
+                sees.insert(ns.clone());
             }
-        })
-        .buffer_unordered(AT_ONCE)
-        .filter_map(|ns| async move { ns })
-        .collect()
-        .await;
+            Some(false) => {}
+            None => unsettled.push(ns),
+        }
+    }
+    for some in unsettled.chunks(AT_ONCE) {
+        let asks: Vec<_> = some.iter().map(|ns| seen(base, http, token, ns)).collect();
+        sees.extend(join_all(asks).await.into_iter().flatten());
+    }
     Answer {
         allowed: Allowed { namespaces: sees, source: Source::Reviewed },
         rights: Some(Arc::new(rights)),
