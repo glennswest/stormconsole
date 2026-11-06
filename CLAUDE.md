@@ -1961,6 +1961,13 @@ stormcentral-compliance-operations#219 (missing provenance).
 - [x] `imagename.js` + test; the pod row, containers table, Runs on, VM row
 - [x] `GET /api/plugins/reg/origin`, Made from; rigs: runs-on, pod-page, registry; dist; golden
 
+- Verified: `sc-build deploy/verify-pod-page.sh` (the row, Made from over a stand-in catalog in the catalog's shape,
+  the words walk), `deploy/verify-runs-on.sh` (the row, the version, Runs on and the node's word in the registry
+  form), `deploy/verify-registry.sh` (origin from the real catalog: found, no upstream claimed), default `sc-build`
+- Not seen: a real catalog item with a `source` on the pod page (a stand-in has it; the model has a unit test), a real
+  node. Left: the row "Digest: not reported" is the node's imageID and can read beside a recorded digest; "clones" on
+  the Registry page is the owner's word on #163, not changed
+
 ### The Update page's pre-pull and images (#62)
 #164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
 offered a rollback of nothing; digest, reference, data volume, hooks and each node's state were not shown; a
