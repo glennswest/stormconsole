@@ -2373,6 +2373,13 @@ because Hardware → Shelves is already the drive map's. The engine holds fail, 
 - Not seen: a real drive or DS2246 (file-backed, so no serial: the word is `file`), a set in `failed` (unit test only), a real scrub mismatch, a real node. Another node's sets are on its own console
 - Left: `repair` scrubs, stopping a scrub and a rate cap are not offered. Upstream: stormblock#537 (a replaced drive still says blank). Bay LEDs: stormdrive#44
 
+### Ask the apiserver what a viewer may do (#45)
+Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `selfsubjectrulesreviews` with no namespace answers the cluster's bindings, with one the namespace's as well, as written, with `incomplete`; `rule_matches` is what a rules answer has to be read by. Any user may ask (`system:basic-user`). A Project is its own namespace to RBAC (`projects` in `project.openshift.io`, namespace = name).
+- [ ] `authz.rs`: rules reviews replace the list and the per-namespace pods probe (an access review where a rules answer is incomplete; the probe only where the apiserver does not serve the review). One answer per token: what they see and `Rights`
+- [ ] `ConsolePlugin::offers`, applied by the registry: row actions the apiserver would refuse are dropped (k8s, vm), and writes for a reader. Display only: the apiserver and the gates still decide; what cannot be asked stays offered
+- [ ] Project page (members, isolate, delete) and YAML Edit (pod, project) from the same answer
+- [ ] `deploy/verify-access-reviews.sh`: real apiserver, users by role, Chromium; docs, changelog, dist; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
