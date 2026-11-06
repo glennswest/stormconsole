@@ -71,12 +71,21 @@ The console offers these, but its own role refuses them, because they are not a 
 no kubernetes identity gets the apiserver's 403 in words. Anyone signed in with an identity allowed to do them, such
 as the install token (#66), is unaffected:
 
-- **Projects:** creating and deleting them, their members, their isolation policies (namespaces, projectrequests,
-  rolebindings, networkpolicies).
-- **Workloads:** Import YAML and templates, editing or deleting any object through the generic YAML routes, deleting
-  a pod.
-- **Machines:** creating and deleting a virtual machine.
+- **Existing projects:** their members and isolation policies, and deleting them.
+- **Workloads in them:** Import YAML and templates, editing or deleting any object through the generic YAML routes,
+  deleting a pod.
+- **Machines in them:** creating and deleting a virtual machine.
 - **Secrets:** every Secret outside the keys home, including a project's Secrets tab.
+
+## The one write this role does not bound: new projects
+
+rustkube binds `self-provisioner` to `system:authenticated`, so anyone with a token, this ServiceAccount included,
+can request a project and holds `admin` in it. No Role can take that away. So someone with no identity can still
+make a new project and work inside it, as the ServiceAccount, and only there (`deploy/verify-rbac.sh` shows both).
+
+That keeps Create → New project working on a node nobody has signed in to, but those writes are not on the list
+above. To close it, empty the subjects of the `self-provisioners` ClusterRoleBinding (rustkube's README), which ends
+self-service projects for every user, not only the console.
 
 ## SSH keys (#42)
 
@@ -94,6 +103,6 @@ viewer.
 
 - **Subject:** ServiceAccount `kube-system/stormconsole`, whose token stormcert mints and `[kubernetes] token_file`
   reads (#33). `89-vmimages-console.yaml` binds `User stormconsole`, the client pair for vmimages, and is separate.
-- **Order:** a console that today reaches the apiserver as anonymous-admin keeps every button above. Bind this role
-  together with a way to sign in with an identity (stormcos#256), or those actions stop on a stock node with no way
-  to get them back there.
+- **Order:** a console that today reaches the apiserver as anonymous-admin can do everything. Bind this role together
+  with a way to sign in with an identity (stormcos#256), or the actions under "What needs a signed-in identity" stop
+  on a stock node with no way to get them back there.

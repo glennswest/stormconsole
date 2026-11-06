@@ -7,6 +7,8 @@
 - **feat:** `deploy/rbac/stormconsole.yaml`, the role stormcos ships, and `docs/rbac.md`: every read and write on
   the console's own credential, and what is left to a signed-in identity. A test fails the build when the code
   watches a kind the role lacks, or the role gains a write that is not listed.
+- **docs:** rustkube lets every token request a project and hold `admin` in it, so a new project is the one write
+  this role cannot bound. `docs/rbac.md` says so and how to close it.
 
 ### 2026-11-05 — Image words and names, per the stormcos glossary (#85)
 - **fix:** "instance" is a VM's disk only. The registry's create entry reads "Volume from an image".

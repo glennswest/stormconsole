@@ -159,11 +159,21 @@ check "$(curl -s "$C/api/plugins/k8s/projects" | j '"shop" in [p["name"] for p i
 say "writes through the console, on its role"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$C/api/plugins/vm/machines/shop/vm1/start")" 200 "a machine's Start: its setting"
 check "$(k GET /apis/kubevirt.io/v1/namespaces/shop/virtualmachines/vm1 | j 'd["spec"]["running"]')" True "and the apiserver holds it"
-R=$(curl -s -w ' %{http_code}' -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/projects" -d '{"name":"new-one"}'); echo "  $R" | cut -c1-200
-check "${R##* }" 403 "a new project: refused, it needs an identity"
-check "$(code GET /api/v1/namespaces/new-one)" 404 "and nothing was made"
-R=$(curl -s -w ' %{http_code}' -X POST -H 'content-type: application/json' "$C/api/plugins/k8s/apply?project=shop" -d '{"apiVersion":"v1","kind":"Pod","metadata":{"name":"p1"},"spec":{"containers":[{"name":"a","image":"x"}]}}'); echo "  $R" | cut -c1-200
-check "$(code GET /api/v1/namespaces/shop/pods/p1)" 404 "a workload: nothing made"
+post() { curl -s -w ' %{http_code}' -X POST -H 'content-type: application/json' "$C$1" -d "$2"; }
+POD='{"apiVersion":"v1","kind":"Pod","metadata":{"name":"p1"},"spec":{"containers":[{"name":"a","image":"x"}]}}'
+R=$(post "/api/plugins/k8s/apply?project=shop" "$POD"); echo "  $R" | cut -c1-200
+check "$(code GET /api/v1/namespaces/shop/pods/p1)" 404 "a workload in an existing project: nothing made, it needs an identity"
+check "$(echo "$R" | grep -c 'not allowed')" 1 "and the apiserver's refusal is said"
+check "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$C/api/plugins/k8s/projects/shop")" 403 "deleting an existing project: refused"
+check "$(code GET /api/v1/namespaces/shop)" 200 "and it is still there"
+
+say "the one the role does not bound: rustkube's self-provisioner, for every token"
+R=$(post /api/plugins/k8s/projects '{"name":"new-one"}'); echo "  $R" | cut -c1-200
+check "${R##* }" 200 "a new project is made"
+check "$(k GET /api/v1/namespaces/new-one | j 'd["metadata"]["annotations"]["openshift.io/requester"]')" system:serviceaccount:kube-system:stormconsole "requested by the ServiceAccount"
+R=$(post "/api/plugins/k8s/apply?project=new-one" "$POD"); echo "  $R" | cut -c1-200
+check "$(code GET /api/v1/namespaces/new-one/pods/p1)" 200 "and it may work inside that one"
+check "$(can get "" secrets shop)" False "still no reach into another project"
 
 echo; echo "verify-rbac: $FAILED failed"
 exit "$FAILED"
