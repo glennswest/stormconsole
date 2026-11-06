@@ -1,6 +1,28 @@
 use super::*;
 use serde_json::json;
 
+#[test]
+fn a_verdict_is_joined_to_its_endpoint_and_judged_by_it() {
+    // flowsdn-agent `api::verdict_list`.
+    let shop = Endpoint { id: 7, namespace: "shop".into(), pod: "web".into(), ..Default::default() };
+    let row = |e: Value| json!({"endpoint": e, "direction": "ingress", "verdict": "denied", "protocol": 6, "port": 5432, "packets": 3, "bytes": 180});
+    let eps = [shop];
+    let v = Verdict::from_agent(&row(json!(7)), &eps);
+    assert_eq!((v.endpoint, v.namespace.as_str(), v.pod.as_str(), v.protocol.as_str(), v.port, v.packets), (Some(7), "shop", "web", "TCP", 5432, 3));
+    let host = Verdict::from_agent(&row(json!("host")), &eps);
+    assert_eq!(host.endpoint, None);
+    let gone = Verdict::from_agent(&row(json!(99)), &eps);
+    assert_eq!((gone.endpoint, gone.namespace.as_str()), (Some(99), ""));
+
+    let hidden = std::collections::HashSet::from(["shop".to_string()]);
+    assert!(!v.shown_to(&hidden), "another project's");
+    assert!(host.shown_to(&hidden), "the node's own is no project's");
+    assert!(!gone.shown_to(&hidden), "an endpoint not known could be anyone's");
+    assert!(v.shown_to(&Default::default()) && !gone.shown_to(&std::collections::HashSet::from(["x".to_string()])));
+    let lab = Verdict::from_agent(&row(json!(7)), &[Endpoint { id: 7, namespace: "lab".into(), ..Default::default() }]);
+    assert!(lab.shown_to(&hidden));
+}
+
 /// The endpoint flowsdn `docs/agent-api.md` documents, Kubernetes mode.
 pub fn endpoint_k8s() -> Value {
     json!({

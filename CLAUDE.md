@@ -1307,7 +1307,7 @@ upstream (read from stormcluster cd478e0, exec.rs/plan.rs).
   form's row; no page errors. The screenshots found a long error running
   over the next card — fixed (f58a5d3) and seen fixed
 
-### A flowsdn plugin (#83)
+### A flowsdn plugin (#83) ✅ 2026-11-06
 flowsdn#297: the agent serves a read-only HTTP/1.1 listener on the node's
 loopback, `http://127.0.0.1:9878` (both edition manifests; in golden
 eda35249a55e and later): `GET /v1/endpoint[/{id}[/healthz]]`, `/v1/ipam`,
@@ -1320,25 +1320,29 @@ pod_name, node_name, workloads, containers), `status.pod-networks`,
 `status.identity` once allocated (#291). Shapes: flowsdn docs/agent-api.md
 and `crates/flowsdn-agent/src/{api,health_api}.rs` (read 8fa0cc8). Loopback
 only, so each node's console shows its own agent. No Hubble (flowsdn#293).
-- [ ] `crates/plugins/flowsdn` (name `flowsdn`): poll every 5 s into a cache
+- [x] `crates/plugins/flowsdn` (name `flowsdn`): poll every 5 s into a cache
       that keeps the last good answer per route when the agent is down;
       edition from `/etc/stormcos/release/manifest.json` (`edition`/`network`,
       else its components) — a cilium node says "not this edition" and has
       no nav item
-- [ ] Feed: the agent (health from healthz + modules; a module "not
+- [x] Feed: the agent (health from healthz + modules; a module "not
       implemented" is idle, not a warning), one row per endpoint led by
       ns/pod with node + namespace as `belongs_to` (columns), state, IPv4,
       IPv6, identity; one per IPAM pool (u128 counts, warn under 10% free)
-- [ ] Access: endpoints and services in namespaces the viewer may not see
+- [x] Access: endpoints and services in namespaces the viewer may not see
       are withheld (feed and routes), as the vm plugin does
-- [ ] Routes: `/snapshot`, `/endpoint/{id}` (live, + healthz), `/state/{table}`
+- [x] Routes: `/snapshot`, `/endpoint/{id}` (live, + healthz), `/state/{table}`
       (allowlist: health)
-- [ ] `#/flowsdn`: Endpoints (node/namespace filters, ✓/· marks), IPAM,
+- [x] `#/flowsdn`: Endpoints (node/namespace filters, ✓/· marks), IPAM,
       Health (per module), Config, Services, Routes, State, Flows (says
       flowsdn#293)
-- [ ] Config `[flowsdn] enabled/url/release_manifest`; tests; docs,
+- [x] Config `[flowsdn] enabled/url/release_manifest`; tests; docs,
       changelog; `deploy/verify-flowsdn.sh` (stand-in agent in the agent's
       shapes and transport, a real console, Chromium); release; golden
+- [x] Since the plan: flowsdn#379's `GET /v1/policy/verdicts`, the decisions the endpoint programs counted, on the Flows tab until there are flows; a viewer in one project checked live
+- Verified with `sc-build deploy/verify-flowsdn.sh` (0 failed): a stand-in agent in flowsdn's shapes and transport, real consoles, Chromium; real fastetcd and apiserver for the viewer
+- Not seen: a real agent. It needs a BPF object and the rights to load it, tried on a build VM ("error parsing BPF object" with an empty one), and sessions have no root. The shapes are from flowsdn `docs/agent-api.md` and `api.rs` at 0fbbb1c
+- Left: flows, which wait on flowsdn's observer (flowsdn#293): filed apart, proposed after it
 
 ### Node health: each API's state and latency, alert on a stall (#123) ✅ 2026-10-10
 stormcos#458: stormd (#49) probes each process's declared APIs; PID 1

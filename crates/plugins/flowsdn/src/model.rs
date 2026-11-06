@@ -275,6 +275,56 @@ impl Module {
     }
 }
 
+/// One row of `/v1/policy/verdicts` (flowsdn#379): a decision the endpoint programs counted, not a flow.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Verdict {
+    /// `None` for `host`, the node's own firewall.
+    pub endpoint: Option<u64>,
+    /// From the endpoint's row; empty when that row is not known, or for the host.
+    pub namespace: String,
+    pub pod: String,
+    pub direction: String,
+    pub verdict: String,
+    pub protocol: String,
+    pub port: u64,
+    pub packets: u64,
+    pub bytes: u64,
+}
+
+impl Verdict {
+    pub fn from_agent(v: &Value, endpoints: &[Endpoint]) -> Self {
+        let endpoint = v.get("endpoint").and_then(Value::as_u64);
+        let owner = endpoint.and_then(|id| endpoints.iter().find(|e| e.id == id));
+        let n = |k: &str| v.get(k).and_then(Value::as_u64).unwrap_or(0);
+        let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        Self {
+            endpoint,
+            namespace: owner.map(|e| e.namespace.clone()).unwrap_or_default(),
+            pod: owner.map(|e| e.pod.clone()).unwrap_or_default(),
+            direction: text("direction"),
+            verdict: text("verdict"),
+            protocol: match n("protocol") {
+                0 => String::new(),
+                1 => "ICMP".into(),
+                6 => "TCP".into(),
+                17 => "UDP".into(),
+                58 => "ICMPv6".into(),
+                132 => "SCTP".into(),
+                p => p.to_string(),
+            },
+            port: n("port"),
+            packets: n("packets"),
+            bytes: n("bytes"),
+        }
+    }
+
+    /// May a viewer who cannot see `hidden` be shown this? The host's is the node's and not a project's. One
+    /// whose endpoint row is not known could be anyone's, so it is withheld from a viewer with limits.
+    pub fn shown_to(&self, hidden: &std::collections::HashSet<String>) -> bool {
+        self.endpoint.is_none() || (!self.namespace.is_empty() && !hidden.contains(&self.namespace))
+    }
+}
+
 /// One frontend of `/v1/service` (Kubernetes mode with `service-lb`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Service {

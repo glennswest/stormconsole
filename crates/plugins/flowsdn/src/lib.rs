@@ -81,6 +81,10 @@ pub struct Snapshot {
     pub services: Option<Vec<Service>>,
     pub routes: Option<Vec<Value>>,
     pub identities: Option<Vec<Value>>,
+    /// `None` when the agent does not serve them (before flowsdn#379).
+    pub verdicts: Option<Vec<Verdict>>,
+    /// Why they could not be read. Not an error on the card: nothing else rests on them.
+    pub verdicts_error: String,
 }
 
 impl Snapshot {
@@ -100,6 +104,8 @@ impl Snapshot {
             services: None,
             routes: None,
             identities: None,
+            verdicts: None,
+            verdicts_error: String::new(),
         }
     }
 
@@ -454,6 +460,7 @@ impl Inner {
         let endpoints = self.get("/v1/endpoint").await;
         let ipam = self.get("/v1/ipam").await;
         let config = self.get("/v1/config").await;
+        let verdicts = self.get("/v1/policy/verdicts").await;
         let k8s = healthz.kubernetes.is_some();
         let (services, routes, identities) = if k8s {
             (
@@ -496,6 +503,18 @@ impl Inner {
         }
         if let Some(v) = identities {
             s.identities = v;
+        }
+        match verdicts {
+            Ok(v) => {
+                let rows = v.as_array().cloned().unwrap_or_default();
+                s.verdicts = Some(rows.iter().map(|r| Verdict::from_agent(r, &s.endpoints)).collect());
+                s.verdicts_error.clear();
+            }
+            Err(e) if e.contains(": 404 ") => {
+                s.verdicts = None;
+                s.verdicts_error.clear();
+            }
+            Err(e) => s.verdicts_error = e,
         }
         s.error = errors.join("; ");
     }
@@ -573,6 +592,10 @@ async fn snapshot(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
     let mut s = inner.snap.read().await.clone();
     let (mut hidden_count, mut note) = (0, String::new());
     if let Some((hidden, n)) = inner.hidden(&viewer).await {
+        // Before the endpoints go: a verdict is judged by the namespace it was joined to.
+        if let Some(v) = s.verdicts.as_mut() {
+            v.retain(|r| r.shown_to(&hidden));
+        }
         let before = s.endpoints.len() + s.services.as_ref().map_or(0, Vec::len);
         s.endpoints.retain(|e| !hidden.contains(&e.namespace));
         if let Some(svc) = s.services.as_mut() {
@@ -592,6 +615,7 @@ async fn snapshot(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
         "note": note,
         "tables": STATE_TABLES,
         "flows": "flowsdn has no Hubble observer yet, so there are no flows to show (flowsdn#293)",
+        "verdicts_note": "Counts of what the policy decided, not flows. A packet of a flow already allowed is not counted, and the counts reset when the agent reloads its object.",
     }))
     .into_response()
 }

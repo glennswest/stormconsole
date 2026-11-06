@@ -51,6 +51,13 @@ walk('flowsdn', async (t) => {
   t.check(/skipped: gateway not on a directly connected network/.test(await t.text(page)), 'Routes: a skipped route says why')
   await tab('State', /agent\.restore/, 'State: the health table, as rows')
   await tab('Flows', /flowsdn#293/, 'Flows: says they wait on flowsdn#293')
+  const v = page.locator('table.verdicts')
+  t.check(await t.until(() => v.isVisible()), 'Flows: what the policy decided')
+  const rows = (await v.locator('tbody tr').allInnerTexts()).map((r) => r.replace(/\s+/g, ' '))
+  t.check(/denied/.test(rows[0]) && /this node/.test(rows[0]) && /23/.test(rows[0]), 'denied first, the most packets first: the node\'s own', rows[0])
+  t.check(rows.some((r) => /lab\/batch-x egress denied TCP 5432 7/.test(r)), 'an endpoint by its pod', rows.join(' | '))
+  t.check(rows.some((r) => /audit: would have been denied/.test(r)), 'audit said as what it means')
+  t.check(rows.some((r) => /endpoint 99, no longer here/.test(r)), 'an endpoint no longer here')
   await t.shot(page, 'flowsdn-flows')
 
   // A cilium node: no page in the navigator, and the page says why.

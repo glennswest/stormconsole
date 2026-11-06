@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The flowsdn plugin: what the policy decided (#83)
+- **feat:** the Flows tab shows what the policy decided (`/v1/policy/verdicts`, flowsdn#379) until there are flows: denied first, by pod, with the node's own firewall apart. A viewer sees their projects' rows and the node's.
+
 ### 2026-11-06 — The volumes on every node's drives (#52)
 - **feat:** a drive's page lists the volumes on it on any node, read from that node's stormdrive (stormdrive#26), with each consumer linked. This node's engine is the fallback for a stormdrive that does not report them. A consumer in a project the viewer may not see is said to exist and not named.
 

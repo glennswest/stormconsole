@@ -11,7 +11,7 @@
   // programs, its node routes and the health table. Flows wait on flowsdn
   // (no Hubble observer yet, flowsdn#293), and the tab says so.
   import { onDestroy } from 'svelte'
-  import { get } from '../api.js'
+  import { get, formatBytes } from '../api.js'
   import { route } from '../router.svelte.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
@@ -22,6 +22,9 @@
   const TABS = ['Endpoints', 'IPAM', 'Health', 'Config', 'Services', 'Routes', 'State', 'Flows']
 
   let data = $state(null)
+  // What was refused first: that is what this table gets opened for.
+  const RANK = { denied: 0, audit: 1, allowed: 2 }
+  const verdicts = $derived([...(data?.snapshot?.verdicts || [])].sort((a, b) => (RANK[a.verdict] ?? 3) - (RANK[b.verdict] ?? 3) || b.packets - a.packets))
   let error = $state('')
   let tab = $state(TABS.find((t) => t.toLowerCase() === (route.current.query.get('tab') || '').toLowerCase()) || 'Endpoints')
   let node = $state('')
@@ -342,11 +345,37 @@
       {/if}
     {:else if tab === 'Flows'}
       <EmptyState icon="network" title="No flows yet" hint={data.flows} />
+      {#if verdicts.length}
+        <h2 class="verdicts">What the policy decided</h2>
+        <p class="dim small">{data.verdicts_note}</p>
+        <table class="verdicts">
+          <thead><tr><th>Endpoint</th><th>Direction</th><th>Decision</th><th>Protocol</th><th>Port</th><th class="n">Packets</th><th class="n">Bytes</th></tr></thead>
+          <tbody>
+            {#each verdicts as v, i (i)}
+              <tr>
+                <td>{#if v.endpoint === null}this node{:else if v.pod}<span class="mono">{v.namespace}/{v.pod}</span>{:else}endpoint {v.endpoint}, no longer here{/if}</td>
+                <td>{v.direction}</td>
+                <td class:bad={v.verdict === 'denied'} class:warn={v.verdict === 'audit'}>{v.verdict === 'audit' ? 'audit: would have been denied' : v.verdict}</td>
+                <td>{v.protocol || '—'}</td><td>{v.port || '—'}</td>
+                <td class="n">{v.packets.toLocaleString()}</td><td class="n">{formatBytes(v.bytes)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else if data.snapshot?.verdicts}
+        <p class="dim small">The policy has decided nothing that was counted.</p>
+      {/if}
+      {#if data.snapshot?.verdicts_error}<p class="warn small">The counts of what the policy decided could not be read: {data.snapshot.verdicts_error}</p>{/if}
     {/if}
   {/if}
 </div>
 
 <style>
+  h2.verdicts { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin: 16px 0 4px; }
+  table.verdicts { width: 100%; border-collapse: collapse; font-size: var(--sc-t-body); }
+  table.verdicts th { text-align: left; color: var(--text-faint); font-size: var(--sc-t-meta); font-weight: 600; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--border); }
+  table.verdicts td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--sc-hairline); }
+  table.verdicts .n { text-align: right; }
   .lede { margin: 0 0 4px; }
   .small { font-size: var(--sc-t-meta); }
   .dim { color: var(--text-dim); }

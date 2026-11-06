@@ -125,6 +125,17 @@ class Agent(BaseHTTPRequestHandler):
             return self.answer(200, IPAM)
         if path == "/v1/config":
             return self.answer(200, CONFIG)
+        if path == "/v1/policy/verdicts":
+            # flowsdn-agent api::verdict_list. An agent before flowsdn#379 answers the 404 below; this one is K8S only.
+            if not K8S:
+                return self.answer(404, {"code": 404, "message": "not found"})
+            return self.answer(200, [
+                {"endpoint": 1, "direction": "ingress", "verdict": "allowed", "protocol": 6, "port": 8080, "packets": 900, "bytes": 54000},
+                {"endpoint": 3, "direction": "egress", "verdict": "denied", "protocol": 6, "port": 5432, "packets": 7, "bytes": 420},
+                {"endpoint": 1, "direction": "ingress", "verdict": "audit", "protocol": 17, "port": 53, "packets": 2, "bytes": 120},
+                {"endpoint": 99, "direction": "ingress", "verdict": "denied", "protocol": 6, "port": 22, "packets": 1, "bytes": 60},
+                {"endpoint": "host", "direction": "ingress", "verdict": "denied", "protocol": 6, "port": 23, "packets": 40, "bytes": 2400},
+            ])
         if path in ("/v1/ip", "/v1/identity", "/v1/service", "/v1/node/routes"):
             if not K8S:
                 return self.answer(404, {"code": 404, "message": "kubernetes node discovery is not enabled"})

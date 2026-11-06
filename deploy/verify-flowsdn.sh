@@ -220,6 +220,49 @@ RC=$?
 set -e
 [ $RC -eq 0 ] || FAILED=$((FAILED+1))
 
+say "a viewer in one project, on a real apiserver"
+curl -sfL "https://github.com/glennswest/fastetcd/releases/download/v1.2.0/fastetcd-v1.2.0-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+curl -sfL "https://github.com/glennswest/rustkube/releases/download/v0.15.3/rustkube-apiserver-v0.15.3-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+FE=$(find "$W" -type f -name fastetcd -perm -u+x | head -1); KA=$(find "$W" -type f -name kube-apiserver -perm -u+x | head -1)
+openssl genrsa -out "$W/sa.key" 2048 2>/dev/null; openssl rsa -in "$W/sa.key" -pubout -out "$W/sa.pub" 2>/dev/null
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+token() { local now h p s; now=$(date +%s); h=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+  p=$(printf '{"sub":"%s","groups":%s,"iat":%d,"exp":%d}' "$1" "$2" "$now" $((now + 7200)) | b64url)
+  s=$(printf '%s.%s' "$h" "$p" | openssl dgst -sha256 -sign "$W/sa.key" -binary | b64url); printf '%s.%s.%s' "$h" "$p" "$s"; }
+ADMIN=$(token admin '["system:masters"]'); ALICE=$(token alice '[]')
+"$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls http://127.0.0.1:23930 --advertise-client-urls http://127.0.0.1:23930 --listen-peer-urls http://127.0.0.1:23931 \
+  --initial-advertise-peer-urls http://127.0.0.1:23931 --listen-metrics-url 127.0.0.1:23932 > "$W/etcd.log" 2>&1 &
+wait_for http://127.0.0.1:23930/health
+KAPI=https://127.0.0.1:26533
+"$KA" --bind-addr 127.0.0.1 --secure-port 26533 --tls --etcd-servers http://127.0.0.1:23930 --anonymous-auth false \
+  --service-account-signing-key-file "$W/sa.key" --service-account-key-file "$W/sa.pub" > "$W/api.log" 2>&1 &
+for _ in $(seq 120); do curl -sfk -H "Authorization: Bearer $ADMIN" "$KAPI/readyz" >/dev/null && break; sleep 0.5; done
+kk() { curl -sk -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' -X POST "$KAPI$1" -d "$2" >/dev/null; }
+for ns in shop lab; do kk /api/v1/namespaces "{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",\"metadata\":{\"name\":\"$ns\"}}"; done
+kk /apis/rbac.authorization.k8s.io/v1/namespaces/shop/rolebindings '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"alice"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"view"},"subjects":[{"kind":"User","apiGroup":"rbac.authorization.k8s.io","name":"alice"}]}'
+HASH=$(printf pw | "$BIN" --hash-password)
+E=http://127.0.0.1:19135
+mkdir -p "$W/e"
+{ printf 'listen_addr = "127.0.0.1:19135"\ndata_dir = "%s/e"\n[api]\n' "$W"
+  for u in "root admin $ADMIN" "alice viewer $ALICE"; do set -- $u; printf '[[api.users]]\nname = "%s"\npassword_hash = "%s"\nroles = ["%s"]\nkube_token = "%s"\n' "$1" "$HASH" "$2" "$3"; done
+  printf '[kubernetes]\nserver = "%s"\ntoken = "%s"\ninsecure_skip_tls_verify = true\n' "$KAPI" "$ADMIN"
+  printf '[flowsdn]\nurl = "http://127.0.0.1:19880"\nrelease_manifest = "%s/flowsdn.json"\n' "$W"
+  for s in fleet logs stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormipmi stormcluster health history stormupdate ironprom; do printf '[%s]\nenabled = false\n' "$s"; done
+} > "$W/e.toml"
+"$BIN" --config "$W/e.toml" > "$W/e.log" 2>&1 &
+wait_for $E/healthz
+sleep 7
+for u in root alice; do curl -s -o /dev/null -c "$W/$u.jar" -H 'content-type: application/json' -d "{\"username\":\"$u\",\"password\":\"pw\"}" "$E/api/v1/auth/login"; done
+snap() { curl -s -b "$W/$1.jar" "$E/api/plugins/flowsdn/snapshot"; }
+check "$(snap root | py 'import json,sys; d=json.load(sys.stdin)["snapshot"]; print(sorted(e["namespace"] for e in d["endpoints"]), len(d["verdicts"]))')" "['"'"'lab'"'"', '"'"'shop'"'"', '"'"'shop'"'"'] 5" "an administrator sees every project"
+A_=$(snap alice)
+check "$(echo "$A_" | py 'import json,sys; d=json.load(sys.stdin); s=d["snapshot"]; print(sorted(e["pod"] for e in s["endpoints"]), d["hidden"]>=1)')" "['"'"'db-0'"'"', '"'"'web-7d9'"'"'] True" "alice: her project's endpoints, and told some are withheld"
+check "$(echo "$A_" | py 'import json,sys; v=json.load(sys.stdin)["snapshot"]["verdicts"]; print(sorted((r["endpoint"],r["verdict"]) for r in v if r["endpoint"]), sum(r["endpoint"] is None for r in v))')" "[(1, '"'"'allowed'"'"'), (1, '"'"'audit'"'"')] 1" "alice: her endpoints' verdicts and the node's, not the other project's, not one that could be anyone's"
+check "$(echo "$A_" | grep -c 'batch-x' || true)" 0 "the other project's pod is nowhere in her answer"
+check "$(curl -s -b "$W/alice.jar" "$E/api/v1/components" | grep -c 'batch-x' || true)" 0 "nor in the feed"
+check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/alice.jar" "$E/api/plugins/flowsdn/endpoint/3")" 404 "nor by asking for it"
+check "$(curl -s -b "$W/root.jar" "$E/api/v1/components" | grep -c 'batch-x' | awk '{print ($1>0)}')" 1 "the administrator's feed has it"
+
 say "console logs (warnings and errors only)"
 grep -hiE "warn|error" "$W"/[abcd].log | grep -v 'no users and no auth_token' | head -20 || true
 say "done: $FAILED failed"
