@@ -8,7 +8,7 @@
 # is read back by `fastetcd restore`, not etcdutl.
 set -euo pipefail
 
-TAG=${FASTETCD_TAG:-$(git ls-remote --tags --sort=-v:refname https://github.com/glennswest/fastetcd 'v*' | grep -v '\^{}' | head -1 | sed 's,.*refs/tags/,,')}
+TAG=${FASTETCD_TAG:-$(git ls-remote --tags --sort=-v:refname https://github.com/glennswest/fastetcd 'v*' | grep -v '\^{}' | awk 'NR==1' | sed 's,.*refs/tags/,,')}
 ETCD_VER=v3.5.17
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-fe.XXXXXX")
 cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "${W:?}"; }
@@ -130,14 +130,13 @@ contains "$(curl -s -b "$W/root$P.jar" -X POST "$A/defragment?member=$M2")" "$(c
 grep -c "defragment complete" "$W/f2.log" | sed 's/^/  f2 logged defragment complete: /'
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/root$P.jar" -X POST "$A/defragment?member=abc")" 404 "an unknown member"
 sleep 6
-check "$(comps 'any("compact" in a["path"] for a in s["actions"]) and ms.get("compacted")')" "$(comps 'any("compact" in a["path"] for a in s["actions"]) and ms.get("compacted")')" "(the compact row)"
 ctl put /after-maintenance ok >/dev/null; check "$(ctl get --print-value-only /after-maintenance)" ok "it still takes writes"
 
 say "a snapshot, restored"
 curl -s -D "$W/sh" -b "$W/root$P.jar" -o "$W/snap" "$A/snapshot"
 tr -d '\r' < "$W/sh" | grep -i '^content-disposition' | sed 's/^/  /'
 check "$(head -c 8 "$W/snap")" FEBACKUP "fastetcd's own backup format"
-"$FE" restore --data-dir "$W/restored" "$W/snap" 2>&1 | tail -2 | cut -c1-160 | sed 's/^/  /'
+"$FE" --data-dir "$W/restored" restore "$W/snap" 2>&1 | tail -2 | cut -c1-160 | sed 's/^/  /'
 "$FE" --name r1 --data-dir "$W/restored" --listen-client-urls http://127.0.0.1:24190 --advertise-client-urls http://127.0.0.1:24190 --listen-peer-urls http://127.0.0.1:24191 --listen-metrics-url 127.0.0.1:24192 > "$W/r.log" 2>&1 &
 RP=$!
 for _ in $(seq 60); do ETCDCTL_API=3 "$CTL" --endpoints http://127.0.0.1:24190 get /registry/namespaces/default --print-value-only 2>/dev/null | grep -q Namespace && break; sleep 0.5; done

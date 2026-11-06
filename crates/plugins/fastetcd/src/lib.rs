@@ -838,7 +838,7 @@ async fn snapshot_route(AxState(inner): St, viewer: Viewer) -> Response {
     (
         [
             (header::CONTENT_TYPE, "application/octet-stream".to_string()),
-            (header::CONTENT_DISPOSITION, "attachment; filename=\"fastetcd.snapshot.db\"".to_string()),
+            (header::CONTENT_DISPOSITION, "attachment; filename=\"fastetcd-snapshot.fbak\"".to_string()),
         ],
         axum::body::Body::from_stream(body),
     )

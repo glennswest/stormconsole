@@ -81,7 +81,7 @@
     count={listing ? listing.total : null}
   >
     {#snippet actions()}
-      <a class="dl" href="/api/plugins/etcd/snapshot" download title="The whole store, as etcdctl snapshot save writes it">
+      <a class="dl" href="/api/plugins/etcd/snapshot" download title="The whole store, in fastetcd's backup format: fastetcd restore reads it">
         Download snapshot
       </a>
     {/snippet}
