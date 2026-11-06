@@ -280,7 +280,7 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
             state.config.roles_for(&user)
         };
         let ssh_keys = state.config.ssh_keys_for(&user);
-        return Viewer { user: Some(user), token, roles, ssh_keys };
+        return Viewer { user: Some(user), token, roles, ssh_keys, root: false };
     }
     // A machine on the bearer token acts as the console itself: it is the
     // console's own credential, not a person's, so it carries no
@@ -321,7 +321,7 @@ fn signed(state: &AppState, req: &Request) -> Option<Signed> {
 /// An install-token holder (#66): an apiserver administrator, acting as
 /// that token.
 fn install_viewer(user: String, token: String) -> Viewer {
-    Viewer { user: Some(user), token: Some(token), roles: vec!["admin".into()], ssh_keys: vec![] }
+    Viewer { user: Some(user), token: Some(token), roles: vec!["admin".into()], ssh_keys: vec![], root: false }
 }
 
 /// A client certificate that verified against `[api] client_ca_file` and
@@ -330,7 +330,7 @@ fn install_viewer(user: String, token: String) -> Viewer {
 fn cert_viewer(req: &Request) -> Option<Viewer> {
     let axum::extract::ConnectInfo(peer) = req.extensions().get::<axum::extract::ConnectInfo<crate::listen::Peer>>()?;
     let (cn, role) = peer.cert_role()?;
-    Some(Viewer { user: Some(format!("cert:{cn}")), token: None, roles: vec![role.to_string()], ssh_keys: vec![] })
+    Some(Viewer { user: Some(format!("cert:{cn}")), token: None, roles: vec![role.to_string()], ssh_keys: vec![], root: false })
 }
 
 fn cookie_session(req: &Request) -> Option<String> {

@@ -139,7 +139,7 @@ check "$(kc -o /dev/null -w '%{http_code}' "$API/api/v1/namespaces/shop/pods/web
 say "with sign-ins: today's rules, the control"
 check "$(acts $S k8s:node:n1 "-b $W/dana.jar")" "[]" "dana, admin, no identity: no node verbs"
 check "$(curl -s -b "$W/dana.jar" "$S$K/pods/shop/web-0" | j 'bool(d["terminal"]["refused"])')" True "no Terminal"
-check "$(G "$S -b $W/dana.jar" x x >/dev/null; curl -s -b "$W/dana.jar" --get --data-urlencode 'method=POST' --data-urlencode 'path=/api/plugins/sb/proxy/api/v1/spares' "$S/api/v1/console/guard" | j 'd["guard"]["allowed"]')" False "and the storage guard refuses"
+check "$(curl -s -b "$W/dana.jar" --get --data-urlencode 'method=POST' --data-urlencode 'path=/api/plugins/sb/proxy/api/v1/spares' "$S/api/v1/console/guard" | j 'd["guard"]["allowed"]')" False "and the storage guard refuses"
 check "$(code -b "$W/dana.jar" -X POST "$S$K/nodes/n1/cordon")" 403 "a cordon by hand: refused"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$S/api/v1/components")" 401 "nobody signed in there: 401, not root"
 check "$(code -H 'Authorization: Bearer own-165' -X POST "$S$K/nodes/n1/cordon")" 403 "the node's bearer is not root either"
