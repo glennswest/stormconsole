@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Docs refreshed from the code
+- **docs:** README and config/config.toml: `[kubernetes] hubble_relay` and `[vm] stormimds_url` (defaults from the code).
+- **docs:** README and architecture: flows are read from Hubble relay (#4), no longer "not read yet"; per-module agent health and datapath backends stay out by decision; volumes on other nodes' drives come from their stormdrive (#52).
+
 ### 2026-11-06 — The datastore against fastetcd itself (#64)
 - **fix:** a running fastetcd member with no client URL no longer reads "not started" with a warning: fastetcd reports a URL only for the member answering (fastetcd#187).
 - **feat:** a member whose raft port refuses is an error on its row and a warning on the store, which said `ok` with a member down.

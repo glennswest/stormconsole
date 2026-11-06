@@ -207,6 +207,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | without `ca_file` the local default is unverified (warned at start, said on the card); a configured server is verified against the system roots unless set |
 | `[kubernetes] token_file` | — | the console's bearer from a file (stormcert's ServiceAccount token), re-read when it changes; not with `token` |
 | `[kubernetes] ca_file` | — | PEM CA the apiserver is checked against — only that CA; re-read when it changes; unreadable fails closed with the file named on the card; not with `insecure_skip_tls_verify` (exit 78) |
+| `[kubernetes] hubble_relay` | `http://127.0.0.1:4245` | Hubble relay for Network Flows (#4): plaintext gRPC, this node's by default; a viewer is shown only flows in their projects |
 | `[kubernetes] system_namespaces` | `[]` | projects marked system and never a create target, besides `default`, `openshift`, `kube-*`, `openshift-*`, `storm-*`, `cilium`, `cilium-secrets`; a trailing `*` matches a prefix |
 | `[fleet] enabled / mcast_group / stormd_host / stormd_ports` | on / `239.255.42.1:5514` / `127.0.0.1` / 9080–9089, 9180–9199, 9201, 9202, 180, 8180, 8269, 8545 | a service golden's stormd is its port + 100 |
 | `[logs] enabled / mcast_group / db_path / ring_cap / retain_hours / dedup` | on / `239.255.42.1:5514` / `<data_dir>/logs.redb` / 200000 / 168 / true | |
@@ -220,6 +221,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | asked over HTTPS first when `[node_tls]` is set, verified against the node CA |
 | `[sbregistry] token_file` | the engine's token, for a registry on this machine | a robot account's token, sent as a bearer on every read, the imports and the proxy, and followed when it changes. `*=pull` for the views, `*=admin` for the create forms and imports. Never sent over plain HTTP to another machine (#35) |
 | `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |
+| `[vm] stormimds_url` | `http://127.0.0.1:8169` | this node's stormimds admin port, for the `vm:imds` row (#11): its `/admin/health` only, which needs no key |
 | `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` (`https://` when `ca_file` is set) | |
 | `[vmimages] ca_file / cert_file / key_file` | — | :9099 is TLS with a credential since vmcloud-image-operator#16: trust only this CA, present the console's client pair, for the Images pages and the VM form's root disks; re-read when they change; a refusal is the card's error in the operator's words; half a pair, or certificates with an `http://` url, exit 78 |
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
@@ -406,8 +408,9 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   stormcos binds `/run/stormpump` and `/system-data` into the console
   (stormcos#525) the page asks each stormd instead, missing PID 1's own
   probes, and shows no history; it says which.
-- **Cilium flows, per-module agent health and a Service's datapath backends** — the image ships them
-  (stormpump#11, closed); the console reads none yet (#4). The agent's counters are on the card.
+- **Cilium per-module agent health and a Service's datapath backends** — on the agent's read-write unix
+  socket, which the console does not open (decision on #4). Flows are read from Hubble relay (`#/network/flows`,
+  `[kubernetes] hubble_relay`); a relay with no peers says so (stormcos#327). The agent's counters are on the card.
 - **VM hotplug and
   memory resize** — stormvm#18, stormvm#19; **keys into a running guest** —
   stormvm#41; **VMs on the pod network** (and so isolation covering them) —
@@ -418,9 +421,9 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   no Defragment. Everything else on the datastore page is checked against
   fastetcd itself (#64). A fastetcd before v1.8.0 gets a line naming the release
   that has the gateway and counters.
-- **Volumes on another node's drives** — the console reads only this node's
-  engine, so a drive on another node lists no volumes, and says so. Each
-  drive's *usage* comes from its own node's stormdrive (v0.13.0+).
+- **Volumes on another node's drives** — read from that node's stormdrive (`usage.volumes`, #52); a stormdrive
+  that does not report them is said to, and its volume names link nowhere (the engine row is on that node's
+  console). `/api/plugins/sb/placement` still names every consumer to every viewer (#232).
 - **Committed and headroom** per slab and pool need the engine to report
   committed bytes (stormblock#152); until every slab of a pool does, the
   pool claims no headroom.

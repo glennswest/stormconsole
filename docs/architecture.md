@@ -557,10 +557,10 @@ the workloads where it matters. A selector carrying `matchExpressions` is
 reported as selecting nothing rather than guessed at.
 
 Flows — allowed and denied, the actual answer to "why can nothing reach
-this" — and per-module agent health come from Hubble and the agent's own
-REST API. The image enables both (stormpump#11, closed: the agent's
-metrics address is set and hubble-relay ships as a golden, gRPC :4245);
-the console reads neither yet (#4). The agent's counters are on the card
+this" — come from Hubble relay (gRPC :4245, `[kubernetes] hubble_relay`), read
+since #4 and described under **Flows (#4)** below. Per-module agent health and a
+Service's datapath backends are on the agent's read-write unix socket, which the
+console deliberately does not open (owner's decision, #4). The agent's counters are on the card
 (`agentmetrics.rs`, `127.0.0.1:9962`): forwarded, dropped with a rate, what policy denied (the
 agent has no verdict counter, so `drop_count_total{reason="Policy denied"}`) and the fullest BPF map, which warns
 at 90%. No agent, or one serving no metrics, simply has none. Over time is the Metrics page's (#46).
@@ -597,13 +597,13 @@ is a thin typed layer over the standard REST paths.
   mirror pod stay, a pod with no controller stays unless asked for, and what could not be evicted is listed.
   The node's page shows all of that first. A cluster member's drain is stormcluster's (the Cluster page).
 - **Cilium**: the agent's API is a unix socket and Hubble is gRPC, neither
-  reachable from a golden, so Cilium is read through its CRDs on the
+  reachable from a golden (the relay is reached over loopback, for flows only), so Cilium is read through its CRDs on the
   apiserver — `cilium.io/v2` endpoints (state, address, identity, edge to
   the pod), nodes, identities, network policies (selector and rule counts,
   DELETE) — plus core NetworkPolicy, under one `k8s:cilium` card. CRD kinds
   are optional in the watch cache: a 404 is "not installed", synced and
-  empty, re-checked each minute. **Not built:** Hubble flows — the relay
-  ships (stormpump#11), the console does not read it (#4).
+  empty, re-checked each minute. Hubble flows are read from the relay
+  (`crates/hubble`, #4; see **Flows (#4)**).
 - **The pod page** (`#/pod/<ns>/<name>`, #69; `pod.rs`, `podpage.rs`,
   `logruns.rs`). One answer, `GET /api/plugins/k8s/pods/{ns}/{name}`,
   drawn from the watch cache plus three reads the cache cannot make: the

@@ -68,6 +68,8 @@ enabled = true
 # openshift-*, storm-*, cilium and cilium-secrets always are; a trailing *
 # matches a prefix.
 # system_namespaces = ["perf-*"]
+# Hubble relay, for Network Flows (#4): plaintext gRPC, this node's by default.
+# hubble_relay = "http://127.0.0.1:4245"
 
 [fleet]
 enabled = true
@@ -140,6 +142,8 @@ enabled = true
 # page says which upstream is missing rather than showing a terminal that
 # will never print.
 # url = "http://127.0.0.1:9095"
+# This node's stormimds admin port, for the vm:imds row (#11); health only.
+# stormimds_url = "http://127.0.0.1:8169"
 # Where each user's SSH keys are kept, as a Secret `<user>-ssh-keys`
 # (Account → SSH keys). A machine gets a copy in its own namespace, because
 # accessCredentials can only name a Secret there.
