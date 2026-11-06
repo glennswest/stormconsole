@@ -2171,6 +2171,18 @@ every `/v1` write `admin`. It refuses a credential over plain HTTP from off the 
   probe :5100 (#21). `[node_tls] require` also ends plain reads of the registry
 - The token's grants bound the proxy: with the engine's token, an operator has the registry's admin through it
 
+### A Metrics page over the node's ironprom (#46)
+Read from ironprom dacb122 (`ironprom-api`), stormcos `deploy/metrics/ironprom-node.yml` (job names) and each exporter's code. Series
+are in upstream's names: `smartctl_device_temperature`, `smartctl_device_percentage_used`, `container_*` (job `kubelet-cadvisor`),
+`apiserver_request_*`, `etcd_*`/`fastetcd_*`, `kubevirt_vmi_*`, `cilium_drop_count_total`. **No per-volume IO series**:
+`stormblock_nvmeof_io_seconds` has only `op`, so a volume has no series of its own (filed on stormblock).
+- [ ] `crates/plugins/metrics` (name `metrics`), `[ironprom] enabled/url`: targets polled, panels held server-side and never a raw
+      query, because a free query would read every project's series. Project series carry the viewer's projects
+- [ ] `/targets`, `/charts?level=|entity=`; a chart with nothing says why (target down + its error, no such series)
+- [ ] `#/metrics`: Targets and a tab per level, window; links from a drive, pod and VM
+- [ ] `deploy/verify-metrics.sh`: real ironprom, apiserver and fastetcd, stand-ins in the exporters' shapes, a viewer in one project, Chromium
+- [ ] Docs, changelog, dist; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
