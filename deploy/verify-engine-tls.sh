@@ -83,7 +83,9 @@ engine_seen() { # the three callers read, over whatever this console is set to
   check "$(until_rows)" 1 "$1: the engine's card and its rows"
   check "$(resource | j 'len(d["items"])')" 1 "$1: the Storage page's read"
   check "$(proxy)" 200 "$1: the proxy"
-  check "$(curl -s "$C/api/plugins/reg/holdings" | j 'd.get("engine_error")')" None "$1: the Registry page's holdings"
+  # Its answer is kept for 10 s, so one from before the change may still be there.
+  for _ in $(seq 30); do H=$(curl -s "$C/api/plugins/reg/holdings" | j 'd.get("engine_error") or ""'); [ -z "$H" ] && break; sleep 0.5; done
+  check "$H" "" "$1: the Registry page's holdings"
   check "$(curl -s "$C/api/plugins/update/snapshot" | j 'd["generations"] is not None')" True "$1: the Update page's generations"
 }
 engine_refused() { # nothing is read, and each says so
