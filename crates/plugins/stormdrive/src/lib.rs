@@ -50,6 +50,8 @@ pub const NAME: &str = "drive";
 const PORT: u16 = 9092;
 
 struct Inner {
+    /// Whose consumers a viewer may be told of (#52).
+    access: Option<Arc<plugin_kubernetes::NamespaceAccess>>,
     local: Arc<Feed>,
     /// This node's name, as the fleet knows it, so discovery does not read
     /// this node twice (once on loopback, once at its own address).
@@ -122,6 +124,13 @@ fn with_node(mut list: Vec<ComponentSummary>, node: &str) -> Vec<ComponentSummar
 
 impl DrivesPlugin {
     /// How to reach each stormdrive (#49). Right after construction.
+    pub fn with_access(mut self, access: Option<Arc<plugin_kubernetes::NamespaceAccess>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.access = access;
+        }
+        self
+    }
+
     pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
         self.inner.local.set_dial(dial.clone());
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -139,6 +148,7 @@ impl DrivesPlugin {
                 hosts,
                 remotes: RwLock::new(BTreeMap::new()),
                 client: reqwest::Client::new(),
+                access: None,
                 dial: console_core::dial::Dial::off(),
                 usage: tokio::sync::Mutex::new(None),
                 formats: tokio::sync::Mutex::new(None),
@@ -266,13 +276,17 @@ fn rank(h: Health) -> u8 {
 }
 
 /// `GET /api/plugins/drive/usage` — every node's drives in bytes (#29).
-async fn usage_route(State(inner): State<Arc<Inner>>) -> Response {
+async fn usage_route(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
+    let hidden = match &inner.access {
+        Some(a) => a.hidden(&viewer).await.map(|(h, _)| h),
+        None => None,
+    };
     // Held across the fetch, so concurrent pages wait for one answer
     // rather than each dialling every node.
     let mut cache = inner.usage.lock().await;
     if let Some((at, v)) = cache.as_ref() {
         if at.elapsed() < usage::FRESH {
-            return Json(v.clone()).into_response();
+            return Json(usage::for_viewer(v, hidden.as_ref())).into_response();
         }
     }
     let local = if inner.local_name.is_empty() { "this node".to_string() } else { inner.local_name.clone() };
@@ -310,7 +324,7 @@ async fn usage_route(State(inner): State<Arc<Inner>>) -> Response {
     }
     let v = json!({"drives": drives, "nodes": nodes});
     *cache = Some((std::time::Instant::now(), v.clone()));
-    Json(v).into_response()
+    Json(usage::for_viewer(&v, hidden.as_ref())).into_response()
 }
 
 /// This node's label, and every node to read: label, base, id prefix.

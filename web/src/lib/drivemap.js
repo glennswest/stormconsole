@@ -138,7 +138,14 @@ export function build(components, extra = {}) {
     const serial = metric(c, 'serial') || ''
     // The engine's placement is keyed by serial (the WWN when it names no
     // serial); serials are the drive's own, so this joins on any node.
-    const volumes = onDrive[serial] || (r?.wwn && onDrive[r.wwn]) || null
+    const placed = onDrive[serial] || (r?.wwn && onDrive[r.wwn]) || null
+    // Each node's stormdrive says what is on its drives (#52, stormdrive#26), which is the only word there is
+    // for another node's. This engine's placement is the fallback, and still has a slab's state, which
+    // stormdrive folds into the volume's worst.
+    const reported = r?.usage?.volumes || null
+    const volumes = reported
+      ? reported.map((v) => ({ ...v, slabs: placed?.find((p) => p.id === v.id)?.slabs || [] }))
+      : placed
     // By serial first: the engine names the drive under a set's member
     // (stormblock#252), and a device path can move across a reboot.
     const m = local ? memberBySerial.get(serial) || member.get(metric(c, 'dev')) : null
@@ -169,6 +176,9 @@ export function build(components, extra = {}) {
       overcommit: r?.overcommit || null,
       drain: r?.drain || null,
       volumes,
+      // An empty list from a node that reports them is an answer; none at all is not.
+      volumesReported: !!reported,
+      volumesAt: r?.usage?.volumes_at ?? null,
       member: m ? metric(m, 'state') : null,
       set: m ? metric(m, 'set') || null : null,
       setShelf: m ? metric(m, 'shelf') || null : null,

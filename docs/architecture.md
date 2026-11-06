@@ -1367,8 +1367,9 @@ uses each; a filter finds drains. **Pools** (`#/drives?group=pool`) sum
 every slab on every drive per node, role and tier: total, written, free,
 may-promise, committed and headroom. Committed is summed only where every
 slab of the pool reports it — a partial sum would read as headroom that is
-not there. Volumes on *another* node's drives are not read: the console
-talks to this node's engine only, and the page says so for such a drive.
+not there. **Every node's drives (#52):** each node's stormdrive carries the volumes on its drives (`usage.volumes`, stormdrive#26), so the page prefers that on any node, and this engine's
+placement is the fallback and the source of a slab's own state. Absent is not empty: a node that reports none is said as not reporting. Another node's volume has no row here, so its name has no
+link; its consumer does, being the cluster's. The usage answer is kept for everyone, so a consumer in a project the viewer may not see is withheld past the cache, said to exist and not named (#163's rule).
 
 ### Images are the registry's; Volumes are what is attached (#19)
 

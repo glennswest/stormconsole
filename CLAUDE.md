@@ -867,7 +867,7 @@ serial/wwn, slabs, legs, bytes), `placement.slabs[]` (state, drain),
   storm-9 killed → named. `drivemap.test.mjs` PASS; 284 Rust tests; the
   `--locked` musl release build
 - Walked in Chromium since #58 (`deploy/browser/`)
-- Volumes on *another* node's drives are not read (this node's engine only)
+- Volumes on another node's drives: since #52, from that node's stormdrive
 
 ### Create: "+ New project…" can be named, and nothing breaks (#56)
 Owner on C2NR0Q2 (golden-stormconsole-b5667ebc5e42): Create VM offers New
@@ -2246,6 +2246,13 @@ Update page's generations. All on plain clients.
   client pair with no token; a pair from another CA refused in the handshake. A contradiction exits 78
 - Not seen: a real node's stormcert pair; `verify-drive-offer.sh` over TLS (a destructive verb goes the same way, with the viewer's bearer). On a node the console's own bind is `/data/stormcert`, not `/etc/stormcert`
 - stormcos#374 sets `url` and `ca_file` together when the engine's pair is on
+
+### The volumes on every node's drives (#52)
+stormdrive#26 landed: `usage.volumes` on `GET /api/v1/drives` (`src/usage.rs`, `DriveVolume`), absent while its engine reports no placement, which is not the same as empty. A remote volume has no `sb:volume` row here, so its name has no link; its
+consumer does. This shows every node's consumers to every viewer, so one in a project the viewer may not see is withheld (#163's rule).
+- [ ] `usage.rs` carries the volumes; `value::consumer_words` shared with the engine plugin; withheld per viewer past the cache
+- [ ] `drivemap.js` prefers them on every node, this engine's placement as the fallback and for a slab's state; the page's sentence by what is reported; test
+- [ ] `deploy/verify-drive-volumes.sh`: real apiserver, stand-ins in `usage.rs`'s shape, a viewer in one project; Chromium; `verify-drives.sh`; docs, changelog, dist; close; golden
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

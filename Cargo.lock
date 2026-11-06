@@ -1247,6 +1247,7 @@ dependencies = [
  "axum",
  "console-core",
  "futures-util",
+ "plugin-kubernetes",
  "plugin-logs",
  "reqwest",
  "serde",

@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 console-core.workspace = true
 plugin-logs.workspace = true
+plugin-kubernetes.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
 tokio.workspace = true

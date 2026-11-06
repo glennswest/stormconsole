@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — The volumes on every node's drives (#52)
+- **feat:** a drive's page lists the volumes on it on any node, read from that node's stormdrive (stormdrive#26), with each consumer linked. This node's engine is the fallback for a stormdrive that does not report them. A consumer in a project the viewer may not see is said to exist and not named.
+
 ### 2026-11-06 — The engine over https with the node CA (#160)
 - **feat:** `[stormblock] ca_file/cert_file/key_file`. An `https://` engine url is verified against that CA and no other, with no way to skip the check; `http://` works as before. It covers everything that asks the engine: its card and proxy, the Registry page and the Update page. A client pair is optional. A CA with an `http://` url, or half a pair, is exit 78.
 - **fix:** a failed read of the engine says the whole cause on its card, so a certificate refusal is not just "client error (Connect)".

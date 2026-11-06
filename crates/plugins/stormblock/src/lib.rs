@@ -532,22 +532,7 @@ pub fn place(v: &Value) -> Place {
 
 /// Who uses it, in words: `PersistentVolumeClaim shop/db`, `Mount /data/x`.
 fn consumer(v: &Value) -> Option<(String, Option<String>)> {
-    let c = v.get("consumer")?;
-    let kind = c.get("kind").and_then(Value::as_str).filter(|s| !s.is_empty())?;
-    let name = c.get("name").and_then(Value::as_str).filter(|s| !s.is_empty())?;
-    let ns = c.get("namespace").and_then(Value::as_str).filter(|s| !s.is_empty());
-    let words = match ns {
-        Some(ns) => format!("{kind} {ns}/{name}"),
-        None => format!("{kind} {name}"),
-    };
-    // Somewhere to go, where the console has the object.
-    let target = ns.and_then(|ns| match kind {
-        "PersistentVolumeClaim" => Some(format!("k8s:pvc:{ns}/{name}")),
-        "Pod" => Some(format!("k8s:pod:{ns}/{name}")),
-        "VirtualMachine" | "VirtualMachineInstance" => Some(format!("vm:machine:{ns}/{name}")),
-        _ => None,
-    });
-    Some((words, target))
+    console_core::value::consumer_words(v.get("consumer")?)
 }
 
 /// How it is being served, in words: `nvme-tcp nsid 3`, `ublk /dev/ublkb0 → /data`.

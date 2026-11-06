@@ -37,6 +37,50 @@ pub(crate) fn drive_id(d: &Value) -> Option<String> {
 /// One node's `GET /api/v1/drives` → one record per drive, keyed by the
 /// component id the console serves that drive under (`<prefix>:drive:<id>`),
 /// so the page joins without guessing.
+/// One volume on a drive, as the page lists it. Only this node's engine has a row to link a volume to; a
+/// consumer is the cluster's, so it can lead somewhere from any node.
+fn volume(v: &Value, prefix: &str) -> Value {
+    let id = v.get("id").and_then(Value::as_str).unwrap_or("");
+    let consumer = v.get("consumer");
+    let (words, link) = consumer.and_then(console_core::value::consumer_words).map_or((None, None), |(w, l)| (Some(w), l));
+    let text = |k: &str| v.get(k).and_then(Value::as_str);
+    json!({
+        "component": (!prefix.contains('@')).then(|| format!("sb:volume:{id}")),
+        "id": id,
+        "name": text("name").filter(|n| !n.is_empty()).unwrap_or(id),
+        "kind": text("kind").unwrap_or("volume"),
+        "consumer": words,
+        "consumer_link": link,
+        // For [`for_viewer`], which takes it off again.
+        "consumer_ns": consumer.and_then(|c| c.get("namespace")).and_then(Value::as_str).filter(|n| !n.is_empty()),
+        "bytes": n(v, "bytes").unwrap_or(0),
+        "legs": n(v, "legs").unwrap_or(0),
+        "shared_legs": n(v, "shared_legs").unwrap_or(0),
+        "state": text("state").unwrap_or("ok"),
+        "rebuild": text("rebuild").unwrap_or("none"),
+        "policy": text("policy"),
+        "health": text("health"),
+    })
+}
+
+/// The answer for one viewer. It is kept for everyone, so this is done past the cache: a consumer in a
+/// project they may not see is said to exist and not named, as on the Registry page (#163).
+pub fn for_viewer(answer: &Value, hidden: Option<&std::collections::HashSet<String>>) -> Value {
+    let mut out = answer.clone();
+    for d in out.get_mut("drives").and_then(Value::as_array_mut).into_iter().flatten() {
+        let Some(vols) = d.pointer_mut("/usage/volumes").and_then(Value::as_array_mut) else { continue };
+        for v in vols {
+            let ns = v.as_object_mut().and_then(|o| o.remove("consumer_ns"));
+            let ns = ns.as_ref().and_then(Value::as_str);
+            if ns.is_some_and(|ns| hidden.is_some_and(|h| h.contains(ns))) {
+                v["consumer"] = json!("something in a project you cannot see");
+                v["consumer_link"] = Value::Null;
+            }
+        }
+    }
+    out
+}
+
 pub fn reduce(body: &Value, prefix: &str, node: &str) -> Vec<Value> {
     let drives = body.get("drives").and_then(Value::as_array).cloned().unwrap_or_default();
     drives
@@ -80,6 +124,11 @@ pub fn reduce(body: &Value, prefix: &str, node: &str) -> Vec<Value> {
                     "headroom": n(u, "headroom_bytes"),
                     "slabs": slabs,
                 });
+                // Absent is not empty: "not reported" is not "nothing here" (#52, stormdrive#26).
+                if let Some(vols) = u.get("volumes").and_then(Value::as_array) {
+                    r["usage"]["volumes"] = json!(vols.iter().map(|v| volume(v, prefix)).collect::<Vec<_>>());
+                    r["usage"]["volumes_at"] = u.pointer("/volumes_collected_at/secs_since_epoch").cloned().unwrap_or(Value::Null);
+                }
             }
             if let Some(o) = d.get("overcommit").filter(|o| o.is_object()) {
                 r["overcommit"] = json!({
@@ -184,5 +233,39 @@ mod tests {
     fn an_id_wrapped_in_an_object_is_still_an_id() {
         let b = json!({"drives": [{"id": {"0": "abc"}, "serial": "S"}]});
         assert_eq!(reduce(&b, "drive", "here")[0]["component"], "drive:drive:abc");
+    }
+
+    #[test]
+    fn the_volumes_on_a_drive_absent_is_not_empty() {
+        let body = |usage: Value| json!({"drives": [{"id": "d1", "serial": "S", "usage": usage}]});
+        let vol = json!({"id": "v1", "name": "pvc-db", "kind": "volume", "bytes": 4096, "legs": 4, "shared_legs": 1,
+            "state": "draining", "rebuild": "running", "policy": "mirror2", "health": "degraded",
+            "consumer": {"kind": "PersistentVolumeClaim", "namespace": "shop", "name": "db"}});
+        let here = reduce(&body(json!({"volumes": [vol.clone()], "volumes_collected_at": {"secs_since_epoch": 5, "nanos_since_epoch": 0}})), "drive", "n");
+        let v = &here[0]["usage"]["volumes"][0];
+        assert_eq!(v["component"], "sb:volume:v1", "this node's engine has its row");
+        assert_eq!((v["consumer"].as_str(), v["consumer_link"].as_str()), (Some("PersistentVolumeClaim shop/db"), Some("k8s:pvc:shop/db")));
+        assert_eq!((v["state"].as_str(), v["rebuild"].as_str(), v["policy"].as_str(), v["bytes"].as_u64()), (Some("draining"), Some("running"), Some("mirror2"), Some(4096)));
+        assert_eq!(here[0]["usage"]["volumes_at"], 5);
+        let far = reduce(&body(json!({"volumes": [vol]})), "drive:@storm-2", "storm-2");
+        assert!(far[0]["usage"]["volumes"][0]["component"].is_null(), "another node's volume has no row here");
+        assert_eq!(far[0]["usage"]["volumes"][0]["consumer_link"], "k8s:pvc:shop/db", "its consumer does");
+        assert!(reduce(&body(json!({})), "drive", "n")[0]["usage"].get("volumes").is_none(), "not reported");
+        assert_eq!(reduce(&body(json!({"volumes": []})), "drive", "n")[0]["usage"]["volumes"], json!([]), "nothing here");
+    }
+
+    #[test]
+    fn another_projects_consumer_is_withheld_and_the_cache_is_not_touched() {
+        let vol = |ns: &str| json!({"id": ns, "consumer": {"kind": "Pod", "namespace": ns, "name": "p"}});
+        let answer = json!({"drives": reduce(&json!({"drives": [{"id": "d1", "usage": {"volumes": [vol("shop"), vol("secret"), {"id": "free"}]}}]}), "drive", "n")});
+        let hidden = std::collections::HashSet::from(["secret".to_string()]);
+        let seen = for_viewer(&answer, Some(&hidden));
+        let list = seen["drives"][0]["usage"]["volumes"].as_array().unwrap();
+        assert_eq!(list[0]["consumer"], "Pod shop/p");
+        assert!(list[1]["consumer"].as_str().unwrap().contains("cannot see") && list[1]["consumer_link"].is_null());
+        assert!(list[2]["consumer"].is_null());
+        assert!(!seen.to_string().contains("secret/p") && !seen.to_string().contains("consumer_ns") && !seen.to_string().contains("k8s:pod:secret"));
+        assert!(answer.to_string().contains("secret/p"), "the kept answer is whole, for the next viewer");
+        assert!(for_viewer(&answer, None)["drives"][0]["usage"]["volumes"][1]["consumer"].as_str().unwrap().contains("secret/p"));
     }
 }

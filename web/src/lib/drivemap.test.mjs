@@ -208,6 +208,24 @@ assert.equal(setName(unracked[0]), 'no-rack.ds1.ds1-a')
 
 console.log(`1,600 drives on ${all.nodes} nodes, ${formatBytes(all.capacity)} raw: ` +
   `${byChassis.length} chassis, ${byRack.length} racks, ${all.failing} failing, ${all.degraded} degraded, ${all.rebuilding} rebuilding, ${all.full} full`)
+// #52: each node's stormdrive reports the volumes on its drives.
+{
+  const c = (id, serial, node) => ({ id, kind: 'drive', label: serial, metrics: [{ label: 'serial', value: serial }, ...(node ? [{ label: 'node', value: node }] : [])], relations: [] })
+  const vol = (id, extra = {}) => ({ id, name: id, kind: 'volume', bytes: 1, legs: 1, shared_legs: 0, state: 'ok', rebuild: 'none', consumer: null, consumer_link: null, component: null, ...extra })
+  const u = (id, node, volumes) => ({ component: id, node, serial: id, capacity: 100, usage: { capacity: 100, in_slabs: 0, used: 0, free_in_slabs: 0, outside_slabs: 0, free: 100, promisable: 0, slabs: [], ...(volumes ? { volumes, volumes_at: 5 } : {}) } })
+  const comps = [c('drive:drive:0', 'HERE'), c('drive:@n2:drive:1', 'FAR', 'n2'), c('drive:@n2:drive:2', 'EMPTY', 'n2'), c('drive:@n3:drive:3', 'OLD', 'n3'), c('drive:drive:4', 'FALLBACK')]
+  const usageAnswer = { drives: [u('drive:drive:0', 'here', [vol('v1', { component: 'sb:volume:v1' })]), u('drive:@n2:drive:1', 'n2', [vol('far', { consumer: 'Pod a/b', consumer_link: 'k8s:pod:a/b' })]), u('drive:@n2:drive:2', 'n2', []), u('drive:@n3:drive:3', 'n3', null), u('drive:drive:4', 'here', null)], nodes: [] }
+  const placed = { volumes: 2, placed: 2, drives: { HERE: [{ id: 'v1', name: 'old-word', slabs: [{ id: 's1', state: 'draining' }] }], FALLBACK: [{ id: 'p1', name: 'from-the-engine', slabs: [] }] } }
+  const rec = (id, placement = placed) => build(comps, { usage: usageAnswer, placement }).records.find((x) => x.id === id)
+  assert.equal(rec('drive:drive:0').volumes[0].name, 'v1', 'stormdrive first, on this node too')
+  assert.deepEqual(rec('drive:drive:0').volumes[0].slabs, [{ id: 's1', state: 'draining' }], 'a slab state still from the engine')
+  assert.deepEqual(rec('drive:@n2:drive:1').volumes.map((v) => [v.name, v.consumer_link]), [['far', 'k8s:pod:a/b']], 'another node')
+  assert.deepEqual(rec('drive:@n2:drive:1').volumes[0].slabs, [], 'no slabs to walk, not undefined: the slab table flatMaps them')
+  assert.deepEqual([rec('drive:@n2:drive:2').volumesReported, rec('drive:@n2:drive:2').volumes], [true, []], 'nothing here is an answer')
+  assert.deepEqual([rec('drive:@n3:drive:3').volumesReported, rec('drive:@n3:drive:3').volumes], [false, null], 'not reported is not')
+  assert.equal(rec('drive:drive:4').volumes[0].name, 'from-the-engine', 'the engine as the fallback')
+  assert.deepEqual([rec('drive:drive:0', null).volumes[0].name, rec('drive:drive:0', null).volumes[0].slabs], ['v1', []], 'no placement answer at all')
+}
 console.log(`with usage and placement: build ${(t5 - t4).toFixed(1)} ms, ${ps.length} pools`)
 console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toFixed(1)} ms · totals ${(t3 - t2).toFixed(1)} ms`)
 // The engine's row for a drive is not a second drive, and its offer joins on.

@@ -13,7 +13,7 @@
   // Each drive's usage (#29) comes from its own node's stormdrive, in bytes,
   // fetched while this page is open — used, free, outside any slab, what
   // overcommit lets the slabs promise, each slab, any drain — and the
-  // volumes on it from this node's engine, with who uses each. Pools are
+  // volumes on it from that node's stormdrive (#52), with who uses each. Pools are
   // the same slabs summed per node, role and tier (`?group=pool`).
   //
   // The model is drivemap.js, tested at 1,600 drives without a browser.
@@ -26,6 +26,7 @@
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
   import OfferedDrives from '../components/OfferedDrives.svelte'
+  import { ago } from '../ui/time.js'
   import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName, shelfKey, enclosures, unreadShelves, unreadShelf } from '../drivemap.js'
 
   const asShelves = $derived(route.current.query.get('group') === 'shelf')
@@ -350,7 +351,7 @@
             <tbody>
               {#each pick.volumes as v (v.id)}
                 <tr>
-                  <td><a href={hrefOf(v.component)}>{v.name}</a></td>
+                  <td>{#if v.component}<a href={hrefOf(v.component)}>{v.name}</a>{:else}{v.name}{/if}</td>
                   <td>{v.kind}</td>
                   <td>{#if v.consumer}{#if v.consumer_link}<a href={hrefOf(v.consumer_link)}>{v.consumer}</a>{:else}{v.consumer}{/if}{:else}<span class="dim">nothing</span>{/if}</td>
                   <td class="n">{formatBytes(v.bytes)}</td>
@@ -360,16 +361,21 @@
               {/each}
             </tbody>
           </table>
+          {#if pick.volumesAt && Date.now() / 1000 - pick.volumesAt > 300}
+            <p class="dim small">As {pick.node}’s stormdrive last heard from its engine, {ago(new Date(pick.volumesAt * 1000).toISOString())} ago.</p>
+          {/if}
         {:else}
           <p class="dim">
-            {#if !placement}
+            {#if pick.volumesReported}
+              No volume has data on this drive.
+            {:else if !placement}
               This node’s engine did not answer for placement{pick.local ? '' : ', and it is the only engine this console reads'}.
             {:else if placement.error}
               The engine’s placement could not be read: {placement.error}.
             {:else if placement.volumes && !placement.placed}
               This engine does not report where volumes live (placement, stormblock v17.1.0).
             {:else if !pick.local}
-              No volume of this node’s engine is on it. Volumes on {pick.node}’s own engine are not read by this console.
+              No volume of this node’s engine is on it, and {pick.node}’s stormdrive does not report its own: its engine may not report placement, or it may be older than stormdrive#26.
             {:else}
               No volume has data on this drive.
             {/if}

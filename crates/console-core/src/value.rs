@@ -4,6 +4,25 @@ use serde_json::Value;
 
 /// The first of `keys` present on `v` as text — strings as they are,
 /// numbers and booleans printed.
+/// Who uses a volume, from the engine's `consumer` (stormblock v18.1), in words: `PersistentVolumeClaim
+/// shop/db`, `Mount /data/x`; and the component it can lead to, where the console has the object.
+pub fn consumer_words(c: &Value) -> Option<(String, Option<String>)> {
+    let kind = c.get("kind").and_then(Value::as_str).filter(|s| !s.is_empty())?;
+    let name = c.get("name").and_then(Value::as_str).filter(|s| !s.is_empty())?;
+    let ns = c.get("namespace").and_then(Value::as_str).filter(|s| !s.is_empty());
+    let words = match ns {
+        Some(ns) => format!("{kind} {ns}/{name}"),
+        None => format!("{kind} {name}"),
+    };
+    let target = ns.and_then(|ns| match kind {
+        "PersistentVolumeClaim" => Some(format!("k8s:pvc:{ns}/{name}")),
+        "Pod" => Some(format!("k8s:pod:{ns}/{name}")),
+        "VirtualMachine" | "VirtualMachineInstance" => Some(format!("vm:machine:{ns}/{name}")),
+        _ => None,
+    });
+    Some((words, target))
+}
+
 pub fn field(v: &Value, keys: &[&str]) -> Option<String> {
     for k in keys {
         match v.get(*k) {
