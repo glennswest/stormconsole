@@ -76,6 +76,7 @@ for _ in $(seq 20); do [ "$(val stormconsole_logs_duplicates_total)" = 5 ] && br
 for _ in $(seq 20); do M | grep -q 'plugin="logs",health="ok"} 1' && break; sleep 0.5; done
 contains "$(M)" 'stormconsole_plugin_health{plugin="logs",health="ok"} 1' "logs, having heard something, is fine beside the plugin in error"
 check "$(val stormconsole_logs_duplicates_total)" 5 "six of one line: five duplicates"
+for _ in $(seq 20); do [ "$(val stormconsole_logs_entries)" = 4 ] && break; sleep 0.5; done
 check "$(val stormconsole_logs_entries)" 4 "four distinct lines"
 check "$(val stormconsole_logs_occurrences)" 9 "nine received"
 check "$(val stormconsole_logs_hosts)" 1 "one host"
@@ -108,6 +109,7 @@ check "$(q 'up{job="good"}')" "[('good', '1')]" "with the token: up"
 check "$(q 'up{job="open"}')" "[('open', '1')]" "authentication off: up"
 check "$(q 'up{job="wrong"}')" "[('wrong', '0')]" "the wrong token: down, which is what it was not before"
 check "$(q 'up{job="anonymous"}')" "[('anonymous', '0')]" "no credential: down"
+for _ in $(seq 15); do case "$(targets anonymous)" in *401*) break;; esac; sleep 1; done
 contains "$(targets anonymous)" "401" "saying 401"
 check "$(q 'stormconsole_build_info{job="good"}')" "[('good', '1')]" "a series reaches ironprom"
 check "$(q 'stormconsole_logs_duplicates_total{job="good"}')" "[('good', '5')]" "the ring's duplicates"
