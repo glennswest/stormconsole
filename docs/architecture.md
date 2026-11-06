@@ -853,7 +853,7 @@ project's. A set that is not clean is the engine's health and this node's row: f
 Fail, replace and add a spare are the storage guard's (#82): storage-admin, a typed word, sent as the viewer. Fail and replace come
 from the member's row in the feed, so the guard withholds them from anyone it refuses. Replace is off on that row, because the page
 asks which drive. Add a spare is classified here (`POST /spares`), as the engine holds it for its admin. A scrub is verify only: `repair`
-is not offered. Only blank offered drives are offered as replacements or spares. Lighting a bay's LED is stormdrive's (stormdrive#44),
+is not offered. Only blank offered drives are offered as replacements or spares; a drive a set has replaced looks the same in the API (stormblock#537) and the engine refuses it in words. Lighting a bay's LED is stormdrive's (stormdrive#44),
 and another node's sets are on that node's console.
 
 ### stormdrive and stormstorage — feed consumers

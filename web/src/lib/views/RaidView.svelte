@@ -119,6 +119,7 @@
                 <button disabled={busy || !chosen} onclick={() => replaceMember(m, a.replace)}>Rebuild onto it</button>
                 <button disabled={busy} onclick={() => (replacing = '')}>Cancel</button>
               </div>
+              <p class="dim hint">A drive a set has replaced is listed too, and the engine refuses it: it still carries that set's superblock.</p>
             {/if}
           {/if}
         </div>
@@ -214,6 +215,7 @@
   .bay.hands .top span { color: var(--error); font-weight: 600; }
   .acts, .ask { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .ask select { max-width: 100%; min-width: 0; }
+  .hint { margin: 4px 0 0; }
   .spares { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--sc-t-meta); }
   .spare { border: 1px solid var(--border); border-radius: var(--radius); padding: 1px 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 </style>

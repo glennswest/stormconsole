@@ -170,6 +170,8 @@ slow 31457280
 check "$(code alice -H "X-Storm-Confirm: $WORD" "$FAIL6")" 200 "alice, with the word, as herself"
 until_state rebuilding 20 || true
 check "$(state)" rebuilding "rebuilding on the spare"
+# The state turns before the rebuild's own status is there.
+for _ in $(seq 1 20); do [ "$(raid | j 'd["shelves"][0]["sets"][0]["status"].get("rebuild") is not None')" = True ] && break; sleep 0.5; done
 R=$(raid)
 echo "  $(echo "$R" | j 'd["shelves"][0]["sets"][0]["status"]')" | cut -c1-300
 check "$(echo "$R" | j 'd["shelves"][0]["sets"][0]["status"]["rebuild"]["slots"]')" "[5]" "slot 5"
@@ -212,7 +214,7 @@ slow 2147483648
 until_state clean 240 || true
 R=$(raid); echo "  $R" | cut -c1-300
 check "$(state)" clean "clean: the replacement and the spare both rebuilt"
-check "$(echo "$R" | j '[f["path"].split("/")[-1] for f in d["free"]]')" "['bay6.img']" "both free drives are in use; the one the first spare replaced is left, for a person"
+check "$(echo "$R" | j 'sorted(f["path"].split("/")[-1] for f in d["free"])')" "['bay4.img', 'bay5.img', 'bay6.img']" "both free drives are in use; the three the set replaced are left, for a person"
 check "$(code bob "$SBP/arrays/$AID/scrub")" 202 "a scrub only reads: an operator may start one, with no word"
 for _ in $(seq 1 120); do [ "$(raid | j 'd["shelves"][0]["sets"][0]["status"].get("scrub",{}).get("running")')" = False ] && break; sleep 1; done
 SC=$(raid | j 'd["shelves"][0]["sets"][0]["status"].get("scrub")'); echo "  $SC" | cut -c1-200
