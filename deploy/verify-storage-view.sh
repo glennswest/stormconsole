@@ -75,8 +75,6 @@ mkdir -p "$W/drive-data"
 "$W/bin/stormdrive" --config "$W/drive.toml" > "$W/drive.log" 2>&1 &
 RD=(--cacert "$W/nodeca.crt" --cert "$W/client.crt" --key "$W/client.key" https://127.0.0.1:19402/apis/storage.storm.io/v1)
 for _ in $(seq 40); do curl -s -o /dev/null "${RD[@]}" && break; sleep 0.5; done
-echo "  the real one: $(curl -s --cacert "$W/nodeca.crt" --cert "$W/client.crt" --key "$W/client.key" https://127.0.0.1:19402/apis/storage.storm.io/v1/drives | cut -c1-300)"
-echo "  its enclosures: $(curl -s --cacert "$W/nodeca.crt" --cert "$W/client.crt" --key "$W/client.key" https://127.0.0.1:19402/apis/storage.storm.io/v1/enclosures | cut -c1-200)"
 
 CONSOLE=
 console() { # the [stormblock] token line

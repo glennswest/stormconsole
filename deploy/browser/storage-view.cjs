@@ -23,7 +23,7 @@ walk(`storage (${PHASE})`, async (t) => {
   t.check(await t.until(async () => (await page.locator('tbody tr').count()) === 1), 'search narrows it')
   await page.locator('input[aria-label="Search volumes"]').fill('')
   await tab('Slabs')
-  t.check(await t.until(async () => /\.img/.test(await t.text(page))), 'slabs and their drive', (await t.text(page)).slice(0, 400))
+  t.check(await t.until(async () => /raid:/.test(await t.text(page))), 'slabs and what they sit on', (await t.text(page)).slice(0, 400))
   await t.shot(page, 'storage-slabs')
   await tab('Drives')
   t.check(await t.until(async () => /ZC900/.test(await t.text(page))), 'drives: stormdrive\'s', (await t.text(page)).slice(0, 500))

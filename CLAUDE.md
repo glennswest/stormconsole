@@ -2213,14 +2213,21 @@ transparently. Its #56 is still open for `kubectl` proof, not for the route.
   users with `kube_token`: the same open question as #165
 - Terminal and Environment are per container; no separate container page: the tabs have the picker
 
-### A Storage page over the storage.storm.io objects (#96)
+### A Storage page over the storage.storm.io objects (#96) ✅ 2026-11-05
 stormblock serves `/apis/storage.storm.io/v1/{volumes,slabs,drives,nodes}` (`mgmt/api/kube.rs`), stormdrive `{drives,enclosures}` (`api/kube.rs`). The issue waited
 on rustkube#83; that proxy is wired, but nothing registers these groups (no APIService in stormcos) and the two components serve the same group, so
 the console reads each directly, as it does the rest of their APIs. What these add: a volume's legs, role, retention and physical bytes; a slab's
 quarantine and metadata; a node's topology and capacity; an enclosure's PSUs, fans and heat. `storm.io/namespace` is a family (`stormcos`, `nana`), not a project.
-- [ ] sb `GET /resources/{volumes|slabs|drives|nodes}`; drive `GET /resources/{drives|enclosures}`, every node, reduced
-- [ ] `#/storage` (Storage → Overview): those five as tabs, a band of totals, drives joined by serial. `web/src/lib/storage.js` + test
-- [ ] `deploy/verify-storage-view.sh`: real engine and stormdrive, a stand-in for an enclosure; Chromium; docs, changelog, dist; close; golden
+- [x] sb `GET /resources/{volumes|slabs|drives|nodes}`; drive `GET /resources/{drives|enclosures}`, every node, reduced
+- [x] `#/storage` (Storage → Overview): those five as tabs, a band of totals, drives joined by serial. `web/src/lib/storage.js` + test
+- [x] `deploy/verify-storage-view.sh`: real engine and stormdrive, a stand-in for an enclosure; Chromium; docs, changelog, dist; close; golden
+- Verified with `sc-build deploy/verify-storage-view.sh` (0 failed): stormblock and stormdrive from main, the engine file-backed with three volumes, stormdrive over TLS with
+  the console's client pair, a stand-in with a drive and an enclosure in `api/kube.rs`'s shape, and a node that does not answer. Volumes, slabs, drives, nodes as the
+  engine has them; only those objects by this route; read-only; the drive's history left behind; the dead node named; no token said as the engine's 401. Chromium on
+  every tab. The real engine found: `topologyChain` is a string (it took the page down), a thin volume has 0 legs, a slab sits on `raid:…`
+- Not seen: a real Drive or Enclosure object (a build VM has none: the real stormdrive read 0), so those fields are from its code. A join by serial live (a file drive's
+  serial is `file`, deliberately not joined; unit test). A degraded volume live (unit test). A remote node's engine: this node's only
+- Also fixed: the three Svelte warnings #12 shipped in PodEnv and PodTerminal
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
