@@ -2193,6 +2193,17 @@ are in upstream's names: `smartctl_device_temperature`, `smartctl_device_percent
   watch is not counted while open). A chart over more than a minute or two of data: the rig's history is short, so its 1-hour charts are dots
 - Left: a volume has no series or link (stormblock#536). This node's series only, so another node's drive has no link
 
+### A pod's Terminal and Environment (#12)
+What is left of #12 after #69. rustkube-node serves exec now (`remotecommand.rs`, docs/status.md "Streaming"): WebSocket `v4.channel.k8s.io`, binary
+frames with the channel as first byte (0 stdin, 1 stdout, 2 stderr, 3 error `metav1.Status`, 4 resize), and the apiserver proxies `pods/exec`
+transparently. Its #56 is still open for `kubectl` proof, not for the route.
+- [ ] `kubernetes/src/exec.rs`: `WS /pods/{ns}/{name}/exec?container=&command=`, relayed **as the viewer**: operator or admin here, `create pods/exec`
+      at the apiserver, and never the console's own credential; recorded as a console in the audit; the typing is not
+- [ ] `kubernetes/src/env.rs`: `GET /pods/{ns}/{name}/env?container=`: literal, `$(VAR)`, fieldRef, resourceFieldRef, ConfigMap values as the viewer,
+      envFrom expanded; a Secret's keys and never its values
+- [ ] Pod page tabs Environment and Terminal (xterm.js, loaded when opened); `pod.terminal` says why not
+- [ ] `deploy/verify-pod-terminal.sh`: real apiserver, stand-in kubelet with a real pty in rustkube-node's protocol, users by role; Chromium; dist; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
