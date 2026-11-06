@@ -230,6 +230,11 @@ PY=python3
 python3 -c 'import websockets' 2>/dev/null || { python3 -m venv "$W/py" && "$W/py/bin/pip" -q install websockets && PY="$W/py/bin/python3"; }
 "$PY" "$W/ws.py" "ws://127.0.0.1:$P/api/plugins/ipmi/console/$HOST_NS/$HOST_NAME" "$W/jar.ops" "$W/jar.admin"
 
+say "7b. who opened that console has an answer (#15)"
+SEEN=$(curl -s -b "$W/jar.admin" "http://127.0.0.1:$P/api/v1/console/audit?capability=console" | python3 -c "import json,sys; print(sorted(set((r['who'], r['status']) for r in json.load(sys.stdin)['items'])))")
+echo "  $SEEN"
+if [ "$SEEN" = "[('admin', 101), ('ops', 101)]" ]; then echo "  ok   both openings recorded, as opened"; else echo "  FAIL the audit of the door — got: $SEEN"; LOCFAIL=1; fi
+
 say "8. the page in a browser (#58)"
 RC=${LOCFAIL:-0}
 deploy/browser/run.sh "$W" machines.cjs "http://127.0.0.1:$P" TAG="$TAG" || RC=1

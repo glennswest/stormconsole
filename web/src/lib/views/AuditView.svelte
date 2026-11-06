@@ -74,6 +74,7 @@
   .crumbs { color: var(--text-dim); font-size: var(--sc-t-meta); }
   .row { display: flex; gap: 16px; margin: 12px 0; flex-wrap: wrap; }
   label { display: flex; gap: 6px; align-items: center; color: var(--text-dim); }
+  input { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--text-faint); font-size: var(--sc-t-meta); padding: 4px 8px; }
   td { padding: 4px 8px; border-top: 1px solid var(--sc-hairline, var(--border)); vertical-align: top; }

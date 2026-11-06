@@ -1956,7 +1956,12 @@ are the source; the catalog adds names. No sealed-at in either.
 Steps 1 and 2 are done (7408a47). Since then: the per-node bearer as the escape hatch (#102), certificate identity (#127),
 install-token sign-in (#66). Left: the audit (no decision needed) and users without a file (the owner's decision).
 - [x] `crates/stormconsole/src/audit.rs`, in the host; `#/audit`
-- [ ] `deploy/verify-audit.sh`; real serial door through `verify-machines.sh`; dist; golden
+- [x] `deploy/verify-audit.sh`; real serial door through `verify-machines.sh`; dist; golden
+- Verified with `sc-build deploy/verify-audit.sh` (0 failed) and `verify-machines.sh`: real apiserver, three users, acts
+  allowed and refused with who and where from; a refused sign-in with the name it gave; no password, body, query token,
+  bearer or kube token in the file or the log; only an administrator reads it; kept across a restart; auth off says so.
+  A real SOL door records 101 per person. Chromium walked the page
+- Not recorded: how long a console stayed open (only that it opened), or what was typed
 - [ ] The decision on users, asked on #15
 
 ### Each stormd and stormdrive over TLS (#49)
