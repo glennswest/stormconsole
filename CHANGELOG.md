@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Network flows (#4)
+- **feat:** Network Flows: who talked to whom and what the network did about it, from Hubble relay, with filters and follow, on its own page and on a pod's and a machine's page. Limited to the viewer's projects; the other end of a flow into a project they may not see is "another project", with nothing about it. `[kubernetes] hubble_relay` moves it from `http://127.0.0.1:4245`.
+- **chore:** new crates: tonic and prost for Hubble only, with Cilium's protos vendored at v1.20.2.
+
 ### 2026-11-06 — The console's crash at start (#284, #272)
 - **fix:** the first line on stderr at every start is `stormconsole <version>: starting, pid <n>`, before the runtime or config, so a crash can be told from one that never reached `main`.
 - **docs:** the SIGSEGV on 12.58.4 is not in the code: the binary no longer fits a 32M image, and the image holds a cut copy. The fix is the registry's `golden_size` (stormcentral#716 for the build that sealed it).

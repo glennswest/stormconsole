@@ -228,6 +228,9 @@ pub struct Kubernetes {
     /// Accept the apiserver's self-signed cert.
     #[serde(default)]
     pub insecure_skip_tls_verify: bool,
+    /// Hubble relay, for flows (#4): plaintext gRPC, on this node by default.
+    #[serde(default)]
+    pub hubble_relay: Option<String>,
     /// Projects that hold the system's own things, beyond `default`,
     /// `openshift`, `kube-*`, `openshift-*`, `storm-*`, `cilium` and
     /// `cilium-secrets` (#28, #162). A trailing `*` matches a prefix.

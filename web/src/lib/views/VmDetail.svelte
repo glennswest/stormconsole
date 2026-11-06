@@ -16,6 +16,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import StatusPill from '../components/StatusPill.svelte'
   import YamlPanel from '../components/YamlPanel.svelte'
+  import FlowTable from '../components/FlowTable.svelte'
   import Icon from '../components/Icon.svelte'
   import { ago } from '../ui/time.js'
   import EventBox from '../components/EventBox.svelte'
@@ -680,6 +681,15 @@
                 </p>
               {/if}
             </div>
+          {/if}
+        </div>
+
+        <div class="card" aria-label="Flows" style="grid-column: 1 / -1">
+          <h2>Flows</h2>
+          {#if vm.policy && !vm.policy.applies}
+            <p class="dim">This machine is not on the pod network, so the network does not see its traffic. {vm.policy.sentence}</p>
+          {:else}
+            <FlowTable {ns} pod={name} last={50} />
           {/if}
         </div>
 

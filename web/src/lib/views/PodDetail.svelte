@@ -24,6 +24,7 @@
   import PodLogs from './PodLogs.svelte'
   import PodStats from './PodStats.svelte'
   import PodEnv from './PodEnv.svelte'
+  import FlowTable from '../components/FlowTable.svelte'
   import PodTerminal from './PodTerminal.svelte'
 
   const ns = $derived(route.current.params.ns)
@@ -717,6 +718,14 @@
             <span class="port">{c.name}: {c.ports.map((p) => `${p.containerPort}/${p.protocol}`).join(', ')}</span>
           {:else}<span class="dim">No container declares a port.</span>{/each}
         </p>
+      </section>
+      <section class="card" aria-label="Flows" style="margin-top: 12px">
+        <h2>Flows</h2>
+        {#if pod.network.hostNetwork}
+          <p class="dim">This pod is on the host network, so it has no endpoint of its own, and its traffic is not told apart from the node's.</p>
+        {:else}
+          <FlowTable {ns} pod={name} last={50} />
+        {/if}
       </section>
     {:else if tab === 'Stats'}
       <p class="dim"><a href={`#/metrics?entity=pod&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its series in ironprom, over longer windows</a></p>

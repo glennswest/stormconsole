@@ -147,6 +147,9 @@ async fn run() {
     }
     if let Some(conn) = kube.clone() {
         let mut k8s = plugin_kubernetes::KubernetesPlugin::new(Some(conn));
+        if let Some(url) = &config.kubernetes.hubble_relay {
+            k8s = k8s.with_hubble_relay(url.clone());
+        }
         // The provenance of a `stormpump://` image on the pod page (#69).
         if let Some(url) = &config.stormcentral.url {
             let token = config.stormcentral.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {

@@ -16,6 +16,7 @@ pub mod cache;
 pub mod client;
 mod components;
 mod dayto;
+mod flows;
 mod rack;
 mod env;
 mod exec;
@@ -92,6 +93,8 @@ struct Inner {
     stats: Arc<stats::Stats>,
     /// Where a `stormpump://` golden's provenance is read (#69).
     stormcentral: Option<podpage::Stormcentral>,
+    /// Hubble relay, for flows (#4).
+    hubble_relay: String,
 }
 
 pub struct KubernetesPlugin {
@@ -126,6 +129,14 @@ impl KubernetesPlugin {
     /// stormcentral, for the provenance of a `stormpump://` image on the
     /// pod page. Called right after `new`, before anything shares the
     /// plugin.
+    /// Where Hubble relay answers (#4).
+    pub fn with_hubble_relay(mut self, url: String) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.hubble_relay = url;
+        }
+        self
+    }
+
     pub fn with_stormcentral(mut self, url: String, token: Option<String>) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
             inner.stormcentral = Some(podpage::Stormcentral { url, token });
@@ -167,6 +178,7 @@ impl KubernetesPlugin {
                 runs: Arc::new(logruns::LogRuns::default()),
                 stats: Arc::new(stats::Stats::new()),
                 stormcentral: None,
+                hubble_relay: "http://127.0.0.1:4245".to_string(),
             }),
         }
     }
@@ -204,6 +216,7 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("Network attachments", "#/k8s/nad")
                 .item("Network Policies", "#/network/policies")
                 .item("Network Endpoints", "#/network/endpoints")
+                .item("Network Flows", "#/network/flows")
                 .item("Network nodes", "#/k8s/cn")
                 .item("Identities", "#/k8s/cid"),
             NavSection::new("Storage", 40).item("PVCs", "#/k8s/pvc"),
@@ -228,6 +241,8 @@ impl ConsolePlugin for KubernetesPlugin {
         Router::new()
             .route("/kinds", get(kinds))
             .route("/network/policies", get(network_policies))
+            .route("/flows", get(flows::list))
+            .route("/flows/stream", get(flows::stream))
             .route("/network/endpoints", get(network_endpoints))
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/pods/{ns}/{name}", get(podpage::detail))

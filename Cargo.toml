@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/console-core",
+    "crates/hubble",
     "crates/stormconsole",
     "crates/plugins/kubernetes",
     "crates/plugins/fleet",
@@ -29,6 +30,7 @@ repository = "https://github.com/glennswest/stormconsole"
 
 [workspace.dependencies]
 console-core = { path = "crates/console-core" }
+hubble = { path = "crates/hubble" }
 plugin-kubernetes = { path = "crates/plugins/kubernetes" }
 plugin-fleet = { path = "crates/plugins/fleet" }
 plugin-logs = { path = "crates/plugins/logs" }

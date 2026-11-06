@@ -33,6 +33,7 @@
   import HistoryView from './lib/views/HistoryView.svelte'
   import BootView from './lib/views/BootView.svelte'
   import NetworkView from './lib/views/NetworkView.svelte'
+  import FlowsView from './lib/views/FlowsView.svelte'
   import UpdateView from './lib/views/UpdateView.svelte'
   import RegistryView from './lib/views/RegistryView.svelte'
   import ImagesView from './lib/views/ImagesView.svelte'
@@ -71,6 +72,7 @@
     history: HistoryView,
     networkpolicies: NetworkView,
     networkendpoints: NetworkView,
+    networkflows: FlowsView,
     update: UpdateView,
     registry: RegistryView,
     images: ImagesView,

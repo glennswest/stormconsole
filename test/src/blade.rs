@@ -258,6 +258,24 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
         Err(e) => r.record("cilium-events", Outcome::Fail(e), 0, None),
     };
 
+    // #4: flows, from the real relay. A relay with no peers yet says so (stormcos#327).
+    match ctx.console.get("/api/plugins/k8s/flows?last=5").await {
+        Ok(a) if a.status == 200 && a.body["available"] == true => {
+            let n = a.body["items"].as_array().map_or(0, Vec::len);
+            let outcome = match (n, a.body["note"].as_str()) {
+                (0, Some(note)) => Outcome::Skip(note.to_string()),
+                _ => Outcome::Pass(format!("{n} flows, {} node(s) connected", a.body["connected"])),
+            };
+            r.record("cilium-flows", outcome, 0, None);
+        }
+        Ok(a) => {
+            r.record("cilium-flows", Outcome::Fail(format!("HTTP {}: {}", a.status, a.body["reason"])), 0, None);
+        }
+        Err(e) => {
+            r.record("cilium-flows", Outcome::Fail(e), 0, None);
+        }
+    }
+
     let probes: Vec<String> = containers
         .iter()
         .flat_map(|c| {
