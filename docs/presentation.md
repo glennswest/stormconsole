@@ -164,7 +164,7 @@ Every key and default: README §Configuration.
 - A cluster change reaching a real node: the Cluster page writes the objects, and
   it needs the node lifecycle API (**stormcos#38**)
 - Cilium flows — shipped in the image, not read yet (**#4**)
-- Users and groups without a file — **#15**
+- Login and users, with roles — **#266**
 - Remote plugins — a component contributing its own UI — designed only
 
 ---

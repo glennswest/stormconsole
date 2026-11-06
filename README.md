@@ -426,7 +426,7 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 - **Where SSH keys live** — `[vm] ssh_keys_namespace` defaults to
   `default`, a system project where a project-only user cannot write
   (#42, a decision).
-- **Users and groups without editing a file** — #15 step 3, the owner's decision.
+- **Login and users managed from a page** (#266, stormcos#802): today users are `[[api.users]]` in the config file.
 - **Remote plugins** (a component contributing its own UI) — designed, not
   built.
 

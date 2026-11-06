@@ -1980,7 +1980,7 @@ install-token sign-in (#66). Left: the audit (no decision needed) and users with
   bearer or kube token in the file or the log; only an administrator reads it; kept across a restart; auth off says so.
   A real SOL door records 101 per person. Chromium walked the page
 - Not recorded: how long a console stayed open (only that it opened), or what was typed
-- [ ] Users without a file: asked on #15 (recommended: each user a ServiceAccount in `storm-users`), waiting on the owner
+- [x] Users without a file: overtaken (master, for the owner, 2026-11-06): stormcos#802 mints the admin password, and #266 is the console's part. #15 closed in favour of it
 
 ### Each stormd and stormdrive over TLS (#49)
 stormd#32 and stormdrive#19 landed: HTTPS, and a node-CA client certificate or a bearer. stormcos mounts the node CA and

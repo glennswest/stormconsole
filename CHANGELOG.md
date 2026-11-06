@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — #15 closed in favour of #266
+- **docs:** login and users are #266 and stormcos#802 now; README, architecture and the deck point there.
+
 ### 2026-11-06 — No sign-in is root (#165)
 - **BREAKING:** a console with no authentication acts as root, with every role, console-wide (owner's decision, until real login: #266, stormcos#802). The Terminal, deletes, YAML, projects, a node's cordon, drain and rack, drive actions including format, VM actions and the storage guard no longer refuse for want of a kubernetes identity or storage-admin, and are all offered. The typed confirmation stays. Requests go on the console's own credential, so the apiserver or a component's own gate can still refuse. A console with sign-ins keeps its rules.
 

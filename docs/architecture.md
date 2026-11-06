@@ -525,9 +525,7 @@ what and how it ended, under `<data_dir>/audit.jsonl` (two files of 4 MiB at mos
 and never the query or body, since a console door's `?token=` is in the query. `#/audit` and
 `GET /api/v1/console/audit` are an administrator's. It records a console opening, not how long it stayed open.
 
-Still open (#15): users and groups managed without editing a file on an immutable root. Where they live and how they
-get an apiserver identity is the owner's decision. Certificate identity is #127, and the escape hatch for a node whose
-apiserver is down is the per-node bearer (#102).
+Still to come (#266, stormcos#802): sign-in with a password minted at install, and users with roles managed from a page, in place of `[[api.users]]` in a file. Until then a console with no sign-in acts as root (#165).
 
 ### The network's view, inside the views people use
 
@@ -2089,7 +2087,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
-| stormconsole | #4 Hubble flows and agent metrics (unblocked); #42 where SSH keys live; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #4 Hubble flows and agent metrics (unblocked); #42 where SSH keys live; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #266 login and users; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 
