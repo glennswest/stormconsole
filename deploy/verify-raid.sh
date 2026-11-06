@@ -127,7 +127,7 @@ EOF
 for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done
 for u in alice bob; do curl -sf -c "$W/$u.jar" -H 'content-type: application/json' -d "{\"username\":\"$u\",\"password\":\"pw\"}" "$C/api/v1/auth/login" >/dev/null; done
 as() { local u=$1; shift; curl -s -b "$W/$u.jar" "$@"; }
-code() { local u=$1; shift; as "$u" -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' "$@"; }
+code() { local u=$1; shift; as "$u" -o /dev/null -w '%{http_code}' -X POST "$@"; }
 raid() { as alice "$C/api/plugins/sb/raid"; }
 state() { raid | j 'd["shelves"][0]["sets"][0]["status"]["state"]'; }
 until_state() { for _ in $(seq 1 "$2"); do [ "$(state)" = "$1" ] && return 0; sleep 1; done; return 1; }
@@ -147,7 +147,7 @@ check "$(echo "$R" | j 'd["worst"]')" clean "the worst set: clean"
 check "$(echo "$R" | j '[(s["name"], s["state"], len(s["spares"])) for s in d["shelves"]]')" "[('ds0', 'clean', 1)]" "one shelf, one spare"
 check "$(echo "$R" | j '[m["bay"] for m in d["shelves"][0]["sets"][0]["members"]]')" "['1', '2', '3', '4', '5', '6']" "six members, by their real bays"
 check "$(echo "$R" | j 'len(d["free"])')" 2 "the two drives nothing holds are free, and no member or spare"
-check "$(echo "$R" | j 'd["shelves"][0]["sets"][0]["level"]')" raid6 "RAID-6"
+check "$(echo "$R" | j 'd["shelves"][0]["sets"][0]["level"]')" RAID-6 "RAID-6"
 contains "$(card sb:engine)" "ok |" "the engine's card is ok"
 contains "$(card sb:engine)" "['clean']" "and says clean"
 contains "$(card fleet:node:local)" "[]" "the node's row adds nothing"
@@ -158,7 +158,7 @@ check "$(acts alice)" "['fail', 'replace']" "alice is offered fail and replace"
 check "$(acts bob)" "[]" "bob, storage-viewer, sees the same set and neither"
 check "$(as bob "$C/api/plugins/sb/raid" | j 'len(d["shelves"][0]["sets"][0]["members"])')" 6 "he does see it"
 check "$(code bob -H 'X-Storm-Confirm: file' "$FAIL6")" 403 "bob by hand: 403, the word does not help"
-check "$(code bob -H 'X-Storm-Confirm: spares' -d "{\"drive_uuid\":\"${IDS[7]}\",\"pool\":\"ds0\"}" "$SBP/spares")" 403 "bob adding a spare by hand: 403"
+check "$(code bob -H 'content-type: application/json' -H 'X-Storm-Confirm: spares' -d "{\"drive_uuid\":\"${IDS[7]}\",\"pool\":\"ds0\"}" "$SBP/spares")" 403 "bob adding a spare by hand: 403"
 WORD=$(as alice -X POST "$FAIL6" | j 'd["guard"]["confirm"]'); echo "  the word: $WORD"
 check "$(code alice "$FAIL6")" 428 "alice with no word: 428"
 check "$(code alice -H 'X-Storm-Confirm: nope' "$FAIL6")" 428 "the wrong word: 428"
