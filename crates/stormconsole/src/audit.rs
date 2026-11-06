@@ -68,6 +68,10 @@ pub struct Audit {
     failing: Mutex<bool>,
 }
 
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
 impl Audit {
     pub fn new(data_dir: &str) -> Self {
         Self { file: Path::new(data_dir).join("audit.jsonl"), failing: Mutex::new(false) }
@@ -98,7 +102,7 @@ impl Audit {
 
     pub fn record(&self, who: &Viewer, from: Option<std::net::IpAddr>, act: &Act, status: u16) {
         self.write(json!({
-            "at": chrono::Utc::now().timestamp(),
+            "at": now(),
             "who": who.user.as_deref().unwrap_or("anonymous"),
             "roles": who.roles,
             "from": from.map(|a| a.to_string()),
@@ -112,7 +116,7 @@ impl Audit {
 
     pub fn sign_in(&self, name: &str, from: Option<std::net::IpAddr>, ok: bool) {
         self.write(json!({
-            "at": chrono::Utc::now().timestamp(),
+            "at": now(),
             "who": name,
             "from": from.map(|a| a.to_string()),
             "capability": "sign-in",

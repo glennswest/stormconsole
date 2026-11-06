@@ -574,10 +574,12 @@ pub const TOKEN_USER: &str = "token";
 
 pub async fn login(
     State(state): State<AppState>,
-    connected: Option<axum::extract::ConnectInfo<crate::listen::Peer>>,
+    extensions: axum::http::Extensions,
     Json(body): Json<LoginBody>,
 ) -> Response {
-    let from = connected.and_then(|axum::extract::ConnectInfo(p)| p.addr);
+    let from = extensions
+        .get::<axum::extract::ConnectInfo<crate::listen::Peer>>()
+        .and_then(|axum::extract::ConnectInfo(p)| p.addr);
     let as_user = state.config.api.users.iter().any(|u| u.name == body.username && verify(u, &body.password));
     // The install token (#66) before the console's own: it is somebody's —
     // the installer's — and the session acts upstream as it.

@@ -221,7 +221,7 @@ async fn nav(State(state): State<AppState>) -> Response {
             let s = sections.remove(i);
             sections.insert(i, s.item("Audit", "#/audit"));
         }
-        None => sections.push(console_core::nav::NavSection::new("Observe", 30).admin().item("Audit", "#/audit")),
+        None => sections.push(console_core::NavSection::new("Observe", 30).admin().item("Audit", "#/audit")),
     }
     Json(sections).into_response()
 }
