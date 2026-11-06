@@ -32,9 +32,9 @@ say "fastetcd, rustkube and stormrdp, from main"
 curl -sfL "https://github.com/glennswest/fastetcd/releases/download/v1.2.0/fastetcd-v1.2.0-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
 FE=$(find "$W" -type f -name fastetcd -perm -u+x | head -1)
 for r in rustkube stormrdp; do git clone -q --depth 1 "https://github.com/glennswest/$r" "$W/$r"; echo "  $r $(git -C "$W/$r" rev-parse --short HEAD)"; done
-(cd "$W/rustkube" && CARGO_TARGET_DIR="$W/k-target" cargo build -q --bin kube-apiserver)
-(cd "$W/stormrdp" && CARGO_TARGET_DIR="$W/r-target" cargo build -q --locked -p stormrdp-gateway)
-KA="$W/k-target/debug/kube-apiserver"; RDP="$W/r-target/debug/stormrdp"
+(cd "$W/rustkube" && CARGO_TARGET_DIR="$W/k-target" cargo build -q -p kube-apiserver)
+(cd "$W/stormrdp" && CARGO_TARGET_DIR="$W/r-target" cargo build -q --release --locked --workspace)
+KA="$W/k-target/debug/kube-apiserver"; RDP="$W/r-target/release/stormrdp"
 command -v qemu-system-x86_64 >/dev/null || { echo "  FAIL no qemu on this VM"; exit 1; }
 
 say "the apiserver: TLS, anonymous off, ServiceAccounts for people"
