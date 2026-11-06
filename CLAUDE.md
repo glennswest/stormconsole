@@ -949,7 +949,7 @@ replay already on the Serial console tab.
 - Not on a real blade: the owner's acceptance (cilium's pod on 11.6x) is
   the first look at a real kubelet's answers — the stand-ins follow
   rustkube-node's code as read on 2026-10-02
-- Left on #12: Terminal (rustkube-node#56), Environment
+- Terminal and Environment: done on #12
 
 ### Registry images and instances (#70)
 Owner: the console calls goldens "registry images"; the CoW clone a
@@ -2193,16 +2193,28 @@ are in upstream's names: `smartctl_device_temperature`, `smartctl_device_percent
   watch is not counted while open). A chart over more than a minute or two of data: the rig's history is short, so its 1-hour charts are dots
 - Left: a volume has no series or link (stormblock#536). This node's series only, so another node's drive has no link
 
-### A pod's Terminal and Environment (#12)
+### A pod's Terminal and Environment (#12) ✅ 2026-11-05
 What is left of #12 after #69. rustkube-node serves exec now (`remotecommand.rs`, docs/status.md "Streaming"): WebSocket `v4.channel.k8s.io`, binary
 frames with the channel as first byte (0 stdin, 1 stdout, 2 stderr, 3 error `metav1.Status`, 4 resize), and the apiserver proxies `pods/exec`
 transparently. Its #56 is still open for `kubectl` proof, not for the route.
-- [ ] `kubernetes/src/exec.rs`: `WS /pods/{ns}/{name}/exec?container=&command=`, relayed **as the viewer**: operator or admin here, `create pods/exec`
+- [x] `kubernetes/src/exec.rs`: `WS /pods/{ns}/{name}/exec?container=&command=`, relayed **as the viewer**: operator or admin here, `create pods/exec`
       at the apiserver, and never the console's own credential; recorded as a console in the audit; the typing is not
-- [ ] `kubernetes/src/env.rs`: `GET /pods/{ns}/{name}/env?container=`: literal, `$(VAR)`, fieldRef, resourceFieldRef, ConfigMap values as the viewer,
+- [x] `kubernetes/src/env.rs`: `GET /pods/{ns}/{name}/env?container=`: literal, `$(VAR)`, fieldRef, resourceFieldRef, ConfigMap values as the viewer,
       envFrom expanded; a Secret's keys and never its values
-- [ ] Pod page tabs Environment and Terminal (xterm.js, loaded when opened); `pod.terminal` says why not
-- [ ] `deploy/verify-pod-terminal.sh`: real apiserver, stand-in kubelet with a real pty in rustkube-node's protocol, users by role; Chromium; dist; close; golden
+- [x] Pod page tabs Environment and Terminal (xterm.js, loaded when opened); `pod.terminal` says why not
+- [x] `deploy/verify-pod-terminal.sh`: real apiserver, stand-in kubelet with a real pty in rustkube-node's protocol, users by role; Chromium; dist; close; golden
+- Verified with `sc-build deploy/verify-pod-terminal.sh` (0 failed): real fastetcd, rustkube apiserver (main, TLS, RBAC) and console (`ca_file`), through
+  the real `pods/exec` proxy to a stand-in kubelet running a real process on a real pty in rustkube-node's protocol. Chromium: a shell, its
+  output, a resize reaching the pty, colour drawn, the exit code, a second container, Disconnect stopping the exec, "executable file not found" in
+  the runtime's words. bob (operator, view): "not allowed to create pods/exec". carol (reader, edit), dave (operator, no identity) refused here,
+  none of those reaching the kubelet; another project's pod 404. The environment resolved, a Secret's value nowhere in the answer or page. Audit: who
+  opened one, no typing or command. Screenshots read: they found the tabs' card style and the disabled box
+- Not seen: a real kubelet (needs PID 1's runtime or root), so rustkube-node's own WebSocket path behind the proxy is from its docs and code.
+  The first run on a node is the proof; #76's blade suite is blocked on stormcos#271. rustkube's proxy sends the upgrade as a POST (`streaming.rs`), and
+  the kubelet's route takes it; a stand-in accepting that does not prove the real one's handshake on POST
+- A 12.61 node's console has no kubernetes identity (auth off or the node bearer), so the Terminal says so there until `install_token_file` (stormcos#256) or
+  users with `kube_token`: the same open question as #165
+- Terminal and Environment are per container; no separate container page: the tabs have the picker
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was

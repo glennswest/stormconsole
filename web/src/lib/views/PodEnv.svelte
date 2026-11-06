@@ -50,6 +50,7 @@
 </section>
 
 <style>
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px var(--sc-row-px); }
   h2 select { margin-left: 8px; font-size: var(--sc-t-body); font-weight: 400; }
   table.env { width: 100%; border-collapse: collapse; font-size: var(--sc-t-body); }
   table.env th { text-align: left; color: var(--text-faint); font-size: var(--sc-t-meta); font-weight: 600; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); }

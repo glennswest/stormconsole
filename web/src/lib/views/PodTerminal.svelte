@@ -139,10 +139,12 @@
 </section>
 
 <style>
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px var(--sc-row-px); }
   .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
   .bar label { display: flex; flex-direction: column; gap: 3px; font-size: var(--sc-t-meta); color: var(--text-dim); }
   .bar .cmd { flex: 1; min-width: 200px; }
-  .bar input { width: 100%; }
+  .bar input { width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
+  .bar input:disabled { color: var(--text-dim); background: transparent; }
   .term { display: none; height: 420px; padding: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
   .term.shown { display: block; }
   .result { margin: 6px 0; overflow-wrap: anywhere; }
