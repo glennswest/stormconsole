@@ -372,16 +372,27 @@ impl ConsolePlugin for SbregistryPlugin {
 /// One read, its status and body. readyz answers 503 with a body while warming up, and that is
 /// data, not an error.
 async fn read(inner: &Inner, path: &str, within: Duration) -> Result<(u16, Value), String> {
-    let chain = |e: reqwest::Error| {
-        use std::error::Error as _;
-        e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
-    };
-    let resp = inner.reach.request(reqwest::Method::GET, path).await?.timeout(within).send().await.map_err(chain)?;
+    let resp = inner
+        .reach
+        .request(reqwest::Method::GET, path)
+        .await?
+        .timeout(within)
+        .send()
+        .await
+        .map_err(|e| unreachable_note(&console_core::dial::chain(&e), e.url().is_some_and(|u| u.scheme() == "http")))?;
     let code = resp.status().as_u16();
     if resp.status().is_success() {
         return Ok((code, resp.json().await.map_err(|e| format!("unreadable: {e}"))?));
     }
     Ok((code, resp.json().await.unwrap_or(Value::Null)))
+}
+
+/// Why it did not answer. A registry moved to TLS drops a plain client with no word about why.
+fn unreachable_note(why: &str, plain: bool) -> String {
+    if plain && !why.to_lowercase().contains("refused") {
+        return format!("{why} (if the registry serves TLS now, set [node_tls] ca_file)");
+    }
+    why.to_string()
 }
 
 /// A list, and the first refusal among the lists read, for the card.
@@ -719,6 +730,13 @@ fn generic(v: &Value, kind: &str) -> ComponentSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plain_client_dropped_by_the_registry_is_pointed_at_tls() {
+        assert!(unreachable_note("connection closed", true).contains("[node_tls] ca_file"));
+        assert_eq!(unreachable_note("Connection refused (os error 111)", true), "Connection refused (os error 111)");
+        assert_eq!(unreachable_note("connection closed", false), "connection closed");
+    }
 
     #[test]
     fn a_refusal_says_what_to_set() {
