@@ -2397,9 +2397,9 @@ Read from rustkube 6c4fe56 (`handlers/authorization.rs`, `rbac_engine.rs`): `sel
 `/metrics` was open and answered the app's HTML with 200, so a scraper read a healthy target with no series. Serve the series the issue names, behind the same gate as the rest (owner: nothing anonymous but health). "received" in the log ring is what is retained, and falls on eviction, so it is a gauge; only `duplicates` is a counter.
 - [x] `crates/stormconsole/src/metrics.rs`; `Registry::stats`; `ConsolePlugin::samples` (logs); the gate; docs
 - [x] `deploy/verify-console-metrics.sh`: a real ironprom scraping it with a token; the medium suite
-- [ ] Paused for #165 (2026-11-06), all verified at b429459: close #41, request the image, ask stormcos for a scrape job on :9094
+- [x] Rerun on 4e37cb2 (0 failed); in image 07c6c4390f40, so no new one; the scrape job is stormcos#827
 - Verified with `sc-build deploy/verify-console-metrics.sh` (0 failed), `deploy/verify-tests.sh`, `verify-auth.sh`, default `sc-build`. ironprom from main: `up` 1 with the token and with authentication off, 0 with the wrong token or none (saying 401), series by label, a rate over the counter. Six of one line and three others: 5 duplicates, 4 entries, 9 occurrences. A real websocket 0, 1, 0. A plugin with no apiserver in `unknown`/`error` by label
-- Not seen: a real node, or a scrape over TLS with a client certificate (the gate is the same one; #127's rig covers that path for logs). Nothing scrapes :9094 until stormcos adds the job
+- Not seen: a real node, or a scrape over TLS with a client certificate (the gate is the same one; #127's rig covers that path for logs). Nothing scrapes :9094 until stormcos#827
 
 ### Disk I/O, read and write apart (#265)
 Read from the sources (2026-11-06): stormvm has the split; the standalone cadvisor has it per cgroup path, and for `/` as diskstats sectors and operations; the kubelet's `/metrics/cadvisor` has none (filed rustkube-node#323); stormdrive has bytes for NVMe only, no operations (filed stormdrive#120); the engine by operation, not bytes (stormblock#536).
