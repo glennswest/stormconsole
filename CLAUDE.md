@@ -2307,7 +2307,13 @@ sectionsystems (`docs/api.md`, read at ee5ec2f): `GET :9103/api/v1/status` = `{r
 until a pass finishes, with `result` pass|incomplete|fail, `finished`, `release`, `counts`, `findings[]`. Plain HTTP, no credential. It
 reaches nodes with stormcos#227 (open). Polled per member, because passes are hours apart and a console restart would lose a heard line.
 - [x] `fleet/src/verification.rs`; row metric and health; `GET /verification/{host}`; `NodeVerification.svelte`; filter
-- [ ] `deploy/verify-node-verification.sh`: real sectionsystems and apiserver, stand-ins for other nodes' answers; Chromium; docs; golden
+- [x] `deploy/verify-node-verification.sh`: real sectionsystems and apiserver, stand-ins for other nodes' answers; Chromium; docs; golden
+- Verified with `sc-build deploy/verify-node-verification.sh` (0 failed): sectionsystems ee5ec2f doing a real pass on this node
+  (`incomplete`: no manifest on a build VM), real fastetcd and rustkube holding five Nodes, stand-ins in `docs/api.md`'s shape for failed,
+  passed and before the first pass, and one with nothing on :9103. The failed row an error, the real one's result, counts and problems as it
+  said them; a later failure followed within a poll; a node that stopped answering keeps its failure, marked last known. Chromium:
+  rows, filter, the page, Refresh; screenshots read. The walk found the page's effect re-running itself (fixed). Default `sc-build`
+- Not seen: a real node (stormcos#227 is open) or a real pass that fails. Left: past passes (`/api/v1/history`) are not shown
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
