@@ -2422,7 +2422,7 @@ Every image since be7123ba6876 (bfdf56d, 2026-11-05) holds a cut `stormconsole`:
 image holds (30.58 MB fit, 30.72 MB did not). The build log says `cp: error writing …/usr/sbin/stormconsole: No space
 left on device`, the build sealed it anyway (stormcentral#716), and the read-back's sha256 differs from the recorded one.
 A good binary cut to 90% segfaults with no output (139), as the node does.
-- [ ] A first line on stderr at start, before anything else can fail; test
+- [x] A first line on stderr at start, before anything else can fail; test (4f1a97d)
 - [ ] Master: `component edit stormconsole --set golden_size=64M`, spoil the cut images; stormcentral#716 told
 - [ ] After the edit: image; `component fetch` must read back the recorded sha256, and the fetched binary run
 
