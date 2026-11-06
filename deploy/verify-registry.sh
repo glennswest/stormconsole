@@ -172,6 +172,12 @@ check "$(Q 'next(r for r in d["repositories"] for i in r["images"] for x in i["c
 check "$(Q 'any("hostgolden" in i["name"] or "host" in i["repository"] for r in d["repositories"] for i in r["images"])')" False "whose own image is not listed as one"
 check "$(curl -s "${AT[@]}" "$C/api/v1/components" | j 'sum(1 for c in d if c["kind"]=="repository") >= 2')" True "a feed row per repository, for the navigator"
 
+say "what an image was made from, from the real catalog (#85)"
+O=$(curl -s "${AT[@]}" "$C/api/plugins/reg/origin?name=$(curl -s "$REG/v1/catalog/images" | j '[i["name"] for i in d["items"] if "stormlb" in i["name"]][0]')"); echo "  $O" | head -c 400; echo
+check "$(echo "$O" | j 'd["found"]')" True "the image is found by its name"
+check "$(echo "$O" | j 'd["upstreamDigest"]')" None "no source: no upstream digest claimed"
+check "$(curl -s "${AT[@]}" "$C/api/plugins/reg/origin?name=nothing-000000000000" | j 'd["found"]')" False "another name: not found"
+
 say "the catalog adds what the engine cannot say, and the page stands without it"
 check "$(Q 'tag["aaaaaaaaaaaa"]["kind"], c["pod-root"]["holder"]["name"]')" "component web" "the catalog's kind beside the engine's holder"
 Q 'tag["aaaaaaaaaaaa"].get("digest"), tag["aaaaaaaaaaaa"]["releases"]' | sed 's/^/  digest, releases as the catalog says: /'
@@ -182,12 +188,6 @@ check "$(Q 'c["pod-root"]["holder"]["name"]')" web "the holders with it"
 say "read-only, and authenticated"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$HOLD")" 401 "no credential: 401"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${AT[@]}" "$HOLD")" 405 "a POST: 405"
-
-say "what an image was made from, from the real catalog (#85)"
-O=$(curl -s "${AT[@]}" "$C/api/plugins/reg/origin?name=$(curl -s "$REG/v1/catalog/images" | j '[i["name"] for i in d["items"] if "stormlb" in i["name"]][0]')"); echo "  $O" | head -c 400; echo
-check "$(echo "$O" | j 'd["found"]')" True "the image is found by its name"
-check "$(echo "$O" | j 'd["upstreamDigest"]')" None "no source: no upstream digest claimed"
-check "$(curl -s "${AT[@]}" "$C/api/plugins/reg/origin?name=nothing-000000000000" | j 'd["found"]')" False "another name: not found"
 
 say "the page, in Chromium"
 df -h "$W" | tail -1
