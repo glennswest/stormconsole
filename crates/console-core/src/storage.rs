@@ -281,7 +281,7 @@ pub struct Decision {
 }
 
 impl Decision {
-    fn yes() -> Self {
+    pub fn yes() -> Self {
         Self { allowed: true, reason: String::new() }
     }
     fn no(reason: impl Into<String>) -> Self {
