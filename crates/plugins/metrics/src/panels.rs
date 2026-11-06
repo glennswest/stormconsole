@@ -342,6 +342,12 @@ mod tests {
     }
 
     #[test]
+    fn a_watch_is_not_latency_in_either_spelling() {
+        let q = panel("apiserver", "latency").query;
+        assert!(q.contains("watch") && q.contains("WATCH"), "{q}");
+    }
+
+    #[test]
     fn an_object_cannot_end_its_string() {
         let e = Entity::Drive { serial: r#"Z"} or up{a="\"#.into() };
         let q = query(&DRIVE[0], Some(&e), None).unwrap();

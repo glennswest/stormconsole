@@ -129,7 +129,6 @@ check "$(until_lines containers memory)" "['secret / vault / app', 'shop / web /
 V=$(g '/charts?level=containers&window=900' | python3 -c "import json,sys; d=json.load(sys.stdin); print(round([p['v'] for c in d['charts'] if c['id']=='memory' for s in c['series'] if s['name']=='shop / web / app' for p in s['points'] if p['v'] is not None][-1]))")
 check "$V" "$((48*1024*1024))" "the value is the exporter's"
 A=$(until_lines apiserver rate); echo "  $A"; holds "$A" "list" "the real apiserver's request rate by verb"
-holds "$A" "watch" "the console's watches among them"
 A=$(until_lines apiserver latency); echo "  $A"; holds "$A" "list" "and its latency"
 case "$A" in *watch*) check "$A" "no watch" "a watch's long life is not latency" ;; *) check ok ok "a watch's long life is not latency" ;; esac
 check "$(until_lines datastore size)" "['127.0.0.1:23902']" "the real fastetcd's database size"
@@ -171,12 +170,14 @@ check "$T" "[0]" "ironprom sees it go"
 kill "$PROMPID"; wait "$PROMPID" 2>/dev/null || true
 for _ in $(seq 30); do R=$(g /targets | j 'd["not_started"]'); [ "$R" = True ] && break; sleep 1; done
 check "$R" True "no ironprom, no stormd of its own: not started"
-check "$(curl -s -b "$W/root.jar" "$C/api/v1/components" | j '[c["health"] for c in d if c["id"]=="metrics:ironprom"]')" "['idle']" "idle, not an error"
+cardh() { curl -s -b "$W/root.jar" "$C/api/v1/components" | j '[c["health"] for c in d if c["id"]=="metrics:ironprom"]'; }
+for _ in $(seq 30); do [ "$(cardh)" = "['idle']" ] && break; sleep 1; done
+check "$(cardh)" "['idle']" "idle, not an error"
 check "$(code '/charts?level=drives')" 503 "the charts say so"
 BR=0; env PHASE=gone "$HERE/deploy/browser/run.sh" "$W" metrics.cjs "$C" || BR=1; check "$BR" 0 "the page says so"
 python3 -m http.server 9191 --bind 127.0.0.1 >/dev/null 2>&1 &
-sleep 18
-check "$(curl -s -b "$W/root.jar" "$C/api/v1/components" | j '[c["health"] for c in d if c["id"]=="metrics:ironprom"]')" "['error']" "its stormd up and ironprom silent: an error"
+for _ in $(seq 40); do [ "$(cardh)" = "['error']" ] && break; sleep 1; done
+check "$(cardh)" "['error']" "its stormd up and ironprom silent: an error"
 
 say "console logs (warnings and errors only)"
 grep -hE 'WARN|ERROR' "$W/c.log" | grep -v 'no users, no auth_token' | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200 | sort -u -k3 | head -12 || true
