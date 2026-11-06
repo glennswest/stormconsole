@@ -68,11 +68,11 @@ pub fn request(i: &Import) -> Result<Value, String> {
     Ok(body)
 }
 
-/// The registry's refusal, in words. With auth on it wants an admin, and the console holds no credential
-/// for it (#35).
+/// The registry's refusal, in words. With auth on an import wants `admin`: the engine's token has it,
+/// and a robot account only if it was granted it.
 pub fn refusal(status: u16, said: &Value) -> String {
     if status == 401 || status == 403 {
-        return "the registry wants an administrator's credential for an import, and this console holds none for it (#35)".into();
+        return "the registry wants an administrator's credential for an import: [sbregistry] token_file needs admin on *, or a registry on this machine the engine's token".into();
     }
     let error = said.get("error").and_then(Value::as_str).unwrap_or("it did not say why");
     match said.get("fault").and_then(Value::as_str) {
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn a_refusal_says_whose_it_is() {
-        assert!(refusal(401, &json!({})).contains("#35"));
+        assert!(refusal(401, &json!({})).contains("token_file"));
         assert_eq!(refusal(502, &json!({"error": "404 from x", "fault": "upstream"})), "404 from x (the fault is the upstream's)");
         assert_eq!(refusal(400, &json!({"error": "bad"})), "bad");
     }

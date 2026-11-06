@@ -198,7 +198,8 @@ Full example: [config/config.toml](config/config.toml).
 | `[stormstorage] enabled / url` | on / `http://127.0.0.1:9093` | |
 | `[stormstorage] token_file` | — | stormstorage's `[api] api_token` (stormstorage#6), read at start and added by the proxy to the feed's actions; without it a tokened stormstorage answers them 401. A delete still goes with the viewer's bearer (#82) |
 | `[stormblock] enabled / url / token_file` | on / `http://127.0.0.1:9090` / — | the engine's `<data_dir>/api_token`; a v18 engine answers 401 to reads without it. On a node stormcos sets `/run/stormblock/engine/api_token` |
-| `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | |
+| `[sbregistry] enabled / url` | on / `http://127.0.0.1:5100` | asked over HTTPS first when `[node_tls]` is set, verified against the node CA |
+| `[sbregistry] token_file` | the engine's token, for a registry on this machine | a robot account's token, sent as a bearer on every read, the imports and the proxy, and followed when it changes. `*=pull` for the views, `*=admin` for the create forms and imports. Never sent over plain HTTP to another machine (#35) |
 | `[vm] enabled / url / ssh_keys_namespace` | on / `http://127.0.0.1:9095` / `default` | `url` is stormvm, for the consoles and verbs only |
 | `[vmimages] enabled / url` | on / `http://127.0.0.1:9099` | |
 | `[fastetcd] enabled / url / metrics_url` | on / `http://127.0.0.1:2379` / `http://127.0.0.1:2381` | |
@@ -416,8 +417,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 - **Where SSH keys live** — `[vm] ssh_keys_namespace` defaults to
   `default`, a system project where a project-only user cannot write
   (#42, a decision).
-- **Registry reads carry no credential** — a registry with an auth file and
-  no anonymous pull answers the console 401 (#35).
 - **Users and groups without editing a file** — #15 step 3, the owner's decision.
 - **Remote plugins** (a component contributing its own UI) — designed, not
   built.

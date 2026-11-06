@@ -232,9 +232,10 @@ struct NodeImage {
 /// is no such thing as "already here".
 /// Disks imported through the registry (#44): sealed media the image operator did not make.
 /// Offered under what they were imported as; the value is the volume, as for every other choice.
-pub async fn add_imported(cat: &mut Catalogue, http: &reqwest::Client, registry: &str) {
-    let url = format!("{}/v1/catalog/images", registry.trim_end_matches('/'));
-    let Ok(r) = http.get(&url).timeout(std::time::Duration::from_secs(5)).send().await else { return };
+/// A registry that will not answer is said on its own card; here it just offers nothing more.
+pub async fn add_imported(cat: &mut Catalogue, registry: &console_core::dial::Reach) {
+    let Ok(req) = registry.request(reqwest::Method::GET, "/v1/catalog/images").await else { return };
+    let Ok(r) = req.timeout(std::time::Duration::from_secs(5)).send().await else { return };
     let Ok(v) = r.json::<serde_json::Value>().await else { return };
     let items = v.get("items").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
     merge_imported(cat, &items);

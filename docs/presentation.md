@@ -176,7 +176,6 @@ Open, and why it matters:
   with a 200, so the probe always passes and a hung console is never seen.
 - **#42** (a decision) — SSH keys live in `default`, where a
   project-only user cannot write them.
-- **#35** — the registry plugin sends no credential.
 - **#64** — fastetcd serves the v3 gateway and traffic counters now
   (v1.8.0); the datastore page has not yet been checked against it.
 - Upstream data still coming: stormblock#152, stormvm#16, #41, #45.

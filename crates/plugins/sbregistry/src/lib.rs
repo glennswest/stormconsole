@@ -36,7 +36,8 @@ struct Engine {
 }
 
 struct Inner {
-    base: String,
+    /// The registry, its dial and its credential (#35).
+    reach: Arc<console_core::dial::Reach>,
     client: reqwest::Client,
     state: RwLock<State>,
     engine: std::sync::OnceLock<Engine>,
@@ -65,10 +66,10 @@ pub struct SbregistryPlugin {
 }
 
 impl SbregistryPlugin {
-    pub fn new(url: &str) -> Self {
+    pub fn new(reach: Arc<console_core::dial::Reach>) -> Self {
         Self {
             inner: Arc::new(Inner {
-                base: url.trim_end_matches('/').to_string(),
+                reach,
                 client: reqwest::Client::new(),
                 engine: std::sync::OnceLock::new(),
                 holdings: tokio::sync::Mutex::new(None),
@@ -112,21 +113,39 @@ async fn engine_list(inner: &Inner, e: &Engine, path: &str) -> Result<Vec<Value>
     })
 }
 
-/// The catalog, with the engine's token where it stays on this machine: a registry
-/// with auth on takes it (stormblock-registry#55), and it goes nowhere else.
-async fn catalog_items(inner: &Inner, e: &Engine) -> Result<Vec<Value>, String> {
-    let mut req = inner.client.get(format!("{}/v1/catalog/images", inner.base)).timeout(Duration::from_secs(15));
-    if console_core::upstream::is_loopback(&inner.base) {
-        if let Some(t) = e.token.get() {
-            req = req.bearer_auth(t);
-        }
+/// The catalog. A refusal is said in words.
+async fn catalog_items(inner: &Inner) -> Result<Vec<Value>, String> {
+    let (code, v) = read(inner, "/v1/catalog/images", Duration::from_secs(15)).await?;
+    if !(200..300).contains(&code) {
+        return Err(refused(inner, code).await.unwrap_or_else(|| format!("the registry's catalog answered {code}")));
     }
-    let r = req.send().await.map_err(|e| e.to_string())?;
-    if !r.status().is_success() {
-        return Err(format!("the registry's catalog answered {}", r.status().as_u16()));
-    }
-    let v: Value = r.json().await.map_err(|e| e.to_string())?;
     Ok(v.get("items").and_then(Value::as_array).cloned().unwrap_or_default())
+}
+
+/// What a 401 or 403 from the registry means for this console, and what to set.
+async fn refused(inner: &Inner, code: u16) -> Option<String> {
+    if code != 401 && code != 403 {
+        return None;
+    }
+    let r = inner.reach.reach().await.ok();
+    Some(credential_note(code, r.as_ref().is_some_and(|r| r.bearer.is_some()), r.as_ref().is_some_and(|r| r.withheld)))
+}
+
+fn credential_note(code: u16, sent: bool, withheld: bool) -> String {
+    if withheld {
+        return format!(
+            "the registry answered {code}: the console will not send its credential over plain HTTP to another machine. \
+             Give [sbregistry] an https url, or set [node_tls] once the registry serves TLS"
+        );
+    }
+    match (code, sent) {
+        (403, _) => "the registry answered 403: the credential in [sbregistry] token_file needs pull on *".into(),
+        (_, true) => format!("the registry refused the console's credential ({code}): check [sbregistry] token_file"),
+        _ => format!(
+            "the registry answered {code} and the console holds no credential for it: set [sbregistry] token_file, \
+             or [stormblock] token_file for a registry on this machine"
+        ),
+    }
 }
 
 const HOLDINGS_FOR: Duration = Duration::from_secs(10);
@@ -145,7 +164,7 @@ async fn read_holdings(inner: &Inner) -> Arc<Answer> {
     match engine_list(inner, e, "/api/v1/volumes").await {
         Err(why) => a.engine_error = why,
         Ok(volumes) => {
-            let catalog = catalog_items(inner, e).await.unwrap_or_else(|why| {
+            let catalog = catalog_items(inner).await.unwrap_or_else(|why| {
                 a.catalog_note = why;
                 vec![]
             });
@@ -194,8 +213,11 @@ async fn media_route(
         Ok(b) => b,
         Err(e) => return (StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"error": e}))).into_response(),
     };
-    let resp = inner.client.post(format!("{}/v1/media", inner.base)).json(&body).timeout(Duration::from_secs(30)).send().await;
-    match resp {
+    let req = match inner.reach.request(reqwest::Method::POST, "/v1/media").await {
+        Ok(r) => r,
+        Err(e) => return (StatusCode::BAD_GATEWAY, axum::Json(serde_json::json!({"error": e}))).into_response(),
+    };
+    match req.json(&body).timeout(Duration::from_secs(30)).send().await {
         Ok(r) => {
             let code = StatusCode::from_u16(r.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             let said: Value = r.json().await.unwrap_or(Value::Null);
@@ -223,12 +245,9 @@ async fn origin_route(
     axum::extract::Query(q): axum::extract::Query<OriginQuery>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    match get(&inner, "/v1/catalog/images").await {
-        Ok(v) => {
-            let items = v.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
-            axum::Json(holdings::origin(&items, &q.name)).into_response()
-        }
-        Err(e) => axum::Json(serde_json::json!({"found": false, "error": e.to_string()})).into_response(),
+    match catalog_items(&inner).await {
+        Ok(items) => axum::Json(holdings::origin(&items, &q.name)).into_response(),
+        Err(e) => axum::Json(serde_json::json!({"found": false, "error": e})).into_response(),
     }
 }
 
@@ -323,7 +342,7 @@ impl ConsolePlugin for SbregistryPlugin {
             .route("/origin", axum::routing::get(origin_route))
             .route("/media", axum::routing::post(media_route))
             .with_state(self.inner.clone())
-            .nest("/proxy", console_core::proxy::router(self.inner.client.clone(), self.inner.base.clone()))
+            .nest("/proxy", console_core::proxy::router_reach(self.inner.reach.clone()))
     }
 
     async fn components(&self) -> Vec<ComponentSummary> {
@@ -336,7 +355,7 @@ impl ConsolePlugin for SbregistryPlugin {
 
     async fn detail(&self) -> String {
         let s = self.inner.state.read().await;
-        console_core::upstream::detail("sbregistry", &self.inner.base, &s.detail)
+        console_core::upstream::detail("sbregistry", self.inner.reach.base(), &s.detail)
     }
 
     async fn run(&self, shutdown: CancellationToken) {
@@ -350,26 +369,32 @@ impl ConsolePlugin for SbregistryPlugin {
     }
 }
 
-async fn get(inner: &Inner, path: &str) -> Result<Value, String> {
-    let resp = inner
-        .client
-        .get(format!("{}{path}", inner.base))
-        .timeout(Duration::from_secs(5))
-        .send()
-        .await
-        .map_err(|e| {
-            use std::error::Error as _;
-            e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
-        })?;
-    // readyz answers 503 with a body while warming up; that is data, not
-    // an error.
-    resp.json().await.map_err(|e| e.to_string())
+/// One read, its status and body. readyz answers 503 with a body while warming up, and that is
+/// data, not an error.
+async fn read(inner: &Inner, path: &str, within: Duration) -> Result<(u16, Value), String> {
+    let chain = |e: reqwest::Error| {
+        use std::error::Error as _;
+        e.source().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+    };
+    let resp = inner.reach.request(reqwest::Method::GET, path).await?.timeout(within).send().await.map_err(chain)?;
+    let code = resp.status().as_u16();
+    if resp.status().is_success() {
+        return Ok((code, resp.json().await.map_err(|e| format!("unreadable: {e}"))?));
+    }
+    Ok((code, resp.json().await.unwrap_or(Value::Null)))
 }
 
-async fn items(inner: &Inner, path: &str) -> Vec<Value> {
-    match get(inner, path).await {
-        Ok(Value::Array(a)) => a,
-        Ok(v) => v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(),
+/// A list, and the first refusal among the lists read, for the card.
+async fn items(inner: &Inner, path: &str, note: &mut Option<String>) -> Vec<Value> {
+    match read(inner, path, Duration::from_secs(5)).await {
+        Ok((code, _)) if code == 401 || code == 403 => {
+            if note.is_none() {
+                *note = refused(inner, code).await;
+            }
+            vec![]
+        }
+        Ok((_, Value::Array(a))) => a,
+        Ok((_, v)) => v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(),
         Err(_) => vec![],
     }
 }
@@ -377,8 +402,8 @@ async fn items(inner: &Inner, path: &str) -> Vec<Value> {
 async fn poll(inner: &Inner) {
     // The engine's answer, whether or not the registry is up.
     let repos = if inner.engine.get().is_some() { repository_rows(&*read_holdings(inner).await) } else { vec![] };
-    let ready = match get(inner, "/readyz").await {
-        Ok(v) => v,
+    let ready = match read(inner, "/readyz", Duration::from_secs(5)).await {
+        Ok((_, v)) => v,
         Err(e) => {
             let mut s = inner.state.write().await;
             s.health = Health::Error;
@@ -392,37 +417,29 @@ async fn poll(inner: &Inner) {
 
     // The catalog (sbregistry v0.22.0). An older registry answers 404, and
     // the card says so rather than showing an empty catalog.
-    let (catalog, catalog_note) = match inner
-        .client
-        .get(format!("{}/v1/catalog/images", inner.base))
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await
-    {
-        Ok(r) if r.status().as_u16() == 404 => {
-            (vec![], Some("this registry predates /v1/catalog (sbregistry v0.22.0)".to_string()))
+    let (catalog, mut catalog_note) = match read(inner, "/v1/catalog/images", Duration::from_secs(15)).await {
+        Ok((404, _)) => (vec![], Some("this registry predates /v1/catalog (sbregistry v0.22.0)".to_string())),
+        Ok((code, v)) if (200..300).contains(&code) => {
+            (v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(), None)
         }
-        Ok(r) if r.status().is_success() => match r.json::<Value>().await {
-            Ok(v) => (v.get("items").and_then(Value::as_array).cloned().unwrap_or_default(), None),
-            Err(e) => (vec![], Some(format!("catalog unreadable: {e}"))),
+        Ok((code, body)) => match refused(inner, code).await {
+            Some(why) => (vec![], Some(why)),
+            None => {
+                let why = body.get("error").and_then(Value::as_str).unwrap_or("");
+                (vec![], Some(format!("catalog: {code} {why}").trim().to_string()))
+            }
         },
-        Ok(r) => {
-            let code = r.status().as_u16();
-            let body: Value = r.json().await.unwrap_or(Value::Null);
-            let why = body.get("error").and_then(Value::as_str).unwrap_or("").to_string();
-            (vec![], Some(format!("catalog: {code} {why}").trim().to_string()))
-        }
         Err(e) => (vec![], Some(format!("catalog: {e}"))),
     };
-    let jobs = items(inner, "/v1/media/jobs").await;
+    let jobs = items(inner, "/v1/media/jobs", &mut catalog_note).await;
     let names: Vec<String> = catalog.iter().filter_map(|v| field(v, &["name"])).collect();
     let mut cat: Vec<ComponentSummary> = catalog.iter().map(|v| catalog::image(v, &jobs)).collect();
     cat.extend(jobs.iter().filter_map(|j| catalog::orphan_job(j, &names)));
 
-    let goldens: Vec<_> = items(inner, "/v1/goldens").await.iter().map(golden).collect();
-    let clones: Vec<_> = items(inner, "/v1/clones").await.iter().map(clone_).collect();
-    let pallets: Vec<_> = items(inner, "/v1/pallets").await.iter().map(|v| generic(v, "pallet")).collect();
-    let images: Vec<_> = items(inner, "/v1/images").await.iter().map(image).collect();
+    let goldens: Vec<_> = items(inner, "/v1/goldens", &mut catalog_note).await.iter().map(golden).collect();
+    let clones: Vec<_> = items(inner, "/v1/clones", &mut catalog_note).await.iter().map(clone_).collect();
+    let pallets: Vec<_> = items(inner, "/v1/pallets", &mut catalog_note).await.iter().map(|v| generic(v, "pallet")).collect();
+    let images: Vec<_> = items(inner, "/v1/images", &mut catalog_note).await.iter().map(image).collect();
 
     let groups = [
         ("catalog", cat.iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
@@ -702,6 +719,16 @@ fn generic(v: &Value, kind: &str) -> ComponentSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_says_what_to_set() {
+        let none = credential_note(401, false, false);
+        assert!(none.contains("no credential") && none.contains("[sbregistry] token_file"), "{none}");
+        let wrong = credential_note(401, true, false);
+        assert!(wrong.contains("refused the console's credential"), "{wrong}");
+        assert!(credential_note(403, true, false).contains("pull on *"));
+        assert!(credential_note(401, false, true).contains("plain HTTP to another machine"));
+    }
     use serde_json::json;
 
     #[test]

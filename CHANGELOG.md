@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-05 — The registry with a credential, over TLS (#35, #104)
+- **feat:** `[sbregistry] token_file`, a bearer followed when it changes; unset, the engine's token for a registry on this machine.
+  Sent on every read, on imports and through the proxy; never over plain HTTP to another machine.
+- **feat:** the registry is reached through `[node_tls]`: HTTPS first, verified against the node CA, plain only while a port has
+  not moved.
+- **fix:** a registry answering 401 or 403 is said on its card with what to set, rather than reading as an empty registry. A
+  machine's root-disk list and "Made from" use the same credential.
+
 ### 2026-11-05 — Disk buses are the ones stormvm takes (#38)
 - **fix:** Create, Add disk and the disk bus setting take `virtio`, `nvme`, `scsi` or `sata`, what stormvm accepts. `usb`, which
   made a machine that could never start, is refused with the list; Add disk offers `nvme`; Create now refuses a bus it does not

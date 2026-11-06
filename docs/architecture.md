@@ -503,7 +503,7 @@ wants to ask first.
 form asks for a name and the registry for a repository (`media/<name>`). It sends `hold: true`, so the registry fetches
 once, resumably and verified, and answers at once; the job's progress is already on Images → Catalog (#19). Only http and
 https are taken. Sealed media then joins the VM form's root-disk list (`images::add_imported`, within a minute), by volume.
-A registry with auth on wants admin for this, and the console holds no registry credential (#35), so it says the 401.
+A registry with auth on wants admin for this: the engine's token has it, a robot account only if granted, and a refusal says so.
 An imported disk is on this node's registry; nothing copies it to another node yet.
 
 **Audit (#15).** One record per act, in the host and by path (`crates/stormconsole/src/audit.rs`), for the reason the
@@ -1798,8 +1798,16 @@ ready with a failed warm-up step is a warning that names the step), the
 **catalog** (`/v1/catalog/images`, §Images) with media jobs merged in, and
 golden records, clones, pallets and pushed images. Creates: golden and
 clone forms. sbregistry serves no stormview feed, so the plugin maps its
-JSON. **Not built:** a credential — a registry with an auth file and no
-anonymous pull answers these reads 401 (#35).
+JSON.
+
+**Credential and TLS (#35, #104).** Every call to the registry goes through one `dial::Reach`: the polls, holdings, origin, imports,
+the proxy, and the VM form's imported disks. `[node_tls]` decides how the port is reached, so it may be plain or HTTPS while a
+node moves (stormcos#355), and a certificate it does not trust is never read. The bearer is `[sbregistry] token_file`, or the
+engine's token for a registry on this machine, which the registry takes as admin. **It goes only over TLS or to this machine**: the
+registry refuses a credential sent plainly from off the host, and it could be read on the way. A 401 or 403 is said on the card
+with what to set; `/readyz` stays open, so the registry can read ready while nothing else can be read. The browser never sees the
+token. A pull-only robot gives the views and a 403 on the create forms; the token's own grants bound what an operator can do
+through the proxy.
 
 ### Creating things — the `Creator` contract
 
@@ -1963,7 +1971,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
 | cadvisor | [#15](https://github.com/glennswest/cadvisor/issues/15) per-VM stats keyed to the VMI | VM metrics over time (#14) |
-| stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #35 registry credential; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #12 the pod page's Terminal and Environment; #4 Hubble flows and agent metrics (unblocked); #45 access reviews (rustkube#59 shipped in v0.9.0); #42 where SSH keys live; #41 `/metrics`; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #15 users without a file, certificate identity, audit; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 

@@ -213,6 +213,7 @@ async fn main() {
         Some(f) => console_core::token::FileToken::file(f),
         None => console_core::token::FileToken::fixed(None),
     });
+    let registry_reach = config.sbregistry_reach(node_dial.clone(), &engine_token);
     if config.stormblock.enabled {
         plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_token(&config.stormblock_url(), engine_token.clone())));
     }
@@ -257,7 +258,7 @@ async fn main() {
     }
     if config.sbregistry.enabled {
         plugins.push(Arc::new(
-            plugin_sbregistry::SbregistryPlugin::new(&config.sbregistry_url())
+            plugin_sbregistry::SbregistryPlugin::new(registry_reach.clone())
                 .with_engine(&config.stormblock_url(), engine_token.clone(), namespace_access.clone()),
         ));
     }
@@ -288,7 +289,7 @@ async fn main() {
             image_operator,
         )
         .with_keys_namespace(config.vm.ssh_keys_namespace.as_deref().unwrap_or("default"))
-        .with_registry(config.sbregistry.enabled.then(|| config.sbregistry_url()))));
+        .with_registry(config.sbregistry.enabled.then(|| registry_reach.clone()))));
     }
     // This node's pod network on the flowsdn edition (#83): the agent's
     // loopback API, endpoints scoped by namespace like the pods they are.

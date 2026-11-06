@@ -132,7 +132,7 @@ struct Inner {
     /// a create form must not wait on an upstream that may be slow or gone.
     image_operator: Option<String>,
     /// The node's registry, for imported disks (#44).
-    registry: Option<String>,
+    registry: Option<Arc<console_core::dial::Reach>>,
     images: images::Cache,
     /// Where each user's SSH-key Secret lives (#26); copies go to the
     /// namespaces their machines are in, because `accessCredentials` can
@@ -156,7 +156,7 @@ impl VmPlugin {
 
     /// Where the node's registry answers, so an imported disk (#44) is offered as a root disk.
     /// Right after construction.
-    pub fn with_registry(mut self, registry: Option<String>) -> Self {
+    pub fn with_registry(mut self, registry: Option<Arc<console_core::dial::Reach>>) -> Self {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
             inner.registry = registry;
         }
@@ -420,7 +420,7 @@ impl ConsolePlugin for VmPlugin {
                         None => Default::default(),
                     };
                     if let Some(reg) = &inner.registry {
-                        images::add_imported(&mut cat, &inner.http, reg).await;
+                        images::add_imported(&mut cat, reg).await;
                     }
                     let got = !cat.choices.is_empty();
                     inner.images.put(cat);

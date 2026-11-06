@@ -413,11 +413,14 @@ pub struct Sbregistry {
     pub enabled: bool,
     /// sbregistry base URL.
     pub url: Option<String>,
+    /// A bearer for it (#35): a robot account's token, followed when it changes. Unset: the
+    /// engine's token for a registry on this machine, which it takes as admin.
+    pub token_file: Option<String>,
 }
 
 impl Default for Sbregistry {
     fn default() -> Self {
-        Self { enabled: true, url: None }
+        Self { enabled: true, url: None, token_file: None }
     }
 }
 
@@ -795,6 +798,22 @@ impl Config {
 
     pub fn sbregistry_url(&self) -> String {
         self.sbregistry.url.clone().unwrap_or_else(|| "http://127.0.0.1:5100".to_string())
+    }
+
+    /// How to reach the registry, and with what (#35). The engine's token never leaves this machine.
+    pub fn sbregistry_reach(
+        &self,
+        dial: std::sync::Arc<console_core::dial::Dial>,
+        engine_token: &std::sync::Arc<console_core::token::FileToken>,
+    ) -> std::sync::Arc<console_core::dial::Reach> {
+        use console_core::token::FileToken;
+        let url = self.sbregistry_url();
+        let token = match &self.sbregistry.token_file {
+            Some(f) => std::sync::Arc::new(FileToken::file(f)),
+            None if console_core::upstream::is_loopback(&url) => engine_token.clone(),
+            None => std::sync::Arc::new(FileToken::fixed(None)),
+        };
+        std::sync::Arc::new(console_core::dial::Reach::new(&url, dial, token))
     }
 
     pub fn flowsdn_url(&self) -> String {

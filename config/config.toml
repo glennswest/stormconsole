@@ -118,6 +118,11 @@ enabled = true
 [sbregistry]
 enabled = true
 # url = "http://127.0.0.1:5100"
+# A registry with an auth file answers reads 401 without a credential. A robot account's token,
+# `*=pull` for the views and `*=admin` too for the create forms; followed when it changes. Unset: the
+# engine's token ([stormblock] token_file), for a registry on this machine. Over HTTPS when
+# [node_tls] is set; never sent plainly to another machine.
+# token_file = "/run/stormblock/registry/token"
 
 [vm]
 enabled = true

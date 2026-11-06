@@ -140,9 +140,78 @@ impl Dial {
     }
 }
 
+/// One upstream with its credential: how to reach it through a [`Dial`], and the bearer to send (#35).
+///
+/// **The bearer goes only over TLS or to this machine.** While a node moves (stormcos#371) a port may
+/// answer plainly, and a credential sent plainly to another machine could be read on the way; the
+/// registry refuses such a one anyway.
+pub struct Reach {
+    base: String,
+    dial: Arc<Dial>,
+    token: Arc<crate::token::FileToken>,
+}
+
+/// A way to one upstream, as it is now.
+pub struct Reached {
+    pub route: Route,
+    /// What to present.
+    pub bearer: Option<String>,
+    /// There is a credential, and this route must not carry it.
+    pub withheld: bool,
+}
+
+fn may_carry(base: &str) -> bool {
+    base.starts_with("https://") || crate::upstream::is_loopback(base)
+}
+
+impl Reach {
+    pub fn new(base: &str, dial: Arc<Dial>, token: Arc<crate::token::FileToken>) -> Self {
+        Self { base: base.trim_end_matches('/').to_string(), dial, token }
+    }
+
+    /// The address as configured, for a card.
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+
+    /// `Err` says why it must not be read at all.
+    pub async fn reach(&self) -> Result<Reached, String> {
+        let route = self.dial.route(&self.base).await?;
+        let word = self.token.get();
+        let carry = may_carry(&route.base);
+        Ok(Reached { withheld: word.is_some() && !carry, bearer: word.filter(|_| carry), route })
+    }
+
+    /// A request to `path`, with the credential where it may go.
+    pub async fn request(&self, method: reqwest::Method, path: &str) -> Result<reqwest::RequestBuilder, String> {
+        let r = self.reach().await?;
+        let req = r.route.client.request(method, format!("{}{path}", r.route.base));
+        Ok(match r.bearer {
+            Some(t) => req.bearer_auth(t),
+            None => req,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_credential_goes_over_tls_or_stays_on_this_machine() {
+        let word = || Arc::new(crate::token::FileToken::fixed(Some("secret".into())));
+        let at = |url: &str| Reach::new(url, Dial::off(), word());
+        for url in ["http://127.0.0.1:5100", "https://127.0.0.1:5100", "https://node-1:5100"] {
+            let r = at(url).reach().await.unwrap();
+            assert_eq!((r.bearer.as_deref(), r.withheld), (Some("secret"), false), "{url}");
+        }
+        let r = at("http://node-1:5100/").reach().await.unwrap();
+        assert_eq!((r.bearer, r.withheld), (None, true), "plainly to another machine");
+        assert_eq!(r.route.base, "http://node-1:5100");
+        let none = Reach::new("http://node-1:5100", Dial::off(), Arc::new(crate::token::FileToken::fixed(None)));
+        let r = none.reach().await.unwrap();
+        assert_eq!((r.bearer, r.withheld), (None, false), "nothing to withhold");
+    }
 
     #[test]
     fn what_a_failure_says_about_the_port() {
