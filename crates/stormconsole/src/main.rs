@@ -226,10 +226,13 @@ async fn run() {
     }
     // A guarded engine answers every read with 401 without its token. Followed, not
     // read once: the engine mints it at boot, so it may not be there yet (#163).
-    let engine_token = std::sync::Arc::new(match config.stormblock.token_file.as_deref() {
-        Some(f) => console_core::token::FileToken::file(f),
-        None => console_core::token::FileToken::fixed(None),
-    });
+    // Unset, it is found as the engine's own client finds it (#30).
+    let engine_token = std::sync::Arc::new(console_core::engine::find_token(
+        config.stormblock.token_file.as_deref(),
+        &config.stormblock_url(),
+        |k| std::env::var(k).ok(),
+        &console_core::engine::TOKEN_FILES,
+    ));
     let registry_reach = config.sbregistry_reach(node_dial.clone(), &engine_token);
     // One way to the engine for all who ask it (#160).
     let engine = Arc::new(console_core::engine::Engine::new(&config.stormblock_url(), config.stormblock_tls(), engine_token.clone()));

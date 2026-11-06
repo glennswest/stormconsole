@@ -61,6 +61,7 @@ EOF
 }
 TOKEN="$W/sb/data/api_token"
 CONSOLE=
+CONSOLE_ENV=
 console() { # the whole [stormblock] section's lines
   [ -z "$CONSOLE" ] || { kill "$CONSOLE" 2>/dev/null || true; wait "$CONSOLE" 2>/dev/null || true; }
   mkdir -p "$W/c"
@@ -69,7 +70,7 @@ console() { # the whole [stormblock] section's lines
     printf '[sbregistry]\nurl = "http://127.0.0.1:19499"\n[stormupdate]\nurl = "http://127.0.0.1:19498"\n'
     for s in kubernetes fleet logs stormdrive stormstorage vm vmimages stormcluster stormipmi fastetcd flowsdn health history ironprom; do printf '[%s]\nenabled = false\n' "$s"; done
   } > "$W/c.toml"
-  "$BIN" --config "$W/c.toml" >> "$W/c.log" 2>&1 &
+  env $CONSOLE_ENV "$BIN" --config "$W/c.toml" >> "$W/c.log" 2>&1 &
   CONSOLE=$!
   for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done
 }
@@ -177,6 +178,58 @@ ca_file = \"$W/nodeca.crt\"" "a CA with http://"
 NO "url = \"$HTTPS\"
 ca_file = \"$W/nodeca.crt\"
 cert_file = \"$W/console.crt\"" "half a pair"
+
+say "no token_file: found as the engine's own client finds it (#30)"
+CONSOLE_ENV="STORMBLOCK_TOKEN_FILE=$TOKEN"
+console "url = \"$HTTPS\"
+ca_file = \"$W/nodeca.crt\""
+engine_seen "\$STORMBLOCK_TOKEN_FILE"
+CONSOLE_ENV="STORMBLOCK_API_TOKEN=$(cat "$TOKEN")"
+console "url = \"$HTTPS\"
+ca_file = \"$W/nodeca.crt\""
+engine_seen "\$STORMBLOCK_API_TOKEN"
+CONSOLE_ENV="STORMBLOCK_API_TOKEN=wrong STORMBLOCK_TOKEN_FILE=$TOKEN"
+console "url = \"$HTTPS\"
+ca_file = \"$W/nodeca.crt\""
+D=$(until_card '401'); holds "$D" "401" "the shared token comes first, and a wrong one is the engine's 401"
+console "url = \"$HTTPS\"
+token_file = \"$TOKEN\"
+ca_file = \"$W/nodeca.crt\""
+engine_seen "token_file over the environment"
+LATER="$W/later-token"
+CONSOLE_ENV="STORMBLOCK_TOKEN_FILE=$LATER"
+console "url = \"$HTTPS\"
+ca_file = \"$W/nodeca.crt\""
+D=$(until_card '401'); holds "$D" "401" "a named file not there yet: the engine's 401"
+cp "$TOKEN" "$LATER"
+engine_seen "and picked up when it appears, with no restart"
+rm -f "$LATER"
+
+say "a file's token is not sent to another machine (#30)"
+IP=$(hostname -I | awk '{print $1}')
+python3 - "$W/seen" > /dev/null 2>&1 <<'PEER' &
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        with open(sys.argv[1], "a") as f: f.write(self.headers.get("authorization", "none") + "\n")
+        b = b'{"items": []}'
+        self.send_response(200); self.send_header("content-length", str(len(b))); self.end_headers(); self.wfile.write(b)
+http.server.HTTPServer(("0.0.0.0", 19496), H).serve_forever()
+PEER
+PEERPID=$!
+sleep 1
+CONSOLE_ENV="STORMBLOCK_TOKEN_FILE=$TOKEN"
+console "url = \"http://$IP:19496\""
+for _ in $(seq 30); do [ -s "$W/seen" ] && break; sleep 0.5; done
+check "$(sort -u "$W/seen" | tr '\n' ' ')" "none " "an engine on another address gets no bearer"
+: > "$W/seen"
+CONSOLE_ENV="STORMBLOCK_API_TOKEN=shared-word"
+console "url = \"http://$IP:19496\""
+for _ in $(seq 30); do [ -s "$W/seen" ] && break; sleep 0.5; done
+check "$(sort -u "$W/seen" | tr '\n' ' ')" "Bearer shared-word " "a shared token, named on purpose, does"
+kill "$PEERPID" 2>/dev/null || true
+CONSOLE_ENV=
 
 say "the token is not in the log"
 check "$(grep -c "$(cat "$TOKEN")" "$W/c.log" || true)" 0 "the engine's token"

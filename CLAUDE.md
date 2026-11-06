@@ -2431,6 +2431,12 @@ A good binary cut to 90% segfaults with no output (139), as the node does.
       answered /healthz 200 with a minimal config on stormcentral's VM
 - Not seen: a real node. It carries the unfinished flows work of #4 (a175138..ba19ec4), which was on main. #272's done-when is on a node
 
+### The engine's token, what was left (#30)
+Read from stormblock 2165f53 (`mgmt/auth.rs` `token_for`, `config.rs`). Done since v0.19.0: the token on every call and the proxy. Left: discovery with `token_file` unset, in `token_for`'s order and with its rule that a minted token is never sent to a peer.
+- [x] `engine::find_token`, `FileToken::first_of`; `verify-engine-tls.sh`
+- Not `admin_token`: the issue's contract is overtaken. The engine keeps it in `/run/stormblock-admin`, "never under `/run/stormblock`, which every engine caller on a stormcos node mounts", and destructive verbs go with a reviewed bearer (stormblock#274, #82)
+- When stormcos#296's gate goes from audit to enforce, no-sign-in root's destructive engine verbs are refused, until #266's login gives a person a bearer: said on #30
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

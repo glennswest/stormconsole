@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — Finding the engine's token (#30)
+- **feat:** with `[stormblock] token_file` unset, the console finds the engine's token as the engine's own client does. A token from a file on this machine is never sent to an engine on another.
+
 ### 2026-11-06 — Network flows (#4)
 - **feat:** Network Flows: who talked to whom and what the network did about it, from Hubble relay, with filters and follow, on its own page and on a pod's and a machine's page. Limited to the viewer's projects; the other end of a flow into a project they may not see is "another project", with nothing about it. `[kubernetes] hubble_relay` moves it from `http://127.0.0.1:4245`.
 - **chore:** new crates: tonic and prost for Hubble only, with Cilium's protos vendored at v1.20.2.

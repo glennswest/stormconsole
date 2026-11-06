@@ -12,6 +12,8 @@ use std::time::SystemTime;
 enum Source {
     Fixed(Option<String>),
     File { path: PathBuf, seen: RwLock<(Option<SystemTime>, Option<String>)> },
+    /// The first of these with a word in it, looked at again each time.
+    First(Vec<FileToken>),
 }
 
 pub struct FileToken(Source);
@@ -27,10 +29,16 @@ impl FileToken {
         FileToken(Source::File { path: path.into(), seen: RwLock::new((None, None)) })
     }
 
+    /// The first of these files that holds a word, now.
+    pub fn first_of(paths: impl IntoIterator<Item = PathBuf>) -> Self {
+        FileToken(Source::First(paths.into_iter().map(FileToken::file).collect()))
+    }
+
     /// The word as it is now.
     pub fn get(&self) -> Option<String> {
         match &self.0 {
             Source::Fixed(t) => t.clone(),
+            Source::First(list) => list.iter().find_map(FileToken::get),
             Source::File { path, seen } => {
                 let stamp = std::fs::metadata(path).and_then(|m| m.modified()).ok();
                 {
@@ -77,5 +85,23 @@ mod tests {
         assert_eq!(t.get(), None);
         assert_eq!(FileToken::fixed(Some(" x ".into())).get().as_deref(), Some("x"));
         assert_eq!(FileToken::fixed(Some("  ".into())).get(), None);
+    }
+
+    #[test]
+    fn the_first_file_with_a_word_in_it() {
+        let d = std::env::temp_dir().join(format!("token-first-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let (a, b) = (d.join("a"), d.join("b"));
+        let _ = std::fs::remove_file(&a);
+        let _ = std::fs::remove_file(&b);
+        let t = FileToken::first_of([a.clone(), b.clone()]);
+        assert_eq!(t.get(), None);
+        std::fs::write(&b, "second").unwrap();
+        assert_eq!(t.get().as_deref(), Some("second"), "the later one, while the earlier is not there");
+        std::fs::write(&a, "first").unwrap();
+        assert_eq!(t.get().as_deref(), Some("first"), "the earlier one once it appears");
+        std::fs::remove_file(&a).unwrap();
+        assert_eq!(t.get().as_deref(), Some("second"));
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

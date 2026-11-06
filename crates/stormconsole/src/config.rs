@@ -401,7 +401,8 @@ pub struct Stormblock {
     /// Block engine management API, e.g. "http://192.168.8.150:9090".
     pub url: Option<String>,
     /// The engine's API token file (its `<data_dir>/api_token`). An engine
-    /// that guards its API answers 401 to every read without it.
+    /// that guards its API answers 401 to every read without it. Unset, it is
+    /// found as the engine's own client finds it (`engine::find_token`, #30).
     pub token_file: Option<String>,
     /// The node CA, for an `https://` url (#160). Only this CA is trusted, and the check cannot be skipped.
     pub ca_file: Option<String>,
