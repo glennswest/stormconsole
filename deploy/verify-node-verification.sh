@@ -177,6 +177,9 @@ say "in Chromium"
 BR=0; env HOST="$HOST" "$HERE/deploy/browser/run.sh" "$W" node-verification.cjs "$C" || BR=1
 check "$BR" 0 "the walk"
 
+# To read them: SC_BUILD_OUT=shots.tgz SC_BUILD_OUT_TO=tmp/shots.tgz sc-build 'SHOTS_OUT=$PWD/shots.tgz deploy/verify-node-verification.sh'
+[ -z "${SHOTS_OUT:-}" ] || tar czf "$SHOTS_OUT" -C "$W" shots
+
 say "it changes, and it stops answering"
 status "$W/c.json" fail
 until_row storm-c FAILED 70 || true
