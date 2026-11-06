@@ -413,11 +413,11 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   stormvm#41; **VMs on the pod network** (and so isolation covering them) —
   stormvm#16; until then a NAT'd or bridged machine says no policy applies
   to it, and an isolated project names the machines it does not reach (#51); **snapshot step, disks, size** — stormvm#45.
-- **Datastore members, keyspace, verbs and traffic on fastetcd** — fastetcd
-  serves the v3 JSON gateway since v1.8.0 (fastetcd#28) and etcd's traffic
-  counters since v1.7.0 (fastetcd#29), and the plugin reads both in etcd's
-  shape; it has been checked live against etcd 3.5 and fastetcd v1.2.0 only
-  (#64). An older fastetcd gets a line naming the release that has them.
+- **Defragmenting another fastetcd member** — fastetcd reports a client URL
+  only for the member answering (fastetcd#187), so another member's row offers
+  no Defragment. Everything else on the datastore page is checked against
+  fastetcd itself (#64). A fastetcd before v1.8.0 gets a line naming the release
+  that has the gateway and counters.
 - **Volumes on another node's drives** — the console reads only this node's
   engine, so a drive on another node lists no volumes, and says so. Each
   drive's *usage* comes from its own node's stormdrive (v0.13.0+).

@@ -1863,7 +1863,9 @@ when it is cut short), and opens a value decoded — JSON as JSON, the
 upstream `k8s\0` protobuf envelope by the type its `TypeMeta` names (the
 body needs a schema and is shown as bytes), text as text. rustkube writes
 JSON. The snapshot is streamed through, un-base64'd chunk by chunk, so the
-file a browser saves is one `etcdutl snapshot status` reads.
+file a browser saves is whatever the store writes: for fastetcd since 1.15 its
+own backup format, which `fastetcd restore` reads (for etcd, `etcdutl
+snapshot status`).
 
 Traffic — puts/ranges/txns per second, watchers, lagging watchers — is
 computed from counter deltas between polls when `/metrics` exports the
@@ -2100,7 +2102,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
-| stormconsole | #42 where SSH keys live; #36 scale, cordon, drain; #64 the datastore page against fastetcd ≥ v1.8.0 (fastetcd#28/#29 shipped); #266 login and users; #14 VM metrics over time (cadvisor#15) | — |
+| stormconsole | #42 where SSH keys live; #36 scale, cordon, drain; #266 login and users; #14 VM metrics over time (cadvisor#15) | — |
 
 ## Phasing (history)
 
