@@ -40,12 +40,10 @@ widgets), `rustkube` (the orchestrator), `stormrfb` (the VNC client) and
 
 What the code **reads at runtime**, one plugin each:
 
-| | | |
-|---|---|---|
-| rustkube :6443 | stormblock :9090 | stormdrive :9092 (every member) |
-| stormstorage :9093 | sbregistry :5100 | fastetcd :2379 / :2381 |
-| stormvm :9095 | vmcloud-image-operator :9099 | stormipmi :9097 |
-| stormcast `239.255.42.1:5514` | stormd APIs 9081–9199 | Cilium agent :9879 |
+rustkube :6443 · stormblock :9090 · stormdrive :9092 (every member) ·
+stormstorage :9093 · sbregistry :5100 · fastetcd :2379 / :2381 · stormvm :9095 ·
+vmcloud-image-operator :9099 · stormipmi :9097 · stormcluster :9102 ·
+stormcast `239.255.42.1:5514` · each stormd's API · Cilium agent :9879
 
 An absent upstream is not an error: its card says which address did not
 answer.
@@ -139,7 +137,7 @@ real upstreams up on a build VM.
 | Metrics | **none** |
 | API | `/api/v1/components`, `/ws/components`, `/api/v1/console/{nav,creators,access,events}`, `/api/v1/auth/*`, `/api/plugins/<id>/…` |
 | CLI | `stormconsole [--config <path>]` · `--hash-password` |
-| Config | `--config`; on a node `/etc/stormconsole/stormconsole.toml` (default `/etc/stormconsole/config.toml`), TOML, unknown keys refused; one section per plugin (`enabled`, `url`, tokens) |
+| Config | `--config`; on a node `/etc/stormconsole/stormconsole.toml`; TOML, unknown keys refused; one section per plugin |
 | Exit | 78 bad config (stormd does not restart it), 1 cannot bind |
 
 Every key and default: README §Configuration.
