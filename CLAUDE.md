@@ -2442,7 +2442,7 @@ Read from stormrdp 08f1e55: `:8443` serves `/rdcleanpath` and `POST /api/v1/logi
 - [x] `vm/src/rdp.rs`: status, login, session relay; audit as a console
 - [x] `VmRdp.svelte`; `deploy/verify-vm-rdp.sh`: real gateway, real apiserver, a real framebuffer, Chromium; docs; dist; image
 - Verified with `sc-build deploy/verify-vm-rdp.sh` (0 failed): stormrdp and rustkube from main, its real cluster login, qemu running a boot sector that echoes keys. Chromium ran IronRDP through the console: the screen drawn, typed text on the guest's screen, Ctrl+Alt+Del rebooting it, Disconnect, a second connection. Refused: a reader and no identity (here), another project (404), no `get` on the instance (the gateway's RBAC check). No sign-in logs in as the console's identity. Not started and no such machine said. The password is in neither the log nor the audit, which records who opened one. Screenshots read
-- Not seen: a real node's gateway (stormrdp#1) or a real guest OS with a desktop. No stormcos unit exposes :8443 to the console's network namespace yet as far as read here: it dials loopback, so the console must share the host's. A machine on another node is that node's console's, not relayed
+- Not seen: a real node's gateway (stormrdp#1) or a real guest OS with a desktop. It dials loopback, as for stormipmi and the engine. stormrdp starts on the sno role, so elsewhere the tab says it is not started. A machine on another node is that node's console's, not relayed. A desktop session needs the viewer's kubernetes identity, so until #266 a signed-in user needs `kube_token`; no sign-in uses the console's, which must be allowed `get` on the machine's instance
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
