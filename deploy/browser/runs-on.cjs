@@ -13,7 +13,9 @@ walk('runs-on', async (t) => {
   t.check(/written of/.test(text), 'what it wrote of its size', (text.match(/.{0,60}written of.{0,60}/) || [''])[0])
   t.check(/\d+ slabs?/.test(text), 'the slabs')
   t.check(text.includes(IMAGE), 'cloned from the sealed image, in the registry form')
-  t.check(!/golden|fstemplate/i.test(text), 'no volume name on the page', (text.match(/.{0,40}(golden|fstemplate).{0,40}/i) || [''])[0])
+  // The pod's own annotations are data, shown as written.
+  const shown = text.replace(/storm\.io\/\S+=\S+/g, '')
+  t.check(!/golden|fstemplate/i.test(shown), 'no volume name on the page', (shown.match(/.{0,40}(golden|fstemplate).{0,40}/i) || [''])[0])
   t.check(/sha256:[0-9a-f]{64}/.test(text), 'its digest')
   t.check(/intact[\s\S]{0,12}\d+[smhd] ago, this node's copy/i.test(text), 'last verified, intact, this copy', (text.match(/.{0,30}intact.{0,60}/i) || [''])[0])
   t.check(text.includes(`registry/app:1.0@sha256:${'a'.repeat(64)}`), 'the row leads with name, version and digest', (text.match(/.{0,20}registry\/app:1.{0,30}/) || [''])[0])
