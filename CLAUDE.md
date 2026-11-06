@@ -2149,6 +2149,17 @@ any word. A cdrom needs `sata | scsi` (`validate.rs`); the console writes no cdr
   both forms offer the four, a disk added on nvme, Settings says usb is refused
 - Not seen: a machine booting on nvme (no hypervisor on a build VM). A machine already holding usb is not repaired
 
+### The registry with a credential, over TLS (#35, #104)
+Read from stormblock-registry da53e0e (`auth.rs`, docs/auth.md): with an auth file only `/healthz`, `/readyz` and
+`/api/v1/discovery` are open. It takes the engine token as admin, or a robot's `Bearer <token>`; `/v1` reads need `pull` on `*`,
+every `/v1` write `admin`. It refuses a credential over plain HTTP from off the host. stormcos#355 turns TLS and auth on after this.
+- [ ] `console_core::dial::Reach`: an upstream, how to dial it (`[node_tls]`, so a port may be either while a node moves) and its
+      bearer, never sent over plain HTTP to another machine
+- [ ] `[sbregistry] token_file`; unset, the engine's token for a registry on this machine
+- [ ] Every registry call through it: the polls, holdings, origin, media, the proxy, the VM form's imported disks
+- [ ] The card says a 401 or 403 and what to set
+- [ ] `deploy/verify-registry-auth.sh`: a real registry with auth on, plain and TLS; docs, changelog, dist unchanged; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
