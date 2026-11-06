@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — A node's rack, whoever can set it (#77)
+- **feat:** the node page says a node's rack. Where stormipmi answers and has a machine for the node, it is stormipmi's and leads to Machines. Otherwise, as on a formed cluster where stormipmi does not run, an admin can set or clear `topology.storm.io/rack`, written as themselves.
+
 ### 2026-11-06 — The flowsdn plugin: what the policy decided (#83)
 - **feat:** the Flows tab shows what the policy decided (`/v1/policy/verdicts`, flowsdn#379) until there are flows: denied first, by pod, with the node's own firewall apart. A viewer sees their projects' rows and the node's.
 

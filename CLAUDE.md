@@ -2262,6 +2262,13 @@ consumer does. This shows every node's consumers to every viewer, so one in a pr
   the other's said to exist and nowhere in the answer or page, the administrator still seeing it from the same kept answer. Also `verify-drives.sh` (1,600), `drivemap.test.mjs`, default `sc-build`
 - Not seen: a real stormdrive reporting volumes (a build VM has no drives), a real multi-node cluster. Left: `/api/plugins/sb/placement` still names every consumer to every viewer (#232)
 
+### A node's rack, whoever can set it (#77)
+stormipmi#29 landed: it labels the Node from the machine's location, and #43 edits that on Machines. But stormcos starts it `roles=sno` ("a node that joins a cluster stops it", build-goldens.sh), and racks only mean anything with more than one node: a formed cluster has
+no stormipmi. It never touches a label it did not set (`location.rs`), so a hand-set one is safe beside it.
+- [ ] `PUT /api/plugins/k8s/nodes/{name}/rack`: admin here, as the viewer at the apiserver, never the console's credential; `GET` says what this viewer may do
+- [ ] Node page: stormipmi's where it answers and has a machine for the node, with the way to Machines; otherwise the edit. `web/src/lib/rack.js` + test
+- [ ] `deploy/verify-node-rack.sh` + real stormipmi labelling a Node in `verify-machines.sh`; docs, changelog, dist; close; golden
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

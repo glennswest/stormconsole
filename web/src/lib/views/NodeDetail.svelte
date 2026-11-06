@@ -18,6 +18,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import StatusPill from '../components/StatusPill.svelte'
   import Icon from '../components/Icon.svelte'
+  import NodeRack from './NodeRack.svelte'
 
   const host = $derived(route.current.params.host)
 
@@ -34,6 +35,8 @@
     )
   )
   const isLocal = $derived(component?.id === 'fleet:node:local')
+  // Only a node with a Node object has a rack to say (#77).
+  const nodeRow = $derived(feed.components.find((c) => c.id === `k8s:node:${host}`))
   // This node's API health (#123): PID 1's summary is read on the node,
   // so only the node's own console has it.
   const apiHealth = $derived(feed.components.find((c) => c.id === 'health:node'))
@@ -99,6 +102,10 @@
           <dd class="mono">{data.addr || '—'}</dd>
           <dt>Last heard</dt>
           <dd>{component ? component.detail.split(' · ').pop().replace(/^last seen /, '') : '—'}</dd>
+          {#if nodeRow}
+            <dt>Rack</dt>
+            <dd><NodeRack {host} /></dd>
+          {/if}
           <dt>Log events</dt>
           <dd class="mono">{component?.metrics?.find((m) => m.label === 'events')?.value ?? '—'}</dd>
           <dt>Services</dt>

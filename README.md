@@ -97,6 +97,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-vm-policy.sh` | machines outside policy (#51): NAT, host bridge and no-endpoint machines named in the isolate answer, the project card, the VM row and page — real fastetcd + rustkube, Chromium |
 | `verify-vm-network-edit.sh` | the VM settings network edit (#50): stopped, running and per-interface-pinned machines — the definition read back from the apiserver, the form and pending, the Settings tab in Chromium — real fastetcd + rustkube |
 | `verify-kube-tls.sh` | the console's apiserver credential (#33): rustkube over TLS with an openssl CA and anonymous off — `ca_file` + `token_file`, a stranger CA, a CA minted late, an expired token renewed in place, skip-verify, system roots, config contradictions |
+| `verify-node-rack.sh` | a node's rack: an admin setting it as themselves on a real apiserver, stormipmi's where it answers, refusals by role and RBAC; Chromium (#77) |
 | `verify-drive-volumes.sh` | the volumes on every node's drives: a real apiserver, stand-in stormdrives in `usage.rs`'s shape, a viewer in one project; Chromium (#52) |
 | `verify-engine-tls.sh` | the engine over TLS: a real engine from a test CA, `optional` and `required`, another CA refused, the client pair with no token, renewal, every plugin that asks it (#160) |
 | `verify-storage-view.sh` | Storage → Overview: a real engine and stormdrive, a stand-in with an enclosure and a drive; a node and an engine that will not answer; Chromium (#96) |
