@@ -20,7 +20,8 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.split('\n')[0]}`))
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console: ${m.text().split('\n')[0]}`)
+    // No ironprom in this rig: the Stats tab's disk charts say so on the page (#265).
+    if (m.type() === 'error' && !/\/api\/plugins\/metrics\/charts/.test(m.location().url)) errors.push(`console: ${m.text().split('\n')[0]} ${m.location().url}`)
   })
   const shot = (n) => page.screenshot({ path: `${SHOTS}/${n}.png`, fullPage: true })
   const tab = (t) => page.locator('nav.tabs button', { hasText: t }).click()

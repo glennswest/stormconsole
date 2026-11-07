@@ -16,7 +16,8 @@ function check(ok, what, extra = '') {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.split('\n')[0]}`))
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console: ${m.text().split('\n')[0]} ${m.location().url}`)
+    // No engine in this rig: what a disk runs on is said on the page (#75).
+    if (m.type() === 'error' && !/\/api\/plugins\/sb\/runs-on/.test(m.location().url)) errors.push(`console: ${m.text().split('\n')[0]} ${m.location().url}`)
   })
 
   // The project card: the badge, and the exception beside it.

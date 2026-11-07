@@ -2451,10 +2451,13 @@ Only etcd 3.5.17 and fastetcd v1.2.0 had been through the plugin's gateway path,
 
 ### One console for every build (#285)
 Owner, 2026-11-06: "lets keep all builds the same. only diff is on cillium builds vs flowsdn then console should only have the one that is built in." #161 hid flowsdn on cilium; Cilium still shows on flowsdn (Network Flows, Network nodes, the Create entries, the Hubble sentence, the metrics job and panel, "Cilium enforces it"). The pod page and a VM's policies read only Cilium's objects. Read: DaemonSets `kube-system/cilium` (stormcos `60-cilium-agent.yaml`), `kube-system/flowsdn` (flowsdn `62-flowsdn-agent.yaml`); `ironprom-node.yml` lists the cilium jobs on every build, so a flowsdn node has them down.
-- [ ] `console_core::build`: `Network` (moved from flowsdn's `Edition`), `Build`: the manifest, then an ordered list of sources (beacon, DaemonSet, CRDs, agent answering); `enabled(plugin)` the one list, replacing `present()`; `GET /api/v1/console/build`
-- [ ] k8s: other network's kinds hidden in the store and catalogue; nav, creators, flows, agent by network; pod row and page from either's objects; fsid rows. Metrics: jobs and panels. VM: policies, relation. Neutral sentences
-- [ ] SPA: build store, moved routes, Flows cards, no "not this edition" page
-- [ ] `deploy/verify-one-build.sh` walking a cilium and a flowsdn console, each with the other's CRDs and agent present too; each source on its own; docs, changelog, dist; image
+- [x] `console_core::build`: `Network` (moved from flowsdn's `Edition`), `Build`: the manifest, then an ordered list of sources (beacon, DaemonSet, CRDs, agent answering); `enabled(plugin)` the one list, beside a plugin's own `present()`; `GET /api/v1/console/build`
+- [x] k8s: other network's kinds hidden in the store and catalogue; nav, creators, flows, agent by network; pod row and page from either's objects; fsid rows. Metrics: jobs and panels. VM: policies, relation. Neutral sentences
+- [x] SPA: build store, moved routes, Flows cards, no "not this edition" page
+- [x] `deploy/verify-network-pages.sh` + `deploy/browser/one-build.cjs`; docs, changelog, dist; image
+- Verified with `sc-build deploy/verify-network-pages.sh` (0 failed): two real apiservers, real consoles, Chromium. A cilium and a flowsdn console, each with the other's CRDs and an object in them served and the other's agent answering: only its own network in the navigator, Create, kinds, targets, feed and nine pages; no plugin in error; the pod page reading its own endpoint, identity and policy; the other's addresses landing here. The DaemonSet alone, each agent alone, and nothing saying (neither). Also `verify-flowsdn`, `verify-one-node` (the beacon), `verify-flows`, `verify-metrics`, `verify-cilium-metrics`, `verify-vm-policy`, `verify-pod-page`, `verify-projects`, `verify-rbac`, `verify-history`, `verify-create-project`, default `sc-build`
+- Not seen: a real cilium or flowsdn node; agents, objects and targets are stand-ins in their shapes. No Create for a flowsdn policy yet, as before. A Custom resources row names a CRD a cluster really serves, whichever network
+- Found: `verify-pod-page` and `verify-vm-policy` were red before this (#265's second Window select and 503, #75's 404); fixed in the rigs
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
