@@ -2487,6 +2487,30 @@ physical_block_size}; stormdrive#123 adds `in_use`, `use`, `slabs`, `depends_on`
   navigator still takes half the screen: the shell's, not this page's
 
 
+### Replace a drive and update its firmware (#317)
+Owner on forge1 (12.74.1, 2026-11-07): "Replace not working? We need it including update." Read from stormblock 72b7e06a
+(`mgmt/api/arrays.rs` `replace_member`, `raid/mod.rs` `replace_proactively`, `mgmt/api/drives.rs` drain) and stormdrive 2cdfa41
+(`api/mod.rs` firmware and drain, `firmware.rs`). An active member is replaced **while it serves**: writes go to both, a copy walks
+the member, and a read failure on the old drive turns it into a rebuild from parity (#256). Redundancy holds; afterwards the old drive's
+superblock is wiped. A failed slot is rebuilt onto the new drive. stormdrive's `POST /drives/{id}/drain?leave=true` empties a fleet
+drive through the engine, wherever the allocator has room, and then leaves. The engine refuses to drain the system disk or the
+metadata slab. Firmware: images by name (no vendor/model), `POST /api/v1/firmware {image, drives}` all-or-nothing, data-serving drives
+one at a time node-wide, a volume redundancy gate but none for RAID sets. Filed stormblock#563 (drain onto a named drive, the system
+drive), stormdrive#126 (RAID-set gate, image vendor/model) and #127 (record a present drive replaced).
+- [ ] `web/src/lib/drivereplace.js` (pure) + test: by what the old drive is (RAID member, slab member, system, other use, free), the
+      drives it may go to (same node, free, big enough, same shelf first; for a set, blank in this engine and at the set's format),
+      the steps, and each refusal in words
+- [ ] Replace… dialog in the drive's Actions menu: RAID member → the engine's live replace as the viewer (#82, typed word);
+      slab member → join the new drive to the fleet, then drain the old with `leave`; free → `POST /api/plugins/drive/replace`
+      (audited, not on the drive until stormdrive#127); system → refused (stormblock#563). Format first when the new drive's format
+      is not the set's, from the Format dialog
+- [ ] Firmware: `GET /api/plugins/drive/firmware` (images, runs, versions, every node), `PUT …/firmware/images/{node}/{name}`
+      (upload as `<model>+<file>`), `POST …/firmware` (guarded, typed phrase, one model, the image named for it or acknowledged,
+      not two members of one set or a member of a set that is not clean), as the viewer; Update firmware… dialog for one or a selection
+- [ ] Progress rows beside Format's: the set's copy from the engine, the drain from stormdrive, firmware runs; read back after
+- [ ] `deploy/verify-drive-replace.sh` on forge1's layout (stand-in stormdrives and engine), Chromium at 1280 and 390; docs,
+      changelog, dist; image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
