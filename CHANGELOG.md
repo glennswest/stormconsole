@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-06 — One console for every build (#285)
+- **feat:** the console shows only the network the node runs. `console_core::build`: `[build] release_manifest`, else this node's beacon, the agent's DaemonSet, the CRDs served, an agent answering; nothing having said, neither. `GET /api/v1/console/build`.
+- **feat:** nothing of Cilium on a flowsdn node: Network Flows, Network nodes and Cilium's Identities in the navigator, Cilium's Create entries, the Flows cards, the relay, the agent's card, its metrics jobs and Network charts, and any Cilium objects the apiserver happens to serve. Nothing of flowsdn on a cilium node, and `#/flowsdn` lands on Network Endpoints instead of saying "not this edition".
+- **feat:** a flowsdn node's pod row, pod page and VM policies read flowsdn's endpoints, identities and policies, as they read Cilium's; `#/k8s/fsid` lists its identities.
+- **fix:** the sentences about isolation and machines outside policy say "the pod network", not Cilium.
+- **BREAKING:** `[flowsdn] release_manifest` is now `[build] release_manifest`. Nothing on a node sets it.
+
 ### 2026-11-06 — Docs refreshed from the code
 - **docs:** README and config/config.toml: `[kubernetes] hubble_relay` and `[vm] stormimds_url` (defaults from the code).
 - **docs:** README and architecture: flows are read from Hubble relay (#4), no longer "not read yet"; per-module agent health and datapath backends stay out by decision; volumes on other nodes' drives come from their stormdrive (#52).

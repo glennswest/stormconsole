@@ -1504,15 +1504,7 @@ timeout). Shapes: flowsdn `docs/agent-api.md`, `crates/flowsdn-agent/src/
 {api,health_api}.rs`. Another node's agent is not reachable, so each node's
 console shows its own; the page says so.
 
-- **Edition first, and only on a flowsdn node (#161).** `[flowsdn]
-  release_manifest` (`/etc/stormcos/release/manifest.json`) names it: an
-  `edition`/`network` field, else a `flowsdn` (or cilium) component, else its
-  version, `<n>-flowsdn` being flowsdn and plain `<n>` cilium. Where the
-  manifest cannot be read (stormcos#786), this node's beacon's release says the
-  same. A cilium node asks no agent and has no card, row, health or navigator
-  item (`ConsolePlugin::present`); the page, opened by hand, says "not this
-  edition". With no word either way, the plugin shows once an agent has
-  answered. A flowsdn node with no answer is an Error.
+- **Only on a flowsdn node (#161, #285).** `console_core::build` says which network the node runs (see "One console for every build"). A cilium node asks no agent and has no card, row, health or navigator item, and `#/flowsdn` lands on Network Endpoints. Nothing having said, the plugin asks, and an agent answering is what says flowsdn. A flowsdn node with no answer is an Error.
 - **Polled every 5 s** (`run`), `/v1/healthz` first (it answers only once
   the agent has restored state), then modules, endpoints, IPAM, config, and
   in Kubernetes mode Services, node routes and identities (404 there means
@@ -1540,7 +1532,31 @@ console shows its own; the page says so.
   Flows — which says flowsdn has no Hubble observer yet (flowsdn#293), and shows what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile: decisions counted
   per endpoint, not flows, joined to the endpoint's pod. A viewer with limits sees their projects' rows and the node's own, and not one whose endpoint is not known, which could be anyone's.
 
-### API health on this node (#123)
+### One console for every build (#285)
+
+Owner, 2026-11-06: "lets keep all builds the same. only diff is on cillium builds vs flowsdn then console should only have the one that is built in." One image serves both; nothing is a build-time switch.
+
+`console_core::build::Build` holds the answer, read by anything that asks. `[build] release_manifest` is believed first (an `edition`/`network` field, a network's component, else its version, `<n>-flowsdn` being flowsdn and plain `<n>` cilium). Where it cannot be read (stormcos#786), the `NetworkSource`s in the order `main` adds them: this node's beacon's release, the agent's DaemonSet (`*/cilium`, `*/flowsdn`), the CRDs served, Cilium's agent answering, flowsdn's agent answering. Two networks at once from one source says nothing. Asked every 5 s. `GET /api/v1/console/build` gives `{network: {name, why}, plugins}`.
+
+**A network's surfaces show only where the node is known to run it.** Nothing having said means neither, never both. Other network's objects are filtered at `Store` (`snapshot`, `kind`, `kind_if_present`, `object`), so every reader gets this and a stale CRD on a node shows nothing:
+
+| | cilium | flowsdn | neither |
+|---|---|---|---|
+| `flowsdn` plugin (`Build::enabled`, the one list) | off | on | off |
+| The pod-network card, agent health and counters | yes | its plugin's | no |
+| Navigator: Network Flows, Network nodes, Identities | all three | Identities (`#/k8s/fsid`), Pod network | none |
+| Create: CiliumNetworkPolicy, cluster-wide | yes | no | no |
+| Flows card on a pod and a VM; `/flows` asks the relay | yes | no | no |
+| Metrics: `cilium-agent`, `cilium-operator`, `hubble` jobs and the Network charts | yes | no | no |
+| `flowsdn*` jobs | no | yes | no |
+
+Network Policies, Network Endpoints, a pod's Network tab and a VM's policies read the node's own network's objects with one reader. Sentences say "the pod network", so none needs choosing. The other network's addresses land on this one's (`notHere`, `web/src/lib/network.js`). Its API routes stay and answer with nothing.
+
+A later feature switched per build goes in `Build::enabled`, read from the node as this is. Nothing else is switched now.
+
+Stays as it is: the `cilium` and `cilium-secrets` system namespaces (a name that matches nothing shows nothing), and the network named beside a free peer on the Cluster page, which is a fact about that other machine.
+
+## API health on this node (#123)
 
 stormcos#458: every service declares a cheap *real* read with a p50/p99
 budget and a timeout, and the OS probes it — stormd for what it supervises
@@ -2072,7 +2088,7 @@ stormconsole/
       fastetcd/              # the datastore: /metrics + etcd's v3 gateway
       stormipmi/             # bare metal: the Machines API and SOL
       stormcluster/          # cluster membership: form, join, promote, split
-      flowsdn/               # this node's pod network on the flowsdn edition
+      flowsdn/               # this node's pod network on a flowsdn build
       apihealth/             # every API on this node: state, latency, stall alerts, history
       history/               # the node's record of itself in system-data: /api/v1/history
   web/                       # Svelte 5 SPA (stormview npm); web/dist committed, embedded
