@@ -82,7 +82,7 @@ fn tmp(name: &str) -> std::path::PathBuf {
 async fn a_kubernetes_agent_becomes_rows_that_lead_with_the_pod() {
     let (url, _h) = agent(true).await;
     let m = manifest(&tmp("k8s"), r#"{"version":"12.13-flowsdn"}"#);
-    let p = FlowsdnPlugin::new(&url, &m, None);
+    let p = FlowsdnPlugin::new(&url, Build::new(&m), None);
     assert!(!p.nav().is_empty(), "a flowsdn node has the page");
     p.poll().await;
     let s = p.snapshot().await;
@@ -180,7 +180,7 @@ async fn a_cilium_node_says_not_this_edition_and_asks_nothing() {
 #[tokio::test]
 async fn routes_read_one_endpoint_live_and_only_named_tables() {
     let (url, _h) = agent(true).await;
-    let p = FlowsdnPlugin::new(&url, "/nonexistent", None);
+    let p = FlowsdnPlugin::new(&url, Build::new("/nonexistent"), None);
     p.poll().await;
     let app = Router::new().nest("/p", p.routes());
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

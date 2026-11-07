@@ -598,7 +598,6 @@ pub fn network_row(s: &Snapshot, e: &Endpoint) -> Value {
 /// `GET /network-endpoints`: nothing on a node of the other network, and this node's on
 /// its own, since the agent's API is its loopback.
 async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
-    use std::sync::atomic::Ordering;
     if !inner.build.enabled(NAME) {
         return Json(json!({"network": "", "items": [], "scope": ""})).into_response();
     }
