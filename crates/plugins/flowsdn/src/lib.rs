@@ -599,7 +599,7 @@ pub fn network_row(s: &Snapshot, e: &Endpoint) -> Value {
 /// its own, since the agent's API is its loopback.
 async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
     use std::sync::atomic::Ordering;
-    if !inner.present.load(Ordering::Relaxed) {
+    if !inner.build.enabled(NAME) {
         return Json(json!({"network": "", "items": [], "scope": ""})).into_response();
     }
     let s = inner.snap.read().await.clone();
