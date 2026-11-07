@@ -348,4 +348,11 @@
     .word { display: none; }
     .pick { display: none; }
   }
+  /* A phone (#308): the masthead keeps Create, the live dot and sign-out; the
+     health words and the scope are on the pages themselves. */
+  @media (max-width: 520px) {
+    .scope { display: none; }
+    .health :global(.sc-status) { display: none; }
+    .right { gap: 6px; min-width: 0; }
+  }
 </style>
