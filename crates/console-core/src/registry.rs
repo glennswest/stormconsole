@@ -116,6 +116,15 @@ impl Registry {
         let owner = all.iter().find(|c| {
             c.actions.iter().any(|a| a.method.eq_ignore_ascii_case(method) && a.path.split('?').next() == Some(path))
         });
+        // An action the feed no longer offers on its row (a drive's Format 4K,
+        // #308) still names its object: the component whose other actions sit
+        // under the same `…/<target>/` is it.
+        let owner = owner.or_else(|| {
+            let t = format!("/{}", guarded.target);
+            let at = path.find(&format!("{t}/")).or_else(|| path.ends_with(&t).then(|| path.len() - t.len()))?;
+            let under = format!("{}/", &path[..at + t.len()]);
+            all.iter().find(|c| c.actions.iter().any(|a| a.path.starts_with(&under)))
+        });
         match owner {
             Some(c) => c
                 .metrics
@@ -720,5 +729,9 @@ mod tests {
         // A request no component offers is confirmed by the id it names.
         let g = r.guard(&admin, &m, "/api/plugins/drive/proxy/api/v1/drives/9999/sanitize", None).await.unwrap();
         assert_eq!(g.confirm, "9999");
+        // An action the drive's row does not offer (sanitize, or Format 4K since
+        // #308) is still confirmed by that drive's serial.
+        let g = r.guard(&admin, &m, "/api/plugins/drive/proxy/api/v1/drives/7f3a/sanitize", None).await.unwrap();
+        assert_eq!(g.confirm, "ZC1234");
     }
 }
