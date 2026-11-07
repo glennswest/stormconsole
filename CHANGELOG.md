@@ -3,6 +3,19 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-07 — Replace a drive, update its firmware (#317)
+- **feat:** **Replace…** in a drive's Actions menu. A dialog picks the drive to take its place (same node, free, same shelf first, each one that cannot saying why). What happens depends on the old drive:
+  - **RAID member:** the engine's live replace, as you. It copies while the drive serves, falls back to parity if a read fails, then releases the old drive. A failed slot is rebuilt. The new drive must be blank in the engine and at the set's format, or the dialog offers Format… on it.
+  - **Slab member:** the new drive joins the fleet, then the old one is drained and leaves.
+  - **System drive:** refused (stormblock#563).
+  - **Free drive:** nothing to move; the replace is recorded (`POST /api/plugins/drive/replace`; stormdrive does not keep it yet, stormdrive#127).
+- **feat:** **Update firmware…** for a drive or a selection: images from each node's store, or upload one (named `<model>+<file>`).
+  - It refuses two models, another model's image, an image that names no model unless you say you checked it, a node without the image, and two members of one RAID set or a member of a set that isn't clean (stormdrive#126).
+  - Guarded (#82), with a typed phrase, as you.
+  - New routes: `GET|POST /api/plugins/drive/firmware`, `PUT /api/plugins/drive/firmware/images/{node}/{name}`.
+- **feat:** progress per drive for both, beside Formats, read back from the engine (the slot's copy, then its drive) and from stormdrive (a drain, an update's phase and percent, the version afterwards). The rows survive a reload.
+- **feat:** the storage guard classifies firmware updates and image uploads, on the page and through the proxy.
+
 ### 2026-11-07 — Drives in use, a Format dialog, an Actions menu (#308)
 - **feat:** every drive says whether it is in use and by what (System, Data slab, Slab member, RAID member, Mounted), with the reason and what depends on it: on the rack map (a marked bay), the list, the picked drive, the Format page and dialog, and an In use / Not in use filter. Read from stormdrive#123's fields when it serves them, else from its slab partitions, `in_use_by`, fleet membership and `contents`.
 - **fix:** the system drive is never offered for format: not selectable, with the reason, and `POST /api/plugins/drive/format` refuses any drive in use (409) before a node is asked.

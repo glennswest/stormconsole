@@ -1206,6 +1206,73 @@ selection the menu offers what any of the drives offers, counted, and runs it on
 each. `ResourceTable` wraps a row's metrics and places its row menu the same way,
 so a wide row no longer pushes its actions off the screen.
 
+### Replacing a drive, and its firmware (#317)
+
+Both are in a drive's Actions menu (a **Maintain** group, before the destructive
+one) and, for firmware, on a selection. As with formats, **the console keeps no
+state of its own**: each one is done by what holds the drive, and its progress is
+read back from there, so a reload shows what is true now.
+
+**Replace…** (`drivereplace.js`, `ReplaceDialog`). The dialog lists the drives
+that could take the old one's place: on the same node, free, the same shelf
+first. Each one says why it can't, if it can't. What happens next depends on
+what the old drive is:
+
+- **A RAID member** goes through the engine's own replace, as the viewer behind
+  the storage guard (#82): `POST /api/plugins/sb/proxy/api/v1/arrays/{id}/members/{slot}/replace
+  {drive_uuid}`.
+  - An active member is copied while it serves (stormblock #256): writes go to
+    both drives, and a read that fails on the old drive becomes a rebuild from
+    parity, so the set keeps its redundancy. When the copy ends, the old drive's
+    superblock is wiped and the drive is released.
+  - A failed slot is rebuilt onto the new drive.
+  - The new drive must be a blank drive this node's engine has open (the RAID
+    page's `free`), at least as large, and at the set's format, compared from
+    the format records. If its format differs, the dialog says so and offers
+    Format… on it.
+  - A set on another node is replaced from that node's console.
+- **A slab member**: the new drive joins the fleet (its feed action), then
+  stormdrive drains the old one through the engine and takes it out of the fleet
+  (`POST …/drives/{id}/drain?leave=true`). The engine places the slabs wherever
+  it has room, not only on the new drive (stormblock#563).
+- **The system drive**: refused. The engine will not drain the system disk or
+  the volume metadata (stormblock#563).
+- **A drive used outside the engine** (LVM, a mount): refused, in its own words.
+- **A free drive**: there is nothing to move. `POST /api/plugins/drive/replace
+  {node, old, new}` checks that both drives are free and records the replace in
+  the log and the audit. stormdrive does not keep it yet (stormdrive#127).
+
+The rows ("Replacements and firmware", beside Formats) read the set's copy from
+the engine (`status.rebuild` for that slot, then the slot's drive serial) and a
+drain from stormdrive (`drain`: moved, remaining, `empty` and out of the fleet).
+The page remembers in the browser what it asked for, so a row can name it.
+
+**Update firmware…** (`drive::firmware`, `drivefirmware.js`, `FirmwareDialog`).
+`GET /api/plugins/drive/firmware` reads every node's `/api/v1/drives`, which
+carries each drive's version, `firmware_run` and `firmware_update`, and its
+image store (`/api/v1/firmware/images`). This node's drives also get their RAID
+set and the set's state from the engine. The page always says what it will
+refuse; the server checks again:
+
+- **One model at a time.**
+- **The image must be named for that model.** stormdrive keeps no model on an
+  image, so an upload from the dialog goes to each node of the selection as
+  `<model>+<file>` (`PUT /api/plugins/drive/firmware/images/{node}/{name}`).
+  An image named for another model is refused. An image that names none is
+  started only if the person ticks that they checked it (stormdrive#126).
+- **The image must be in each node's store.**
+- **Never two members of one RAID set, and never a member of a set that is not
+  clean.** stormdrive's gate checks volumes, not sets (stormdrive#126), so the
+  next member could reset while the set is still resyncing from the last one.
+
+`POST /api/plugins/drive/firmware` is guarded (#82), takes the drive's serial or
+`update N drives` as its phrase, and sends one all-or-nothing request per node,
+as the viewer. stormdrive updates data-serving drives one at a time per node, and
+holds one back while a volume on it is not fully redundant. A row per drive shows
+the phase and the percent sent, then the version read back against the run's
+target. Updating firmware and storing an image both count as destructive storage
+in the guard, through the proxy too.
+
 ### Enclosures and shelves (#166)
 
 An **enclosure** is the box: a node's chassis, or an external JBOD. A **shelf**
