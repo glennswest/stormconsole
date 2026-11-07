@@ -20,8 +20,9 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
     t.check(await t.open(page, '#/drives', /drives/i), `Drives at ${width} px`)
     const bay = page.locator('button.bay[data-drive^="sdb "]').first()
     t.check(await t.until(async () => (await bay.count()) > 0), `sdb's bay on the map at ${width} px`)
-    await bay.click()
     const trigger = page.locator('.picked [data-testid=drive-actions]').first()
+    // Picked already (the page stays open between widths): a second click would let it go.
+    if (!(await trigger.isVisible().catch(() => false))) await bay.click()
     t.check(await t.until(async () => trigger.isVisible()), `the picked drive has an Actions menu at ${width} px`)
     const tb = await trigger.boundingBox()
     t.check(tb && tb.x >= 0 && tb.x + tb.width <= width, `and the button is on the screen at ${width} px`, JSON.stringify(tb))
