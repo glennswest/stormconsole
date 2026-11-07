@@ -205,7 +205,7 @@ check "$(bq 19182 /api/plugins/metrics/targets 'sorted(x["job"] for x in d["jobs
 check "$(curl -s -o /dev/null -w '%{http_code}' "${AT[@]}" 'http://127.0.0.1:19182/api/plugins/metrics/charts?level=network')" 200 "the level, asked by hand, answers"
 check "$(bq 19182 '/api/plugins/metrics/charts?level=network' 'd["charts"]')" "[]" "with nothing of Cilium's"
 check "$(bq 19182 /api/plugins/k8s/flows '(d["available"], "Hubble" in d["reason"], "ilium" in d["reason"])')" "(False, False, False)" "flowsdn: flows, asked by hand: no relay asked, nothing named"
-check "$(bq 19181 /api/plugins/flowsdn/network-endpoints 'd["items"]')" "[]" "cilium: flowsdn's endpoints, asked by hand: none, and the agent there was not asked"
+check "$(bq 19181 /api/plugins/flowsdn/network-endpoints 'd["items"]')" "[]" "cilium: flowsdn's endpoints, asked by hand: none"
 check "$(bq 19182 /api/plugins/k8s/pods/shop/web-1 '(d["network"]["endpoint"]["state"], d["network"]["endpoint"]["identityLabels"], "k8s:fsnp:shop/allow-web" in d["network"]["endpoint"]["policies"], "k8s:cnp:shop/stale-other" in d["network"]["endpoint"]["policies"])')" "('ready', 'app=web', True, False)" "flowsdn: the pod page reads its endpoint, identity and policies"
 check "$(bq 19181 /api/plugins/k8s/pods/shop/web-1 '(d["network"]["endpoint"]["state"], d["network"]["endpoint"]["identityLabels"], "k8s:cnp:shop/allow-web" in d["network"]["endpoint"]["policies"], "k8s:fsnp:shop/stale-other" in d["network"]["endpoint"]["policies"])')" "('ready', 'app=web', True, False)" "cilium: the same, from Cilium's"
 
