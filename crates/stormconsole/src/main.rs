@@ -218,16 +218,6 @@ async fn run() {
     if let Some(logs) = logs {
         plugins.push(logs);
     }
-    if config.stormdrive.enabled {
-        plugins.push(Arc::new(plugin_stormdrive::DrivesPlugin::new(
-            &config.stormdrive_url(),
-            config.stormdrive.nodes.clone(),
-            log_hosts.clone(),
-        ).with_dial(node_dial.clone()).with_access(namespace_access.clone())));
-    }
-    if let Some(p) = stormstorage {
-        plugins.push(p);
-    }
     // A guarded engine answers every read with 401 without its token. Followed, not
     // read once: the engine mints it at boot, so it may not be there yet (#163).
     // Unset, it is found as the engine's own client finds it (#30).
@@ -240,6 +230,20 @@ async fn run() {
     let registry_reach = config.sbregistry_reach(node_dial.clone(), &engine_token);
     // One way to the engine for all who ask it (#160).
     let engine = Arc::new(console_core::engine::Engine::new(&config.stormblock_url(), config.stormblock_tls(), engine_token.clone()));
+    if config.stormdrive.enabled {
+        plugins.push(Arc::new(plugin_stormdrive::DrivesPlugin::new(
+            &config.stormdrive_url(),
+            config.stormdrive.nodes.clone(),
+            log_hosts.clone(),
+        )
+        .with_dial(node_dial.clone())
+        .with_access(namespace_access.clone())
+        // Its RAID sets, which a firmware update must not take two members of (#317).
+        .with_engine(config.stormblock.enabled.then(|| engine.clone()))));
+    }
+    if let Some(p) = stormstorage {
+        plugins.push(p);
+    }
     if config.stormblock.enabled {
         plugins.push(Arc::new(plugin_stormblock::StormblockPlugin::with_engine(engine.clone()).with_raid(stormblock_raid.clone())));
     }

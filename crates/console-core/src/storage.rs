@@ -115,6 +115,14 @@ pub fn classify(method: &Method, path: &str, query: Option<&str>) -> Option<Guar
         "drive" if rest == "format" => {
             Some(Guarded::new("driveoperations", "create", "format drives", "format"))
         }
+        // Firmware (#317): an update resets the drive and an image is what it
+        // runs next, so both are a storage-admin's, as the viewer.
+        "drive" if rest == "firmware" => {
+            Some(Guarded::new("driveoperations", "create", "update drive firmware", "firmware"))
+        }
+        "drive" if rest.starts_with("firmware/images/") => {
+            Some(Guarded::new("driveoperations", "create", "store a firmware image", "firmware"))
+        }
         "drive" => {
             // `proxy/…` for this node, `node/<host>/proxy/…` for another.
             let inner = match rest.strip_prefix("proxy/") {
@@ -188,6 +196,9 @@ fn drive(method: &Method, inner: &str) -> Option<Guarded> {
         ["api", "v1", verb] if matches!(*verb, "format" | "sanitize" | "wipe" | "erase" | "partition") => {
             op(&format!("{verb} several drives"), verb)
         }
+        ["api", "v1", "drives", id, "firmware"] => op("update a drive's firmware", id),
+        ["api", "v1", "firmware"] => op("update drives' firmware", "firmware"),
+        ["api", "v1", "firmware", "images", name] => op("store a firmware image", name),
         ["api", "v1", "worker", "jobs"] => op("start a drive worker job (format, sanitize)", "jobs"),
         _ => None,
     }
@@ -416,6 +427,19 @@ mod tests {
         assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("driveoperations", "create", "format"));
         assert!(classify(&Method::GET, "/api/plugins/drive/formats", None).is_none());
         assert!(classify(&Method::GET, "/api/plugins/drive/formats/history", None).is_none());
+    }
+
+    #[test]
+    fn firmware_is_guarded_on_the_page_and_through_the_proxy() {
+        let g = classify(&Method::POST, "/api/plugins/drive/firmware", None).unwrap();
+        assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("driveoperations", "create", "firmware"));
+        assert!(classify(&Method::PUT, "/api/plugins/drive/firmware/images/storm-b/M+1.bin", None).is_some());
+        assert!(classify(&Method::GET, "/api/plugins/drive/firmware", None).is_none());
+        assert!(classify(&Method::POST, "/api/plugins/drive/replace", None).is_none(), "nothing is moved by it");
+        assert!(c(Method::POST, "/api/plugins/drive/proxy/api/v1/firmware").is_some());
+        assert!(c(Method::POST, "/api/plugins/drive/node/b/proxy/api/v1/drives/7f3a/firmware").is_some());
+        assert!(c(Method::PUT, "/api/plugins/drive/proxy/api/v1/firmware/images/x.bin").is_some());
+        assert!(c(Method::POST, "/api/plugins/drive/proxy/api/v1/drives/7f3a/drain").is_none(), "a drain moves, it destroys nothing");
     }
 
     #[test]

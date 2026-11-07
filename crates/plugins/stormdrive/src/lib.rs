@@ -25,6 +25,7 @@
 //! is used, free, outside a slab and promised, the slabs on it and any
 //! drain — see [`usage`].
 
+pub mod firmware;
 pub mod format;
 pub mod inuse;
 mod resources;
@@ -39,7 +40,8 @@ use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get, post};
+use axum::extract::DefaultBodyLimit;
+use axum::routing::{any, get, post, put};
 use axum::{Extension, Json, Router};
 use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, Metric, NavSection, Viewer};
 use plugin_logs::LogHosts;
@@ -67,6 +69,11 @@ struct Inner {
     usage: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
     /// The same for the format page (#165).
     formats: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
+    /// The same for the firmware page (#317).
+    firmware: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
+    /// This node's engine, for the RAID sets a firmware update must not take
+    /// two members of at once (#317). `None` with no engine configured.
+    engine: Option<Arc<console_core::engine::Engine>>,
 }
 
 pub struct DrivesPlugin {
@@ -137,6 +144,14 @@ impl DrivesPlugin {
         self
     }
 
+    /// This node's engine, for its RAID sets (#317). Right after construction.
+    pub fn with_engine(mut self, engine: Option<Arc<console_core::engine::Engine>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.engine = engine;
+        }
+        self
+    }
+
     pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
         self.inner.local.set_dial(dial.clone());
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -158,6 +173,8 @@ impl DrivesPlugin {
                 dial: console_core::dial::Dial::off(),
                 usage: tokio::sync::Mutex::new(None),
                 formats: tokio::sync::Mutex::new(None),
+                firmware: tokio::sync::Mutex::new(None),
+                engine: None,
             }),
         }
     }
@@ -205,6 +222,12 @@ impl ConsolePlugin for DrivesPlugin {
             .route("/formats", get(formats_route))
             .route("/formats/history", get(format_history))
             .route("/format", post(format_start))
+            .route("/firmware", get(firmware_route).post(firmware_start))
+            .route(
+                "/firmware/images/{node}/{name}",
+                put(firmware_upload).layer(DefaultBodyLimit::max(FIRMWARE_MAX)),
+            )
+            .route("/replace", post(replace_free))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -532,6 +555,275 @@ async fn format_start(
     *inner.formats.lock().await = None;
     let code = if all_ok { StatusCode::OK } else { StatusCode::MULTI_STATUS };
     (code, Json(json!({"results": results}))).into_response()
+}
+
+/// The largest firmware image the console passes on: stormdrive's own cap
+/// (`firmware.max_image_mib`) is smaller by default and says so.
+const FIRMWARE_MAX: usize = 512 * 1024 * 1024;
+
+/// This node's RAID members, from its engine: `None` when there is no engine
+/// to ask, which a start says rather than guessing the drives are in no set.
+async fn raid_members(inner: &Inner) -> Option<Result<Vec<(String, String, firmware::Member)>, String>> {
+    let engine = inner.engine.as_ref()?;
+    let got = async {
+        let r = engine.get("/api/v1/arrays")?.timeout(Duration::from_secs(5)).send().await.map_err(|e| console_core::dial::chain(&e))?;
+        if !r.status().is_success() {
+            return Err(format!("the engine answered {}", r.status()));
+        }
+        let v: serde_json::Value = r.json().await.map_err(|e| e.to_string())?;
+        Ok(firmware::members(v.get("items").and_then(serde_json::Value::as_array).map_or(&[][..], Vec::as_slice)))
+    };
+    Some(got.await)
+}
+
+/// Every node's drives, versions, runs and image store, read now; this node's
+/// drives say their RAID set.
+async fn read_firmware(inner: &Inner) -> serde_json::Value {
+    let targets = targets(inner).await;
+    let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| async move {
+        tokio::join!(read_json(&inner.dial, base, "/api/v1/drives"), read_json(&inner.dial, base, "/api/v1/firmware/images"))
+    }))
+    .await;
+    let sets = raid_members(inner).await;
+    let mut drives = Vec::new();
+    let mut images = Vec::new();
+    let mut nodes = Vec::new();
+    for (i, ((node, _, pre), (rest, store))) in targets.iter().zip(answers).enumerate() {
+        match rest {
+            Ok(body) => {
+                let (mut d, imgs) = firmware::reduce(&body, store.as_ref().ok(), node, pre);
+                if i == 0 {
+                    if let Some(Ok(ms)) = &sets {
+                        let list = body.get("drives").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
+                        for x in &mut d {
+                            let dev = list
+                                .iter()
+                                .find(|r| usage::drive_id(r).as_deref() == x["id"].as_str())
+                                .and_then(|r| r.get("paths").and_then(|p| p.get(0)).or_else(|| r.get("path")))
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("")
+                                .to_string();
+                            if let Some(m) = firmware::member_of(ms, x["serial"].as_str().unwrap_or(""), &dev) {
+                                x["set"] = json!(m.set);
+                                x["setState"] = json!(m.state);
+                            }
+                        }
+                    }
+                }
+                nodes.push(json!({
+                    "node": node, "ok": true, "drives": d.len(), "local": i == 0,
+                    "store": store.as_ref().err().map_or(json!(true), |e| json!(e)),
+                }));
+                drives.extend(d);
+                images.extend(imgs);
+            }
+            Err(e) => nodes.push(json!({"node": node, "ok": false, "local": i == 0, "error": e})),
+        }
+    }
+    let raid = match &sets {
+        None => json!("no engine on this node"),
+        Some(Ok(_)) => json!(true),
+        Some(Err(e)) => json!(e),
+    };
+    json!({"drives": drives, "images": images, "nodes": nodes, "raid": raid})
+}
+
+/// The firmware page's read (#317), cached like the format page's.
+async fn firmware_route(State(inner): State<Arc<Inner>>) -> Response {
+    let mut cache = inner.firmware.lock().await;
+    if let Some((at, v)) = cache.as_ref() {
+        if at.elapsed() < firmware::FRESH {
+            return Json(v.clone()).into_response();
+        }
+    }
+    let v = read_firmware(&inner).await;
+    *cache = Some((std::time::Instant::now(), v.clone()));
+    Json(v).into_response()
+}
+
+/// Store an image on one node (#317), as the viewer (the host's gate, #82).
+/// The page names it `<model>+<file>` ([`firmware::upload_name`]); the name is
+/// checked here so a bad one reaches no node.
+async fn firmware_upload(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    Path((node, name)): Path<(String, String)>,
+    OriginalUri(original): OriginalUri,
+    act: Option<Extension<console_core::storage::ActAs>>,
+    body: Bytes,
+) -> Response {
+    let refuse = |code: StatusCode, e: String| (code, Json(json!({"error": e}))).into_response();
+    let bearer = match console_core::storage::upstream_bearer(&Method::PUT, &original, act.as_deref(), None) {
+        Ok(b) => b.map(str::to_string),
+        Err(refused) => return refused,
+    };
+    if !firmware::valid_image_name(&name) {
+        return refuse(StatusCode::BAD_REQUEST, format!("image name {name:?}: letters, digits, . _ - + only"));
+    }
+    if body.is_empty() {
+        return refuse(StatusCode::BAD_REQUEST, "an empty file is not an image".into());
+    }
+    let Some((_, base, _)) = targets(&inner).await.into_iter().find(|t| t.0 == node) else {
+        return refuse(StatusCode::NOT_FOUND, format!("no stormdrive known on {node}"));
+    };
+    let route = match inner.dial.route(&base).await {
+        Ok(r) => r,
+        Err(e) => return refuse(StatusCode::BAD_GATEWAY, e),
+    };
+    tracing::info!(user = viewer.user.as_deref().unwrap_or("anonymous"), node, image = name, bytes = body.len(), "firmware image stored");
+    let mut call = route.client.put(format!("{}/api/v1/firmware/images/{name}", route.base)).timeout(Duration::from_secs(300)).body(body);
+    if let Some(t) = &bearer {
+        call = call.bearer_auth(t);
+    }
+    *inner.firmware.lock().await = None;
+    match call.send().await {
+        Ok(r) => {
+            let code = StatusCode::from_u16(r.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            (code, Json(r.json::<serde_json::Value>().await.unwrap_or(json!({})))).into_response()
+        }
+        Err(e) => refuse(StatusCode::BAD_GATEWAY, console_core::dial::chain(&e)),
+    }
+}
+
+/// Start firmware updates (#317). The host has settled the storage gate; this
+/// checks the phrase, one model and its image, the image on each node's store,
+/// and that no RAID set gives two members or an unclean one; then one
+/// all-or-nothing request per node, as the viewer.
+async fn firmware_start(
+    State(inner): State<Arc<Inner>>,
+    viewer: Viewer,
+    OriginalUri(original): OriginalUri,
+    act: Option<Extension<console_core::storage::ActAs>>,
+    Json(req): Json<firmware::Start>,
+) -> Response {
+    let refuse = |code: StatusCode, e: String| (code, Json(json!({"error": e}))).into_response();
+    let bearer = match console_core::storage::upstream_bearer(&Method::POST, &original, act.as_deref(), None) {
+        Ok(b) => b.map(str::to_string),
+        Err(refused) => return refused,
+    };
+    if req.drives.is_empty() {
+        return refuse(StatusCode::BAD_REQUEST, "no drives to update".into());
+    }
+    if !firmware::valid_image_name(&req.image) {
+        return refuse(StatusCode::BAD_REQUEST, format!("image name {:?}", req.image));
+    }
+    let known = read_firmware(&inner).await;
+    let list = known["drives"].as_array().cloned().unwrap_or_default();
+    let images = known["images"].as_array().cloned().unwrap_or_default();
+    let mut chosen = Vec::new();
+    for w in &req.drives {
+        let Some(d) = list.iter().find(|d| d["node"] == w.node.as_str() && d["id"] == w.id.as_str()) else {
+            return refuse(StatusCode::NOT_FOUND, format!("no drive {} on {}", w.id, w.node));
+        };
+        if let Some(why) = d["whyNot"].as_str() {
+            return refuse(StatusCode::CONFLICT, format!("{} ({}): {why}", d["name"].as_str().unwrap_or(&w.id), w.node));
+        }
+        chosen.push(d);
+    }
+    if let Err(e) = firmware::check_model(&chosen, &req.image, req.image_checked) {
+        return refuse(StatusCode::CONFLICT, e);
+    }
+    for (node, _) in firmware::batches(&req.drives) {
+        if !images.iter().any(|i| i["node"] == node.as_str() && i["name"] == req.image.as_str()) {
+            return refuse(StatusCode::CONFLICT, format!("{} is not in {node}'s image store: upload it there first", req.image));
+        }
+    }
+    // A set is on its node's engine, which only this node's console reads.
+    let local = known["nodes"].as_array().and_then(|n| n.iter().find(|n| n["local"] == true)).and_then(|n| n["node"].as_str()).unwrap_or("").to_string();
+    if chosen.iter().any(|d| d["node"] == local.as_str()) {
+        if let Some(e) = known["raid"].as_str().filter(|e| *e != "no engine on this node") {
+            return refuse(StatusCode::SERVICE_UNAVAILABLE, format!("this node's RAID sets cannot be read ({e}), so an update could take two members of one set"));
+        }
+    }
+    let sets: Vec<(String, Option<firmware::Member>)> = chosen
+        .iter()
+        .map(|d| {
+            let m = d["set"].as_str().map(|s| firmware::Member { set: s.into(), state: d["setState"].as_str().unwrap_or("unknown").into() });
+            (d["name"].as_str().unwrap_or("").to_string(), m)
+        })
+        .collect();
+    if let Err(e) = firmware::check_sets(&sets) {
+        return refuse(StatusCode::CONFLICT, e);
+    }
+    let serials: Vec<&str> = chosen.iter().map(|d| d["serial"].as_str().unwrap_or("")).collect();
+    let wanted = firmware::phrase(&serials);
+    let names: Vec<String> = chosen.iter().map(|d| format!("{}/{} ({})", d["node"].as_str().unwrap_or(""), d["name"].as_str().unwrap_or(""), d["serial"].as_str().unwrap_or(""))).collect();
+    if req.confirm.trim() != wanted {
+        return refuse(StatusCode::PRECONDITION_REQUIRED, format!("type {wanted} to update the firmware of {}", names.join(", ")));
+    }
+    let bases = targets(&inner).await;
+    let mut results = Vec::new();
+    let mut all_ok = true;
+    for (node, ids) in firmware::batches(&req.drives) {
+        let Some((_, base, _)) = bases.iter().find(|t| t.0 == node) else { continue };
+        tracing::info!(user = viewer.user.as_deref().unwrap_or("anonymous"), node, image = req.image, drives = ?names, "drive firmware update requested");
+        let (status, body) = match inner.dial.route(base).await {
+            Err(e) => (502, json!({"error": e})),
+            Ok(route) => {
+                let mut call = route
+                    .client
+                    .post(format!("{}/api/v1/firmware", route.base))
+                    .timeout(Duration::from_secs(120))
+                    .json(&json!({"image": req.image, "drives": ids}));
+                if let Some(t) = &bearer {
+                    call = call.bearer_auth(t);
+                }
+                match call.send().await {
+                    Ok(r) => (r.status().as_u16(), r.json::<serde_json::Value>().await.unwrap_or(json!({}))),
+                    Err(e) => (502, json!({"error": console_core::dial::chain(&e)})),
+                }
+            }
+        };
+        let ok = (200..300).contains(&status);
+        all_ok &= ok;
+        results.push(json!({"node": node, "drives": ids, "image": req.image, "ok": ok, "status": status, "error": body.get("error")}));
+    }
+    *inner.firmware.lock().await = None;
+    (if all_ok { StatusCode::OK } else { StatusCode::MULTI_STATUS }, Json(json!({"results": results}))).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct ReplaceFree {
+    node: String,
+    old: String,
+    new: String,
+}
+
+/// Replace a drive that holds nothing (#317): there is nothing to move, so
+/// this checks both drives are free and on one node and records it. The
+/// record is the console's audit and log: stormdrive keeps a replacement only
+/// by bay, for a missing drive (stormdrive#127). A drive that holds something
+/// is replaced through what holds it, which this refuses to stand in for.
+async fn replace_free(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(req): Json<ReplaceFree>) -> Response {
+    let refuse = |code: StatusCode, e: String| (code, Json(json!({"error": e}))).into_response();
+    let known = read_formats(&inner).await;
+    let list = known["drives"].as_array().cloned().unwrap_or_default();
+    let find = |id: &str| list.iter().find(|d| d["node"] == req.node.as_str() && d["id"] == id).cloned();
+    let (Some(old), Some(new)) = (find(&req.old), find(&req.new)) else {
+        return refuse(StatusCode::NOT_FOUND, format!("both drives must be on {}", req.node));
+    };
+    let name = |d: &serde_json::Value| d["name"].as_str().unwrap_or("").to_string();
+    if req.old == req.new {
+        return refuse(StatusCode::BAD_REQUEST, "a drive cannot replace itself".into());
+    }
+    for (d, what) in [(&old, "replaced"), (&new, "the replacement")] {
+        if d["use"]["in_use"] == true {
+            let why = d["use"]["reason"].as_str().unwrap_or("in use");
+            return refuse(
+                StatusCode::CONFLICT,
+                format!("{} holds something ({why}), so it is not {what} this way: replace it through what holds it", name(d)),
+            );
+        }
+    }
+    tracing::info!(user = viewer.user.as_deref().unwrap_or("anonymous"), node = req.node, old = name(&old), new = name(&new), "drive replaced: nothing to move");
+    Json(json!({
+        "replaced": name(&old), "by": name(&new), "serial": old["serial"], "moved": 0,
+        "note": format!(
+            "{} held nothing, so nothing was moved and it can be pulled. Recorded in the console's audit; stormdrive does not record it yet (stormdrive#127)",
+            name(&old)
+        ),
+    }))
+    .into_response()
 }
 
 /// A remote node's drive actions, through the console.
