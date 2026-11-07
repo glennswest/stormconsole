@@ -7,7 +7,7 @@ walk(`one build (${NET})`, async (t) => {
   const page = await t.page('root')
   const other = new RegExp(OTHER, 'i')
   const whole = async () => page.locator('body').innerText()
-  // Shut sections would hide what the navigator offers.
+  t.check(await t.open(page, '#/', /Overview/i), 'the overview opens')
   const nav = JSON.stringify(await page.evaluate(() => fetch('/api/v1/console/nav').then((r) => r.json())))
   t.check(!other.test(nav), `the navigator has nothing of ${OTHER}`, nav.match(new RegExp(`.{0,30}${OTHER}.{0,30}`, 'i'))?.[0] || '')
 

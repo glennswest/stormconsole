@@ -56,7 +56,8 @@ walk(`network pages (${NET})`, async (t) => {
   t.check(!/lab-only/.test(a), "and not another project's", a.slice(0, 300))
 
   // The other network is nowhere: not its plugin, nor its card.
-  const feed = JSON.stringify(await page.evaluate(() => fetch('/api/v1/components').then((r) => r.json())))
+  // A CRD's own row is the cluster's list of what it serves, whichever network this is.
+  const feed = JSON.stringify((await page.evaluate(() => fetch('/api/v1/components').then((r) => r.json()))).filter((c) => !c.id.startsWith('k8s:crd:')))
   if (OTHER === 'flowsdn') t.check(!feed.includes('plugin:flowsdn') && !feed.includes('flowsdn:agent'), 'a cilium node carries nothing of flowsdn')
   if (OTHER === 'cilium') t.check(!feed.includes('k8s:cilium') && !/"Cilium/.test(feed), 'a flowsdn node carries nothing of cilium')
 })

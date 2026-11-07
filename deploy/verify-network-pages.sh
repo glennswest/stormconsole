@@ -117,7 +117,7 @@ k $CP POST /apis/flowsdn.io/v1alpha1/namespaces/shop/flowsdnnetworkpolicies '{"a
 k $FP POST /apis/cilium.io/v2/namespaces/shop/ciliumnetworkpolicies '{"apiVersion":"cilium.io/v2","kind":"CiliumNetworkPolicy","metadata":{"name":"stale-other"},"spec":{"endpointSelector":{"matchLabels":{"app":"web"}}}}'
 k $FP POST /apis/cilium.io/v2/ciliumnodes '{"apiVersion":"cilium.io/v2","kind":"CiliumNode","metadata":{"name":"stale-node"}}'
 echo x > "$W/cilium-scrape"
-python3 "$HERE/deploy/cilium-agent.standin.py" "$W/cilium-scrape" >/dev/null 2>&1 &
+python3 "$HERE/deploy/cilium-agent.standin.py" "$W/cilium-scrape" >/dev/null 2>&1 & CILIUM_AGENT=$!
 python3 "$HERE/deploy/ironprom-targets.standin.py" 19190 >/dev/null 2>&1 &
 
 python3 - "$W/eps.json" <<'PY'
@@ -200,8 +200,8 @@ check "$(bq 19181 /api/v1/console/nav '"#/network/flows" in str(d) and "#/k8s/cn
 check "$(bq 19182 /api/v1/console/nav '"#/flowsdn" in str(d) and "#/k8s/fsid" in str(d) and "#/network/flows" not in str(d) and "#/k8s/c" not in str(d).replace("#/k8s/cm","").replace("#/k8s/crd","").replace("#/k8s/crole","").replace("#/k8s/cronjob","")')" True "flowsdn's navigator: its page and identities, no flows or Cilium kinds"
 check "$(bq 19181 /api/v1/console/creators 'sorted(c["id"] for c in d if c["id"] in ("k8s:cnp","k8s:ccnp"))')" "['k8s:ccnp', 'k8s:cnp']" "cilium's Create menu has its policies"
 check "$(bq 19182 /api/v1/console/creators '[c["id"] for c in d if c["id"] in ("k8s:cnp","k8s:ccnp")]')" "[]" "flowsdn's does not"
-check "$(bq 19181 /api/plugins/metrics/targets 'sorted(x["job"] for x in d["jobs"]), "network" in [l["id"] for l in d["levels"]]')" "(['cilium-agent', 'stormdrive'], True)" "cilium: its job and Network charts"
-check "$(bq 19182 /api/plugins/metrics/targets 'sorted(x["job"] for x in d["jobs"]), "network" in [l["id"] for l in d["levels"]]')" "(['flowsdn-agent', 'stormdrive'], False)" "flowsdn: no cilium job down, no Network charts of Cilium's"
+check "$(bq 19181 /api/plugins/metrics/targets 'sorted(x["job"] for x in d["jobs"]), "network" in [l["id"] for l in d["levels"]]')" "['cilium-agent', 'stormdrive'] True" "cilium: its job and Network charts"
+check "$(bq 19182 /api/plugins/metrics/targets 'sorted(x["job"] for x in d["jobs"]), "network" in [l["id"] for l in d["levels"]]')" "['flowsdn-agent', 'stormdrive'] False" "flowsdn: no cilium job down, no Network charts of Cilium's"
 check "$(curl -s -o /dev/null -w '%{http_code}' "${AT[@]}" 'http://127.0.0.1:19182/api/plugins/metrics/charts?level=network')" 200 "the level, asked by hand, answers"
 check "$(bq 19182 '/api/plugins/metrics/charts?level=network' 'd["charts"]')" "[]" "with nothing of Cilium's"
 check "$(bq 19182 /api/plugins/k8s/flows '(d["available"], "Hubble" in d["reason"], "ilium" in d["reason"])')" "(False, False, False)" "flowsdn: flows, asked by hand: no relay asked, nothing named"
@@ -222,12 +222,16 @@ bare() { # name port flowsdn-url
   "$BIN" --config "$W/$1.toml" > "$W/$1.log" 2>&1 &
   for _ in $(seq 60); do curl -sf -o /dev/null "http://127.0.0.1:$2/healthz" && break; sleep 0.5; done
 }
+# Cilium's agent answering says cilium, and a console with no apiserver still probes it.
+kill "$CILIUM_AGENT"; wait "$CILIUM_AGENT" 2>/dev/null || true
 bare un 19185 http://127.0.0.1:19899
 sleep 7
 check "$(bq 19185 /api/v1/console/build '(d["network"]["name"], "flowsdn" in d["plugins"], "no-such.json" in d["network"]["why"])')" "('unknown', False, True)" "nothing says: neither, and it says why"
 check "$(curl -s "${AT[@]}" http://127.0.0.1:19185/api/v1/console/nav | grep -c flowsdn || true)" 0 "and no flowsdn page"
 bare ag 19186 http://127.0.0.1:19878
-build_is 19186 flowsdn "agent answers" "only an agent answering: flowsdn"
+build_is 19186 flowsdn "agent answers" "only flowsdn's agent answering: flowsdn"
+python3 "$HERE/deploy/cilium-agent.standin.py" "$W/cilium-scrape" >/dev/null 2>&1 &
+build_is 19185 cilium "agent answers" "only Cilium's agent answering: cilium"
 
 say "the pages, in Chromium"
 BR=0
