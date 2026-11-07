@@ -7,23 +7,22 @@
   // the console. Starting one is destructive storage (#82): the apiserver
   // decides who may, the confirmation names each drive, and the request goes
   // as the person asking.
-  import { get, postJson } from '../api.js'
-  import { noteActivity } from '../stores.svelte.js'
+  import { get } from '../api.js'
+  import { route } from '../router.svelte.js'
   import { formatBytes } from '../drivemap.js'
-  import { byNode, chosen, currentText, duration, finished, formatText, isRunning, phrase, readBack, request, selectable, timing } from '../driveformat.js'
+  import { badgeOf, byNode, currentText, defaultOption, duration, finished, formatText, isRunning, planFor, readBack, resultText, selectable, timing } from '../driveformat.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
+  import FormatDialog from '../components/FormatDialog.svelte'
+  import FormatProgress from '../components/FormatProgress.svelte'
 
   let data = $state(null)
   let error = $state('')
   let guard = $state(null)
   let now = $state(Math.floor(Date.now() / 1000))
   let picked = $state({})
-  let blockSize = $state(4096)
-  let pi = $state('offered')
-  let asking = $state(false)
-  let typed = $state('')
-  let busy = $state(false)
+  // The Format dialog (#308), open on the drives ticked here.
+  let dialog = $state(null)
   let outcome = $state(null)
   let history = $state(null)
 
@@ -63,35 +62,26 @@
   const allowed = $derived(!!guard?.allowed)
   const key = (r) => `${r.node}/${r.id}`
   const selection = $derived(drives.filter((r) => picked[key(r)] && selectable(r)))
-  const word = $derived(phrase(selection))
+  // Picked on the Drives page (#308): `?pick=node/id,…` opens the dialog on them.
+  let fromRoute = false
+  $effect(() => {
+    if (fromRoute || !data) return
+    fromRoute = true
+    const want = (route.current.query.get('pick') || '').split(',').filter(Boolean)
+    if (want.length) dialog = { picked: want }
+  })
 
   function plan(r) {
-    return chosen(r, blockSize, pi)
+    return planFor(r, defaultOption(r))
   }
   function fallbackText(c) {
     return c.fallbacks.map((f) => formatText(f.blockSize, f.protection)).join(', then ')
   }
-
-  async function start() {
-    busy = true
-    error = ''
-    outcome = null
-    try {
-      const body = request(selection, blockSize, pi, typed.trim())
-      const r = await postJson('/api/plugins/drive/format', body, 'POST', { 'X-Storm-Confirm': guard?.confirm || 'format' })
-      outcome = r.results || []
-      for (const o of outcome) {
-        const what = `${o.drives.length} ${o.drives.length === 1 ? 'drive' : 'drives'} on ${o.node}: ${formatText(o.block_size, o.protection)}`
-        noteActivity({ reason: 'Format', message: o.ok ? `started, ${what}` : `refused, ${what}: ${o.error}`, source: `drives/${o.node}`, warning: !o.ok })
-      }
-      asking = false
-      typed = ''
-      picked = {}
-      await refresh()
-    } catch (e) {
-      error = e.message
-    }
-    busy = false
+  async function done(results) {
+    outcome = results
+    dialog = null
+    picked = {}
+    await refresh()
   }
 
   async function showHistory(r) {
@@ -120,26 +110,7 @@
   {#if running.length}
     <section class="card" data-testid="running">
       <h2>Formatting now</h2>
-      {#each running as r (key(r))}
-        {@const f = r.format}
-        {@const t = timing(f, now)}
-        <div class="run">
-          <div class="run-head">
-            <strong>{r.node} · {r.name}</strong>
-            <span class="dim">bay {r.bay ?? '—'} · {r.model} · {r.serial}</span>
-            <span class="to">to {formatText(f.toBlockSize, f.protection)}</span>
-          </div>
-          <div class="bar" role="progressbar" aria-valuenow={f.progressPct ?? 0} aria-valuemin="0" aria-valuemax="100"><i style="width: {f.progressPct ?? 0}%"></i></div>
-          <div class="facts">
-            <span class="pct">{f.progressPct === null || f.progressPct === undefined ? 'no progress reported yet' : `${f.progressPct}%`}</span>
-            <span>{f.phase}</span>
-            <span>elapsed {duration(t.elapsed)}</span>
-            <span>{t.left === null ? 'no estimate yet' : `about ${duration(t.left)} left`}</span>
-          </div>
-          {#each f.refused || [] as why}<p class="warn small">The drive refused a format: {why}</p>{/each}
-          {#each r.resets || [] as line}<p class="warn small">Controller reset: {line}</p>{/each}
-        </div>
-      {/each}
+      <FormatProgress rows={running} {now} />
     </section>
   {/if}
 
@@ -155,61 +126,22 @@
   {#if data && !drives.length}
     <EmptyState icon="storage" title="No drives" hint="No stormdrive in this cluster reports a drive." />
   {:else if drives.length}
-    {#if allowed}
-      <div class="choose">
-        <label>Block size
-          <select bind:value={blockSize} aria-label="Block size">
-            <option value={4096}>4096</option>
-            <option value={512}>512</option>
-          </select>
-        </label>
-        <label>Protection
-          <select bind:value={pi} aria-label="Protection">
-            <option value="offered">PI type 1 where offered</option>
-            <option value="none">None</option>
-          </select>
-        </label>
-        <button class="danger" disabled={!selection.length || asking} onclick={() => { asking = true; typed = '' }}>
-          Format {selection.length || ''} {selection.length === 1 ? 'drive' : 'drives'}
-        </button>
-      </div>
-    {/if}
+    <div class="choose">
+      <button class="danger" disabled={!allowed} onclick={() => (dialog = { picked: selection.map(key) })} data-testid="open-dialog">
+        {selection.length ? `Format ${selection.length} ${selection.length === 1 ? 'drive' : 'drives'}…` : 'Format drives…'}
+      </button>
+      <span class="dim">Tick drives below, or choose them in the dialog. A drive in use is never offered.</span>
+    </div>
 
-    {#if asking && selection.length}
-      <div class="card confirm" role="dialog" aria-label="Confirm the format">
-        <h2>Format {selection.length} {selection.length === 1 ? 'drive' : 'drives'}: their data goes</h2>
-        <p>Everything on these drives is destroyed and cannot be recovered. A large drive takes most of a day, and a format cannot be cancelled. It is done as you.</p>
-        <table>
-          <thead><tr><th>Drive</th><th>Bay</th><th>Serial</th><th>Now</th><th>Becomes</th><th>If the drive refuses</th></tr></thead>
-          <tbody>
-            {#each selection as r (key(r))}
-              {@const c = plan(r)}
-              <tr>
-                <td>{r.node} · {r.name} <span class="dim">{r.model}</span></td>
-                <td>{r.bay ?? '—'}</td>
-                <td class="mono">{r.serial}</td>
-                <td>{currentText(r)}</td>
-                <td>{formatText(c.block_size, c.protection)}</td>
-                <td>{c.fallbacks.length ? fallbackText(c) : 'nothing: the run ends'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-        <label class="type"><span>Type <span class="mono">{word}</span> to confirm</span>
-          <input bind:value={typed} aria-label="Confirmation" autocomplete="off" />
-        </label>
-        <div class="row">
-          <button class="danger" disabled={busy || typed.trim() !== word} onclick={start}>Format</button>
-          <button disabled={busy} onclick={() => (asking = false)}>Cancel</button>
-        </div>
-      </div>
+    {#if dialog}
+      <FormatDialog records={drives} picked={dialog.picked} {guard} onclose={() => (dialog = null)} ondone={done} />
     {/if}
 
     {#each nodes as n (n.node)}
       <section class="card">
         <h2>{n.node}</h2>
         <table class="drives">
-          <thead><tr>{#if allowed}<th></th>{/if}<th>Bay</th><th>Drive</th><th>Serial / WWN</th><th>Size</th><th>Now</th><th>Would become</th><th>Can it be formatted</th><th></th></tr></thead>
+          <thead><tr>{#if allowed}<th></th>{/if}<th>Bay</th><th>Drive</th><th>Serial / WWN</th><th>Size</th><th>Use</th><th>Now</th><th>Would become</th><th>Can it be formatted</th><th></th></tr></thead>
           <tbody>
             {#each n.drives as r (key(r))}
               {@const c = plan(r)}
@@ -221,9 +153,10 @@
                 <td>{r.name} <span class="dim">{r.model}</span></td>
                 <td class="mono">{r.serial}{#if r.wwn}<div class="dim">{r.wwn}</div>{/if}</td>
                 <td>{r.capacity ? formatBytes(r.capacity) : '—'}</td>
+                <td data-testid="use">{#if badgeOf(r)}<span class="badge" class:system={r.use?.use === 'system'} title={r.use?.reason}>{badgeOf(r)}</span>{#each r.use?.depends_on || [] as dep}<div class="dim">{dep}</div>{/each}{:else}<span class="dim">free</span>{/if}</td>
                 <td>{currentText(r)}</td>
                 <td>
-                  {formatText(c.block_size, c.protection)}
+                  {resultText(c.block_size, c.protection)}
                   {#if c.basis === 'try'}<span class="dim" title="The drive does not list its formats, so the run finds out">(a try)</span>{/if}
                   {#if c.fallbacks.length}<div class="dim">if refused: {fallbackText(c)}</div>{/if}
                   {#if r.planned?.error}<div class="dim">{r.planned.error}</div>{/if}
@@ -302,18 +235,9 @@
   .note { padding: 7px 12px; font-size: var(--sc-t-meta); color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
   .dim { color: var(--text-dim); font-size: var(--sc-t-meta); }
   .mono { font-family: var(--mono); font-size: var(--sc-t-meta); }
-  .run + .run { margin-top: 14px; }
-  .run-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: var(--sc-t-body); }
-  .to { margin-left: auto; color: var(--text-dim); font-size: var(--sc-t-meta); }
-  .bar { height: 8px; background: var(--panel-raised); border-radius: 999px; overflow: hidden; margin: 6px 0; }
-  .bar i { display: block; height: 100%; background: var(--accent); }
-  .facts { display: flex; gap: 16px; flex-wrap: wrap; font-size: var(--sc-t-meta); color: var(--text-dim); }
-  .pct { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-  .choose { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; font-size: var(--sc-t-meta); color: var(--text-dim); }
-  .choose label { display: grid; gap: 3px; }
-  .confirm { border-color: var(--error-border, var(--error)); }
-  .type { display: grid; gap: 4px; margin: 12px 0 8px; max-width: 360px; font-size: var(--sc-t-body); }
-  .row { display: flex; gap: 8px; }
+  .choose { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; font-size: var(--sc-t-meta); color: var(--text-dim); }
+  .badge { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--warn-strong); color: var(--warn-strong); white-space: nowrap; }
+  .badge.system { border-color: var(--error); color: var(--error); }
   table { width: 100%; border-collapse: collapse; font-size: var(--sc-t-body); }
   th { text-align: left; font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); padding: 4px 10px 4px 0; white-space: nowrap; }
   td { padding: 6px 10px 6px 0; border-top: 1px solid var(--sc-hairline); vertical-align: top; }

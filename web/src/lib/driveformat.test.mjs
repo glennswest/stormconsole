@@ -63,3 +63,51 @@ assert.deepEqual(g.map((n) => n.node), ['b', 'a'])
 assert.deepEqual(g[1].drives.map((d) => d.name), ['y', 'z', 'w'], 'by bay, with no bay last')
 assert.deepEqual(finished([{ name: '1', format: { state: 'done', finishedUnix: 5 } }, { name: '2', format: { state: 'running' } }, { name: '3', format: { state: 'failed', finishedUnix: 9 } }, { name: '4' }]).map((r) => r.name), ['3', '1'])
 console.log('PASS driveformat.test.mjs')
+
+// --- #308 -----------------------------------------------------------------
+{
+  const m = await import('./driveformat.js')
+  // forge1: four HGST H7210A521SUN010T behind a PERC, no VPD 0xB4, PI 1 + 2,
+  // physical 4096; plannedFormat 4096 + type1 for all four. sda is the system drive.
+  const sup = { protect: true, pi_types: [1, 2], block_lengths: [], physical_block_size: 4096 }
+  const plan = { blockSize: 4096, protection: 'type1', basis: 'try', fallbacks: [{ blockSize: 4096, protection: 'none' }, { blockSize: 512, protection: 'type1' }] }
+  const drive = (name, extra = {}) => ({ node: 'forge1', id: `id-${name}`, name, serial: `SN-${name}`, supports: sup, planned: plan, offersPi: true, use: { in_use: false, use: 'free', badge: null }, ...extra })
+  const sda = drive('sda', { current: { blockSize: 512, protection: 'type1', protType: 1 },
+    use: { in_use: true, use: 'system', badge: 'System', reason: "sda holds this node's system slab (partition 2 'stormblock'); the node runs from it" },
+    whyNot: "sda holds this node's system slab (partition 2 'stormblock'); the node runs from it. The system drive is never formatted from the console" })
+  const [sdb, sdc, sdd] = ['sdb', 'sdc', 'sdd'].map((n) => drive(n))
+
+  assert.equal(m.badgeOf(sda), 'System')
+  assert.equal(m.badgeOf(sdb), null)
+  assert.equal(m.selectable(sda), false, 'the system drive is never picked')
+  assert.equal([sdb, sdc, sdd].every(m.selectable), true)
+
+  const opts = m.options(sdb).map(m.optionKey)
+  assert.deepEqual(opts, ['4096:type1', '4096:none', '512:type1', '512:none'])
+  assert.equal(m.optionKey(m.defaultOption(sdb)), '4096:type1', 'the plan is the default')
+  assert.equal(m.piNote(sdb), 'the drive also lists PI type 2; stormdrive formats type 1 or none')
+  assert.equal(m.confirmLine(sdb, m.defaultOption(sdb)), 'sdb → 4096 + T10 PI type 1')
+  assert.equal(m.planFor(sdb, m.defaultOption(sdb)).fallbacks.length, 2)
+  assert.equal(m.planFor(sdb, { block_size: 512, protection: 'none' }).fallbacks.length, 0)
+
+  // VPD 0xB4 listed: exactly what it lists.
+  const listed = drive('sde', { planned: null, supports: { pi_types: [1], block_lengths: [{ length: 512, pi_types: [0, 1] }, { length: 520, pi_types: [0] }] } })
+  assert.deepEqual(m.options(listed).map(m.optionKey), ['512:type1', '512:none'])
+  // A 512-native drive with no PI: 512 only.
+  assert.deepEqual(m.options(drive('sdf', { planned: null, offersPi: false, supports: { pi_types: [], block_lengths: [], physical_block_size: 512 } })).map(m.optionKey), ['512:none'])
+
+  // Three drives at 4096 + PI 1, one request per drive.
+  const req = m.requestFor([sdb, sdc, sdd], {}, 'format 3 drives')
+  assert.deepEqual(req.drives.map((d) => [d.id, d.block_size, d.protection]), [['id-sdb', 4096, 'type1'], ['id-sdc', 4096, 'type1'], ['id-sdd', 4096, 'type1']])
+  assert.equal(m.requestFor([sdb], { 'forge1/id-sdb': '512:none' }, 'SN-sdb').drives[0].block_size, 512)
+
+  // Progress, per drive.
+  assert.equal(m.stepOf({ state: 'running', phase: 'queued' }), 'probe')
+  assert.equal(m.stepOf({ state: 'running', phase: 'formatting' }), 'format')
+  assert.equal(m.stepOf({ state: 'running', phase: 'verify' }), 'read-back')
+  assert.equal(m.stepOf({ state: 'done' }), 'done')
+  assert.equal(m.stepOf({ state: 'interrupted' }), 'failed')
+  const rows = m.progressRows([{ ...sdb, format: { state: 'running' } }, { ...sdc, format: { state: 'done', finishedUnix: 100 } }, { ...sdd, format: { state: 'done', finishedUnix: 10 } }], 200, 150)
+  assert.deepEqual(rows.map((r) => r.name), ['sdb', 'sdc'])
+}
+console.log('driveformat #308 ok')

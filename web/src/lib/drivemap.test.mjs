@@ -241,4 +241,17 @@ console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toF
   assert.ok(passes(records[0], 'offered'))
   assert.ok(!passes(records[1], 'offered'))
 }
+
+// #308: forge1's sda is in use (System), sdb free; the filters say so.
+{
+  const d = (id) => ({ id, kind: 'drive', label: id, metrics: [{ label: 'node', value: 'forge1' }, { label: 'serial', value: id }] })
+  const usage = { drives: [
+    { component: 'drive:drive:sda', node: 'forge1', serial: 'sda', use: { in_use: true, use: 'system', badge: 'System', reason: "sda holds this node's system slab" } },
+    { component: 'drive:drive:sdb', node: 'forge1', serial: 'sdb', use: { in_use: false, use: 'free', badge: null } },
+  ] }
+  const [a, b] = build([d('drive:drive:sda'), d('drive:drive:sdb')], { usage }).records
+  assert.equal(a.use.badge, 'System')
+  assert.ok(passes(a, 'inuse') && !passes(a, 'free'))
+  assert.ok(passes(b, 'free') && !passes(b, 'inuse'))
+}
 console.log('PASS')

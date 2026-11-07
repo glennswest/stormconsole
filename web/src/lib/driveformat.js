@@ -113,3 +113,119 @@ export function finished(records) {
     .filter((r) => r.format && r.format.state !== 'running')
     .sort((a, b) => (b.format.finishedUnix ?? 0) - (a.format.finishedUnix ?? 0))
 }
+
+// --- #308: in use, the dialog's choices, progress per drive ---------------
+
+/// The badge a drive's use earns ('System', 'Data slab', 'RAID member', …), or
+/// null for a free one. `use` is the drive plugin's answer (inuse.rs).
+export const badgeOf = (rec) => (rec?.use?.in_use ? rec.use.badge || 'In use' : null)
+export const inUse = (rec) => !!rec?.use?.in_use
+
+/// "4096 + T10 PI type 1", the confirm step's words.
+export function resultText(blockSize, protection) {
+  return protection === 'type1' ? `${blockSize} + T10 PI type 1` : `${blockSize}, no PI`
+}
+
+const key2 = (bs, p) => `${bs}:${p}`
+export const optionKey = (o) => key2(o.block_size, o.protection)
+export function parseKey(k) {
+  const [bs, p] = String(k).split(':')
+  return { block_size: Number(bs), protection: p }
+}
+
+/// What this drive can be formatted to, best first (stormdrive's order:
+/// 4096 + PI 1, 4096, 512 + PI 1, 512). From `supports` (pi.rs): the listed
+/// block lengths when VPD 0xB4 lists them, else 512, and 4096 as a try where
+/// the physical block is 4K. stormdrive formats PI type 1 or none, so a drive
+/// listing type 2 or 3 gets a note, not an option.
+export function options(rec) {
+  const s = rec.supports || null
+  const pis = s?.pi_types || (rec.offersPi ? [1] : [])
+  const out = []
+  const add = (bs, p, basis) => {
+    if (!out.some((o) => o.block_size === bs && o.protection === p)) out.push({ block_size: bs, protection: p, basis })
+  }
+  const listed = (s?.block_lengths || []).filter((l) => l.length === 512 || l.length === 4096)
+  if (listed.length) {
+    for (const bs of [4096, 512]) {
+      const l = listed.find((x) => x.length === bs)
+      if (!l) continue
+      if ((l.pi_types || []).includes(1)) add(bs, 'type1', 'listed')
+      if (!l.pi_types?.length || l.pi_types.includes(0)) add(bs, 'none', 'listed')
+    }
+  } else {
+    const fourK = !s || s.physical_block_size === 4096 || rec.planned?.blockSize === 4096
+    for (const bs of fourK ? [4096, 512] : [512]) {
+      const basis = s && bs === 4096 ? 'try' : s ? 'offered' : 'unknown'
+      if (pis.includes(1)) add(bs, 'type1', basis)
+      add(bs, 'none', basis)
+    }
+  }
+  const p = rec.planned && !rec.planned.error ? rec.planned : null
+  if (p && !out.some((o) => o.block_size === p.blockSize && o.protection === p.protection)) out.unshift({ block_size: p.blockSize, protection: p.protection, basis: p.basis || 'plan' })
+  const rank = (o) => (o.block_size === 4096 ? 0 : 2) + (o.protection === 'type1' ? 0 : 1)
+  return out.sort((a, b) => rank(a) - rank(b))
+}
+
+/// The default: the drive's own plan (plannedFormat), else the best offered.
+export function defaultOption(rec) {
+  const p = rec.planned && !rec.planned.error ? rec.planned : null
+  const opts = options(rec)
+  return (p && opts.find((o) => o.block_size === p.blockSize && o.protection === p.protection)) || opts[0] || { block_size: 4096, protection: 'none' }
+}
+
+/// PI types the drive has that stormdrive does not format to.
+export function piNote(rec) {
+  const extra = (rec.supports?.pi_types || []).filter((t) => t > 1)
+  if (!extra.length) return ''
+  return `the drive also lists PI type ${extra.join(' and ')}; stormdrive formats type 1 or none`
+}
+
+/// The run stormdrive would make for a choice: its fallbacks only when the
+/// choice is the drive's plan (stormdrive falls back from the plan alone).
+export function planFor(rec, o) {
+  const p = rec.planned && !rec.planned.error ? rec.planned : null
+  const onPlan = p && p.blockSize === o.block_size && p.protection === o.protection
+  return { ...o, onPlan: !!onPlan, fallbacks: onPlan ? p.fallbacks || [] : [] }
+}
+
+/// "sdb → 4096 + T10 PI type 1", as the confirm step and the owner name it.
+export const confirmLine = (rec, o) => `${rec.name} → ${resultText(o.block_size, o.protection)}`
+
+/// The request for a set of drives and the choice for each (by `node/id`).
+export function requestFor(records, choice, confirm) {
+  return {
+    confirm,
+    drives: records.map((r) => {
+      const o = parseKey(choice[`${r.node}/${r.id}`] || optionKey(defaultOption(r)))
+      return { node: r.node, id: r.id, block_size: o.block_size, protection: o.protection }
+    }),
+  }
+}
+
+/// Where a run is, in three steps: probe (stormdrive's prepare and queue),
+/// format (FORMAT UNIT running) and read-back (rescan and READ CAPACITY).
+export const STEPS = ['probe', 'format', 'read-back']
+export function stepOf(f) {
+  if (!f) return null
+  if (f.state === 'done') return 'done'
+  if (f.state && f.state !== 'running') return 'failed'
+  switch (f.phase) {
+    case 'format':
+    case 'formatting':
+      return 'format'
+    case 'rescan':
+    case 'verify':
+      return 'read-back'
+    default:
+      return 'probe'
+  }
+}
+
+/// The runs to show one row each for: running first, then the ones that ended
+/// within `recent` seconds (or every ended one with `recent` null), newest first.
+export function progressRows(records, now, recent = null) {
+  const running = records.filter(isRunning)
+  const ended = finished(records).filter((r) => recent === null || now - (r.format.finishedUnix ?? 0) <= recent)
+  return [...running, ...ended]
+}

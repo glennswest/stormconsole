@@ -26,6 +26,11 @@
   import ResourceTable from '../components/ResourceTable.svelte'
   import Icon from '../components/Icon.svelte'
   import OfferedDrives from '../components/OfferedDrives.svelte'
+  import DriveActions from '../components/DriveActions.svelte'
+  import FormatDialog from '../components/FormatDialog.svelte'
+  import FormatProgress from '../components/FormatProgress.svelte'
+  import { commonActions } from '../driveactions.js'
+  import { progressRows, selectable as formatable } from '../driveformat.js'
   import { ago } from '../ui/time.js'
   import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName, shelfKey, enclosures, unreadShelves, unreadShelf } from '../drivemap.js'
 
@@ -39,12 +44,18 @@
   let placement = $state(null)
   let enginePool = $state(null)
   let usageError = $state('')
+  // The format records (#308): who may be formatted, and each run's progress.
+  let formats = $state(null)
+  let guard = $state(null)
+  let now = $state(Math.floor(Date.now() / 1000))
   async function refresh() {
-    const [u, p, pool] = await Promise.allSettled([
+    const [u, p, pool, f] = await Promise.allSettled([
       get('/api/plugins/drive/usage'),
       get('/api/plugins/sb/placement'),
       get('/api/plugins/sb/proxy/api/v1/slabs/pool'),
+      get('/api/plugins/drive/formats'),
     ])
+    if (f.status === 'fulfilled') formats = f.value
     if (u.status === 'fulfilled') {
       usage = u.value
       usageError = ''
@@ -54,8 +65,15 @@
   }
   $effect(() => {
     refresh()
+    get(`/api/v1/console/guard?method=POST&path=${encodeURIComponent('/api/plugins/drive/format')}`)
+      .then((g) => (guard = g.guard))
+      .catch((e) => (guard = { allowed: false, reason: e.message }))
     const t = setInterval(refresh, 10000)
-    return () => clearInterval(t)
+    const tick = setInterval(() => (now = Math.floor(Date.now() / 1000)), 1000)
+    return () => {
+      clearInterval(t)
+      clearInterval(tick)
+    }
   })
   const silent = $derived((usage?.nodes || []).filter((n) => !n.ok))
 
@@ -88,6 +106,62 @@
 
   const invoke = (a) => call(a.method, a.path)
 
+  // One drive's actions, or a selection's (#308): grouped in one menu, never a row of buttons.
+  let chosen = $state({})
+  let selecting = $state(false)
+  let dialog = $state(null)
+  let actNote = $state(null)
+  const formatRecs = $derived(formats?.drives || [])
+  const recOf = (id) => formatRecs.find((f) => f.component === id) || null
+  const fkey = (f) => `${f.node}/${f.id}`
+  const progress = $derived(progressRows(formatRecs, now, 3600))
+  function toggle(id) {
+    const c = { ...chosen }
+    if (c[id]) delete c[id]
+    else c[id] = true
+    chosen = c
+  }
+  function chooseAll(drives) {
+    const c = { ...chosen }
+    const on = drives.every((d) => c[d.id])
+    for (const d of drives) on ? delete c[d.id] : (c[d.id] = true)
+    chosen = c
+  }
+  /// Why this drive cannot be formatted from here, or '' when it can.
+  function formatWhy(d) {
+    if (guard && !guard.allowed) return guard.reason || 'you may not format drives'
+    const f = recOf(d.id)
+    if (!f) return formats ? 'its node’s stormdrive has no format record for it' : 'reading the format records…'
+    if (!formatable(f)) return f.whyNot || 'a format is running on it'
+    return ''
+  }
+  function openFormat(ids) {
+    dialog = { picked: ids.map(recOf).filter(Boolean).map(fkey) }
+  }
+  async function runOne(a, label) {
+    if (a.danger && !confirm(`${a.label} ${label}?`)) return
+    try {
+      const r = await invoke(a)
+      actNote = { ok: true, text: (r && (r.message || r.detail)) || `${a.label}: ${label}` }
+    } catch (e) {
+      if (e.message !== 'cancelled') actNote = { ok: false, text: `${a.label} ${label}: ${e.message}` }
+    }
+  }
+  async function runMany(a) {
+    const on = a.on || []
+    if (a.danger && !confirm(`${a.label} on ${on.length} ${on.length === 1 ? 'drive' : 'drives'}?`)) return
+    let failed = 0
+    for (const { drive, action } of on) {
+      try {
+        await invoke(action)
+      } catch (e) {
+        failed += 1
+        console.error(drive.id, e)
+      }
+    }
+    actNote = { ok: !failed, text: `${a.label}: ${on.length - failed} of ${on.length} done${failed ? `, ${failed} failed` : ''}` }
+  }
+
   const model = $derived(build(feed.components, { usage, placement }))
   const poolRows = $derived(poolsOf(model.records))
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—')
@@ -105,6 +179,17 @@
   const boxCount = $derived(enclosures(records))
   const unread = $derived(unreadShelves(records))
   const pick = $derived(selected ? records.find((d) => d.id === selected) : null)
+  const recById = $derived(new Map(records.map((r) => [r.id, r])))
+  const picks = $derived(records.filter((d) => chosen[d.id]))
+  const pickActions = $derived(commonActions(picks.map((d) => d.c)))
+  // The drive list with each drive's use as a metric, so the list says it too.
+  const shownComponents = $derived(
+    feed.components.map((c) => {
+      const d = c.kind === 'drive' ? recById.get(c.id) : null
+      if (!d?.use?.in_use) return c
+      return { ...c, metrics: [{ label: 'use', value: d.use.badge || 'In use', tone: d.use.use === 'system' ? 'error' : 'warn' }, ...(c.metrics || [])] }
+    }),
+  )
   // Within a node or a rack, still one grid per shelf: the bays only mean
   // something inside their shelf.
   const sub = (g) => (by === 'chassis' ? [g] : groupBy(g.drives, { by: 'chassis' }))
@@ -129,6 +214,11 @@
     title={asShelves ? 'Shelves' : asPools ? 'Pools' : 'Drives'}
     count={feed.loaded ? (asShelves ? shelves.length + unread.length : asPools ? poolRows.length : records.length) : null}
   >
+    {#snippet actions()}
+      {#if !asShelves && !asPools}
+        <a class="pagebtn" href="#/drives/format" data-testid="format-page">Format drives…</a>
+      {/if}
+    {/snippet}
     {#snippet status()}
       <span class="fleet" title="Drives enrolled in the storage fleet">
         {records.filter((d) => !d.outOfFleet).length.toLocaleString()}/{records.length.toLocaleString()} in fleet
@@ -257,6 +347,7 @@
         <button class:sel={view === 'map'} onclick={() => (view = 'map')}>Map</button>
         <button class:sel={view === 'list'} onclick={() => (view = 'list')}>List</button>
       </span>
+      <button class:sel={selecting} aria-pressed={selecting} onclick={() => (selecting = !selecting)} data-testid="select-mode">{selecting ? 'Selecting: click drives' : 'Select drives'}</button>
       <span class="hint">{shownCount === records.length ? `${shown.length} ${by === 'chassis' ? (shown.length === 1 ? 'shelf' : 'shelves') : by === 'set' ? 'RAID sets' : `${by}s`}` : `${shownCount.toLocaleString()} of ${records.length.toLocaleString()}`}</span>
     </div>
 
@@ -275,7 +366,34 @@
           {#if mode === 'usage' && silent.length}<span class="warn">no usage from {silent.map((n) => n.node).join(', ')}</span>{/if}
         {/if}
         <span><i class="ring"></i>rebuilding</span>
+        <span><i class="inuse-key"></i>in use (system, slab, RAID)</span>
+        {#if selecting}<span><i class="chosen-key"></i>selected</span>{/if}
       </div>
+    {/if}
+
+    {#if actNote}
+      <p class="actnote" class:err={!actNote.ok} role="status">{actNote.text} <button class="link" onclick={() => (actNote = null)}>dismiss</button></p>
+    {/if}
+
+    {#if picks.length}
+      <div class="selbar" data-testid="selection">
+        <strong>{picks.length} selected</strong>
+        <span class="dim">{picks.filter((d) => d.use?.in_use).length} in use</span>
+        <button class="danger" disabled={!picks.some((d) => !formatWhy(d))} onclick={() => openFormat(picks.map((d) => d.id))} data-testid="format-selected">Format…</button>
+        <DriveActions actions={pickActions} run={runMany} count={picks.length} label="Actions for {picks.length}" />
+        <button class="link" onclick={() => (chosen = {})}>Clear</button>
+      </div>
+    {/if}
+
+    {#if progress.length}
+      <section class="picked" data-testid="drives-progress">
+        <h3 class="first">Formats</h3>
+        <FormatProgress rows={progress} {now} />
+      </section>
+    {/if}
+
+    {#if dialog}
+      <FormatDialog records={formatRecs} picked={dialog.picked} {guard} onclose={() => (dialog = null)} ondone={() => { dialog = null; chosen = {}; refresh() }} />
     {/if}
 
     {#if pick}
@@ -283,9 +401,24 @@
         <header>
           <strong>{pick.c.label}</strong>
           <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ` · ${unreadShelf(pick)}`}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}{pick.hba ? ` · controller ${pick.hba}` : ''}{pick.serial ? ` · ${pick.serial}` : ''}</span>
-          {#if pick.serial && !pick.c.id.startsWith('drive:@')}<a class="metrics" href={`#/metrics?entity=drive&serial=${encodeURIComponent(pick.serial)}`}>Metrics</a>{/if}
-          <button onclick={() => (selected = null)}>Close</button>
+          {#if pick.use?.in_use}<span class="badge" class:system={pick.use.use === 'system'} data-testid="picked-use">{pick.use.badge || 'In use'}</span>{/if}
+          <span class="tools">
+            {#if pick.serial && !pick.c.id.startsWith('drive:@')}<a class="metrics" href={`#/metrics?entity=drive&serial=${encodeURIComponent(pick.serial)}`}>Metrics</a>{/if}
+            {#if !formatWhy(pick)}<button class="danger" onclick={() => openFormat([pick.id])} data-testid="picked-format">Format…</button>{/if}
+            <DriveActions actions={pick.c.actions || []} run={(a) => runOne(a, pick.c.label)} onformat={() => openFormat([pick.id])} formatWhy={formatWhy(pick)} />
+            <button onclick={() => (selected = null)}>Close</button>
+          </span>
         </header>
+        {#if pick.use?.in_use}
+          <div class="useline" data-testid="picked-reason">
+            <strong>In use:</strong> {pick.use.reason}.
+            {#if pick.use.depends_on?.length}<span class="dim">Depends on it: {pick.use.depends_on.join(', ')}.</span>{/if}
+            {#if pick.use.slabs?.length}<span class="dim">Slabs: {pick.use.slabs.map((x) => `${x.name || 'slab'}${x.partition ? ` (partition ${x.partition})` : ''}, ${x.role}`).join('; ')}.</span>{/if}
+            <span class="dim">Not offered for format.</span>
+          </div>
+        {:else if pick.use?.holds}
+          <p class="dim">Not in use. It holds {pick.use.holds}, which a format destroys.</p>
+        {/if}
         {#if pick.offer}
           <p class="offerline">
             {#if pick.offer.offered}
@@ -381,7 +514,7 @@
             {/if}
           </p>
         {/if}
-        <ResourceTable components={feed.components} rootIds={[pick.id]} {invoke} showKind={false} />
+        <ResourceTable components={shownComponents} rootIds={[pick.id]} {invoke} showKind={false} />
       </section>
     {/if}
 
@@ -399,6 +532,9 @@
               {#if g.totals.degraded}<span class="warn"> · {g.totals.degraded} degraded</span>{/if}
               {#if g.totals.rebuilding}<span class="warn"> · {g.totals.rebuilding} rebuilding</span>{/if}
             </span>
+            {#if selecting}
+              <button class="selgroup" onclick={() => chooseAll(g.drives)}>{g.drives.every((d) => chosen[d.id]) ? 'Unselect' : 'Select'} {by === 'chassis' ? 'shelf' : by}</button>
+            {/if}
             {#if by === 'chassis'}
               {@const shelf = model.byId.get(g.key)}
               {#if shelf}
@@ -430,10 +566,14 @@
                           class:rebuild={d.member === 'rebuilding' || d.member === 'degraded'}
                           class:failing={d.health === 'error'}
                           class:sel={selected === d.id}
+                          class:inuse={d.use?.in_use}
+                          class:chosen={!!chosen[d.id]}
                           style={h.css ? `background: ${h.css}` : ''}
-                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}"
-                          aria-label="{d.c.label}, {h.text}"
-                          onclick={() => (selected = selected === d.id ? null : d.id)}
+                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}"
+                          aria-label="{d.c.label}, {h.text}{d.use?.in_use ? `, in use: ${d.use.badge || 'in use'}` : ''}"
+                          aria-pressed={selecting ? !!chosen[d.id] : undefined}
+                          data-drive={d.c.label}
+                          onclick={() => (selecting ? toggle(d.id) : (selected = selected === d.id ? null : d.id))}
                         ></button>
                       {:else}
                         <span class="bay empty" title="bay {i}: empty"></span>
@@ -446,7 +586,7 @@
           {:else}
             {@const ids = g.drives.map((d) => d.id)}
             <ResourceTable
-              components={feed.components}
+              components={shownComponents}
               rootIds={showAll[g.key] ? ids : ids.slice(0, LIST_CAP)}
               {invoke}
               showKind={false}
@@ -542,10 +682,8 @@
   .bay.sel { outline: 2px solid var(--text); outline-offset: 1px; }
   .bay:focus-visible { outline: 2px solid var(--text); }
   .picked { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px var(--sc-row-px); margin-bottom: 14px; }
-  .picked header { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
-  .picked header .metrics { margin-left: auto; font-size: var(--sc-t-meta); }
-  .picked header .metrics + button { margin-left: 0; }
-  .picked header button { margin-left: auto; font-size: var(--sc-t-meta); }
+  .picked header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-bottom: 8px; }
+  .picked header .metrics { font-size: var(--sc-t-meta); }
   .usebar { display: flex; height: 10px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .usebar .used { background: var(--accent); }
   .usebar .free { background: var(--ok); opacity: 0.5; }
@@ -563,4 +701,25 @@
   .offerline button.danger { margin-left: 8px; color: var(--error); }
   .drain { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0; font-size: var(--sc-t-meta); }
   .pressure { margin-bottom: 10px; }
+  .pagebtn { font-size: var(--sc-t-meta); padding: 4px 11px; border: 1px solid var(--error-border, var(--error)); border-radius: var(--radius-sm); color: var(--error); text-decoration: none; white-space: nowrap; }
+  .badge { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--warn-strong); color: var(--warn-strong); white-space: nowrap; }
+  .badge.system { border-color: var(--error); color: var(--error); }
+  .tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+  .tools button { font-size: var(--sc-t-meta); }
+  button.danger { color: var(--error); }
+  .useline { margin: 0 0 8px; font-size: var(--sc-t-body); display: grid; gap: 2px; }
+  .selbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 12px; margin-bottom: 10px; background: var(--accent-bg); border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: var(--sc-t-body); }
+  .selbar button { font-size: var(--sc-t-meta); }
+  .selgroup { font-size: var(--sc-t-eyebrow); padding: 2px 8px; }
+  .bar button.sel { background: var(--nav-hover); font-weight: 600; }
+  .actnote { margin: 0 0 10px; padding: 6px 12px; font-size: var(--sc-t-meta); border-radius: var(--radius-sm); background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+  .actnote.err { background: var(--error-bg); color: var(--error); border-color: var(--error-border); }
+  button.link { background: none; border: none; padding: 0; color: var(--accent); font-size: inherit; }
+  .picked h3.first { margin-top: 0; }
+  /* In use: a corner mark on the bay, whatever it is coloured by. */
+  .bay { position: relative; }
+  .bay.inuse::after, .legend i.inuse-key::after { content: ''; position: absolute; right: 1px; top: 1px; width: 6px; height: 6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 1px var(--panel); }
+  .legend i.inuse-key { position: relative; background: var(--text-faint); }
+  .bay.chosen, .legend i.chosen-key { box-shadow: inset 0 0 0 2px var(--accent); }
+  .legend i.chosen-key { border: 2px solid var(--accent); }
 </style>

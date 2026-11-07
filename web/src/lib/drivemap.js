@@ -175,6 +175,9 @@ export function build(components, extra = {}) {
       reported: !!r,
       overcommit: r?.overcommit || null,
       drain: r?.drain || null,
+      // In use, and by what (#308): the drive plugin's answer from stormdrive.
+      // A RAID member this node's engine names counts too.
+      use: r?.use?.in_use ? r.use : m ? { in_use: true, use: 'raid_member', badge: 'RAID member', reason: `a member of RAID set ${metric(m, 'set') || ''}`.trim(), depends_on: [] } : r?.use || null,
       volumes,
       // An empty list from a node that reports them is an answer; none at all is not.
       volumesReported: !!reported,
@@ -204,6 +207,8 @@ export const FILTERS = [
   ['out', 'Out of fleet'],
   ['spare', 'Spares'],
   ['offered', 'Offered'],
+  ['inuse', 'In use'],
+  ['free', 'Not in use'],
 ]
 
 export function passes(d, filter) {
@@ -226,6 +231,10 @@ export function passes(d, filter) {
       return d.outOfFleet
     case 'spare':
       return d.spare
+    case 'inuse':
+      return !!d.use?.in_use
+    case 'free':
+      return !!d.use && !d.use.in_use
     default:
       return true
   }

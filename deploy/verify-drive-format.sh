@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Live check of the drive format page (#165), on a build VM:
+# Live check of the drive format page (#165) and the Format dialog, the drives'
+# use and the Actions menu (#308), on a build VM:
 #
 #   sc-build deploy/verify-drive-format.sh
 #
@@ -29,6 +30,8 @@ C=http://127.0.0.1:$P
 
 say "the model, the SPA and the console"
 node web/src/lib/driveformat.test.mjs
+node web/src/lib/driveactions.test.mjs
+node web/src/lib/drivemap.test.mjs >/dev/null
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q -p stormconsole
 BIN="${CARGO_TARGET_DIR:-target}/debug/stormconsole"
@@ -134,9 +137,19 @@ LOCAL=$(curl -s -b "$W/jar.alice" "$C/api/plugins/drive/formats" | python3 -c 'i
 
 say "the read: every node, joined"
 fmt() { curl -s -b "$W/jar.alice" "$C/api/plugins/drive/formats" | python3 -c "import json,sys; d=json.load(sys.stdin); r={x['id']:x for x in d['drives']}; print($1)"; }
-check "$(fmt 'len(d["drives"]), [n["node"] for n in d["nodes"] if not n["ok"]]')" "8 []" "8 drives on 2 nodes"
-check "$(fmt 'r["d2"]["planned"]["protection"], r["d2"]["bay"], r["d2"]["whyNot"]')" "type1 2 None" "a free drive: its plan, its bay, nothing against it"
-check "$(fmt 'r["d5"]["whyNot"]')" "in the fleet — leave (drain) first" "a fleet drive: stormdrive's words"
+check "$(fmt 'len(d["drives"]), [n["node"] for n in d["nodes"] if not n["ok"]]')" "10 []" "10 drives on 2 nodes"
+check "$(fmt 'r["d2"]["planned"]["protection"], r["d2"]["bay"], r["d2"]["whyNot"], r["d2"]["use"]["in_use"]')" "type1 3 None False" "a free drive: its plan, its bay, nothing against it, not in use"
+check "$(fmt 'r["d2"]["supports"]["pi_types"]')" "[1, 2]" "and what it can be formatted to"
+check "$(fmt 'r["d5"]["whyNot"]')" "in use: sde is in the storage fleet" "a fleet drive: in use"
+
+say "forge1's sda: the system drive (#308)"
+check "$(fmt 'r["d1"]["use"]["badge"], r["d1"]["use"]["use"]')" "System system" "sda reads System"
+check "$(fmt 'r["d1"]["use"]["reason"]')" "sda holds this node's system slab (partition 2 'stormblock'); the node runs from it" "with what it holds"
+check "$(fmt 'r["d1"]["whyNot"].endswith("The system drive is never formatted from the console")')" "True" "and is never offered for format"
+check "$(fmt 'r["d1"]["use"]["depends_on"]')" "[\"this node's root (its system slab)\", \"this node's data half (its data slab)\"]" "what depends on it"
+check "$(fmt '[x for x in ("d2","d3","d4") if r[x]["whyNot"] or r[x]["use"]["in_use"]]')" "[]" "sdb, sdc and sdd are free"
+check "$(curl -s -b "$W/jar.alice" "$C/api/plugins/drive/usage" | python3 -c 'import json,sys; d={x["component"]:x for x in json.load(sys.stdin)["drives"]}; print(d["drive:drive:d1"]["use"]["badge"], d["drive:drive:d2"]["use"]["in_use"])')" "System False" "the Drives page's read says it too"
+check "$(curl -s -b "$W/jar.alice" "$C/api/v1/components" | python3 -c 'import json,sys; print(sum(1 for c in json.load(sys.stdin) if c["kind"]=="drive" for a in c["actions"] if a["id"].startswith("format")))')" "0" "no drive in the feed carries Format 4K (it formatted without PI)"
 
 say "who may start one"
 check "$(post bob format "$one")" "403" "storage-viewer: 403"
@@ -148,18 +161,23 @@ check "$(python3 -c 'import json; print("BEE001" in json.load(open("'"$W/out"'")
 check "$(post alice format '{"drives":[{"node":"storm-b","id":"nope","block_size":4096,"protection":"none"}],"confirm":"x"}')" "404" "an unknown drive: 404"
 check "$(post alice format '{"drives":[{"node":"storm-b","id":"b1","block_size":520,"protection":"none"}],"confirm":"BEE001"}')" "400" "a block size stormdrive does not format: 400"
 check "$(post alice format '{"drives":[{"node":"storm-b","id":"b1","block_size":4096,"protection":"type2"}],"confirm":"BEE001"}')" "400" "a protection it does not: 400"
-check "$(writes $D1) $(writes $D2)" "0 0" "none of that reached a stormdrive"
+body=$(printf '{"drives":[{"node":"%s","id":"d1","block_size":4096,"protection":"type1"}],"confirm":"SYS001"}' "$LOCAL")
+check "$(post alice format "$body")" "409" "the system drive, asked for by hand: 409"
+check "$(python3 -c 'import json; print("never formatted from the console" in json.load(open("'"$W/out"'"))["error"])')" "True" "saying why"
 body=$(printf '{"drives":[{"node":"%s","id":"d5","block_size":4096,"protection":"none"}],"confirm":"FLT005"}' "$LOCAL")
-check "$(post alice format "$body")" "207" "a fleet drive: stormdrive refuses, and the answer carries it"
-check "$(python3 -c 'import json; r=json.load(open("'"$W/out"'"))["results"][0]; print(r["ok"], r["status"], "in the fleet" in r["error"])')" "False 409 True" "in its words"
-bearer() { curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["bearer"])'; }
-check "$(bearer)" "$ALICE" "what reached stormdrive carried alice's bearer"
+check "$(post alice format "$body")" "409" "a fleet drive: 409, before any node is asked"
+check "$(writes $D1) $(writes $D2)" "0 0" "none of that reached a stormdrive"
 
-say "the page: choosing, confirming, starting (#58)"
+say "the page: choosing, confirming, starting (#58, #308)"
 RC=0
 deploy/browser/run.sh "$W" driveformat.cjs "$C" PHASE=start || RC=1
-check "$(curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; w=json.load(sys.stdin)[-1]; print(sorted(w["body"]["drives"]), w["body"]["block_size"], w["body"]["protection"], w["path"])')" "['d2', 'd3', 'd4'] 4096 type1 /api/v1/format" "one all-or-nothing request for the three"
-check "$(bearer)" "$ALICE" "as alice"
+fw() { curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys
+w=[x for x in json.load(sys.stdin) if x["path"]=="/api/v1/format" and sorted(x["body"]["drives"])==sys.argv[1].split(",")]
+print(len(w), w[-1]["body"]["block_size"] if w else "-", w[-1]["body"]["protection"] if w else "-", (w[-1]["bearer"]==sys.argv[2]) if w else "-")' "$1" "$ALICE"; }
+check "$(fw d2,d3,d4)" "1 4096 type1 True" "forge1's sdb, sdc, sdd: one all-or-nothing request at 4096 + PI type 1, as alice"
+check "$(fw d8,d9)" "1 4096 type1 True" "two picked on the Drives page: one request, as alice"
+check "$(curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; print(sum(1 for x in json.load(sys.stdin) if "d1" in (x.get("body") or {}).get("drives", [])))')" "0" "sda never asked for"
+check "$(curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; print(sum(1 for x in json.load(sys.stdin) if x["path"].endswith("/locate/on")))')" "2" "Locate from the Actions menu, at 1280 and at 390 px wide"
 grep -q 'drive format requested' "$W/c.log" && check 1 1 "recorded: who and which drives" || check 0 1 "recorded: who and which drives"
 grep 'drive format requested' "$W/c.log" | tail -1 | cut -c1-260
 

@@ -354,9 +354,17 @@
   }
 
   let menuFor = $state(null)
+  // Where the open row menu goes: fixed in the window, so a wide table's
+  // scroller can neither clip it nor push it past the edge (#308).
+  let menuAt = $state({ top: 0, left: 0 })
 
   function toggleMenu(e, id) {
     e.stopPropagation()
+    if (menuFor !== id) {
+      const r = e.currentTarget.getBoundingClientRect()
+      const width = Math.min(220, window.innerWidth - 16)
+      menuAt = { top: r.bottom + 4, left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), width }
+    }
     menuFor = menuFor === id ? null : id
   }
 
@@ -364,7 +372,11 @@
     if (!menuFor) return
     const close = () => (menuFor = null)
     window.addEventListener('click', close, { once: true })
-    return () => window.removeEventListener('click', close)
+    window.addEventListener('scroll', close, { capture: true, once: true })
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('scroll', close, { capture: true })
+    }
   })
 
   // Right-click on an action that has alternatives.
@@ -540,7 +552,7 @@
                   onclick={(e) => toggleMenu(e, row.id)}>⋯</button
                 >
                 {#if menuFor === row.id}
-                  <div class="menu" role="menu">
+                  <div class="menu" role="menu" style="top: {menuAt.top}px; left: {menuAt.left}px; width: {menuAt.width}px; max-height: calc(100vh - {menuAt.top}px - 8px)">
                     {#each acts.menu as a}
                       <button
                         role="menuitem"
@@ -780,7 +792,10 @@
   .place { white-space: nowrap; color: var(--text-dim); }
   .detail { color: var(--text-dim); }
 
-  .metrics { white-space: nowrap; }
+  /* Metrics wrap, each one whole: a drive's dozen in one line pushed the
+     row's actions past the screen's edge (#308). */
+  .metrics { white-space: normal; min-width: 160px; }
+  .metrics .m { white-space: nowrap; }
   tr.group td {
     background: var(--bg);
     font-size: var(--sc-t-eyebrow);
@@ -817,11 +832,9 @@
     letter-spacing: 1px;
   }
   .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    z-index: 30;
-    min-width: 190px;
+    position: fixed;
+    z-index: 80;
+    overflow-y: auto;
     display: grid;
     padding: 4px;
     background: var(--panel);
