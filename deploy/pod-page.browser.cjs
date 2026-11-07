@@ -186,7 +186,7 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   await pause(300)
   check((await page.locator('.stats .tip').count()) > 0, 'hovering a chart shows the values at that time')
   await shot('6-stats')
-  await page.getByLabel('Window').selectOption('3600')
+  await page.locator('label', { hasText: 'Window' }).first().getByLabel('Window').selectOption('3600')
   await pause(1500)
   check((await page.locator('.stats svg path').count()) >= 3, 'the hour window draws too')
 
