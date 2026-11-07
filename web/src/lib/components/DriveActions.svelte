@@ -12,7 +12,7 @@
   let { actions = [], onformat = null, formatWhy = '', run, label = 'Actions', count = null } = $props()
 
   let open = $state(false)
-  let at = $state({ top: 0, left: 0, width: 260 })
+  let at = $state({ top: 0, left: 0, width: 260, up: false, max: 400 })
   let button
   let menu = $state(null)
 
@@ -24,13 +24,17 @@
     const r = button.getBoundingClientRect()
     const width = Math.min(280, window.innerWidth - 16)
     const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
-    at = { top: r.bottom + 4, left, width }
+    // Below the button, or above it when the window has more room there.
+    const below = window.innerHeight - r.bottom - 12
+    const above = r.top - 12
+    const up = below < 260 && above > below
+    at = up ? { top: window.innerHeight - r.top + 4, left, width, up, max: above } : { top: r.bottom + 4, left, width, up, max: below }
     open = true
   }
   $effect(() => {
     if (!open) return
     const close = (e) => {
-      if (e?.type === 'click' && (menu?.contains(e.target) || button?.contains(e.target))) return
+      if ((e?.type === 'click' || e?.type === 'scroll') && (menu?.contains(e.target) || button?.contains(e.target))) return
       open = false
     }
     const key = (e) => e.key === 'Escape' && close()
@@ -58,7 +62,7 @@
     {label} <span aria-hidden="true">▾</span>
   </button>
   {#if open}
-    <div class="menu" role="menu" style="top: {at.top}px; left: {at.left}px; width: {at.width}px; max-height: calc(100vh - {at.top}px - 8px)" bind:this={menu}>
+    <div class="menu" role="menu" style="{at.up ? 'bottom' : 'top'}: {at.top}px; left: {at.left}px; width: {at.width}px; max-height: {at.max}px" bind:this={menu}>
       {#each groups as g (g.name)}
         <div class="group" class:danger={g.danger}>
           <div class="gname">{g.name}{#if g.danger}<span class="mark"> · destroys data</span>{/if}</div>

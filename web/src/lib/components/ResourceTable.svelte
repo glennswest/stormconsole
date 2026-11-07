@@ -356,14 +356,17 @@
   let menuFor = $state(null)
   // Where the open row menu goes: fixed in the window, so a wide table's
   // scroller can neither clip it nor push it past the edge (#308).
-  let menuAt = $state({ top: 0, left: 0 })
+  let menuAt = $state({ top: 0, left: 0, width: 220, up: false, max: 400 })
 
   function toggleMenu(e, id) {
     e.stopPropagation()
     if (menuFor !== id) {
       const r = e.currentTarget.getBoundingClientRect()
       const width = Math.min(220, window.innerWidth - 16)
-      menuAt = { top: r.bottom + 4, left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), width }
+      const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
+      const below = window.innerHeight - r.bottom - 12
+      const up = below < 220 && r.top - 12 > below
+      menuAt = up ? { top: window.innerHeight - r.top + 4, left, width, up, max: r.top - 12 } : { top: r.bottom + 4, left, width, up, max: below }
     }
     menuFor = menuFor === id ? null : id
   }
@@ -372,10 +375,13 @@
     if (!menuFor) return
     const close = () => (menuFor = null)
     window.addEventListener('click', close, { once: true })
-    window.addEventListener('scroll', close, { capture: true, once: true })
+    const scrolled = (e) => {
+      if (!(e.target instanceof Element && e.target.closest('.menu'))) menuFor = null
+    }
+    window.addEventListener('scroll', scrolled, { capture: true })
     return () => {
       window.removeEventListener('click', close)
-      window.removeEventListener('scroll', close, { capture: true })
+      window.removeEventListener('scroll', scrolled, { capture: true })
     }
   })
 
@@ -552,7 +558,7 @@
                   onclick={(e) => toggleMenu(e, row.id)}>⋯</button
                 >
                 {#if menuFor === row.id}
-                  <div class="menu" role="menu" style="top: {menuAt.top}px; left: {menuAt.left}px; width: {menuAt.width}px; max-height: calc(100vh - {menuAt.top}px - 8px)">
+                  <div class="menu" role="menu" style="{menuAt.up ? 'bottom' : 'top'}: {menuAt.top}px; left: {menuAt.left}px; width: {menuAt.width}px; max-height: {menuAt.max}px">
                     {#each acts.menu as a}
                       <button
                         role="menuitem"
