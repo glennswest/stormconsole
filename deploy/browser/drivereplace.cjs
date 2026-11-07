@@ -130,7 +130,8 @@ walk('drive replace and firmware', async (t) => {
   f = page.locator('[data-testid=firmware-dialog]')
   t.check(await t.until(async () => f.isVisible()), 'Update firmware… for sdb and sdc opens')
   t.check((await f.locator('[data-testid=firmware-version]').allInnerTexts()).every((v) => v === 'A3Z0'), 'both on A3Z0 now')
-  t.check(/No image for H7210A521SUN010T/.test(await f.innerText()), 'no image named for their model yet')
+  const named = await f.locator('[data-testid=firmware-image]').evaluateAll((els) => els.map((e) => e.getAttribute('data-image')))
+  t.check(named.length === 1 && named[0] === 'loose-A3Z1.bin' && /names no model/.test(await f.innerText()), 'only the image naming no model, said as such', named.join(', '))
   await f.locator('[data-testid=firmware-file]').setInputFiles({ name: 'A3Z2.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(32768, 7) })
   t.check(/stored as H7210A521SUN010T\+A3Z2\.bin/.test(await f.innerText()), 'the upload is named for the model')
   await f.locator('[data-testid=firmware-upload]').click()
@@ -145,8 +146,8 @@ walk('drive replace and firmware', async (t) => {
   const frow = (name) => page.locator(`[data-testid=firmware-row][data-drive="${name}"]`)
   t.check(await t.until(async () => /% sent/.test(await frow('sdb').innerText()), 15000), "sdb's row: the image going over", await frow('sdb').innerText().catch(() => ''))
 
-  // sdd alone, whose drive refuses the download.
-  await page.locator('[data-testid=selection] button.link', { hasText: 'Clear' }).click()
+  // sdd alone, whose drive refuses the download. Starting cleared the selection.
+  t.check((await page.locator('[data-testid=selection]').count()) === 0, 'the selection is cleared once they start')
   await page.locator('[data-testid=select-mode]').click()
   await pick('sdd')
   m = await menu()
