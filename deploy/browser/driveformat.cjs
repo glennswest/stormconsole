@@ -34,6 +34,7 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
     const names = await menu.locator('.gname').allInnerTexts()
     t.check(/destroys data/i.test(names.at(-1) || '') && names.slice(0, -1).every((n) => !/destroy/i.test(n)), 'grouped, the destructive ones last and marked', names.join(' | '))
     const items = await menu.locator('[role=menuitem]').allInnerTexts()
+    if (!items.length) console.log('    (menus open:', await page.locator('[role=menu]').count(), ')')
     t.check(items.some((i) => /^Format…/.test(i)) && !items.some((i) => /Format 4K/.test(i)), 'Format… is there, the feed’s Format 4K is not', items.join(' | '))
     for (const want of [/^Locate/, /Smoke test/, /Join fleet/, /Mark spare/, /Destructive test/]) t.check(items.some((i) => want.test(i)), `it has ${want.source}`)
     await t.shot(page, `drives-actions-${width}`)

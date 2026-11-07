@@ -21,6 +21,12 @@
   function toggle(e) {
     e.stopPropagation()
     if (open) return (open = false)
+    place()
+    open = true
+  }
+  // Where the menu goes, from where its button is now: again when the page
+  // scrolls or reflows under it (a live page grows above it), not closed.
+  function place() {
     const r = button.getBoundingClientRect()
     const width = Math.min(280, window.innerWidth - 16)
     const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
@@ -29,23 +35,28 @@
     const above = r.top - 12
     const up = below < 260 && above > below
     at = up ? { top: window.innerHeight - r.top + 4, left, width, up, max: above } : { top: r.bottom + 4, left, width, up, max: below }
-    open = true
   }
   $effect(() => {
     if (!open) return
     const close = (e) => {
-      if ((e?.type === 'click' || e?.type === 'scroll') && (menu?.contains(e.target) || button?.contains(e.target))) return
+      if (e?.type === 'click' && (menu?.contains(e.target) || button?.contains(e.target))) return
       open = false
+    }
+    const follow = (e) => {
+      if (menu?.contains(e.target)) return
+      const r = button?.getBoundingClientRect()
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) open = false
+      else place()
     }
     const key = (e) => e.key === 'Escape' && close()
     window.addEventListener('click', close)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
     window.addEventListener('keydown', key)
     return () => {
       window.removeEventListener('click', close)
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', follow, true)
+      window.removeEventListener('resize', follow)
       window.removeEventListener('keydown', key)
     }
   })
