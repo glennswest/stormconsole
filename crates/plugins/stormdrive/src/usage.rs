@@ -93,6 +93,8 @@ pub fn reduce(body: &Value, prefix: &str, node: &str) -> Vec<Value> {
                 "serial": d.get("serial").and_then(Value::as_str).unwrap_or(""),
                 "wwn": d.get("wwid").and_then(Value::as_str),
                 "capacity": n(d, "capacity_bytes"),
+                // In use, and by what (#308).
+                "use": crate::inuse::of(d),
             });
             if let Some(u) = d.get("usage").filter(|u| u.is_object()) {
                 let slabs: Vec<Value> = u

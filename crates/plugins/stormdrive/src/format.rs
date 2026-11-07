@@ -25,6 +25,17 @@ fn text<'a>(v: &'a Value, key: &str) -> &'a str {
 /// a preview: stormdrive checks again, and also what it alone can see (mounted
 /// partitions, a data signature on the disk, what the drive offers).
 pub fn why_not(d: &Value) -> Option<String> {
+    // In use comes first (#308), in the words that say what depends on it.
+    // The system drive is never formatted from the console.
+    let u = crate::inuse::of(d);
+    if u["in_use"] == true {
+        let reason = u["reason"].as_str().unwrap_or("in use");
+        return Some(if u["use"] == "system" {
+            format!("{reason}. The system drive is never formatted from the console")
+        } else {
+            format!("in use: {reason}")
+        });
+    }
     if text(d, "membership") == "fleet" {
         return Some("in the fleet — leave (drain) first".into());
     }
@@ -82,6 +93,10 @@ pub fn reduce(drives: &Value, objects: Option<&Value>, node: &str, prefix: &str)
                 "planned": st.get("plannedFormat"),
                 "offersPi": st.pointer("/supports/pi_types").and_then(Value::as_array).is_some_and(|t| t.contains(&json!(1))),
                 "slabs": slabs,
+                "use": crate::inuse::of(d),
+                // What the drive can be formatted to (stormdrive pi.rs): the
+                // Drive object's, else the REST answer's.
+                "supports": st.get("supports").filter(|s| s.is_object()).or_else(|| d.get("supports")),
                 "whyNot": why_not(d),
                 "format": st.get("format"),
                 // A controller reset is only on the live run, not the record.
@@ -207,7 +222,9 @@ mod tests {
         assert_eq!(r[0]["resets"][0], "host3: IOC reset count 0 → 1");
         assert!(r[0]["whyNot"].is_null());
         assert_eq!(r[1]["slabs"], 1);
-        assert_eq!(r[1]["whyNot"], "in the fleet — leave (drain) first");
+        assert_eq!(r[1]["whyNot"], "in use: sdc is in the storage fleet");
+        assert_eq!(r[1]["use"]["badge"], "Slab member");
+        assert_eq!(r[0]["supports"]["pi_types"][1], 2);
     }
 
     #[test]
@@ -222,6 +239,8 @@ mod tests {
         let why = |v: Value| why_not(&v);
         assert!(why(json!({"membership": "out", "activity": "idle", "designation": "none"})).is_none());
         assert!(why(json!({"in_use_by": "lvm"})).unwrap().contains("holds data for lvm"));
+        let sda = why(json!({"name": "sda", "slab_parts": [{"partition": 2, "name": "stormblock", "role": "system"}]})).unwrap();
+        assert!(sda.starts_with("sda holds this node's system slab") && sda.ends_with("never formatted from the console"), "{sda}");
         assert!(why(json!({"activity": "formatting"})).unwrap().contains("already running"));
         assert!(why(json!({"activity": "testing"})).unwrap().contains("testing"));
         assert!(why(json!({"designation": "system"})).unwrap().contains("system"));

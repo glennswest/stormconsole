@@ -26,6 +26,7 @@
 //! drain — see [`usage`].
 
 pub mod format;
+pub mod inuse;
 mod resources;
 pub mod usage;
 
@@ -112,9 +113,14 @@ pub fn wanted(discovered: &[(String, String)], statics: &BTreeMap<String, String
     out
 }
 
-/// Stamp a feed's drives and shelves with the node they are in.
+/// Stamp a feed's drives and shelves with the node they are in. A drive's
+/// `format-4k` goes (#308): it formats 4096 with no PI, whatever the drive
+/// offers, and Format is the console's dialog, which asks.
 fn with_node(mut list: Vec<ComponentSummary>, node: &str) -> Vec<ComponentSummary> {
     for c in &mut list {
+        if c.kind == "drive" {
+            c.actions.retain(|a| !a.id.starts_with("format"));
+        }
         if (c.kind == "drive" || c.kind == "shelf") && !c.metrics.iter().any(|m| m.label == "node") {
             c.metrics.push(Metric::new("node", node).tone("muted"));
         }
@@ -469,6 +475,10 @@ async fn format_start(
         let Some(d) = list.iter().find(|d| d["node"] == w.node.as_str() && d["id"] == w.id.as_str()) else {
             return refuse(StatusCode::NOT_FOUND, format!("no drive {} on {}", w.id, w.node));
         };
+        // stormdrive refuses these too; the console says why before any node is asked (#308).
+        if let Some(why) = d["whyNot"].as_str() {
+            return refuse(StatusCode::CONFLICT, format!("{} ({}): {why}", d["name"].as_str().unwrap_or(&w.id), w.node));
+        }
         serials.push(d["serial"].as_str().unwrap_or("").to_string());
         names.push(format!("{}/{} ({})", w.node, d["name"].as_str().unwrap_or(""), d["serial"].as_str().unwrap_or("")));
     }
@@ -596,5 +606,20 @@ mod tests {
         assert!(out[0].metrics.iter().any(|m| m.label == "node" && m.value == "storm-b"));
         assert!(out[1].metrics.iter().any(|m| m.label == "node"));
         assert!(out[2].metrics.is_empty(), "only hardware is stamped");
+    }
+
+    #[test]
+    fn a_drive_has_no_format_4k_the_dialog_formats_it() {
+        let act = |id: &str| console_core::Action {
+            id: id.into(), label: id.into(), method: "POST".into(), path: format!("/x/{id}"), enabled: true, danger: true, tone: None,
+        };
+        let c = |kind: &str| ComponentSummary {
+            id: "x".into(), kind: kind.into(), label: "x".into(), health: Health::Ok, detail: String::new(), metrics: vec![],
+            actions: vec![act("locate-on"), act("format-4k"), act("test-destructive")], relations: vec![], link: None,
+        };
+        let out = with_node(vec![c("drive"), c("shelf")], "here");
+        let ids: Vec<&str> = out[0].actions.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, ["locate-on", "test-destructive"]);
+        assert_eq!(out[1].actions.len(), 3, "a shelf's actions are its own");
     }
 }
