@@ -39,11 +39,11 @@
   $effect(() => {
     if (!open) return
     const close = (e) => {
-      if (e?.type === 'click' && (menu?.contains(e.target) || button?.contains(e.target))) return
+      if (e?.type === 'click' && e.target instanceof Node && (menu?.contains(e.target) || button?.contains(e.target))) return
       open = false
     }
     const follow = (e) => {
-      if (menu?.contains(e.target)) return
+      if (e.target instanceof Node && menu?.contains(e.target)) return
       const r = button?.getBoundingClientRect()
       if (!r || r.bottom < 0 || r.top > window.innerHeight) open = false
       else place()

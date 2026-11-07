@@ -40,7 +40,8 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
     await t.shot(page, `drives-actions-${width}`)
     // The page itself does not run past the window either.
     const sw = await page.evaluate(() => document.documentElement.scrollWidth)
-    t.check(sw <= width + 1, `the page is no wider than the window at ${width} px`, sw)
+    const wide = sw > width + 1 ? await page.evaluate((w) => [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > w + 1 && !e.closest('[style*=overflow], .wrap')).slice(0, 8).map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')} ${Math.round(e.getBoundingClientRect().right)}`).join(', '), width) : ''
+    t.check(sw <= width + 1, `the page is no wider than the window at ${width} px`, `${sw} ${wide}`)
     await menu.getByRole('menuitem', { name: /^Locate/ }).click()
     t.check(await t.until(async () => /locate on/i.test(await main(page))), 'Locate from the menu ran', (await main(page)).slice(0, 200))
     await page.setViewportSize({ width: 1440, height: 1000 })

@@ -649,13 +649,13 @@
   .band { display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline; margin-bottom: 12px; }
   .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .big small { font-size: var(--sc-t-meta); font-weight: 400; color: var(--text-dim); }
-  .chips { display: flex; gap: 6px; margin-left: auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
   .chip { font-size: var(--sc-t-meta); padding: 2px 9px; border-radius: 999px; }
   .chip.error { color: var(--error); border-color: var(--error); }
   .chip.warn { color: var(--warn-strong); border-color: var(--warn-strong); }
   .chip.on { background: var(--nav-hover); font-weight: 600; }
   .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
-  .bar input { width: 300px; }
+  .bar input { width: 300px; max-width: 100%; }
   .bar label { display: inline-flex; gap: 6px; align-items: center; font-size: var(--sc-t-meta); color: var(--text-dim); }
   .seg { display: inline-flex; }
   .seg button { border-radius: 0; }
