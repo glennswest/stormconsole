@@ -9,6 +9,8 @@
 - **feat:** a Format dialog: block size and PI per drive from what its `supports` lists, its `plannedFormat` by default (4096 + PI type 1 on forge1), every drive shown with its format and use, a confirm step naming each result (`sdb → 4096 + T10 PI type 1`); several drives at once, from the Format page or a selection on the Drives page; progress per drive (probe, format, read-back; percent, elapsed, left; what it reads back) on both pages.
 - **fix:** the feed's Format 4K (4096 with no PI) is no longer offered on any drive.
 - **feat:** a drive's commands in one Actions menu, grouped, the destructive ones last and marked; the same for a selection; it fits the window down to 390 px. Rows in every resource table wrap their metrics, and the row menu stays inside the window.
+- **fix:** the storage guard asks for the drive's serial on a drive route its row does not offer (Format 4K, sanitize), not the id from the path.
+- **fix:** the masthead fits a 390 px screen.
 
 ### 2026-11-06 — One console for every build (#285)
 - **feat:** the console shows only the network the node runs. `console_core::build`: `[build] release_manifest`, else this node's beacon, the agent's DaemonSet, the CRDs served, an agent answering; nothing having said, neither. `GET /api/v1/console/build`.

@@ -2459,20 +2459,33 @@ Owner, 2026-11-06: "lets keep all builds the same. only diff is on cillium build
 - Not seen: a real cilium or flowsdn node; agents, objects and targets are stand-ins in their shapes. No Create for a flowsdn policy yet, as before. A Custom resources row names a CRD a cluster really serves, whichever network
 - Found: `verify-pod-page` and `verify-vm-policy` were red before this (#265's second Window select and 503, #75's 404); fixed in the rigs
 
-### In use shown; a Format dialog; an Actions menu (#308)
+### In use shown; a Format dialog; an Actions menu (#308) ✅ 2026-11-07
 Owner on forge1 (2026-11-07): "no indication a drive is in use"; "the drive actions go off the screen"; "a format4k, but pi?";
 "a pop up that lets you choose options … multiple drives … progress per drive". Read from stormdrive 2296844: a drive carries
 `in_use_by`, `owner`, `slab_parts` {partition, name, role system|data}, `contents`, `supports` {pi_types, block_lengths,
 physical_block_size}; stormdrive#123 adds `in_use`, `use`, `slabs`, `depends_on`, `reason` (read first when present). It formats
 `none` and `type1` only (pi.rs), so a drive listing type 2 is said, not offered. The feed's `format-4k` is 4096 with no PI.
-- [ ] `stormdrive/src/inuse.rs` (pure): one answer per drive, #123's fields, else slab_parts / in_use_by / fleet / contents
+- [x] `stormdrive/src/inuse.rs` (pure): one answer per drive, #123's fields, else slab_parts / in_use_by / fleet / contents
       (slab, ESP, mounted); on `/usage` and `/formats`; why-not first; `POST /format` refuses an in-use drive (409)
-- [ ] Feed: `format-4k` off every drive (it formatted without PI); Format is the dialog
-- [ ] SPA: badge on the map, list and picked drive; `FormatDialog` (options per drive's supports, default its plan, in-use shown
+- [x] Feed: `format-4k` off every drive (it formatted without PI); Format is the dialog
+- [x] SPA: badge on the map, list and picked drive; `FormatDialog` (options per drive's supports, default its plan, in-use shown
       not selectable, confirm naming each result); select on the Drives page; progress per drive (phase probe/format/read-back,
       percent, elapsed, read back) from stormdrive's records; `DriveActions` menu (grouped, destructive last), 390 px
-- [ ] `ResourceTable`: metrics wrap, menus fixed in the viewport
-- [ ] Tests; `verify-drive-format.sh` on forge1's layout at 1280 and 390 px; docs, changelog, dist; image
+- [x] `ResourceTable`: metrics wrap, menus fixed in the viewport
+- [x] Tests; `verify-drive-format.sh` on forge1's layout at 1280 and 390 px; docs, changelog, dist; image
+- Verified with `sc-build deploy/verify-drive-format.sh` (0 failed): real apiserver with the storage roles, stand-in stormdrives in
+  v0.39.0's shapes with this node laid out as forge1, a real console, Chromium. sda reads System with its slabs and what depends on it,
+  cannot be ticked on the page or in the dialog, its Format… is off with the reason, and a hand-made request for it is refused 409 before
+  any node; sdb–sdd free, each offered what its `supports` lists (type 2 said, not offered), 4096 + T10 PI type 1 by default; the confirm
+  names each; one request for the three as alice; a row each with phase, percent, elapsed, left, through a reload and a console restart,
+  to the read-back (4096 + PI 1); two picked on the Drives page in one request; the map marks in-use bays, the list says System; the
+  Actions menu at 1280 and 390 px, inside the window, destructive last, Locate run from it. Also `verify-drives.sh`,
+  `verify-drive-offer.sh`, `verify-storage-guard.sh` (now through Destructive test and a direct format call), default `sc-build`
+- Found by the walks: the menu closed when the live page reflowed under it, opened below the window's bottom, the masthead was 623 px at
+  390 (now fits), and the storage guard asked for the drive id once Format 4K left the feed (now the drive's serial)
+- Not seen: forge1 itself, a real stormdrive's format, stormdrive#123's own fields (read when present; unit-tested). At 390 px the
+  navigator still takes half the screen: the shell's, not this page's
+
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
