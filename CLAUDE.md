@@ -2459,6 +2459,21 @@ Owner, 2026-11-06: "lets keep all builds the same. only diff is on cillium build
 - Not seen: a real cilium or flowsdn node; agents, objects and targets are stand-ins in their shapes. No Create for a flowsdn policy yet, as before. A Custom resources row names a CRD a cluster really serves, whichever network
 - Found: `verify-pod-page` and `verify-vm-policy` were red before this (#265's second Window select and 503, #75's 404); fixed in the rigs
 
+### In use shown; a Format dialog; an Actions menu (#308)
+Owner on forge1 (2026-11-07): "no indication a drive is in use"; "the drive actions go off the screen"; "a format4k, but pi?";
+"a pop up that lets you choose options … multiple drives … progress per drive". Read from stormdrive 2296844: a drive carries
+`in_use_by`, `owner`, `slab_parts` {partition, name, role system|data}, `contents`, `supports` {pi_types, block_lengths,
+physical_block_size}; stormdrive#123 adds `in_use`, `use`, `slabs`, `depends_on`, `reason` (read first when present). It formats
+`none` and `type1` only (pi.rs), so a drive listing type 2 is said, not offered. The feed's `format-4k` is 4096 with no PI.
+- [ ] `stormdrive/src/inuse.rs` (pure): one answer per drive, #123's fields, else slab_parts / in_use_by / fleet / contents
+      (slab, ESP, mounted); on `/usage` and `/formats`; why-not first; `POST /format` refuses an in-use drive (409)
+- [ ] Feed: `format-4k` off every drive (it formatted without PI); Format is the dialog
+- [ ] SPA: badge on the map, list and picked drive; `FormatDialog` (options per drive's supports, default its plan, in-use shown
+      not selectable, confirm naming each result); select on the Drives page; progress per drive (phase probe/format/read-back,
+      percent, elapsed, read back) from stormdrive's records; `DriveActions` menu (grouped, destructive last), 390 px
+- [ ] `ResourceTable`: metrics wrap, menus fixed in the viewport
+- [ ] Tests; `verify-drive-format.sh` on forge1's layout at 1280 and 390 px; docs, changelog, dist; image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
