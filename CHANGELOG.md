@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-07 — Drives in use, a Format dialog, an Actions menu (#308)
+- **feat:** every drive says whether it is in use and by what (System, Data slab, Slab member, RAID member, Mounted), with the reason and what depends on it: on the rack map (a marked bay), the list, the picked drive, the Format page and dialog, and an In use / Not in use filter. Read from stormdrive#123's fields when it serves them, else from its slab partitions, `in_use_by`, fleet membership and `contents`.
+- **fix:** the system drive is never offered for format: not selectable, with the reason, and `POST /api/plugins/drive/format` refuses any drive in use (409) before a node is asked.
+- **feat:** a Format dialog: block size and PI per drive from what its `supports` lists, its `plannedFormat` by default (4096 + PI type 1 on forge1), every drive shown with its format and use, a confirm step naming each result (`sdb → 4096 + T10 PI type 1`); several drives at once, from the Format page or a selection on the Drives page; progress per drive (probe, format, read-back; percent, elapsed, left; what it reads back) on both pages.
+- **fix:** the feed's Format 4K (4096 with no PI) is no longer offered on any drive.
+- **feat:** a drive's commands in one Actions menu, grouped, the destructive ones last and marked; the same for a selection; it fits the window down to 390 px. Rows in every resource table wrap their metrics, and the row menu stays inside the window.
+
 ### 2026-11-06 — One console for every build (#285)
 - **feat:** the console shows only the network the node runs. `console_core::build`: `[build] release_manifest`, else this node's beacon, the agent's DaemonSet, the CRDs served, an agent answering; nothing having said, neither. `GET /api/v1/console/build`.
 - **feat:** nothing of Cilium on a flowsdn node: Network Flows, Network nodes and Cilium's Identities in the navigator, Cilium's Create entries, the Flows cards, the relay, the agent's card, its metrics jobs and Network charts, and any Cilium objects the apiserver happens to serve. Nothing of flowsdn on a cilium node, and `#/flowsdn` lands on Network Endpoints instead of saying "not this edition".

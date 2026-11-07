@@ -1170,6 +1170,42 @@ viewer**, not on a console credential, and logs who and which drives. The page
 sends the plan's format where it can: only a format equal to the plan falls back
 if the drive refuses, so the confirmation says what each run would do.
 
+**In use (#308).** `drive::inuse::of` gives each drive one answer, on `/usage`
+(the Drives page) and `/formats`: `in_use`, `use` (system, data, slab_member,
+raid_member, mounted, free), a badge, the reason, its slabs and what depends on
+it. A stormdrive with stormdrive#123 says it itself and wins; before that it is
+read from what stormdrive already reports: the slab partitions on the disk and
+their role (`slab_parts`), `in_use_by` (a RAID superblock, a data slab), fleet
+membership, `mounted`, and last the `contents` sentence (an ESP or a slab). A
+system-role slab or an ESP is **System**, and the system drive is never
+formatted from the console: `why_not` puts the use first, the dialog shows it
+and does not let it be ticked, and `POST /format` refuses any drive with a why-
+not (409) before a node is asked. A foreign filesystem on a free drive is not a
+use; the dialog says it goes. The rack map marks an in-use bay, the list adds a
+`use` metric, the picked drive says what holds it, and the filter has In use.
+
+**The Format dialog (#308).** Opened from the Format page (its button, or the
+drives ticked there), from a drive's Actions menu or Format… button, or from a
+selection on the Drives page (Select drives, a bay at a time or a shelf at a
+time). It lists every drive with its format now and its use; each one's choices
+are what its `supports` offers (VPD 0xB4's lengths when listed, else 512 and,
+where the physical block is 4K, 4096 as a try; PI type 1 where the drive has it),
+and the default is its `plannedFormat`. stormdrive formats PI type 1 or none,
+so a drive listing type 2 says so and is not offered it. The confirm step names
+each drive's result (`sdb → 4096 + T10 PI type 1`) and its fallbacks. Progress is
+a row per drive from stormdrive's record: its phase in three steps (probe =
+prepare/queued, format, read-back = rescan/verify), the drive's percent, elapsed
+and left, then what READ CAPACITY reads back; the rows come back after a reload.
+The feed's `format-4k` action (4096 with no PI) is taken off every drive.
+
+**The Actions menu (#308).** A drive's feed actions in one menu
+(`driveactions.js`): Locate, Test, Fleet, Designate, Other, and the destructive
+ones last in a group marked "destroys data", Format… first among them. The menu
+is fixed in the window and clamped to its width, so it works at 390 px. For a
+selection the menu offers what any of the drives offers, counted, and runs it on
+each. `ResourceTable` wraps a row's metrics and places its row menu the same way,
+so a wide row no longer pushes its actions off the screen.
+
 ### Enclosures and shelves (#166)
 
 An **enclosure** is the box: a node's chassis, or an external JBOD. A **shelf**
