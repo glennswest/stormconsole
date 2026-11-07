@@ -158,7 +158,7 @@ as() { # user method path [confirm] — prints "<code> <body>"
 code() { as "$@" | cut -d' ' -f1; }
 writes() { curl -s "http://127.0.0.1:$1/_writes"; }
 formats_as() { # port bearer — how many formats arrived with this bearer
-  writes "$1" | python3 -c 'import json,sys; print(sum(w["path"].endswith("/format/4096") and w["bearer"] == sys.argv[1] for w in json.load(sys.stdin)))' "$2"
+  writes "$1" | python3 -c 'import json,sys; print(sum(w["path"].endswith(sys.argv[2]) and w["bearer"] == sys.argv[1] for w in json.load(sys.stdin)))' "$2" "${3:-/format/4096}"
 }
 nwrites() { writes "$1" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'; }
 last_bearer() { writes "$1" | python3 -c 'import json,sys; w=json.load(sys.stdin); print((w[-1]["bearer"] or "") if w else "")'; }
@@ -183,8 +183,8 @@ for c in json.load(sys.stdin):
 }
 
 say "the feed: storage-admins see the destructive actions, everyone else the objects"
-check "alice (storage-admin) sees Format, Destructive test and Locate" \
-  test "$(feed_actions alice drive)" = "format-4k locate-on test-destructive"
+check "alice (storage-admin) sees Destructive test and Locate; no Format 4K (#308: the dialog formats)" \
+  test "$(feed_actions alice drive)" = "locate-on test-destructive"
 check "alice sees Delete on the volume" test "$(feed_actions alice volume)" = "delete"
 check "bob (storage-viewer) sees the drives, with Locate only" test "$(feed_actions bob drive)" = "locate-on"
 check "bob sees the volume, with no Delete" test "$(feed_actions bob volume)" = ""
@@ -193,8 +193,9 @@ check "the console's own token is shown no destructive action" \
   test "$(curl -s -H "Authorization: Bearer $CONSOLE_TOKEN" "$C/api/v1/components" | python3 -c '
 import json,sys; print(" ".join(sorted({a["id"] for c in json.load(sys.stdin) if c["kind"]=="drive" for a in c.get("actions",[])})))')" = "locate-on"
 
-FMT=$(path_of format-4k drive sdb)
-FMT_B=$(path_of format-4k drive sdc)
+# Format 4K is off the feed (#308), but the route is still there to call: the guard holds it.
+FMT=/api/plugins/drive/proxy/api/v1/drives/7f3a0000-0000-4000-8000-000000000001/format/4096
+FMT_B=/api/plugins/drive/node/storm-b/proxy/api/v1/drives/7f3a0000-0000-4000-8000-0000000000b2/format/4096
 TEST=$(path_of test-destructive drive sdb)
 LOC=$(path_of locate-on drive sdb)
 DEL=$(path_of delete volume scratch)
@@ -264,19 +265,19 @@ mkdir -p "$W/pw"
 (cd "$W/pw" && npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1.55.0 >/dev/null 2>&1 \
   && npx playwright install chromium-headless-shell >/dev/null 2>&1)
 cp deploy/storage-guard.browser.cjs "$W/pw/"
-N1=$(formats_as $D1 "$ALICE")
+N1=$(formats_as $D1 "$ALICE" /test/destructive_sample)
 set +e
 (cd "$W/pw" && CONSOLE="$C" node storage-guard.browser.cjs)
 BRC=$?
 set -e
 [ $BRC -eq 0 ] || bad "browser checks (rc=$BRC)"
-check "the browser's confirmed format reached stormdrive once, as alice (the wrong word sent nothing)" \
-  test "$(formats_as $D1 "$ALICE")" = $((N1 + 1))
+check "the browser's confirmed destructive test reached stormdrive once, as alice (the wrong word sent nothing)" \
+  test "$(formats_as $D1 "$ALICE" /test/destructive_sample)" = $((N1 + 1))
 
 say "a binding removed takes effect within the review's 30 s"
 k DELETE /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/alice-storage-admin
 sleep 31
-check "alice no longer sees Format" test "$(feed_actions alice drive)" = "locate-on"
+check "alice no longer sees Destructive test" test "$(feed_actions alice drive)" = "locate-on"
 r=$(as alice POST "$FMT" ZC1234)
 check "and is refused: 403" bash -c '[[ "$1" == 403* ]]' _ "$r"
 

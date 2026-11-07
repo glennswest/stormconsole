@@ -1,5 +1,6 @@
 // The browser half of deploy/verify-storage-guard.sh (#82): alice, a
-// storage-admin, opens a drive and presses Format 4K — asked OK, then asked
+// storage-admin, opens a drive and presses Destructive test (the feed's Format 4K
+// is gone since #308; the Format dialog is verify-drive-format.sh's) — asked OK, then asked
 // to type the serial; a wrong word stops it, the serial does it. bob, a
 // storage-viewer, opens the same drive and is offered Locate and no Format.
 // Any page error fails the run.
@@ -55,21 +56,21 @@ const button = (page, label) => page.locator('button:visible', { hasText: new Re
       }
     })
     await openDrive(page, drive)
-    check((await button(page, 'Format 4K').count()) > 0, 'alice is offered Format 4K')
+    check((await button(page, 'Format 4K').count()) === 0, 'alice is not offered the feed’s Format 4K (#308)')
     check((await button(page, 'Destructive test').count()) > 0, 'alice is offered Destructive test')
 
-    await button(page, 'Format 4K').first().click()
+    await button(page, 'Destructive test').first().click()
     await page.getByText(/not confirmed: that is not ZC1234/).first().waitFor({ timeout: 8000 }).catch(() => {})
     check(prompts.length === 1, 'asked to type, after the OK', `${prompts.length} prompt(s)`)
-    check(/ZC1234/.test(prompts[0] || '') && /Format a drive/.test(prompts[0] || ''), 'the prompt names the serial and what it does', JSON.stringify(prompts[0] || ''))
+    check(/ZC1234/.test(prompts[0] || '') && /destructive test on a drive/.test(prompts[0] || ''), 'the prompt names the serial and what it does', JSON.stringify(prompts[0] || ''))
     check(await page.getByText(/not confirmed: that is not ZC1234/).count() > 0, 'typing the device name instead stops it, and says so')
 
     word = 'ZC1234'
-    await button(page, 'Format 4K').first().click()
-    const done = page.getByText(/POST \/api\/v1\/drives\/[0-9a-f-]+\/format\/4096 accepted/).first()
+    await button(page, 'Destructive test').first().click()
+    const done = page.getByText(/POST \/api\/v1\/drives\/[0-9a-f-]+\/test\/destructive_sample accepted/).first()
     await done.waitFor({ timeout: 8000 }).catch(() => {})
     check(prompts.length === 2, 'asked again')
-    check(await done.count() > 0, 'typing ZC1234 formats it: stormdrive accepted')
+    check(await done.count() > 0, 'typing ZC1234 runs it: stormdrive accepted')
     await page.screenshot({ path: 'alice.png' })
   }
 
