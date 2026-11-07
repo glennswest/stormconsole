@@ -2487,7 +2487,7 @@ physical_block_size}; stormdrive#123 adds `in_use`, `use`, `slabs`, `depends_on`
   navigator still takes half the screen: the shell's, not this page's
 
 
-### Replace a drive and update its firmware (#317)
+### Replace a drive and update its firmware (#317) ✅ 2026-11-07
 Owner on forge1 (12.74.1, 2026-11-07): "Replace not working? We need it including update." Read from stormblock 72b7e06a
 (`mgmt/api/arrays.rs` `replace_member`, `raid/mod.rs` `replace_proactively`, `mgmt/api/drives.rs` drain) and stormdrive 2cdfa41
 (`api/mod.rs` firmware and drain, `firmware.rs`). An active member is replaced **while it serves**: writes go to both, a copy walks
@@ -2497,19 +2497,29 @@ drive through the engine, wherever the allocator has room, and then leaves. The 
 metadata slab. Firmware: images by name (no vendor/model), `POST /api/v1/firmware {image, drives}` all-or-nothing, data-serving drives
 one at a time node-wide, a volume redundancy gate but none for RAID sets. Filed stormblock#563 (drain onto a named drive, the system
 drive), stormdrive#126 (RAID-set gate, image vendor/model) and #127 (record a present drive replaced).
-- [ ] `web/src/lib/drivereplace.js` (pure) + test: by what the old drive is (RAID member, slab member, system, other use, free), the
+- [x] `web/src/lib/drivereplace.js` (pure) + test: by what the old drive is (RAID member, slab member, system, other use, free), the
       drives it may go to (same node, free, big enough, same shelf first; for a set, blank in this engine and at the set's format),
       the steps, and each refusal in words
-- [ ] Replace… dialog in the drive's Actions menu: RAID member → the engine's live replace as the viewer (#82, typed word);
+- [x] Replace… dialog in the drive's Actions menu: RAID member → the engine's live replace as the viewer (#82, typed word);
       slab member → join the new drive to the fleet, then drain the old with `leave`; free → `POST /api/plugins/drive/replace`
       (audited, not on the drive until stormdrive#127); system → refused (stormblock#563). Format first when the new drive's format
       is not the set's, from the Format dialog
-- [ ] Firmware: `GET /api/plugins/drive/firmware` (images, runs, versions, every node), `PUT …/firmware/images/{node}/{name}`
+- [x] Firmware: `GET /api/plugins/drive/firmware` (images, runs, versions, every node), `PUT …/firmware/images/{node}/{name}`
       (upload as `<model>+<file>`), `POST …/firmware` (guarded, typed phrase, one model, the image named for it or acknowledged,
       not two members of one set or a member of a set that is not clean), as the viewer; Update firmware… dialog for one or a selection
-- [ ] Progress rows beside Format's: the set's copy from the engine, the drain from stormdrive, firmware runs; read back after
-- [ ] `deploy/verify-drive-replace.sh` on forge1's layout (stand-in stormdrives and engine), Chromium at 1280 and 390; docs,
+- [x] Progress rows beside Format's: the set's copy from the engine, the drain from stormdrive, firmware runs; read back after
+- [x] `deploy/verify-drive-replace.sh` on forge1's layout (stand-in stormdrives and engine), Chromium at 1280 and 390; docs,
       changelog, dist; image
+- Verified with `sc-build deploy/verify-drive-replace.sh` (0 failed, no page errors): real apiserver with the storage roles,
+  stand-in stormdrives on forge1's layout and a stand-in engine holding RAID set ds0-a, real console, Chromium at 1280 and 390.
+  sda refused naming stormblock#563; sdk (RAID member) live-replaced onto sdl through the engine as alice, sdc turned down for
+  its format with Format… offered, the copy's percent, then "slot 0 holds sdl"; sde (slab member): sdd joined, sde drained with
+  leave, empty and out; sdb (free) recorded. Firmware refused for two set members, two models, another model's image, an unnamed
+  image unchecked, a node without the image, the wrong phrase, a storage-viewer and a no-identity admin, none reaching a node; an
+  upload named for the model, sdb and sdc in one request as alice, read back A3Z2; sdd's refused download said; rows through a
+  reload. Also `verify-drive-format.sh` and the default `sc-build` (604 tests, 0 warnings)
+- Not seen: forge1, a real stormdrive updating firmware, a real engine's live replace (stormblock's own tests cover #256), a real
+  drain. Upstream: stormblock#563 (system drive, drain onto a named drive), stormdrive#126 (set gate, image model), #127 (record)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
