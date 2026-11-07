@@ -19,7 +19,8 @@ function groupOf(id) {
 }
 
 /// `actions`: the feed's, each `{id, label, enabled, danger, why?, count?}`.
-/// `opts.format`: `{enabled, why}` to offer Format…, or null.
+/// `opts.format`, `opts.replace`, `opts.firmware`: `{enabled, why}` to offer
+/// Format…, Replace…, Update firmware…, or null.
 /// → `[{name, danger, items: [{key, label, enabled, danger, why, action|format}]}]`.
 export function groupActions(actions, opts = {}) {
   const groups = new Map()
@@ -32,13 +33,19 @@ export function groupActions(actions, opts = {}) {
     const item = { key: a.id, label: a.label, enabled: !!a.enabled, danger: !!a.danger, why: a.why || '', count: a.count, action: a }
     put(a.danger ? 'Destructive' : groupOf(a.id || ''), item)
   }
+  // Replace and firmware (#317) are the console's own dialogs, like Format:
+  // neither destroys data, so they sit before the destructive group.
+  for (const [k, label] of [['replace', 'Replace…'], ['firmware', 'Update firmware…']]) {
+    const o = opts[k]
+    if (o) put('Maintain', { key: k, label, enabled: !!o.enabled, danger: false, why: o.why || '', [k]: true })
+  }
   if (opts.format) {
     // Format is the first destructive item: it is what the owner came for.
     const list = groups.get('Destructive') || []
     list.unshift({ key: 'format', label: 'Format…', enabled: !!opts.format.enabled, danger: true, why: opts.format.why || '', format: true })
     groups.set('Destructive', list)
   }
-  const order = ['Locate', 'Test', 'Fleet', 'Designate', 'Other', 'Destructive']
+  const order = ['Locate', 'Test', 'Fleet', 'Designate', 'Other', 'Maintain', 'Destructive']
   return order.filter((n) => groups.has(n)).map((name) => ({ name, danger: name === 'Destructive', items: groups.get(name) }))
 }
 

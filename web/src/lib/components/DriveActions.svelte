@@ -7,16 +7,24 @@
   // `actions` are the feed's (one drive's, or for a selection those every
   // drive offers, with `count`: how many of the selection have each enabled).
   // `onformat` opens the Format dialog; `formatWhy` says why not, when not.
+  // `onreplace`/`replaceWhy` and `onfirmware`/`firmwareWhy` the same for
+  // Replace… and Update firmware… (#317).
   import { groupActions } from '../driveactions.js'
 
-  let { actions = [], onformat = null, formatWhy = '', run, label = 'Actions', count = null } = $props()
+  let { actions = [], onformat = null, formatWhy = '', onreplace = null, replaceWhy = '', onfirmware = null, firmwareWhy = '', run, label = 'Actions', count = null } = $props()
 
   let open = $state(false)
   let at = $state({ top: 0, left: 0, width: 260, up: false, max: 400 })
   let button
   let menu = $state(null)
 
-  const groups = $derived(groupActions(actions, { format: onformat ? { enabled: !formatWhy, why: formatWhy } : null }))
+  const groups = $derived(
+    groupActions(actions, {
+      format: onformat ? { enabled: !formatWhy, why: formatWhy } : null,
+      replace: onreplace ? { enabled: !replaceWhy, why: replaceWhy } : null,
+      firmware: onfirmware ? { enabled: !firmwareWhy, why: firmwareWhy } : null,
+    }),
+  )
 
   function toggle(e) {
     e.stopPropagation()
@@ -64,6 +72,8 @@
   function pick(item) {
     open = false
     if (item.format) onformat?.()
+    else if (item.replace) onreplace?.()
+    else if (item.firmware) onfirmware?.()
     else run?.(item.action)
   }
 </script>

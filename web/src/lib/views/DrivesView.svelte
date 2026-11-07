@@ -29,6 +29,11 @@
   import DriveActions from '../components/DriveActions.svelte'
   import FormatDialog from '../components/FormatDialog.svelte'
   import FormatProgress from '../components/FormatProgress.svelte'
+  import ReplaceDialog from '../components/ReplaceDialog.svelte'
+  import FirmwareDialog from '../components/FirmwareDialog.svelte'
+  import MaintainProgress from '../components/MaintainProgress.svelte'
+  import { replaceWhy, rows as replaceRows } from '../drivereplace.js'
+  import { rows as firmwareRows } from '../drivefirmware.js'
   import { commonActions } from '../driveactions.js'
   import { progressRows, selectable as formatable } from '../driveformat.js'
   import { ago } from '../ui/time.js'
@@ -47,6 +52,10 @@
   // The format records (#308): who may be formatted, and each run's progress.
   let formats = $state(null)
   let guard = $state(null)
+  // Replace and firmware (#317): the firmware records, this node's RAID sets, and who may update.
+  let firmware = $state(null)
+  let raid = $state(null)
+  let fwGuard = $state(null)
   let now = $state(Math.floor(Date.now() / 1000))
   async function refresh() {
     const [u, p, pool, f] = await Promise.allSettled([
@@ -56,6 +65,7 @@
       get('/api/plugins/drive/formats'),
     ])
     if (f.status === 'fulfilled') formats = f.value
+    await refreshMaintain()
     if (u.status === 'fulfilled') {
       usage = u.value
       usageError = ''
@@ -63,11 +73,19 @@
     placement = p.status === 'fulfilled' ? p.value : null
     enginePool = pool.status === 'fulfilled' ? pool.value : null
   }
+  async function refreshMaintain() {
+    const [fw, rd] = await Promise.allSettled([get('/api/plugins/drive/firmware'), get('/api/plugins/sb/raid')])
+    if (fw.status === 'fulfilled') firmware = fw.value
+    raid = rd.status === 'fulfilled' ? rd.value : null
+  }
   $effect(() => {
     refresh()
     get(`/api/v1/console/guard?method=POST&path=${encodeURIComponent('/api/plugins/drive/format')}`)
       .then((g) => (guard = g.guard))
       .catch((e) => (guard = { allowed: false, reason: e.message }))
+    get(`/api/v1/console/guard?method=POST&path=${encodeURIComponent('/api/plugins/drive/firmware')}`)
+      .then((g) => (fwGuard = g.guard))
+      .catch((e) => (fwGuard = { allowed: false, reason: e.message }))
     const t = setInterval(refresh, 10000)
     const tick = setInterval(() => (now = Math.floor(Date.now() / 1000)), 1000)
     return () => {
@@ -138,6 +156,43 @@
   function openFormat(ids) {
     dialog = { picked: ids.map(recOf).filter(Boolean).map(fkey) }
   }
+
+  // Replace… and Update firmware… (#317).
+  let replacing = $state(null)
+  let fwDialog = $state(null)
+  const fwRecs = $derived(firmware?.drives || [])
+  const fwOf = (id) => fwRecs.find((f) => f.component === id) || null
+  const ctx = $derived({ formats: new Map(formatRecs.map((f) => [f.component, f])), raid, components: feed.components })
+  function firmwareWhy(d) {
+    if (fwGuard && !fwGuard.allowed) return fwGuard.reason || 'you may not update firmware'
+    const f = fwOf(d.id)
+    if (!f) return firmware ? 'its node’s stormdrive has no firmware record for it' : 'reading the firmware records…'
+    return f.whyNot || ''
+  }
+  function openFirmware(ids) {
+    const recs = ids.map(fwOf).filter(Boolean)
+    if (recs.length) fwDialog = recs
+  }
+  // What this page asked to be replaced, kept in the browser so a row can say what was asked; each
+  // row's state is read again from the engine and stormdrive.
+  const DAY = 86400
+  function loadAsks() {
+    try {
+      const all = JSON.parse(localStorage.getItem('stormconsole-drives-replaces') || '[]')
+      return all.filter((a) => Date.now() / 1000 - a.at < DAY)
+    } catch {
+      return []
+    }
+  }
+  let asks = $state(loadAsks())
+  function keepAsks(list) {
+    asks = list
+    try {
+      localStorage.setItem('stormconsole-drives-replaces', JSON.stringify(list))
+    } catch {}
+  }
+  const replaceProgress = $derived(replaceRows(asks, { records: model.records, raid }))
+  const firmwareProgress = $derived(firmwareRows(fwRecs, now, 3600))
   async function runOne(a, label) {
     if (a.danger && !confirm(`${a.label} ${label}?`)) return
     try {
@@ -380,6 +435,7 @@
         <strong>{picks.length} selected</strong>
         <span class="dim">{picks.filter((d) => d.use?.in_use).length} in use</span>
         <button class="danger" disabled={!picks.some((d) => !formatWhy(d))} onclick={() => openFormat(picks.map((d) => d.id))} data-testid="format-selected">Format…</button>
+        <button disabled={!picks.some((d) => !firmwareWhy(d))} title={picks.map((d) => firmwareWhy(d)).find(Boolean) || ''} onclick={() => openFirmware(picks.filter((d) => !firmwareWhy(d)).map((d) => d.id))} data-testid="firmware-selected">Update firmware…</button>
         <DriveActions actions={pickActions} run={runMany} count={picks.length} label="Actions for {picks.length}" />
         <button class="link" onclick={() => (chosen = {})}>Clear</button>
       </div>
@@ -390,6 +446,35 @@
         <h3 class="first">Formats</h3>
         <FormatProgress rows={progress} {now} />
       </section>
+    {/if}
+
+    {#if replaceProgress.length || firmwareProgress.length}
+      <section class="picked" data-testid="maintain-progress">
+        <h3 class="first">Replacements and firmware</h3>
+        <MaintainProgress replaces={replaceProgress} updates={firmwareProgress} ondismiss={(r) => keepAsks(asks.filter((a) => !(a.old.id === r.old.id && a.at === r.at)))} />
+      </section>
+    {/if}
+
+    {#if replacing}
+      <ReplaceDialog
+        old={replacing}
+        records={model.records}
+        {ctx}
+        onclose={() => (replacing = null)}
+        onformat={(d) => { replacing = null; openFormat([d.id]) }}
+        ondone={(a) => { replacing = null; keepAsks([a, ...asks]); refresh() }}
+      />
+    {/if}
+
+    {#if fwDialog}
+      <FirmwareDialog
+        recs={fwDialog}
+        images={firmware?.images || []}
+        guard={fwGuard}
+        onreload={async () => { await refreshMaintain(); fwDialog = fwDialog.map((r) => fwOf(r.component) || r) }}
+        onclose={() => (fwDialog = null)}
+        ondone={() => { fwDialog = null; chosen = {}; refresh() }}
+      />
     {/if}
 
     {#if dialog}
@@ -405,7 +490,16 @@
           <span class="tools">
             {#if pick.serial && !pick.c.id.startsWith('drive:@')}<a class="metrics" href={`#/metrics?entity=drive&serial=${encodeURIComponent(pick.serial)}`}>Metrics</a>{/if}
             {#if !formatWhy(pick)}<button class="danger" onclick={() => openFormat([pick.id])} data-testid="picked-format">Format…</button>{/if}
-            <DriveActions actions={pick.c.actions || []} run={(a) => runOne(a, pick.c.label)} onformat={() => openFormat([pick.id])} formatWhy={formatWhy(pick)} />
+            <DriveActions
+              actions={pick.c.actions || []}
+              run={(a) => runOne(a, pick.c.label)}
+              onformat={() => openFormat([pick.id])}
+              formatWhy={formatWhy(pick)}
+              onreplace={() => (replacing = pick)}
+              replaceWhy={replaceWhy(pick)}
+              onfirmware={() => openFirmware([pick.id])}
+              firmwareWhy={firmwareWhy(pick)}
+            />
             <button onclick={() => (selected = null)}>Close</button>
           </span>
         </header>

@@ -137,6 +137,9 @@ export function plan(old, neu, ctx = {}) {
     const setName = set.name || set.id
     if (set.status?.rebuild?.running) return refused(kind, `RAID set ${setName} is rebuilding already: replace ${o} once it is done`)
     if (!['active', 'failed', 'missing'].includes(member.state)) return refused(kind, `slot ${member.slot} of ${setName} is ${member.state}`)
+    // Who may: the feed carries a member's replace only to a storage-admin (#82).
+    const action = (ctx.components || []).find((c) => c.id === member.component)?.actions?.find((a) => a.id === 'replace')
+    if (!action) return refused(kind, `the engine offers you no replace for ${o}: replacing a set member needs storage-admin`)
     const e = engineDrive(neu, ctx.raid)
     if (!e) return refused(kind, `${n} is not a blank drive this node's engine has open, and the engine replaces onto those only`)
     const of = fmt(ctx.formats?.get?.(old.id))
@@ -146,8 +149,6 @@ export function plan(old, neu, ctx = {}) {
         format: { blockSize: of.blockSize, protection: of.protection },
       })
     }
-    const action = (ctx.components || []).find((c) => c.id === member.component)?.actions?.find((a) => a.id === 'replace')
-    if (!action) return refused(kind, `the engine offers you no replace for ${o}: replacing a set member needs storage-admin`)
     const live = member.state === 'active'
     return {
       kind,

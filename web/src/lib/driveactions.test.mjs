@@ -22,6 +22,11 @@ const off = groupActions(feed, { format: { enabled: false, why: 'sda is the syst
 assert.deepEqual([off.enabled, off.why], [false, 'sda is the system drive'])
 assert.ok(!groupActions(feed).flatMap((x) => x.items).some((i) => i.format), 'no Format… unless asked')
 
+// Replace… and Update firmware… (#317): their own group, before the destructive one, off with why.
+const m = groupActions(feed, { format: { enabled: true }, replace: { enabled: false, why: 'the system drive' }, firmware: { enabled: true } })
+assert.deepEqual(m.map((x) => x.name), ['Locate', 'Test', 'Fleet', 'Designate', 'Maintain', 'Destructive'])
+assert.deepEqual(m[4].items.map((i) => [i.label, i.enabled, i.danger, i.why]), [['Replace…', false, false, 'the system drive'], ['Update firmware…', true, false, '']])
+assert.ok(m[4].items[0].replace && m[4].items[1].firmware)
 // A selection: what any of them offers, counted.
 const c = commonActions([{ actions: [a('locate-on', 'Locate'), a('fleet-join', 'Join fleet', false, false)] }, { actions: [a('locate-on', 'Locate'), a('fleet-join', 'Join fleet')] }])
 assert.deepEqual(c.map((x) => [x.id, x.enabled, x.count]), [['locate-on', true, 2], ['fleet-join', true, 1]])
