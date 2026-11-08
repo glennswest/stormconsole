@@ -2521,7 +2521,7 @@ drive), stormdrive#126 (RAID-set gate, image vendor/model) and #127 (record a pr
 - Not seen: forge1, a real stormdrive updating firmware, a real engine's live replace (stormblock's own tests cover #256), a real
   drain. Upstream: stormblock#563 (system drive, drain onto a named drive), stormdrive#126 (set gate, image model), #127 (record)
 
-### Controllers: Switch to HBA and Set good (#325)
+### Controllers: Switch to HBA and Set good (#325) ✅ 2026-11-08
 Owner 2026-11-08: "Can wire it into the ui." Read from stormdrive v0.43.0 (`raidctl.rs`, `api/mod.rs`, `components.rs`):
 `GET /api/v1/controllers` → `{controllers:[{key, scsi_host, pcie_addr, driver, model, serial, firmware, virtual_disks,
 jbod_enabled, mode raid|hba|jbod|unknown, mode_basis, pending_mode, drives:[PdStatus], findings, error, perccli {Ok}|{Err}}],
@@ -2530,13 +2530,24 @@ disk. `POST …/controllers/{key}/personality {"mode":"HBA"}` → `{reboot_requi
 virtual disks. `POST /api/v1/drives/{id}/controller-state {"state":"good"|"jbod","force":true}`, or
 `/controllers/{key}/drives/{device}/state` for a disk with no inventory record; 409 with the reason (`plan_state`). A drive's
 feed row has a `controller` metric and `controller-good`/`controller-jbod`; the HBA card has `personality-hba`.
-- [ ] storage guard: the three controller verbs are drive operations (storage-admin, as the viewer), worded as not destroying data
-- [ ] drive plugin `GET /controllers`: every node's, each disk joined to its drive row, an older stormdrive said
-- [ ] `controllers.js` (pure) + test: mode, banner, each disk's state in words, Switch/Set good and why not
-- [ ] `#/drives/controllers` (Hardware → Controllers); the RAID-mode banner on the Drives pages; "Failed by the controller" on
+- [x] storage guard: the three controller verbs are drive operations (storage-admin, as the viewer), worded as not destroying data
+- [x] drive plugin `GET /controllers`: every node's, each disk joined to its drive row, an older stormdrive said
+- [x] `controllers.js` (pure) + test: mode, banner, each disk's state in words, Switch/Set good and why not
+- [x] `#/drives/controllers` (Hardware → Controllers); the RAID-mode banner on the Drives pages; "Failed by the controller" on
       the map, list and picked drive; a Controller group in the Actions menu
-- [ ] `deploy/verify-controllers.sh`: stand-in stormdrive in v0.43.0's shapes (forge1: PERC H730 in RAID mode, sdb–sdd failed),
+- [x] `deploy/verify-controllers.sh`: stand-in stormdrive in v0.43.0's shapes (forge1: PERC H730 in RAID mode, sdb–sdd failed),
       real apiserver with the storage roles, Chromium; docs, changelog, dist; image
+- Verified with `sc-build deploy/verify-controllers.sh` (0 failed, browser 0 failed): real fastetcd + rustkube apiserver with the storage
+  roles, a stand-in stormdrive in v0.43.0's shapes as forge1 and an older one, a real console, Chromium. The read (RAID, no perccli,
+  four held disks, sdb joined to its row, slot 7 with none; storm-b said as predating); the guard (alice may, the card's serial
+  5CF1234 or the drive's, `destroys: false`; bob not, and his feed carries none of the verbs); bob and a no-identity admin 403, no or
+  the wrong word 428, nothing reaching stormdrive; stormdrive's 501 without perccli, the system drive, a spare and Failed without
+  force refused in its words. Chromium: the banner, sdb "Failed by the controller" on the map and picked, Set good from the
+  Controller group (the prompt not saying "destroys data"), Set JBOD on sdc, slot 7 by the controller's route, Switch to HBA once
+  perccli appeared, then the reboot banner and HBA after reboot; 390 px. Each verb reached stormdrive with alice's bearer. Default
+  `sc-build`: 609 tests, 0 warnings (it first found a test literal too large for i32, #326, closed by the rerun)
+- Not seen: forge1 or a real PERC (no perccli in the image yet, stormcentral#1310), so a real personality change and a real
+  `set good force` are stormdrive's to prove. Another node's controllers come through its proxy; only one node with one was in the rig
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
