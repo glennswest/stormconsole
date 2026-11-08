@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-08 — RAID controllers: Switch to HBA and Set good (#325)
+- **feat:** **Controllers** (`#/drives/controllers`, Hardware → Controllers): each node's RAID controllers from stormdrive v0.43.0 (stormdrive#132) — model, firmware, mode and how it is known, what is pending, perccli, findings, and each disk as the controller sees it. New route `GET /api/plugins/drive/controllers`; an older stormdrive is said as that.
+- **feat:** "HBA mode is required" on every Drives page while a controller is in RAID mode; once HBA is asked for, that a reboot applies it.
+- **feat:** a drive the controller has failed reads **Failed by the controller** on the map, the list and the picked drive, never missing, and counts as failing.
+- **feat:** **Switch to HBA** (with the reboot said) and **Set good** / **Set JBOD**, from the Controllers page and a Controller group in the drive's Actions menu. Off with the reason while perccli is missing (stormdrive's 501), with virtual disks, for the system drive, a drive in use or in the fleet, a member or spare.
+- **feat:** the storage guard holds the three controller verbs as drive operations (storage-admin, as you, the drive's serial or the controller's card typed), and says they keep data rather than "this destroys data".
+
 ### 2026-11-07 — Replace a drive, update its firmware (#317)
 - **feat:** **Replace…** in a drive's Actions menu. A dialog picks the drive to take its place (same node, free, same shelf first, each one that cannot saying why). What happens depends on the old drive:
   - **RAID member:** the engine's live replace, as you. It copies while the drive serves, falls back to parity if a read fails, then releases the old drive. A failed slot is rebuilt. The new drive must be blank in the engine and at the set's format, or the dialog offers Format… on it.

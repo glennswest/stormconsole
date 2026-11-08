@@ -1273,6 +1273,41 @@ the phase and the percent sent, then the version read back against the run's
 target. Updating firmware and storing an image both count as destructive storage
 in the guard, through the proxy too.
 
+### RAID controllers: Switch to HBA and Set good (#325)
+
+A MegaRAID controller (a PERC) in RAID mode keeps its disks from Linux behind its own
+configuration: a disk it has failed offers 0 bytes and has no block device, so it
+looked *missing*. stormdrive v0.43.0 (stormdrive#132) reads each controller over MFI
+and, where perccli is on the node, its personality; HBA mode is mandatory.
+
+- **Read.** `GET /api/plugins/drive/controllers` is every node's `GET /api/v1/controllers`,
+  each controller with its node and the proxy its verbs go through, `perccli` as
+  `{ok, path|why}`, and each disk joined to its drive row (`component`, null for a disk
+  the inventory has no record of). A node whose stormdrive predates v0.43.0 answers 404
+  and is said as that, not as an error. Reused for 4 s.
+- **Page.** `#/drives/controllers` (Hardware → Controllers, `controllers.js`): per node,
+  each controller's model, firmware, serial, address, mode and how it is known, virtual
+  disks, JBOD, perccli, findings, and each disk's slot, drive, state in words, model,
+  bytes offered and error counts.
+- **Banner.** "HBA mode is required" on every Drives page while stormdrive raises
+  `raid_mode`; once HBA is asked for, "a reboot of <node> applies it" (`reboot_pending`).
+- **Failed by the controller.** A drive whose `controller` metric is failed, unconfigured
+  bad or offline says so on the map (drawn as failing), the list, and the picked drive,
+  with the way back. It counts as failing.
+- **Verbs**, each a drive operation behind the storage guard (#82: storage-admin, as the
+  viewer, the word typed), marked as keeping data (`destroys: false`, so the prompt does
+  not say it destroys data):
+  - **Switch to HBA**: `POST …/controllers/{key}/personality {"mode":"HBA"}`. Off, with
+    the reason, while perccli is missing (stormdrive's 501 `tool_missing`), with virtual
+    disks, when already HBA or asked for. Confirmed by the controller's card (its serial).
+  - **Set good / Set JBOD**: `POST …/drives/{id}/controller-state {"state","force":true}`,
+    confirmed by the drive's serial; a disk with no record goes to
+    `…/controllers/{key}/drives/{device}/state`, confirmed by the controller's card.
+    Offered from failed, unconfigured bad or good; off for the system drive, a drive in
+    use or in the fleet, and a member or spare. stormdrive's own refusal (409) is shown.
+  - The feed's `controller-good`, `controller-jbod` and `personality-hba` sit in a
+    **Controller** group, first in a drive's Actions menu, not in Destructive.
+
 ### Enclosures and shelves (#166)
 
 An **enclosure** is the box: a node's chassis, or an external JBOD. A **shelf**
