@@ -12,6 +12,7 @@
   import { formatBytes } from '../drivemap.js'
   import { badgeOf, byNode, currentText, defaultOption, duration, finished, formatText, isRunning, planFor, readBack, resultText, selectable, timing } from '../driveformat.js'
   import PageHeader from '../components/PageHeader.svelte'
+  import ControllerBanner from '../components/ControllerBanner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import FormatDialog from '../components/FormatDialog.svelte'
   import FormatProgress from '../components/FormatProgress.svelte'
@@ -99,6 +100,7 @@
 
 <div class="sc-page">
   <PageHeader crumbs={[{ label: 'Hardware' }, { label: 'Drives', href: '#/drives' }, { label: 'Format' }]} title="Format drives" count={data ? drives.length : null} />
+  <ControllerBanner />
 
   {#if error}<p class="error">{error}</p>{/if}
   {#each silent as n (n.node)}<p class="warn">{n.node}: {n.error}</p>{/each}

@@ -30,6 +30,12 @@ export function groupActions(actions, opts = {}) {
   }
   for (const a of actions || []) {
     if (a.id?.startsWith('format')) continue
+    // A RAID controller's verbs (#325): Set good, Set JBOD, Switch to HBA. stormdrive marks them danger, and
+    // the storage guard asks for the serial; they destroy nothing, so they are their own group, not Destructive.
+    if (a.id?.startsWith('controller-') || a.id?.startsWith('personality-')) {
+      put('Controller', { key: a.id, label: a.label, enabled: !!a.enabled, danger: false, why: a.why || '', count: a.count, action: a })
+      continue
+    }
     const item = { key: a.id, label: a.label, enabled: !!a.enabled, danger: !!a.danger, why: a.why || '', count: a.count, action: a }
     put(a.danger ? 'Destructive' : groupOf(a.id || ''), item)
   }
@@ -45,7 +51,7 @@ export function groupActions(actions, opts = {}) {
     list.unshift({ key: 'format', label: 'Format…', enabled: !!opts.format.enabled, danger: true, why: opts.format.why || '', format: true })
     groups.set('Destructive', list)
   }
-  const order = ['Locate', 'Test', 'Fleet', 'Designate', 'Other', 'Maintain', 'Destructive']
+  const order = ['Controller', 'Locate', 'Test', 'Fleet', 'Designate', 'Other', 'Maintain', 'Destructive']
   return order.filter((n) => groups.has(n)).map((name) => ({ name, danger: name === 'Destructive', items: groups.get(name) }))
 }
 

@@ -14,6 +14,7 @@
   import ProjectDetail from './lib/views/ProjectDetail.svelte'
   import DrivesView from './lib/views/DrivesView.svelte'
   import DriveFormat from './lib/views/DriveFormat.svelte'
+  import DriveControllers from './lib/views/DriveControllers.svelte'
   import NodeDetail from './lib/views/NodeDetail.svelte'
   import NodesView from './lib/views/NodesView.svelte'
   import VmList from './lib/views/VmList.svelte'
@@ -53,6 +54,7 @@
     project: ProjectDetail,
     drives: DrivesView,
     driveformat: DriveFormat,
+    drivecontrollers: DriveControllers,
     nodes: NodesView,
     nodedetail: NodeDetail,
     vmlist: VmList,

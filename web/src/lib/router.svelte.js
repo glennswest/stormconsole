@@ -12,6 +12,8 @@ const routes = [
   { pattern: '#/drives', name: 'drives' },
   // Formatting drives, and following a format (#165).
   { pattern: '#/drives/format', name: 'driveformat' },
+  // RAID controllers: mode, Switch to HBA, each disk's state, Set good (#325).
+  { pattern: '#/drives/controllers', name: 'drivecontrollers' },
   { pattern: '#/vms', name: 'vmlist' },
   { pattern: '#/nodes', name: 'nodes' },
   // Every API on this node, its state and latency (#123).

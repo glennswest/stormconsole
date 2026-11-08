@@ -21,6 +21,7 @@
 //   - `placement`: `/api/plugins/sb/placement` — this node's volumes by the
 //     drive they sit on (stormblock#136), each with its consumer.
 
+import { failedMetric } from './controllers.js'
 import { engineDrives, offerFor } from './driveoffer.js'
 
 const UNITS = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4, PB: 1024 ** 5, EB: 1024 ** 6 }
@@ -188,6 +189,10 @@ export function build(components, extra = {}) {
       outOfFleet: detail.includes('out of fleet'),
       spare: /(^|·\s)spare(\s|·|$)/.test(detail),
       failedMark: /(^|·\s)failed(\s|·|$)/.test(detail),
+      // What the RAID controller says of it (#325, stormdrive#132): a drive it has failed is not "missing",
+      // it is held by the controller, and Set good is how it comes back.
+      controller: metric(c, 'controller') || null,
+      controllerFailed: failedMetric(metric(c, 'controller')),
       // What this node's engine found on it (stormblock#154). The engine is
       // this node's, so a remote drive is not answered for.
       offer: local ? offerFor(offers, { serial, dev: metric(c, 'dev') || '' }) : null,
@@ -214,7 +219,7 @@ export const FILTERS = [
 export function passes(d, filter) {
   switch (filter) {
     case 'failing':
-      return d.health === 'error' || d.failedMark || d.member === 'failed'
+      return d.health === 'error' || d.failedMark || d.member === 'failed' || d.controllerFailed
     case 'degraded':
       return d.health === 'warn'
     case 'rebuilding':
@@ -406,6 +411,7 @@ export function heat(d, mode) {
       if (!d.usage) return none(noUsage(d))
       return { css: ramp(d.usage.frac), value: d.usage.frac, text: `${Math.round(d.usage.frac * 100)}% used` }
     default: {
+      if (d.controllerFailed) return { css: 'var(--error)', value: 'error', text: 'Failed by the controller' }
       const css = { ok: 'var(--ok)', warn: 'var(--warn-strong)', error: 'var(--error)', idle: 'var(--text-faint)' }[d.health]
       return { css: css || 'var(--text-faint)', value: d.health, text: d.health }
     }

@@ -70,8 +70,10 @@ export async function call(method, path, confirmed, body) {
 function typedConfirm(g) {
   const typed = window.prompt(
     `${g.what[0].toUpperCase()}${g.what.slice(1)}: ${g.confirm}\n\n` +
-      `This destroys data and cannot be undone. It is done as you, and ` +
-      `only a storage-admin may.\n\nType ${g.confirm} to confirm.`,
+      (g.destroys === false
+        ? `It changes what the drive hardware does and is done as you; only a storage-admin may.`
+        : `This destroys data and cannot be undone. It is done as you, and only a storage-admin may.`) +
+      `\n\nType ${g.confirm} to confirm.`,
   )
   if (typed === null) throw new Error('cancelled')
   if (typed.trim() !== g.confirm) throw new Error(`not confirmed: that is not ${g.confirm}`)

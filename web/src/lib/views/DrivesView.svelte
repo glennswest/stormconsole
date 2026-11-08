@@ -32,6 +32,7 @@
   import ReplaceDialog from '../components/ReplaceDialog.svelte'
   import FirmwareDialog from '../components/FirmwareDialog.svelte'
   import MaintainProgress from '../components/MaintainProgress.svelte'
+  import ControllerBanner from '../components/ControllerBanner.svelte'
   import { replaceWhy, rows as replaceRows } from '../drivereplace.js'
   import { rows as firmwareRows } from '../drivefirmware.js'
   import { commonActions } from '../driveactions.js'
@@ -241,8 +242,12 @@
   const shownComponents = $derived(
     feed.components.map((c) => {
       const d = c.kind === 'drive' ? recById.get(c.id) : null
-      if (!d?.use?.in_use) return c
-      return { ...c, metrics: [{ label: 'use', value: d.use.badge || 'In use', tone: d.use.use === 'system' ? 'error' : 'warn' }, ...(c.metrics || [])] }
+      if (!d) return c
+      let metrics = c.metrics || []
+      // A drive the RAID controller holds says so first, never as missing (#325).
+      if (d.controllerFailed) metrics = [{ label: 'controller', value: 'Failed by the controller', tone: 'error' }, ...metrics.filter((m) => m.label !== 'controller')]
+      if (d.use?.in_use) metrics = [{ label: 'use', value: d.use.badge || 'In use', tone: d.use.use === 'system' ? 'error' : 'warn' }, ...metrics]
+      return metrics === c.metrics ? c : { ...c, metrics }
     }),
   )
   // Within a node or a rack, still one grid per shelf: the bays only mean
@@ -271,6 +276,7 @@
   >
     {#snippet actions()}
       {#if !asShelves && !asPools}
+        <a class="pagebtn plain" href="#/drives/controllers" data-testid="controllers-page">Controllers</a>
         <a class="pagebtn" href="#/drives/format" data-testid="format-page">Format drives…</a>
       {/if}
     {/snippet}
@@ -280,6 +286,9 @@
       </span>
     {/snippet}
   </PageHeader>
+
+  <!-- A controller in RAID mode is why its drives look missing (#325): said on every Drives page. -->
+  <ControllerBanner />
 
   {#if feed.loaded && !asShelves && !asPools}
     <!-- Outside the drive list: an engine can hold a drive no stormdrive reports. -->
@@ -487,6 +496,7 @@
           <strong>{pick.c.label}</strong>
           <span class="dim">{pick.node}{pick.shelfLabel ? ` · ${pick.shelfLabel}` : ` · ${unreadShelf(pick)}`}{pick.bay !== null ? ` · bay ${pick.bay}` : ''}{pick.hba ? ` · controller ${pick.hba}` : ''}{pick.serial ? ` · ${pick.serial}` : ''}</span>
           {#if pick.use?.in_use}<span class="badge" class:system={pick.use.use === 'system'} data-testid="picked-use">{pick.use.badge || 'In use'}</span>{/if}
+          {#if pick.controllerFailed}<span class="badge system" data-testid="picked-controller">Failed by the controller</span>{/if}
           <span class="tools">
             {#if pick.serial && !pick.c.id.startsWith('drive:@')}<a class="metrics" href={`#/metrics?entity=drive&serial=${encodeURIComponent(pick.serial)}`}>Metrics</a>{/if}
             {#if !formatWhy(pick)}<button class="danger" onclick={() => openFormat([pick.id])} data-testid="picked-format">Format…</button>{/if}
@@ -503,6 +513,11 @@
             <button onclick={() => (selected = null)}>Close</button>
           </span>
         </header>
+        {#if pick.controllerFailed}
+          <p class="useline" data-testid="picked-controller-line">
+            <strong>Failed by the controller:</strong> its RAID controller{pick.hba ? ` (${pick.hba})` : ''} holds it as {pick.controller}, so Linux does not see it. It is not missing: Set good (in Actions, under Controller) brings it back. <a href="#/drives/controllers">Controllers</a>
+          </p>
+        {/if}
         {#if pick.use?.in_use}
           <div class="useline" data-testid="picked-reason">
             <strong>In use:</strong> {pick.use.reason}.
@@ -658,12 +673,12 @@
                           class="bay"
                           class:nodata={h.css === null}
                           class:rebuild={d.member === 'rebuilding' || d.member === 'degraded'}
-                          class:failing={d.health === 'error'}
+                          class:failing={d.health === 'error' || d.controllerFailed}
                           class:sel={selected === d.id}
                           class:inuse={d.use?.in_use}
                           class:chosen={!!chosen[d.id]}
                           style={h.css ? `background: ${h.css}` : ''}
-                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}"
+                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}{d.controllerFailed && mode !== 'health' ? ' · Failed by the controller' : ''}"
                           aria-label="{d.c.label}, {h.text}{d.use?.in_use ? `, in use: ${d.use.badge || 'in use'}` : ''}"
                           aria-pressed={selecting ? !!chosen[d.id] : undefined}
                           data-drive={d.c.label}
@@ -796,6 +811,7 @@
   .drain { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0; font-size: var(--sc-t-meta); }
   .pressure { margin-bottom: 10px; }
   .pagebtn { font-size: var(--sc-t-meta); padding: 4px 11px; border: 1px solid var(--error-border, var(--error)); border-radius: var(--radius-sm); color: var(--error); text-decoration: none; white-space: nowrap; }
+  .pagebtn.plain { border-color: var(--border-strong); color: var(--text); }
   .badge { font-size: var(--sc-t-eyebrow); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--warn-strong); color: var(--warn-strong); white-space: nowrap; }
   .badge.system { border-color: var(--error); color: var(--error); }
   .tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }

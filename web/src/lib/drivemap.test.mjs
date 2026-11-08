@@ -254,4 +254,15 @@ console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toF
   assert.ok(passes(a, 'inuse') && !passes(a, 'free'))
   assert.ok(passes(b, 'free') && !passes(b, 'inuse'))
 }
+// #325: a drive the controller has failed reads so, is failing and is drawn as an error, never "missing".
+{
+  const d = (id, controller) => ({ id, kind: 'drive', label: id, health: 'unknown', metrics: [{ label: 'node', value: 'forge1' }, ...(controller ? [{ label: 'controller', value: controller }] : [])] })
+  const [ok, bad, ub] = build([d('drive:drive:sda', 'jbod'), d('drive:drive:sdb', 'failed'), d('drive:drive:sdc', 'unconfigured bad')]).records
+  assert.equal(ok.controllerFailed, false)
+  assert.ok(bad.controllerFailed && ub.controllerFailed)
+  assert.ok(passes(bad, 'failing') && !passes(ok, 'failing'))
+  assert.equal(heat(bad, 'health').text, 'Failed by the controller')
+  assert.equal(heat(bad, 'health').css, 'var(--error)')
+  assert.equal(totals([ok, bad, ub]).failing, 2)
+}
 console.log('PASS')

@@ -32,3 +32,10 @@ const c = commonActions([{ actions: [a('locate-on', 'Locate'), a('fleet-join', '
 assert.deepEqual(c.map((x) => [x.id, x.enabled, x.count]), [['locate-on', true, 2], ['fleet-join', true, 1]])
 assert.deepEqual(commonActions([]), [])
 console.log('PASS driveactions.test.mjs')
+
+// A drive the controller has failed (#325): Set good and Set JBOD first, in their own group, not Destructive.
+const failed = groupActions([...feed, a('controller-good', 'Set good', true), a('controller-jbod', 'Set JBOD', true, false)], { format: { enabled: true } })
+assert.equal(failed[0].name, 'Controller')
+assert.deepEqual(failed[0].items.map((i) => [i.label, i.enabled, i.danger]), [['Set good', true, false], ['Set JBOD', false, false]])
+assert.equal(failed[0].items[0].action.id, 'controller-good', 'runs the feed action')
+assert.ok(!failed.at(-1).items.some((i) => i.key.startsWith('controller')))

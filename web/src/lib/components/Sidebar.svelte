@@ -14,7 +14,7 @@
   // A project's page is under the Projects item, though its path is the API's.
   const isActive = (href) =>
     current === href ||
-    (href !== '#/' && current.startsWith(href) && !(href === '#/drives' && current.startsWith('#/drives/format'))) ||
+    (href !== '#/' && current.startsWith(href) && !(href === '#/drives' && /^#\/drives\/(format|controllers)/.test(current))) ||
     (href === '#/projects' && current.startsWith('#/k8s/ns/'))
 </script>
 
