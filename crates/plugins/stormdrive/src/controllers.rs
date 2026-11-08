@@ -99,7 +99,7 @@ mod tests {
             "pending_mode": null,
             "drives": [
                 {"device_id": 0, "seq": 1, "enclosure": 32, "slot": 0, "state": "jbod", "state_code": 64, "media_errors": 0,
-                 "other_errors": 0, "predictive_failures": 0, "size_bytes": 480103981056, "drive": "a1", "name": "sda"},
+                 "other_errors": 0, "predictive_failures": 0, "size_bytes": 480_103_981_056_u64, "drive": "a1", "name": "sda"},
                 {"device_id": 1, "seq": 4, "enclosure": 32, "slot": 1, "state": "failed", "state_code": 17, "media_errors": 0,
                  "other_errors": 2, "predictive_failures": 0, "size_bytes": 0, "drive": "b2", "name": "sdb"},
                 {"device_id": 7, "seq": 2, "enclosure": 32, "slot": 7, "state": "unconfigured_bad", "state_code": 1,

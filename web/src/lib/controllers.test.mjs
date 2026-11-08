@@ -54,8 +54,8 @@ assert.equal(stateWhy(sdb, 'good', { outOfFleet: false, use: { in_use: false } }
 
 // Paths: by the drive when it has one (confirmed by its serial), else the controller's; force is sent.
 assert.equal(statePath(forge1, sdb), '/api/plugins/drive/proxy/api/v1/drives/b2/controller-state')
-assert.equal(statePath({ ...forge1, proxy: '/api/plugins/drive/node/storm-b/proxy' }, forge1.drives[2]), '/api/plugins/drive/node/storm-b/proxy/api/v1/controllers/0000%3A03%3A00.0/drives/7/state')
-assert.equal(personalityPath(forge1), '/api/plugins/drive/proxy/api/v1/controllers/0000%3A03%3A00.0/personality')
+assert.equal(statePath({ ...forge1, proxy: '/api/plugins/drive/node/storm-b/proxy' }, forge1.drives[2]), '/api/plugins/drive/node/storm-b/proxy/api/v1/controllers/0000:03:00.0/drives/7/state')
+assert.equal(personalityPath(forge1), '/api/plugins/drive/proxy/api/v1/controllers/0000:03:00.0/personality')
 assert.deepEqual(stateBody('good'), { state: 'good', force: true })
 
 // By node, RAID first; totals.

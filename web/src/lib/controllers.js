@@ -96,16 +96,20 @@ export function stateWhy(disk, target, row, guard) {
   return ''
 }
 
+/// A controller's key in a path: a PCIe address keeps its colons, so the path is
+/// the one the feed's own actions use and the guard finds the card by it.
+const keyPart = (k) => encodeURIComponent(k).replace(/%3A/gi, ':')
+
 /// Where a disk's state change goes: by the drive when it has a record (so
 /// the guard confirms it by its serial), else the controller's own route.
 export function statePath(c, disk) {
   return disk.drive
     ? `${c.proxy}/api/v1/drives/${encodeURIComponent(disk.drive)}/controller-state`
-    : `${c.proxy}/api/v1/controllers/${encodeURIComponent(c.key)}/drives/${disk.device_id}/state`
+    : `${c.proxy}/api/v1/controllers/${keyPart(c.key)}/drives/${disk.device_id}/state`
 }
 
 export function personalityPath(c) {
-  return `${c.proxy}/api/v1/controllers/${encodeURIComponent(c.key)}/personality`
+  return `${c.proxy}/api/v1/controllers/${keyPart(c.key)}/personality`
 }
 
 /// The body Set good / Set JBOD sends: force, because from Failed stormdrive
