@@ -25,6 +25,7 @@
 //! is used, free, outside a slab and promised, the slabs on it and any
 //! drain — see [`usage`].
 
+pub mod controllers;
 pub mod firmware;
 pub mod format;
 pub mod inuse;
@@ -71,6 +72,8 @@ struct Inner {
     formats: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
     /// The same for the firmware page (#317).
     firmware: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
+    /// The same for the controllers page (#325).
+    controllers: tokio::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
     /// This node's engine, for the RAID sets a firmware update must not take
     /// two members of at once (#317). `None` with no engine configured.
     engine: Option<Arc<console_core::engine::Engine>>,
@@ -174,6 +177,7 @@ impl DrivesPlugin {
                 usage: tokio::sync::Mutex::new(None),
                 formats: tokio::sync::Mutex::new(None),
                 firmware: tokio::sync::Mutex::new(None),
+                controllers: tokio::sync::Mutex::new(None),
                 engine: None,
             }),
         }
@@ -210,6 +214,7 @@ impl ConsolePlugin for DrivesPlugin {
             .admin()
             .item_at("Drives", "#/drives", 10)
             .item_at("Format", "#/drives/format", 15)
+            .item_at("Controllers", "#/drives/controllers", 17)
             .item_at("Shelves", "#/drives?group=shelf", 20)
             .item_at("Pools", "#/drives?group=pool", 30)]
     }
@@ -228,6 +233,7 @@ impl ConsolePlugin for DrivesPlugin {
                 put(firmware_upload).layer(DefaultBodyLimit::max(FIRMWARE_MAX)),
             )
             .route("/replace", post(replace_free))
+            .route("/controllers", get(controllers_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -555,6 +561,36 @@ async fn format_start(
     *inner.formats.lock().await = None;
     let code = if all_ok { StatusCode::OK } else { StatusCode::MULTI_STATUS };
     (code, Json(json!({"results": results}))).into_response()
+}
+
+/// `GET /controllers` (#325): every node's RAID controllers, each disk joined
+/// to its drive row, read on demand and reused for a few seconds. The verbs
+/// go through each node's proxy, where the storage guard holds them (#82).
+async fn controllers_route(State(inner): State<Arc<Inner>>) -> Response {
+    let mut cache = inner.controllers.lock().await;
+    if let Some((at, v)) = cache.as_ref() {
+        if at.elapsed() < controllers::FRESH {
+            return Json(v.clone()).into_response();
+        }
+    }
+    let targets = targets(&inner).await;
+    let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| read_json(&inner.dial, base, "/api/v1/controllers"))).await;
+    let mut list = Vec::new();
+    let mut nodes = Vec::new();
+    for (i, ((node, _, pre), answer)) in targets.iter().zip(answers).enumerate() {
+        let proxy = if i == 0 { proxy_base(None) } else { proxy_base(Some(node)) };
+        match answer {
+            Ok(body) => {
+                let c = controllers::reduce(&body, node, pre, &proxy);
+                nodes.push(json!({"node": node, "ok": true, "controllers": c.len()}));
+                list.extend(c);
+            }
+            Err(e) => nodes.push(controllers::unread(node, &e)),
+        }
+    }
+    let v = json!({"controllers": list, "nodes": nodes});
+    *cache = Some((std::time::Instant::now(), v.clone()));
+    Json(v).into_response()
 }
 
 /// The largest firmware image the console passes on: stormdrive's own cap

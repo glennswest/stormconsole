@@ -93,11 +93,20 @@ pub struct Guarded {
     /// The object's own id from the path, the fallback for what to type
     /// when no component in the feed carries this action.
     pub target: String,
+    /// Whether it destroys data. A RAID controller's verbs (#325) change
+    /// what the controller does with a disk and are held as tightly, but say
+    /// so rather than "this destroys data".
+    pub destroys: bool,
 }
 
 impl Guarded {
     fn new(resource: &str, verb: &str, what: impl Into<String>, target: impl Into<String>) -> Self {
-        Self { resource: resource.into(), verb: verb.into(), what: what.into(), target: target.into() }
+        Self { resource: resource.into(), verb: verb.into(), what: what.into(), target: target.into(), destroys: true }
+    }
+
+    fn keeps_data(mut self) -> Self {
+        self.destroys = false;
+        self
     }
 }
 
@@ -200,6 +209,19 @@ fn drive(method: &Method, inner: &str) -> Option<Guarded> {
         ["api", "v1", "firmware"] => op("update drives' firmware", "firmware"),
         ["api", "v1", "firmware", "images", name] => op("store a firmware image", name),
         ["api", "v1", "worker", "jobs"] => op("start a drive worker job (format, sanitize)", "jobs"),
+        // A RAID controller's own verbs (#325, stormdrive#132): drive
+        // operations, a storage-admin's, though they destroy nothing. A
+        // controller is confirmed by its card (the target is its key, under
+        // which the card's Switch to HBA sits), a drive by its serial.
+        ["api", "v1", "drives", id, "controller-state", ..] => {
+            op("change what the RAID controller does with a drive (set good or JBOD)", id).map(Guarded::keeps_data)
+        }
+        ["api", "v1", "controllers", key, "personality", ..] => {
+            op("switch a RAID controller's personality (HBA): a reboot of the node applies it", key).map(Guarded::keeps_data)
+        }
+        ["api", "v1", "controllers", key, "drives", _, "state"] => {
+            op("change what the RAID controller does with one of its disks (set good or JBOD)", key).map(Guarded::keeps_data)
+        }
         _ => None,
     }
 }
@@ -440,6 +462,23 @@ mod tests {
         assert!(c(Method::POST, "/api/plugins/drive/node/b/proxy/api/v1/drives/7f3a/firmware").is_some());
         assert!(c(Method::PUT, "/api/plugins/drive/proxy/api/v1/firmware/images/x.bin").is_some());
         assert!(c(Method::POST, "/api/plugins/drive/proxy/api/v1/drives/7f3a/drain").is_none(), "a drain moves, it destroys nothing");
+    }
+
+    #[test]
+    fn a_controllers_verbs_are_drive_operations_that_keep_data() {
+        let g = c(Method::POST, "/api/plugins/drive/proxy/api/v1/controllers/0000:03:00.0/personality").unwrap();
+        assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("driveoperations", "create", "0000:03:00.0"));
+        assert!(!g.destroys);
+        assert!(g.what.contains("reboot"));
+        assert!(c(Method::POST, "/api/plugins/drive/node/b/proxy/api/v1/controllers/k/personality/hba").is_some(), "the feed's");
+        let d = c(Method::POST, "/api/plugins/drive/proxy/api/v1/drives/7f3a/controller-state").unwrap();
+        assert_eq!(d.target, "7f3a");
+        assert!(!d.destroys);
+        assert!(c(Method::POST, "/api/plugins/drive/proxy/api/v1/drives/7f3a/controller-state/good").is_some());
+        let o = c(Method::POST, "/api/plugins/drive/proxy/api/v1/controllers/k/drives/5/state").unwrap();
+        assert_eq!(o.target, "k", "confirmed by the controller's card");
+        assert!(c(Method::GET, "/api/plugins/drive/proxy/api/v1/controllers").is_none());
+        assert!(c(Method::POST, "/api/plugins/drive/proxy/api/v1/drives/7f3a/format/4096").unwrap().destroys);
     }
 
     #[test]
