@@ -2521,6 +2521,23 @@ drive), stormdrive#126 (RAID-set gate, image vendor/model) and #127 (record a pr
 - Not seen: forge1, a real stormdrive updating firmware, a real engine's live replace (stormblock's own tests cover #256), a real
   drain. Upstream: stormblock#563 (system drive, drain onto a named drive), stormdrive#126 (set gate, image model), #127 (record)
 
+### Controllers: Switch to HBA and Set good (#325)
+Owner 2026-11-08: "Can wire it into the ui." Read from stormdrive v0.43.0 (`raidctl.rs`, `api/mod.rs`, `components.rs`):
+`GET /api/v1/controllers` → `{controllers:[{key, scsi_host, pcie_addr, driver, model, serial, firmware, virtual_disks,
+jbod_enabled, mode raid|hba|jbod|unknown, mode_basis, pending_mode, drives:[PdStatus], findings, error, perccli {Ok}|{Err}}],
+findings}`; `raid_mode` while RAID and HBA not asked for, `reboot_pending` once it is, `drive_failed` per failed/bad/offline
+disk. `POST …/controllers/{key}/personality {"mode":"HBA"}` → `{reboot_required}`, 501 `tool_missing` without perccli, 409 with
+virtual disks. `POST /api/v1/drives/{id}/controller-state {"state":"good"|"jbod","force":true}`, or
+`/controllers/{key}/drives/{device}/state` for a disk with no inventory record; 409 with the reason (`plan_state`). A drive's
+feed row has a `controller` metric and `controller-good`/`controller-jbod`; the HBA card has `personality-hba`.
+- [ ] storage guard: the three controller verbs are drive operations (storage-admin, as the viewer), worded as not destroying data
+- [ ] drive plugin `GET /controllers`: every node's, each disk joined to its drive row, an older stormdrive said
+- [ ] `controllers.js` (pure) + test: mode, banner, each disk's state in words, Switch/Set good and why not
+- [ ] `#/drives/controllers` (Hardware → Controllers); the RAID-mode banner on the Drives pages; "Failed by the controller" on
+      the map, list and picked drive; a Controller group in the Actions menu
+- [ ] `deploy/verify-controllers.sh`: stand-in stormdrive in v0.43.0's shapes (forge1: PERC H730 in RAID mode, sdb–sdd failed),
+      real apiserver with the storage roles, Chromium; docs, changelog, dist; image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
