@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-10 — docs: what stormcos ships for the console (#290)
+- **docs:** `docs/rbac.md` no longer says stormcos ships the console's role, ServiceAccount or token: applying `deploy/rbac/stormconsole.yaml` is stormcos#76 step 2, still open, and today stormcos mints only `kube-system/stormconsole-admin`. The sign-in it must come with is stormcos#802, not stormcos#256.
+- **docs:** #76's blade rerun waits on a pvetest machine on 12.62 or later (stormcentral#1232), not on stormcos#271, which closed.
+
 ### 2026-11-08 — RAID controllers: Switch to HBA and Set good (#325)
 - **feat:** **Controllers** (`#/drives/controllers`, Hardware → Controllers): each node's RAID controllers from stormdrive v0.43.0 (stormdrive#132) — model, firmware, mode and how it is known, what is pending, perccli, findings, and each disk as the controller sees it. New route `GET /api/plugins/drive/controllers`; an older stormdrive is said as that.
 - **feat:** "HBA mode is required" on every Drives page while a controller is in RAID mode; once HBA is asked for, that a reboot applies it.

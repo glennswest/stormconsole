@@ -1,7 +1,10 @@
 # The console's apiserver role
 
-The role stormcos ships for the console (stormcos#76 step 2), ready to apply in
-[`deploy/rbac/stormconsole.yaml`](../deploy/rbac/stormconsole.yaml). The owner decided its shape on stormcos#203:
+The role the console needs at the apiserver, ready to apply in
+[`deploy/rbac/stormconsole.yaml`](../deploy/rbac/stormconsole.yaml). **stormcos does not ship it yet**: applying it,
+with its ServiceAccount and a token, is stormcos#76 step 2 (open). Today stormcos mints only
+`kube-system/stormconsole-admin` for the console, and its one `stormconsole` subject is `User stormconsole` in
+`89-vmimages-console.yaml` (the client pair for vmimages). The owner decided its shape on stormcos#203:
 not read-only and not cluster-admin, but "a role that may write the settings of the components it manages", with
 its writes "listed resource by resource".
 
@@ -96,7 +99,7 @@ self-service projects for every user, not only the console.
 
 The owner decided that users' keys live in a system namespace only the console writes. So:
 
-- **`storm-users`:** stormcos ships this namespace, so the console needs no cluster-wide create on namespaces. Role
+- **`storm-users`:** this file creates the namespace (stormcos applies it under #76), so the console needs no cluster-wide create on namespaces. Role
   `stormconsole-keys`: `secrets` get, list, create, update, delete.
 - **`default`:** role `stormconsole-keys-migration`: `secrets` get, list, delete, for the one-time move. Drop it and
   its binding once every node has run it.
@@ -106,8 +109,13 @@ viewer.
 
 ## For stormcos
 
-- **Subject:** ServiceAccount `kube-system/stormconsole`, whose token stormcert mints and `[kubernetes] token_file`
-  reads (#33). `89-vmimages-console.yaml` binds `User stormconsole`, the client pair for vmimages, and is separate.
+What stormcos has to do under stormcos#76 step 2. None of it is there yet: no ServiceAccount, no binding, no token,
+and the console's config in the registry has no `[kubernetes]` section.
+
+- **Subject:** create ServiceAccount `kube-system/stormconsole` (this file does), have stormcert mint its token, and
+  point `[kubernetes] token_file` (and `ca_file`) at it (#33). `89-vmimages-console.yaml` binds `User stormconsole`,
+  the client pair for vmimages, and is separate. The `kube-system/stormconsole-admin` stormcos mints today is not
+  this role.
 - **Order:** a console that today reaches the apiserver as anonymous-admin can do everything. Bind this role together
-  with a way to sign in with an identity (stormcos#256), or the actions under "What needs a signed-in identity" stop
+  with a way to sign in with an identity (stormcos#802, the admin login minted at install; #266 here), or the actions under "What needs a signed-in identity" stop
   on a stock node with no way to get them back there.

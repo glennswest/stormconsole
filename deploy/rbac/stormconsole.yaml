@@ -10,7 +10,7 @@ metadata:
   name: stormconsole
   namespace: kube-system
 ---
-# The home of users' SSH keys (stormconsole#42). stormcos ships it, so the console needs no
+# The home of users' SSH keys (stormconsole#42). Created here, with the role, so the console needs no
 # cluster-wide create on namespaces.
 apiVersion: v1
 kind: Namespace

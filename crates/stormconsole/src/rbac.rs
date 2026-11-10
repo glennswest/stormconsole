@@ -1,5 +1,5 @@
 //! The console's apiserver role against the code (#78). `deploy/rbac/stormconsole.yaml` is what
-//! stormcos ships; these fail when a new watched kind or a new write is not in it, or when the
+//! stormcos is to apply (stormcos#76 step 2, not shipped yet); these fail when a new watched kind or a new write is not in it, or when the
 //! role grows past "the settings of the components it manages" (the owner, stormcos#203).
 
 use serde::Deserialize;
@@ -134,7 +134,7 @@ fn the_keys_home_is_namespaced_and_the_migration_can_be_dropped() {
     assert_eq!(ns("stormconsole-keys-migration"), "default");
     let migrate = rules("Role", "stormconsole-keys-migration");
     assert!(!allows(&migrate, "", "secrets", "create"), "it only takes them out");
-    assert!(doc.iter().any(|d| d["kind"] == "Namespace" && d["metadata"]["name"] == "storm-users"), "stormcos ships it");
+    assert!(doc.iter().any(|d| d["kind"] == "Namespace" && d["metadata"]["name"] == "storm-users"), "the role file creates it");
 }
 
 #[test]

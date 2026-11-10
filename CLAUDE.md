@@ -1576,8 +1576,9 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       `verify-vm-policy.sh`, default `sc-build`). The suite reads #167's depth too
 - [ ] rerun on a pvetest machine. stormcos#271 closed, but run 684d6ba765 (2026-11-06) failed the same way on
       pvetest1, now on 12.58.4 (console 701155f, which has the fix; 12.61's console 5c4199c does not). stormcentral
-      refuses further runs there. **Blocked on stormcos#805** (no forge peer on 12.58.x) and **stormcentral#512**
-      (images never seal on pvetest1/2, all components). Then: `stormcentral test run stormconsole blade --tag
+      refused further runs there. stormcos#805 is closed; test images start from the first release carrying
+      stormblock-registry#150's fix (12.62, stormcentral#1232), so install that on a pvetest machine (stormcentral#512
+      still open). Then: `stormcentral test run stormconsole blade --tag
       pvetest1` on a release carrying 379ebd7 or later, record each answer on #76, file differences, close #76
 
 ### The ring's hold-off from the end of the work (#154)
@@ -2135,7 +2136,7 @@ placement), its `parent` chain, `/digest` (its `seal`: `sha256`, `verdict`, `che
   6 s digest: answered at once as being read, three opens one read. Also `verify-pod-page.sh`, default `sc-build`
 - Not seen: a real kubelet's annotations (written here as `pod_manager.rs` writes them), a mirror pod's
   `/pallets` mount (no ublk on a build VM; `select` has a unit test), a cached-digest miss on a real large
-  image, a node with two engines' worth of clones. Blade reruns wait on stormcos#271 (#76)
+  image, a node with two engines' worth of clones. Blade reruns wait on a pvetest machine on 12.62 or later (stormcentral#1232, #76)
 - Upstream: stormblock#535 (the seal record and made-at on the volume). A VM disk's clone time waits on it
 
 ### Disk buses are the ones stormvm takes (#38) ✅ 2026-11-05
@@ -2213,7 +2214,7 @@ transparently. Its #56 is still open for `kubectl` proof, not for the route.
   none of those reaching the kubelet; another project's pod 404. The environment resolved, a Secret's value nowhere in the answer or page. Audit: who
   opened one, no typing or command. Screenshots read: they found the tabs' card style and the disabled box
 - Not seen: a real kubelet (needs PID 1's runtime or root), so rustkube-node's own WebSocket path behind the proxy is from its docs and code.
-  The first run on a node is the proof; #76's blade suite is blocked on stormcos#271. rustkube's proxy sends the upgrade as a POST (`streaming.rs`), and
+  The first run on a node is the proof; #76's blade suite waits on a pvetest machine on 12.62 or later (stormcos#271 closed; stormcentral#1232). rustkube's proxy sends the upgrade as a POST (`streaming.rs`), and
   the kubelet's route takes it; a stand-in accepting that does not prove the real one's handshake on POST
 - A 12.61 node's console has no kubernetes identity (auth off or the node bearer), so the Terminal says so there until `install_token_file` (stormcos#256) or
   users with `kube_token`: the same open question as #165
