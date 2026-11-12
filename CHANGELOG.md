@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-12 — docs: refresh from the code since 2026-11-05
+- **docs:** README status and version (0.21.0 → 0.32.0), the same in `docs/architecture.md`; the `[flowsdn]` config row no longer lists `release_manifest` (it is `[build] release_manifest` since #285); CLAUDE.md's #83 line says so. Config keys and defaults re-checked against `config.rs`: all match.
+
 ### 2026-11-10 — docs: what stormcos ships for the console (#290)
 - **docs:** `docs/rbac.md` no longer says stormcos ships the console's role, ServiceAccount or token: applying `deploy/rbac/stormconsole.yaml` is stormcos#76 step 2, still open, and today stormcos mints only `kube-system/stormconsole-admin`. The sign-in it must come with is stormcos#802, not stormcos#256.
 - **docs:** #76's blade rerun waits on a pvetest machine on 12.62 or later (stormcentral#1232), not on stormcos#271, which closed.

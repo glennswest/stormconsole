@@ -9,7 +9,7 @@ component's own API. Every domain is a **plugin**; the host knows none of
 them. The orchestrator is rustkube (+ rustkube-node) only.
 
 It is a view of real running nodes, never an installer (stormcos
-`docs/CLUSTER.md`). Version **0.21.0**. Design: [docs/architecture.md](docs/architecture.md).
+`docs/CLUSTER.md`). Version **0.32.0**. Design: [docs/architecture.md](docs/architecture.md).
 In eleven slides: [docs/presentation.md](docs/presentation.md) (Marp —
 `npx @marp-team/marp-cli docs/presentation.md`).
 
@@ -232,7 +232,7 @@ Full example: [config/config.toml](config/config.toml).
 | `[stormcluster] enabled / url / token_file` | on / `http://127.0.0.1:9102` (`https://` when `ca_file` is set) / — | stormcluster's `token_file`, held server-side and sent with the reads and the dry run (a client pair does the same job) |
 | `[stormcluster] ca_file / cert_file / key_file` | — | :9102 is TLS only (stormcluster#5): trust only this CA, present the console's client pair; re-read when they change; a bad file is the card's error; half a pair, or certificates with an `http://` url, exit 78. The node page reads any node's :9102 with these too (#68) |
 | `[build] release_manifest` | `/etc/stormcos/release/manifest.json` | what this node's build carries (#285): one image serves every build, and only the pod network differs. This manifest says which; where it cannot be read, this node's beacon's release, the agent's DaemonSet, the CRDs served, an agent answering. Only that network's pages show. |
-| `[flowsdn] enabled / url` | on / `http://127.0.0.1:9878` | the agent's `http-listen` (loopback only, so each node's console reads its own); the manifest names the edition — `edition`/`network`, else its components, else its version (`<n>-flowsdn` is flowsdn, plain `<n>` cilium); where it cannot be read, this node's beacon's release says the same (stormcos does not bind the release volume into the console yet). A cilium node asks no agent and shows nothing; with no word either way, the plugin shows once an agent answers |
+| `[flowsdn] enabled / url` | on / `http://127.0.0.1:9878` | the agent's `http-listen` (loopback only, so each node's console reads its own). Which network the node runs is `[build]`'s to say (#285); a cilium node asks no agent and shows nothing, and with no word either way the plugin shows once an agent answers |
 | `[health] enabled / summary_file / history_dir` | on / `/run/stormpump/health.json` / `/system-data/history/api` | PID 1's API health summary, read every 5 s and said stale when not rewritten for 30 s; when it cannot be read, each stormd at `[fleet] stormd_host` on `stormd_ports` is asked instead (which misses PID 1's own probes, the engine's first). On a node both need stormcos to bind them into the console's unit (stormcos#525) |
 | `[history] enabled / system_data` | on / `/run/stormblock/system-data` | the node's record of itself, served read-only at `/api/v1/history` (#121). The console's `/run/stormblock` bind shows it on a node (`/system-data` is the same volume); a diskless boot has none, and says so |
 | `[node_tls] ca_file / cert_file / key_file / require` | — / — / — / false | each stormd's and stormdrive's TLS (#49, #130; there is no separate `[fleet]` set): HTTPS first, the pair presented over TLS only, an untrusted certificate never read, plain only while `require` is off |
@@ -445,6 +445,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
 
 ## Status
 
-0.21.0. Every page above is live-verified against the real upstream (or,
+0.32.0. Every page above is live-verified against the real upstream (or,
 for the drives rack, 1,600 stand-in drives over real transport); see
 [CHANGELOG.md](CHANGELOG.md) and the work plan in [CLAUDE.md](CLAUDE.md).

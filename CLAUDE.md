@@ -1336,7 +1336,7 @@ only, so each node's console shows its own agent. No Hubble (flowsdn#293).
 - [x] `#/flowsdn`: Endpoints (node/namespace filters, ✓/· marks), IPAM,
       Health (per module), Config, Services, Routes, State, Flows (says
       flowsdn#293)
-- [x] Config `[flowsdn] enabled/url/release_manifest`; tests; docs,
+- [x] Config `[flowsdn] enabled/url` (the manifest moved to `[build] release_manifest`, #285); tests; docs,
       changelog; `deploy/verify-flowsdn.sh` (stand-in agent in the agent's
       shapes and transport, a real console, Chromium); release; golden
 - [x] Since the plan: flowsdn#379's `GET /v1/policy/verdicts`, the decisions the endpoint programs counted, on the Flows tab until there are flows; a viewer in one project checked live
