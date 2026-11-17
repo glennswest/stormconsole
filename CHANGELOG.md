@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-17 — Login with user and password; Admin → Users (#266)
+- **feat:** users kept on the apiserver (`[api] user_namespace = "storm-users"`, stormcos#802), in sc#27's shape: ServiceAccount `<name>` labelled `storm.io/user`, Secret `<name>-password` (argon2id), ClusterRoleBindings `storm-user:<name>:<role>`. Signing in verifies the hash and mints a token for the account, so the person acts upstream as themselves. `cluster-admin` (admin) passes every check; a `storage-admin` passes the write gate for destructive storage only, which the storage guard asks about as them.
+- **feat:** `[api] admin_password_file` seeds `admin-password` from the install's hash (stormpump#210): made when absent, replaced only when this node seeded it and nobody changed it since (`storm.io/seeded-by`, `storm.io/seeded-hash`). `[api] node_name` names the node.
+- **feat:** **Admin → Users** (`#/users`, `/api/v1/users`): list, create, disable, reset a password, set roles, delete — done as the signed-in administrator. Audited as Users.
+- **feat:** a 30 s sweep signs out users deleted or disabled anywhere and applies changed roles; with the apiserver down a user's sign-in answers 503 and the node's bearer still gets in.
+- **feat(rbac):** the console's rights for it in `deploy/rbac/stormconsole.yaml` (Role `stormconsole-users`: serviceaccounts get, serviceaccounts/token create; clusterrolebindings get/list), listed in `docs/rbac.md`.
+- **fix:** clippy's four in console-core (#341, part).
+- **test:** `deploy/verify-users.sh` and the `users` browser walk.
+
 ### 2026-11-12 — docs: refresh from the code since 2026-11-05
 - **docs:** README status and version (0.21.0 → 0.32.0), the same in `docs/architecture.md`; the `[flowsdn]` config row no longer lists `release_manifest` (it is `[build] release_manifest` since #285); CLAUDE.md's #83 line says so. Config keys and defaults re-checked against `config.rs`: all match.
 

@@ -120,6 +120,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-history.sh` | the node history API and page (#121) — system-data written by the real writers (stormblock's `/init` block, stormpump's `Writer` and crash collection, stormdrive), a drive's past as a fixture in stormdrive's shape, real consoles (a token, a diskless node, a failed mount), Chromium |
 | `verify-client-cert.sh` | TLS on :9094 and forge-CA client certificates (#48, #127): openssl node, forge and stranger CAs; plain HTTP health only (308 for a GET, 403 for a POST); a viewer certificate reads the logs and is refused a write; an operator's write passes; another CA's, an expired, an unmapped and no certificate each 401 saying why; the token still admin; the CA removed and restored and the serving pair renewed with no restart; contradictions exit 78 |
 | `verify-logs-full.sh` | the log ring on a full disk (#128): a real console's ring on an 8 MiB tmpfs in an unprivileged user+mount namespace — a flood several times the volume stays under it, a filler file forces ENOSPC and the ring reopens (reads never say "Previous I/O error"), a restart on a full volume serves; bytes per entry on an ordinary disk |
+| `verify-users.sh` | users kept on the apiserver (#266): a real rustkube release and fastetcd with stormcos's `storm-users`, admin bound to `cluster-admin` and the storage roles; the console on exactly `deploy/rbac/stormconsole.yaml` — admin-password seeded from the install's hash, admin signs in as `storm-users/admin` and passes every guard, users made in sc#27's shape, a storage-admin passes the storage guard and nothing else, a hand-written (sc) user signs in, disable/password/roles/delete in effect at once and on another console within the sweep, reseeding by the rule, the apiserver down (503, the node bearer still in), Chromium on the login page and Admin → Users |
 | `verify-install-token.sh` | `[api] install_token_file` (#66): one `token-auth.csv` in stormpump's format read by a real rustkube apiserver (`--token-auth-file`) and the console — no file → no sign-in; written → sign-in and bearer as `system:admin`, admin; a project made through the console requested by `system:admin`, not the console's credential; rewritten → the old session ends, the new token works; removed → refused; Chromium on the login page's token mode, alone and beside a user |
 | `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
 | `verify-storage-token.sh` | stormstorage's write token through the proxy (#53): a real stormstorage with `[api] api_token` — with `token_file` the feed's actions pass its check, without it (or with the browser sending the token) 401, an unreadable file warned, a DELETE left to the storage guard |
@@ -205,6 +206,9 @@ Full example: [config/config.toml](config/config.toml).
 | `[[api.client_roles]]` `cn` \| `o`, `role` | — | a verified certificate's role by its subject CN or an O (exactly one), first match wins: `viewer` \| `operator` \| `admin`. A certificate no rule names is nobody |
 | `[api] auth_token_file` | — | the same credential from a file — a per-node token stormcos mints at boot (stormcos#200) — re-read when it changes; **while it is missing or empty the console is closed** (everything but the open list 401, the reason logged once); not with `auth_token` (exit 78) |
 | `[api] install_token_file` | — | the **install-time API token** (#66): storminstall's `apiToken`, which stormpump writes at first boot as the apiserver's `--token-auth-file` (`/state/config/token-auth.csv`, `<token>,system:admin,system:admin,"system:masters"`; a bare token line is read too). Signing in with it, or sending it as a bearer, is an administrator named by the file's user who acts **upstream as that token**. Re-read when it changes: a rewrite ends the sessions opened with the old token, a missing file is no such sign-in. Turns authentication on |
+| `[api] user_namespace` | — | users kept on the apiserver in this namespace (stormcos: `storm-users`, #266): sign-in mints a token for the user's ServiceAccount; adds Admin → Users. Needs `[kubernetes]`. Turns authentication on |
+| `[api] admin_password_file` | — | the install's admin hash (`/etc/stormconsole/install/admin-password.hash`, stormpump#210), seeded into Secret `admin-password` (made when absent; replaced only when this node seeded it and it is unchanged since); tried at start and every minute; a missing file changes nothing. Needs `user_namespace` (exit 78) |
+| `[api] node_name` | the host name | the name that marks `admin-password` as this node's seeding |
 | `[[api.users]]` | none | `name`; `password_hash` (argon2 PHC; `password` plaintext still read, warned about); `roles` (`viewer` default, `operator`, `admin`); `ssh_keys`; `kube_token` (the user's own rustkube identity) |
 | `[kubernetes] enabled / server / token / insecure_skip_tls_verify` | on / `https://127.0.0.1:6443` / — / false | without `ca_file` the local default is unverified (warned at start, said on the card); a configured server is verified against the system roots unless set |
 | `[kubernetes] token_file` | — | the console's bearer from a file (stormcert's ServiceAccount token), re-read when it changes; not with `token` |
@@ -262,7 +266,7 @@ Started and silent (its stormd up, the service not answering) stays an error.
 
 ## Authentication and roles
 
-Off until `[api] auth_token`, `[api] auth_token_file`, `[api] install_token_file`, `[api] client_ca_file` or a user is configured — then every request
+Off until `[api] auth_token`, `[api] auth_token_file`, `[api] install_token_file`, `[api] client_ca_file`, `[api] user_namespace` or a user is configured — then every request
 not on the open list (`/healthz`, `/readyz`, `/api/version`, `/api/summary`,
 `/api/v1/auth/*`, static assets) needs a session, the bearer or a client certificate a rule names. With it
 off, everybody who reaches the port is an administrator, and the console
@@ -275,6 +279,31 @@ warns about that on every start.
   takes (`sign_in`: `password` for named users, `token` for the install or
   node token), and the login page offers them: with no named users it opens
   on the token alone.
+- **Users kept on the apiserver** (#266, stormcos#802): with `[api] user_namespace =
+  "storm-users"`, a user is ServiceAccount `storm-users/<name>` labelled `storm.io/user`, its
+  password the argon2id PHC in Secret `<name>-password`, its roles the ClusterRoles bound to it
+  (`storm-user:<name>:<role>`) — sc#27's shape, so `sc user` and the console see the same users.
+  Signing in verifies the hash, then mints a 24 h token for the account (a TokenRequest): the
+  session **acts upstream as that person**, so the apiserver's RBAC decides everything they do.
+  `admin` is stormcos's account, bound to `cluster-admin`; its password comes from the install
+  (`[api] admin_password_file`, stormpump#210), seeded into `admin-password` when there is none and
+  replaced only when this node seeded it and nobody has changed it since (a reinstall's printed
+  password works, a joining node never overwrites the cluster's, an admin's change stays).
+  Console roles follow the ClusterRoles: `cluster-admin` is `admin` (every check passes, typed
+  words stay); `edit`/`operator` write; **`storage-admin` passes the write gate for destructive
+  storage only**, which the storage guard then asks the apiserver about as them; anything else
+  reads. Every 30 s each console asks whether its signed-in users still are: a user deleted or
+  disabled anywhere (another console, `sc`) is signed out, and a changed role is in effect. With
+  the apiserver down a user's sign-in answers 503 saying so; the node's bearer (#102) still gets in.
+- **Admin → Users** (`#/users`, admins only): list, create, disable/enable, reset a password, set
+  roles (from the cluster's ClusterRoles, `storage-admin` first) and delete (the name typed). Every
+  change is made **as the signed-in administrator**, never on the console's credential, so RBAC
+  checks it as it checks `sc user`; a session with no apiserver identity (the node's bearer, a
+  certificate) is told to sign in as admin. `admin` is not deleted, disabled or re-roled here. A
+  password reset or a disable ends the user's sessions on this console at once, elsewhere within
+  the sweep. API: `GET|POST /api/v1/users`, `DELETE /api/v1/users/{name}`,
+  `PUT /api/v1/users/{name}/password|disabled|roles`; audited as **Users**. The console's rights
+  for this are in `docs/rbac.md`.
 - **The install-time API token** (#66, storminstall#1): the token
   `storminstall wait` prints with the console's URL signs in with no user
   name. The session is `system:admin` (the file's user), an `admin`, and

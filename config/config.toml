@@ -39,6 +39,13 @@ bind = "0.0.0.0:9094"
 # [[api.client_roles]]               # a verified certificate's role, by subject
 # cn = "stormcentral"                # cn, or o = "…" (exactly one)
 # role = "viewer"                    # viewer | operator | admin
+# user_namespace = "storm-users"     # users kept on the apiserver (#266): a
+#                                    # ServiceAccount, a <name>-password Secret,
+#                                    # ClusterRoleBindings; sign-in acts as them
+# admin_password_file = "/etc/stormconsole/install/admin-password.hash"
+#                                    # the install's admin password, seeded into
+#                                    # storm-users/admin-password (stormcos#802)
+# node_name = "node1"                # marks that seeding as this node's (default: host name)
 # [[api.users]]                      # any user or token being set turns auth on
 # name = "admin"
 # password_hash = "$argon2id$v=19$…" # printf %s 'pw' | stormconsole --hash-password
