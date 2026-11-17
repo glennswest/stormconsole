@@ -39,6 +39,8 @@ fn failed(f: Fail) -> Response {
 }
 
 /// The users store and the administrator's bearer, or why not.
+// The refusal is the Response the handler returns; boxing it would only move the allocation.
+#[allow(clippy::result_large_err)]
 fn admin(state: &AppState, viewer: &Viewer) -> Result<(Arc<Users>, String), Response> {
     let Some(users) = state.users.clone() else {
         return Err(refuse(
