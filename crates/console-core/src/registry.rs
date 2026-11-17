@@ -212,10 +212,11 @@ impl Registry {
             for a in &c.actions {
                 let Some(g) = classify_action(a) else { continue };
                 let key = (g.resource, g.verb);
-                if !asked.contains_key(&key) {
-                    let ok = self.reviewer.review(viewer, &key.0, &key.1).await.allowed;
+                if let std::collections::hash_map::Entry::Vacant(e) = asked.entry(key) {
+                    let (resource, verb) = e.key();
+                    let ok = self.reviewer.review(viewer, resource, verb).await.allowed;
                     refused |= !ok;
-                    asked.insert(key, ok);
+                    e.insert(ok);
                 }
             }
         }
@@ -429,7 +430,8 @@ impl Registry {
     /// Spawn every plugin's background task, then refresh the aggregate on
     /// a fixed cadence until shutdown.
     pub async fn run(self: Arc<Self>, shutdown: CancellationToken) {
-        for p in self.plugins.iter().cloned() {
+        for p in &self.plugins {
+            let p = p.clone();
             let token = shutdown.clone();
             tokio::spawn(async move { p.run(token).await });
         }

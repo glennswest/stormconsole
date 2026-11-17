@@ -60,6 +60,9 @@ pub struct ActAs(pub Option<String>);
 /// the request is destructive storage and the host let it through; refused
 /// (`Err`) when it is destructive storage and the host did not; else the
 /// console's own.
+// The refusal is the axum Response every handler returns; boxing it would
+// only move the allocation.
+#[allow(clippy::result_large_err)]
 pub fn upstream_bearer<'a>(
     method: &Method,
     uri: &axum::http::Uri,
@@ -327,8 +330,11 @@ pub struct Reviewer {
     /// The apiserver, through the console's checked connection (#33) — a
     /// viewer's bearer goes only where the console's own would.
     conn: Option<std::sync::Arc<crate::apiserver::Conn>>,
-    cache: RwLock<HashMap<(String, String, String), (Instant, Decision)>>,
+    cache: RwLock<Reviews>,
 }
+
+/// Each (viewer, resource, verb) answer and when it was asked.
+type Reviews = HashMap<(String, String, String), (Instant, Decision)>;
 
 impl Reviewer {
     /// `base` is the apiserver; `None` means there is none to ask, and every
