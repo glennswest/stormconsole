@@ -560,7 +560,7 @@
             {/if}
           </p>
         {/if}
-        <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} local={pick.local} />
+        <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} local={pick.local} read={!!links?.read} />
         {#if pick.usage}
           {@const u = pick.usage}
           {@const cap = pick.capacity || u.slab + u.unslabbed}

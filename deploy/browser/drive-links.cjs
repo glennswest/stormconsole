@@ -50,8 +50,11 @@ walk('drive links', async (t) => {
   await page.goto(`${t.BASE}/#/drives?drive=${encodeURIComponent('drive:@storm-b:drive:5000c500aaaa0001')}`)
   await page.getByTestId('drive-link').waitFor()
   t.check((await page.getByTestId('link-level').innerText()) === 'degraded', "storm-b's: degraded")
+  t.check(await t.until(async () => /Reading the link|the cable or the expander port/.test(await page.getByTestId('drive-link').innerText()), 3000), 'before the links are read it claims nothing of the drive')
+  await t.until(async () => /the cable or the expander port/.test(await page.getByTestId('drive-link').innerText()), 15000)
   const other = await page.getByTestId('drive-link').innerText()
   t.check(/the cable or the expander port/.test(other) && /expander/.test(other), 'both sides moving: the cable or the expander port', other)
+  t.check(!/predates/.test(other), 'and never says its stormdrive is old', other)
   t.check(
     await t.until(async () => /samples this console kept/.test(await page.getByTestId('link-trend-source').innerText()), 10000),
     "another node's trend from the samples the console kept",

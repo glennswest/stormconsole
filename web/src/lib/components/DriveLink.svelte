@@ -9,7 +9,8 @@
   import { ago } from '../ui/time.js'
   import { COUNTERS, rateLine, counterRows, total, perMin, levelWords, levelTone, trendFromHistory } from '../drivelink.js'
 
-  let { row = null, level = null, serial = '', local = true } = $props()
+  // `read`: whether the page has the links answer yet; until then nothing is claimed of the drive.
+  let { row = null, level = null, serial = '', local = true, read = true } = $props()
 
   const link = $derived(row?.link || null)
   const rows = $derived(counterRows(row))
@@ -69,7 +70,9 @@
     {#if level}<span class="level {tone}" data-testid="link-level">{level}</span>{/if}
     {#if link?.since}<span class="dim small">since {ago(new Date(link.since * 1000).toISOString())} ago</span>{/if}
   </h3>
-  {#if !link}
+  {#if !link && !read}
+    <p class="dim">Reading the link…</p>
+  {:else if !link}
     <p class="dim">
       {#if level}
         Its node’s stormdrive says the link is {level}, but sends no counters: it predates the Drive object’s link (stormdrive v0.49.0).
