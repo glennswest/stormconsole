@@ -224,7 +224,7 @@ async fn build(State(state): State<AppState>) -> Response {
     Json(state.registry.build_answer()).into_response()
 }
 
-async fn nav(State(state): State<AppState>) -> Response {
+async fn nav(State(state): State<AppState>, viewer: Viewer) -> Response {
     let mut sections = state.registry.nav();
     match sections.iter().position(|s| s.label == "Observe") {
         Some(i) => {
@@ -233,8 +233,9 @@ async fn nav(State(state): State<AppState>) -> Response {
         }
         None => sections.push(console_core::NavSection::new("Observe", 30).admin().item("Audit", "#/audit")),
     }
-    // Admin → Users (#266), where users are kept on the apiserver.
-    if state.users.is_some() {
+    // Admin → Users (#266), where users are kept on the apiserver: an
+    // administrator's page, so only an administrator is shown it.
+    if state.users.is_some() && viewer.has_role("admin") {
         sections.push(console_core::NavSection::new("Admin", 80).admin().item("Users", "#/users"));
     }
     Json(sections).into_response()

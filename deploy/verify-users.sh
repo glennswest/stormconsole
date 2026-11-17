@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+# Live check of users kept on the apiserver (#266, stormcos#802), on a build VM:
+#
+#   sc-build deploy/verify-users.sh
+#
+# A real fastetcd and rustkube apiserver (the release sc#27 was checked
+# against), given what stormcos gives a node: `storm-users`, ServiceAccount
+# `admin` bound to `cluster-admin` (89-storm-users.yaml), and the storage
+# roles (47-storage-rbac.yaml's shape). The console runs as ServiceAccount
+# kube-system/stormconsole with deploy/rbac/stormconsole.yaml applied, so its
+# rights are exactly the ones docs/rbac.md lists, with
+# `[api] user_namespace = "storm-users"` and the install's admin hash file:
+#
+#   seeding        no Secret → made from the file, marked as this node's
+#   admin          signs in with the install password, an administrator acting
+#                  as storm-users/admin (a minted token), every guard passes
+#   Users API      create a storage-admin and a storage-viewer in sc#27's
+#                  shape, exactly as `sc user` writes it
+#   storage-admin  signs in as themselves, passes the storage guard, refused
+#                  any other write and the Users API
+#   by hand        a user written in sc's shape signs in (what `sc user create` makes)
+#   disable        ends the session at once, refuses the sign-in; enable again
+#   password       the old one refused, the new one works
+#   roles          storage-viewer now: the guard refuses
+#   other node     a sweep on another console ends a deleted user's session there
+#   delete         gone, and admin can be neither deleted nor disabled
+#   reseed         a reinstall's new hash replaces it; an admin's change stays
+#                  changed; a joining node never overwrites it
+#   apiserver down the user sign-in says so (503); the node's bearer still gets in
+#   Chromium       the login page and Admin → Users (deploy/browser/users.cjs)
+set -euo pipefail
+
+RUSTKUBE_VER=${RUSTKUBE_VER:-v0.15.3}
+FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
+W=$(mktemp -d "${TMPDIR:-/tmp}/verify-users.XXXXXX")
+cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "${W:?}"; }
+trap cleanup EXIT
+say() { printf '\n=== %s\n' "$*"; }
+FAILED=0
+check() { if [ "$1" = "$2" ]; then echo "  ok   $3"; else echo "  FAIL $3 — got: $1"; FAILED=$((FAILED+1)); fi; }
+HERE=$(pwd)
+port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
+EP=$(port); PP=$(port); MP=$(port); AP=$(port); P=$(port); P2=$(port)
+KAPI=https://127.0.0.1:$AP
+C=http://127.0.0.1:$P
+C2=http://127.0.0.1:$P2
+j() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1]))" "$1"; }
+
+say "the SPA and the console from this commit"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
+cargo build -q --locked -p stormconsole
+BIN=$(realpath "${CARGO_TARGET_DIR:-target}/debug/stormconsole")
+python3 -c 'import yaml' 2>/dev/null || python3 -m pip install -q --user pyyaml
+
+say "fastetcd $FASTETCD_VER and rustkube's kube-apiserver $RUSTKUBE_VER"
+curl -sfL "https://github.com/glennswest/fastetcd/releases/download/$FASTETCD_VER/fastetcd-$FASTETCD_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+curl -sfL "https://github.com/glennswest/rustkube/releases/download/$RUSTKUBE_VER/rustkube-apiserver-$RUSTKUBE_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+FE=$(find "$W" -maxdepth 3 -type f -name fastetcd -perm -u+x | head -1)
+KA=$(find "$W" -maxdepth 3 -type f -name kube-apiserver -perm -u+x | head -1)
+[ -n "$FE" ] && [ -n "$KA" ] || { echo "release binaries not found"; exit 2; }
+(cd "$W"
+ openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=node-ca" -keyout ca.key -out ca.crt 2>/dev/null
+ openssl req -newkey rsa:2048 -nodes -subj "/CN=kube-apiserver" -keyout api.key -out api.csr 2>/dev/null
+ printf 'subjectAltName=IP:127.0.0.1,DNS:localhost\nextendedKeyUsage=serverAuth\n' > api.ext
+ openssl x509 -req -in api.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -extfile api.ext -out api.crt 2>/dev/null
+ openssl genrsa -out sa.key 2048 2>/dev/null
+ openssl rsa -in sa.key -pubout -out sa.pub 2>/dev/null)
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+token() { local now h p s; now=$(date +%s)
+  h=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+  p=$(printf '{"sub":"%s","groups":%s,"iat":%d,"exp":%d}' "$1" "$2" "$now" $((now + 7200)) | b64url)
+  s=$(printf '%s.%s' "$h" "$p" | openssl dgst -sha256 -sign "$W/sa.key" -binary | b64url)
+  printf '%s.%s.%s' "$h" "$p" "$s"; }
+ADMIN=$(token root '["system:masters"]')
+SA=$(token system:serviceaccount:kube-system:stormconsole '["system:serviceaccounts","system:serviceaccounts:kube-system"]')
+"$FE" --name f1 --data-dir "$W/etcd" --listen-client-urls "http://127.0.0.1:$EP" --advertise-client-urls "http://127.0.0.1:$EP" \
+  --listen-peer-urls "http://127.0.0.1:$PP" --initial-advertise-peer-urls "http://127.0.0.1:$PP" --listen-metrics-url "127.0.0.1:$MP" >"$W/fastetcd.log" 2>&1 &
+for _ in $(seq 240); do curl -sf -o /dev/null "http://127.0.0.1:$EP/health" && break; sleep 0.5; done
+start_api() {
+  "$KA" --bind-addr 127.0.0.1 --secure-port "$AP" --etcd-servers "http://127.0.0.1:$EP" \
+    --tls-cert-file "$W/api.crt" --tls-private-key-file "$W/api.key" \
+    --service-account-signing-key-file "$W/sa.key" --service-account-key-file "$W/sa.pub" \
+    --anonymous-auth false --data-dir "$W/kube" >>"$W/apiserver.log" 2>&1 &
+  KAP=$!
+  for _ in $(seq 300); do curl -sf --cacert "$W/ca.crt" -H "Authorization: Bearer $ADMIN" "$KAPI/readyz" >/dev/null 2>&1 && break; sleep 1; done
+}
+start_api
+k() { curl -s --cacert "$W/ca.crt" -H "Authorization: Bearer ${4:-$ADMIN}" -H 'Content-Type: application/json' -X "$1" "$KAPI$2" ${3:+-d "$3"}; }
+kcode() { curl -s -o /dev/null -w '%{http_code}' --cacert "$W/ca.crt" -H "Authorization: Bearer ${4:-$ADMIN}" -H 'Content-Type: application/json' -X "$1" "$KAPI$2" ${3:+-d "$3"}; }
+check "$(kcode GET /api/v1/namespaces)" 200 "the apiserver is up"
+SAS=/api/v1/namespaces/storm-users/serviceaccounts
+SECRETS=/api/v1/namespaces/storm-users/secrets
+RBAC=/apis/rbac.authorization.k8s.io/v1
+
+say "what stormcos gives a node: storm-users, admin bound to cluster-admin, the storage roles"
+k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"storm-users"}}' >/dev/null
+for sa in admin default; do
+  k POST "$SAS" "{\"apiVersion\":\"v1\",\"kind\":\"ServiceAccount\",\"metadata\":{\"name\":\"$sa\",\"namespace\":\"storm-users\"}}" >/dev/null
+done
+k POST "$RBAC/clusterrolebindings" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding",
+  "metadata":{"name":"stormcos:storm-users-admin"},
+  "roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"cluster-admin"},
+  "subjects":[{"kind":"ServiceAccount","name":"admin","namespace":"storm-users"}]}' >/dev/null
+k POST "$RBAC/clusterroles" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole",
+  "metadata":{"name":"storage-admin"},"rules":[{"apiGroups":["storage.storm.io"],"resources":["*"],"verbs":["*"]}]}' >/dev/null
+k POST "$RBAC/clusterroles" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole",
+  "metadata":{"name":"storage-viewer"},"rules":[{"apiGroups":["storage.storm.io"],"resources":["*"],"verbs":["get","list","watch"]}]}' >/dev/null
+check "$(kcode GET "$RBAC/clusterroles/cluster-admin")" 200 "cluster-admin is there"
+
+say "the console's role, applied from deploy/rbac/stormconsole.yaml"
+python3 - "$HERE/deploy/rbac/stormconsole.yaml" > "$W/docs.jsonl" <<'PY_END'
+import json, sys, yaml
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    print(json.dumps(d))
+PY_END
+while IFS= read -r doc; do
+  kind=$(echo "$doc" | j 'd["kind"]'); ns=$(echo "$doc" | j 'd["metadata"].get("namespace","")')
+  case "$kind" in
+    ServiceAccount) path=/api/v1/namespaces/$ns/serviceaccounts ;;
+    Namespace) path=/api/v1/namespaces ;;
+    ClusterRole) path=$RBAC/clusterroles ;;
+    ClusterRoleBinding) path=$RBAC/clusterrolebindings ;;
+    Role) path=$RBAC/namespaces/$ns/roles ;;
+    RoleBinding) path=$RBAC/namespaces/$ns/rolebindings ;;
+  esac
+  c=$(kcode POST "$path" "$doc"); case "$c" in 200|201|409) ;; *) check "$c" 201 "applying $kind $(echo "$doc" | j 'd["metadata"]["name"]')"; esac
+done < "$W/docs.jsonl"
+sleep 2
+check "$(kcode GET "$SECRETS" '' "$SA")" 200 "the console may read storm-users' Secrets"
+check "$(kcode POST "$SAS/admin/token" '{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest","spec":{}}' "$SA")" 201 "and mint a token for admin"
+check "$(kcode POST "$RBAC/clusterrolebindings" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding","metadata":{"name":"x"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"cluster-admin"},"subjects":[{"kind":"User","name":"x"}]}' "$SA")" 403 "but not bind a role"
+check "$(kcode POST "$SAS" '{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"x","namespace":"storm-users"}}' "$SA")" 403 "nor make an account"
+
+say "the install's admin password, as stormpump#210 writes it (0600, no newline)"
+APW=install-pw-$RANDOM
+HF=$W/install/admin-password.hash
+mkdir -p "$W/install"
+writehash() { (umask 077; printf %s "$(printf %s "$1" | "$BIN" --hash-password)" > "$HF.new"); mv "$HF.new" "$HF"; }
+writehash "$APW"
+check "$(tail -c1 "$HF" | od -An -c | tr -d ' ')" "$(printf %s "$(tail -c1 "$HF")")" "no trailing newline"
+printf '%s' "$SA" > "$W/sa.token"
+conf() { # <file> <port> <node>
+  cat > "$1" <<EOF
+listen_addr = "127.0.0.1:$2"
+data_dir = "$W/d$2"
+[api]
+auth_token = "node-bearer-$$"
+user_namespace = "storm-users"
+admin_password_file = "$HF"
+node_name = "$3"
+[kubernetes]
+server = "$KAPI"
+token_file = "$W/sa.token"
+ca_file = "$W/ca.crt"
+EOF
+  for s in fleet logs stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormipmi stormcluster flowsdn health history; do printf '[%s]\nenabled = false\n' "$s" >> "$1"; done
+  mkdir -p "$W/d$2"
+}
+conf "$W/c.toml" "$P" n1
+start_console() { "$BIN" --config "$W/c.toml" >> "$W/c.log" 2>&1 & CP=$!; for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done; }
+start_console
+code() { curl -s -o "$W/out" -w '%{http_code}' "$@"; }
+login() { # <jar> <user> <password> [console] — the code
+  code -c "$W/$1" -H 'content-type: application/json' -d "{\"username\":\"$2\",\"password\":\"$3\"}" "${4:-$C}/api/v1/auth/login"
+}
+sess() { curl -s -b "$W/$1" "${2:-$C}/api/v1/auth/session" | j 'f"{d[\"authenticated\"]} {d.get(\"user\")} {\",\".join(d.get(\"roles\") or [])}"'; }
+as() { # <jar> <method> <path> [body] — the code, the body in $W/out
+  code -b "$W/$1" -X "$2" -H 'content-type: application/json' ${4:+-d "$4"} "$C$3"; }
+secret() { k GET "$SECRETS/$1-password"; }
+hashof() { secret "$1" | j 'd["data"]["hash"]' | base64 -d; }
+ann() { secret "$1" | j "d['metadata'].get('annotations',{}).get('$2')"; }
+for _ in $(seq 30); do [ "$(kcode GET "$SECRETS/admin-password")" = 200 ] && break; sleep 1; done
+
+say "1. seeding: no Secret, so it is made from the file"
+check "$(kcode GET "$SECRETS/admin-password")" 200 "admin-password exists"
+check "$(hashof admin)" "$(cat "$HF")" "its hash is the file's"
+check "$(secret admin | j 'd["type"]')" storm.io/user-password "type storm.io/user-password"
+check "$(secret admin | j 'd["metadata"]["labels"]["storm.io/user"]')" admin "labelled storm.io/user: admin"
+check "$(ann admin storm.io/seeded-by)" n1 "marked as seeded by n1"
+check "$(ann admin storm.io/seeded-hash)" "$(printf %s "$(cat "$HF")" | sha256sum | cut -d' ' -f1)" "with the SHA-256 of what it seeded"
+grep -q 'admin-password created' "$W/c.log" && echo "  ok   logged" || { echo "  FAIL not logged"; FAILED=$((FAILED+1)); }
+
+say "2. admin signs in with the install password"
+check "$(curl -s "$C/api/v1/auth/session" | j '"+".join(d["sign_in"])')" "password+token" "the login page asks for a user name"
+check "$(login ja admin wrong)" 401 "a wrong password is refused"
+check "$(login jx nobody "$APW")" 401 "an unknown user is refused alike"
+check "$(login jd default "$APW")" 401 "an account that is no user is refused"
+check "$(login ja admin "$APW")" 200 "admin signs in"
+check "$(sess ja)" "True admin admin" "as admin, an administrator"
+check "$(as ja GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format')" 200 "the storage guard answers"
+check "$(j 'd["guard"]["decision"]["allowed"]' < "$W/out")" True "admin passes the storage guard, asked as storm-users/admin"
+check "$(as ja POST /api/plugins/k8s/projects '{"name":"by-admin"}')" 200 "admin makes a project"
+check "$(k GET /api/v1/namespaces/by-admin | j 'd["metadata"].get("annotations",{}).get("openshift.io/requester")')" \
+  system:serviceaccount:storm-users:admin "requested by storm-users/admin itself, not the console"
+
+say "3. the Users API: a storage-admin and a storage-viewer, in sc#27's shape"
+check "$(as ja POST /api/v1/users '{"name":"stor","password":"s-pw","roles":["storage-admin"]}')" 201 "create stor (storage-admin)"
+check "$(as ja POST /api/v1/users '{"name":"view","password":"v-pw","roles":["storage-viewer"]}')" 201 "create view (storage-viewer)"
+check "$(as ja POST /api/v1/users '{"name":"stor","password":"x","roles":["storage-admin"]}')" 409 "a taken name: 409"
+check "$(as ja POST /api/v1/users '{"name":"Bad","password":"x","roles":["storage-admin"]}')" 400 "a bad name: 400"
+check "$(as ja POST /api/v1/users '{"name":"carol","password":"x","roles":["storage-wizard"]}')" 400 "a role that is not there: 400 ($(cat "$W/out"))"
+check "$(kcode GET "$SAS/carol")" 404 "and nothing of carol was written"
+sa=$(k GET "$SAS/stor"); sec=$(secret stor); crb=$(k GET "$RBAC/clusterrolebindings/storm-user:stor:storage-admin")
+check "$(echo "$sa" | j 'd["metadata"]["labels"]["storm.io/user"]')" stor "the account carries storm.io/user=stor"
+check "$(echo "$sec" | j 'd["type"]')" storm.io/user-password "the Secret's type"
+check "$(echo "$sec" | j 'd["metadata"]["ownerReferences"][0]["uid"]')" "$(echo "$sa" | j 'd["metadata"]["uid"]')" "owned by the account"
+H=$(hashof stor)
+grep -qE '^\$argon2id\$v=19\$m=19456,t=2,p=1\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$' <<<"$H" && echo "  ok   an argon2id PHC, argon2's defaults, no newline" || { echo "  FAIL hash: $H"; FAILED=$((FAILED+1)); }
+grep -q 's-pw' <<<"$sa$sec" && { echo "  FAIL the plaintext reached the apiserver"; FAILED=$((FAILED+1)); } || echo "  ok   the plaintext is nowhere in the objects"
+check "$(echo "$crb" | j '(d["roleRef"]["name"], d["subjects"][0]["name"], d["subjects"][0]["namespace"], d["metadata"]["labels"]["storm.io/user"])')" \
+  "('storage-admin', 'stor', 'storm-users', 'stor')" "ClusterRoleBinding storm-user:stor:storage-admin"
+as ja GET /api/v1/users >/dev/null
+check "$(j '[(u["name"], ",".join(u["roles"]), u["password"], u["disabled"]) for u in d["users"]]' < "$W/out")" \
+  "[('admin', 'cluster-admin', True, False), ('stor', 'storage-admin', True, False), ('view', 'storage-viewer', True, False)]" "the list: admin first, default not a user"
+check "$(j '"storage-admin" in d["roles"] and "cluster-admin" in d["roles"]' < "$W/out")" True "the roles on offer are the cluster's"
+grep -q '"users"' "$W/c/audit.jsonl" 2>/dev/null || grep -rq '"capability":"users"' "$W/d$P" && echo "  ok   the audit records it as Users" || { echo "  FAIL no users audit line"; FAILED=$((FAILED+1)); }
+
+say "4. stor signs in as themselves"
+check "$(login js stor s-pw)" 200 "stor signs in"
+check "$(sess js)" "True stor storage-admin" "a storage-admin"
+check "$(as js GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format')" 200 "the guard answers"
+check "$(j 'd["guard"]["decision"]["allowed"]' < "$W/out")" True "stor passes the storage guard, without being admin"
+check "$(as js POST /api/plugins/drive/format '{}')" 428 "a format through the console is let past the write gate, then asked for the typed word"
+check "$(as js POST /api/plugins/k8s/projects '{"name":"by-stor"}')" 403 "any other write is refused"
+check "$(as js GET /api/v1/users)" 403 "and so is Users"
+check "$(curl -s -b "$W/js" "$C/api/v1/console/nav" | j 'any(i["href"]=="#/users" for s in d for i in s["items"])')" False "who is not shown it"
+check "$(login jv view v-pw)" 200 "view signs in"
+check "$(sess jv)" "True view viewer" "a reader"
+as jv GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format' >/dev/null
+check "$(j 'd["guard"]["decision"]["allowed"]' < "$W/out")" False "the guard refuses a storage-viewer"
+check "$(as jv POST /api/plugins/drive/format '{}')" 403 "and so does the write gate"
+
+say "5. a user written by hand in sc's shape (what sc user create makes) signs in"
+k POST "$SAS" '{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"dave","namespace":"storm-users","labels":{"storm.io/user":"dave"}}}' >/dev/null
+k POST "$SECRETS" "{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"type\":\"storm.io/user-password\",
+  \"metadata\":{\"name\":\"dave-password\",\"namespace\":\"storm-users\",\"labels\":{\"storm.io/user\":\"dave\"}},
+  \"data\":{\"hash\":\"$(printf %s "$(printf d-pw | "$BIN" --hash-password)" | base64 -w0)\"}}" >/dev/null
+k POST "$RBAC/clusterrolebindings" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding",
+  "metadata":{"name":"storm-user:dave:storage-admin","labels":{"storm.io/user":"dave"}},
+  "roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"storage-admin"},
+  "subjects":[{"kind":"ServiceAccount","name":"dave","namespace":"storm-users"}]}' >/dev/null
+check "$(login jdv dave d-pw)" 200 "dave signs in"
+check "$(sess jdv)" "True dave storage-admin" "a storage-admin"
+
+say "6. disabled, then enabled"
+check "$(as ja PUT /api/v1/users/stor/disabled '{"disabled":true}')" 200 "disable stor"
+check "$(k GET "$SAS/stor" | j 'd["metadata"]["annotations"]["storm.io/disabled"]')" true "the annotation is on the account"
+check "$(as js GET /api/v1/components)" 401 "stor's session ended at once"
+check "$(login js stor s-pw)" 401 "stor cannot sign in"
+check "$(as ja PUT /api/v1/users/stor/disabled '{"disabled":false}')" 200 "enable stor"
+check "$(login js stor s-pw)" 200 "stor signs in again"
+
+say "7. a new password"
+check "$(as ja PUT /api/v1/users/stor/password '{"password":"s-pw2"}')" 200 "admin sets stor's password"
+check "$(as js GET /api/v1/components)" 401 "stor's session ended"
+check "$(login js stor s-pw)" 401 "the old password is refused"
+check "$(login js stor s-pw2)" 200 "the new one signs in"
+
+say "8. roles: stor is a storage-viewer now"
+check "$(as ja PUT /api/v1/users/stor/roles '{"roles":["storage-viewer"]}')" 200 "set stor's roles"
+check "$(kcode GET "$RBAC/clusterrolebindings/storm-user:stor:storage-admin")" 404 "the storage-admin binding is gone"
+check "$(kcode GET "$RBAC/clusterrolebindings/storm-user:stor:storage-viewer")" 200 "a storage-viewer one is there"
+check "$(sess js)" "True stor viewer" "stor's session reads, without signing in again"
+check "$(as js POST /api/plugins/drive/format '{}')" 403 "the write gate refuses stor now"
+check "$(as ja PUT /api/v1/users/admin/roles '{"roles":["storage-viewer"]}')" 400 "admin's roles are stormcos's: 400"
+
+say "9. another node's console: the sweep ends a deleted user's session there"
+conf "$W/c2.toml" "$P2" n2
+"$BIN" --config "$W/c2.toml" > "$W/c2.log" 2>&1 &
+for _ in $(seq 60); do curl -sf -o /dev/null "$C2/healthz" && break; sleep 0.5; done
+check "$(login j2 dave d-pw "$C2")" 200 "dave signs in on the other console"
+check "$(as ja DELETE /api/v1/users/dave)" 200 "admin deletes dave here"
+for _ in $(seq 40); do [ "$(sess j2 "$C2")" = "False None " ] && break; sleep 1; done
+check "$(sess j2 "$C2")" "False None " "dave's session there ended within the sweep"
+check "$(kcode GET "$SAS/dave")$(kcode GET "$SECRETS/dave-password")$(kcode GET "$RBAC/clusterrolebindings/storm-user:dave:storage-admin")" 404404404 "the account, Secret and binding are gone"
+check "$(as ja DELETE /api/v1/users/admin)" 400 "admin cannot be deleted"
+check "$(as ja PUT /api/v1/users/admin/disabled '{"disabled":true}')" 400 "nor disabled"
+check "$(as ja DELETE /api/v1/users/default)" 400 "an account that is no user is not deleted ($(cat "$W/out"))"
+check "$(ann admin storm.io/seeded-by)" n1 "n2 started with its own hash file and did not touch admin-password"
+
+say "10. reseeding"
+APW2=reinstall-pw-$RANDOM
+writehash "$APW2"
+kill "$CP"; wait "$CP" 2>/dev/null || true
+start_console
+for _ in $(seq 20); do [ "$(hashof admin)" = "$(cat "$HF")" ] && break; sleep 1; done
+check "$(hashof admin)" "$(cat "$HF")" "a reinstall of n1 (a new hash, the Secret unchanged since): replaced"
+check "$(login ja admin "$APW2")" 200 "the reinstall's printed password works"
+check "$(login jo admin "$APW")" 401 "the old one does not"
+check "$(as ja PUT /api/v1/users/admin/password '{"password":"chosen-by-admin"}')" 200 "admin chooses a password"
+check "$(ann admin storm.io/seeded-by)" None "the seeding mark is gone with it"
+writehash "another-$RANDOM"
+kill "$CP"; wait "$CP" 2>/dev/null || true
+start_console
+sleep 3
+check "$(login ja admin chosen-by-admin)" 200 "a later install does not replace an admin's password"
+
+say "11. the apiserver down"
+kill "$KAP"; wait "$KAP" 2>/dev/null || true
+check "$(login jz stor s-pw2)" 503 "a user's sign-in says the apiserver is not answering"
+j 'd["error"]' < "$W/out" | sed 's/^/  /'
+check "$(login jb '' "node-bearer-$$")" 200 "the node's bearer still signs in"
+start_api
+
+say "12. the browser: the login page and Admin → Users"
+writehash "$APW"
+check "$(as ja PUT /api/v1/users/admin/password "{\"password\":\"$APW\"}")" 200 "admin's password back to a known one"
+set +e
+bash "$HERE/deploy/browser/run.sh" "$W" users.cjs "$C" ADMIN_PW="$APW"
+BRC=$?
+set -e
+check "$BRC" 0 "the browser walk"
+
+say "console warnings and errors"
+grep -hiE ' (WARN|ERROR) ' "$W/c.log" "$W/c2.log" | grep -viE 'watch|kubernetes|refused|not answering|did not answer' | head -10 || true
+grep -q "s-pw\|$APW" "$W/c.log" && { echo "  FAIL a password is in the log"; FAILED=$((FAILED+1)); } || echo "  ok   no password in the log"
+say "done: $FAILED failed"
+[ $FAILED -eq 0 ]
