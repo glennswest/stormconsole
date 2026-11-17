@@ -46,6 +46,7 @@ All are cluster-wide.
 | apps | replicasets | get | a pod page's owner chain, for someone with no identity |
 | project.openshift.io | projects | get, list | the Projects page, for someone with no identity |
 | rbac.authorization.k8s.io | rolebindings | get, list | a project's members, for someone with no identity |
+| rbac.authorization.k8s.io | clusterrolebindings | get, list | a signed-in user's roles: the ClusterRoles bound to their account in `storm-users` (#266) |
 | non-resource | `/version` | get | the apiserver probe on the Kubernetes card |
 
 Nothing is needed for the rest:
@@ -106,6 +107,25 @@ The owner decided that users' keys live in a system namespace only the console w
 
 The code does not use these yet: #42 moves the keys, and until then they stay in `[vm] ssh_keys_namespace` as the
 viewer.
+
+## Users in `storm-users` (#266, stormcos#802)
+
+With `[api] user_namespace = "storm-users"`, people sign in as users kept on the apiserver, in sc#27's shape
+(ServiceAccount `<name>` labelled `storm.io/user`, Secret `<name>-password`, ClusterRoleBindings
+`storm-user:<name>:<role>`). What the console does **on its own credential**, resource by resource:
+
+| Where | Resource | Verbs | Why |
+|---|---|---|---|
+| `storm-users` | secrets | get | the password hash, checked at sign-in (role `stormconsole-keys`) |
+| `storm-users` | secrets | create, update | seeding `admin-password` from the install's hash (role `stormconsole-keys`) |
+| `storm-users` | serviceaccounts | get | the account exists and is not disabled, at sign-in and every 30 s after |
+| `storm-users` | serviceaccounts/token | create | the TokenRequest whose token is the session's identity (role `stormconsole-users`) |
+| cluster | clusterrolebindings | get, list | which ClusterRoles the account holds |
+
+**The Users page needs nothing more.** Creating, deleting, disabling a user, setting a password and binding
+`storage-admin`, `storage-viewer` or any other ClusterRole are all done **as the signed-in administrator** (admin's
+token is bound to `cluster-admin` by `89-storm-users.yaml`), so RBAC checks them as it checks `sc user`. The console
+never binds a role on its own credential, which would let its role grant anyone anything.
 
 ## For stormcos
 

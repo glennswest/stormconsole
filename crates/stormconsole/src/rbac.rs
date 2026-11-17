@@ -137,10 +137,31 @@ fn the_keys_home_is_namespaced_and_the_migration_can_be_dropped() {
     assert!(doc.iter().any(|d| d["kind"] == "Namespace" && d["metadata"]["name"] == "storm-users"), "the role file creates it");
 }
 
+/// Sign-in as a user in storm-users (#266): the account, its token, its
+/// password Secret (seeding `admin-password` too), and the bindings that
+/// say its roles. Nothing that makes or changes a user: that is done as the
+/// administrator.
+#[test]
+fn signing_in_a_user_of_storm_users() {
+    let users = rules("Role", "stormconsole-users");
+    assert!(allows(&users, "", "serviceaccounts", "get"));
+    assert!(allows(&users, "", "serviceaccounts/token", "create"));
+    for verb in ["create", "update", "delete", "patch"] {
+        assert!(!allows(&users, "", "serviceaccounts", verb), "serviceaccounts {verb} is the administrator's");
+    }
+    let keys = rules("Role", "stormconsole-keys");
+    for verb in ["get", "create", "update"] {
+        assert!(allows(&keys, "", "secrets", verb), "the password Secret, {verb}");
+    }
+    let role = cluster();
+    assert!(allows(&role, "rbac.authorization.k8s.io", "clusterrolebindings", "list"));
+    assert!(!allows(&role, "rbac.authorization.k8s.io", "clusterrolebindings", "create"), "binding a role is the administrator's");
+}
+
 #[test]
 fn every_binding_names_the_service_account() {
     let bindings: Vec<_> = docs().into_iter().filter(|d| matches!(d["kind"].as_str(), Some("ClusterRoleBinding" | "RoleBinding"))).collect();
-    assert_eq!(bindings.len(), 3);
+    assert_eq!(bindings.len(), 4);
     for b in bindings {
         let s = &b["subjects"][0];
         assert_eq!((s["kind"].as_str(), s["name"].as_str(), s["namespace"].as_str()), (Some("ServiceAccount"), Some("stormconsole"), Some("kube-system")));

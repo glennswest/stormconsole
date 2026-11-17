@@ -75,6 +75,10 @@ rules:
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [rolebindings]
     verbs: [get, list]
+  # A signed-in user's roles (#266): the ClusterRoles bound to their account in storm-users.
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterrolebindings]
+    verbs: [get, list]
   - nonResourceURLs: [/version]
     verbs: [get]
   # --- What it writes: the settings of the components it manages ---
@@ -156,5 +160,33 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: stormconsole-keys-migration
+subjects:
+  - { kind: ServiceAccount, name: stormconsole, namespace: kube-system }
+---
+# Signing in as a user kept in storm-users (#266, stormcos#802): read the account, mint its token.
+# The password Secrets, and seeding admin-password, are stormconsole-keys' secrets rights. Making,
+# changing and deleting users is done as the signed-in administrator, never on this role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stormconsole-users
+  namespace: storm-users
+rules:
+  - apiGroups: [""]
+    resources: [serviceaccounts]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [serviceaccounts/token]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stormconsole-users
+  namespace: storm-users
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stormconsole-users
 subjects:
   - { kind: ServiceAccount, name: stormconsole, namespace: kube-system }
