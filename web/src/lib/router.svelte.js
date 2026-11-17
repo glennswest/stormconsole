@@ -6,6 +6,8 @@ const routes = [
   { pattern: '#/', name: 'overview' },
   { pattern: '#/logs', name: 'logs' },
   { pattern: '#/audit', name: 'audit' },
+  // Admin → Users, kept on the apiserver (#266).
+  { pattern: '#/users', name: 'users' },
   // component ids carry ':' and '/', so the grid root travels in the query:
   // #/grid?id=<component>&rel=<relation>
   { pattern: '#/grid', name: 'grid' },

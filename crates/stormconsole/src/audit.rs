@@ -58,6 +58,8 @@ pub fn act(method: &Method, path: &str, upgrade: bool) -> Option<Act> {
         "cluster"
     } else if object.starts_with("update/") {
         "update"
+    } else if object == "users" || object.starts_with("users/") {
+        "users"
     } else if *method == Method::DELETE || object.ends_with("/delete") {
         "delete"
     } else {
@@ -180,6 +182,8 @@ mod tests {
         assert_eq!(cap(Method::POST, "/api/plugins/ipmi/proxy/api/v1/machines/T1/power/off"), Some("power"));
         assert_eq!(cap(Method::POST, "/api/plugins/cluster/form"), Some("cluster"));
         assert_eq!(cap(Method::POST, "/api/plugins/update/upgrade"), Some("update"));
+        assert_eq!(cap(Method::POST, "/api/v1/users"), Some("users"));
+        assert_eq!(cap(Method::DELETE, "/api/v1/users/alice"), Some("users"), "a user deleted is a users act, not a delete");
         assert_eq!(cap(Method::DELETE, "/api/plugins/sb/proxy/api/v1/volumes/v1"), Some("storage"), "a guarded one, as #82 has it");
         assert_eq!(cap(Method::PUT, "/api/plugins/vm/machines/a/b/settings"), Some("change"));
         assert_eq!(cap(Method::POST, "/api/v1/auth/logout"), Some("sign-in"));

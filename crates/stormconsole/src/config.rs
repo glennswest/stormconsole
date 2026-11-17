@@ -133,6 +133,23 @@ pub struct Api {
     /// Which verified certificate is which role: by subject CN or O.
     #[serde(default)]
     pub client_roles: Vec<ClientRole>,
+    /// Users kept on the apiserver (#266), in this namespace: stormcos's
+    /// `storm-users`. A user is ServiceAccount `<name>` labelled
+    /// `storm.io/user`, its password the argon2 PHC in Secret
+    /// `<name>-password`, its roles ClusterRoleBindings
+    /// `storm-user:<name>:<role>` (sc#27's shape). Signing in mints a token
+    /// for the account, so the person acts upstream as themselves. Turns
+    /// authentication on.
+    pub user_namespace: Option<String>,
+    /// The install's admin password hash (stormpump#210:
+    /// `/etc/stormconsole/install/admin-password.hash`), seeded into Secret
+    /// `admin-password` when there is none, and replacing it only when this
+    /// node seeded it and nobody has changed it since. Needs
+    /// `user_namespace`.
+    pub admin_password_file: Option<String>,
+    /// This node's name, which marks the Secret it seeded. Default: the
+    /// host name.
+    pub node_name: Option<String>,
 }
 
 /// One rule mapping a verified client certificate to a console role
@@ -159,6 +176,9 @@ impl Default for Api {
             client_ca_file: None,
             client_crl_file: None,
             client_roles: Vec::new(),
+            user_namespace: None,
+            admin_password_file: None,
+            node_name: None,
         }
     }
 }
@@ -739,6 +759,17 @@ impl Config {
                 ));
             }
         }
+        if a.admin_password_file.is_some() && a.user_namespace.is_none() {
+            return Err("[api] admin_password_file needs user_namespace: the password is seeded into a Secret there".into());
+        }
+        if let Some(ns) = &a.user_namespace {
+            if !crate::users::is_name(ns) {
+                return Err(format!("[api] user_namespace {ns:?} is not a namespace name"));
+            }
+            if !self.kubernetes.enabled {
+                return Err("[api] user_namespace needs [kubernetes]: users are kept on the apiserver".into());
+            }
+        }
         let k = &self.kubernetes;
         if k.token.is_some() && k.token_file.is_some() {
             return Err("[kubernetes] token and token_file are both set: use one".into());
@@ -1035,6 +1066,7 @@ impl Config {
             || self.api.auth_token_file.is_some()
             || self.api.install_token_file.is_some()
             || self.api.client_ca_file.is_some()
+            || self.api.user_namespace.is_some()
     }
 
     /// A named user's SSH public keys.

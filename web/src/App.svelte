@@ -28,6 +28,7 @@
   import FlowsdnView from './lib/views/FlowsdnView.svelte'
   import HealthView from './lib/views/HealthView.svelte'
   import AuditView from './lib/views/AuditView.svelte'
+  import UsersView from './lib/views/UsersView.svelte'
   import MetricsView from './lib/views/MetricsView.svelte'
   import StorageView from './lib/views/StorageView.svelte'
   import RaidView from './lib/views/RaidView.svelte'
@@ -68,6 +69,7 @@
     flowsdn: FlowsdnView,
     health: HealthView,
     audit: AuditView,
+    users: UsersView,
     metrics: MetricsView,
     storage: StorageView,
     raid: RaidView,

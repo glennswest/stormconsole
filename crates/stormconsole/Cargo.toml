@@ -32,6 +32,11 @@ plugin-metrics.workspace = true
 # for the token comparison, which was `==` and therefore timing-visible.
 argon2 = { version = "0.5", features = ["std"] }
 subtle = "2"
+# Users on the apiserver (#266): a Secret's data is base64, and the admin
+# password's seeding marker is a SHA-256 of the hash it seeded (the version
+# already in the tree).
+base64.workspace = true
+sha2 = "0.11"
 # :9094 over TLS with client certificates (#48, #127): the versions reqwest
 # already brings, on the same ring provider, so nothing new is compiled in.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

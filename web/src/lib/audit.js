@@ -9,6 +9,7 @@ export const CAPABILITIES = {
   power: 'Machine power',
   cluster: 'Cluster membership',
   update: 'Update',
+  users: 'Users',
   change: 'Other change',
 }
 

@@ -9,6 +9,8 @@ mod listen;
 mod metrics;
 #[cfg(test)]
 mod rbac;
+mod users;
+mod admin_users;
 mod server;
 
 use std::sync::Arc;
@@ -385,6 +387,39 @@ async fn run() {
         }
     });
 
+    // Users kept on the apiserver (#266), and the install's admin password
+    // seeded into them: tried now and every minute, since the apiserver or
+    // the hash file may come later than the console.
+    let users = match (&config.api.user_namespace, &kube) {
+        (Some(ns), Some(conn)) => Some(Arc::new(users::Users::new(
+            conn.clone(),
+            ns.clone(),
+            config.api.admin_password_file.clone(),
+            config.api.node_name.clone(),
+        ))),
+        _ => None,
+    };
+    if let Some(u) = users.clone() {
+        info!(namespace = %u.ns, "users are kept on the apiserver");
+        tokio::spawn(async move {
+            let mut said: Option<String> = None;
+            loop {
+                match u.seed().await {
+                    Ok(Some(what)) => {
+                        info!(namespace = %u.ns, "admin-password {what} from the install's hash");
+                        said = None;
+                    }
+                    Ok(None) => said = None,
+                    Err(e) if said.as_deref() != Some(e.as_str()) => {
+                        tracing::warn!("{e}");
+                        said = Some(e);
+                    }
+                    Err(_) => {}
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            }
+        });
+    }
     let state = server::AppState {
         auth_required: config.auth_required(),
         token: Arc::new(auth::ConsoleToken::new(config.api.auth_token.clone(), config.api.auth_token_file.clone())),
@@ -394,7 +429,9 @@ async fn run() {
         config: config.clone(),
         kube: kube.clone(),
         audit: Arc::new(audit::Audit::new(config.data_dir())),
+        users: users.clone(),
     };
+    tokio::spawn(auth::sweep(state.clone(), std::time::Duration::from_secs(30)));
 
     let bind = config.bind();
     let tcp = match tokio::net::TcpListener::bind(bind).await {

@@ -31,6 +31,8 @@ pub struct AppState {
     pub kube: Option<Arc<console_core::apiserver::Conn>>,
     /// Who did what (#15).
     pub audit: Arc<crate::audit::Audit>,
+    /// Users kept on the apiserver (#266), with `[api] user_namespace`.
+    pub users: Option<Arc<crate::users::Users>>,
 }
 
 impl AppState {
@@ -105,7 +107,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/auth/session", get(auth::session))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .merge(crate::admin_users::routes(state.clone()));
 
     for plugin in state.registry.plugins() {
         app = app.nest(&format!("/api/plugins/{}", plugin.name()), plugin.routes());
@@ -229,6 +232,10 @@ async fn nav(State(state): State<AppState>) -> Response {
             sections.insert(i, s.item("Audit", "#/audit"));
         }
         None => sections.push(console_core::NavSection::new("Observe", 30).admin().item("Audit", "#/audit")),
+    }
+    // Admin → Users (#266), where users are kept on the apiserver.
+    if state.users.is_some() {
+        sections.push(console_core::NavSection::new("Admin", 80).admin().item("Users", "#/users"));
     }
     Json(sections).into_response()
 }

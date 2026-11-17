@@ -3,6 +3,7 @@ import { capability, result, what } from './audit.js'
 
 assert.equal(capability('console'), 'Opened a console')
 assert.equal(capability('other'), 'other')
+assert.equal(capability('users'), 'Users', 'Admin → Users (#266)')
 assert.deepEqual(result(101), { word: 'done', tone: 'ok' }, 'a console that opened')
 assert.equal(result(200).tone, 'ok')
 assert.deepEqual(result(207), { word: 'partly refused (207)', tone: 'warn' }, 'an apply with a refusal inside is not done')

@@ -201,17 +201,29 @@ pub struct Sessions {
 
 struct Session {
     user: String,
+    via: Via,
+    expires: Instant,
+}
+
+/// How a session was opened, and what it acts as upstream.
+#[derive(Clone)]
+enum Via {
+    /// A `[[api.users]]` user or the console's own token.
+    Config,
     /// The install token the session was opened with (#66): it is checked
     /// on every use, so a session ends when the file stops carrying it, and
     /// it is the bearer the session acts as upstream.
-    install: Option<String>,
-    expires: Instant,
+    Install(String),
+    /// A user kept on the apiserver (#266): the token minted for their
+    /// account at sign-in, and the ClusterRoles bound to it (refreshed by
+    /// [`sweep`]).
+    Cluster { token: String, roles: Vec<String> },
 }
 
 /// Who a session is.
 struct Signed {
     user: String,
-    install: Option<String>,
+    via: Via,
 }
 
 impl Sessions {
@@ -219,15 +231,11 @@ impl Sessions {
         Self { inner: Mutex::new(HashMap::new()) }
     }
 
-    fn create(&self, user: &str, install: Option<String>) -> String {
+    fn create(&self, user: &str, via: Via) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let mut map = self.inner.lock().unwrap();
         map.retain(|_, s| s.expires > Instant::now());
-        map.insert(id.clone(), Session {
-            user: user.to_string(),
-            install,
-            expires: Instant::now() + SESSION_TTL,
-        });
+        map.insert(id.clone(), Session { user: user.to_string(), via, expires: Instant::now() + SESSION_TTL });
         id
     }
 
@@ -235,11 +243,62 @@ impl Sessions {
         let map = self.inner.lock().unwrap();
         map.get(id)
             .filter(|s| s.expires > Instant::now())
-            .map(|s| Signed { user: s.user.clone(), install: s.install.clone() })
+            .map(|s| Signed { user: s.user.clone(), via: s.via.clone() })
     }
 
     fn remove(&self, id: &str) {
         self.inner.lock().unwrap().remove(id);
+    }
+
+    /// The apiserver users signed in here, once each.
+    fn cluster_users(&self) -> Vec<String> {
+        let map = self.inner.lock().unwrap();
+        let mut u: Vec<String> =
+            map.values().filter(|s| matches!(s.via, Via::Cluster { .. })).map(|s| s.user.clone()).collect();
+        u.sort();
+        u.dedup();
+        u
+    }
+
+    /// End every apiserver session of this user: deleted, disabled, or a
+    /// new password. `keep` is a session not to end (the administrator's own).
+    pub fn end_user(&self, user: &str, keep: Option<&str>) -> usize {
+        let mut map = self.inner.lock().unwrap();
+        let before = map.len();
+        map.retain(|id, s| !(s.user == user && matches!(s.via, Via::Cluster { .. })) || Some(id.as_str()) == keep);
+        before - map.len()
+    }
+
+    /// Their ClusterRoles, as now bound.
+    pub(crate) fn set_roles(&self, user: &str, now: &[String]) {
+        let mut map = self.inner.lock().unwrap();
+        for s in map.values_mut().filter(|s| s.user == user) {
+            if let Via::Cluster { roles, .. } = &mut s.via {
+                *roles = now.to_vec();
+            }
+        }
+    }
+}
+
+/// Every 30 s, ask the apiserver whether each user signed in here still is
+/// one (#266): a user deleted or disabled — on any node's Users page, or by
+/// `sc` — loses their sessions here too, and a role given or taken is in
+/// effect without signing in again. An apiserver that does not answer
+/// changes nothing.
+pub async fn sweep(state: AppState, every: Duration) {
+    let Some(users) = state.users.clone() else { return };
+    loop {
+        tokio::time::sleep(every).await;
+        for name in state.sessions.cluster_users() {
+            match users.still(&name).await {
+                crate::users::Still::Is(roles) => state.sessions.set_roles(&name, &roles),
+                crate::users::Still::Gone => {
+                    let n = state.sessions.end_user(&name, None);
+                    tracing::info!(user = %name, sessions = n, "users: deleted or disabled on the apiserver: signed out");
+                }
+                crate::users::Still::Unknown => {}
+            }
+        }
     }
 }
 
@@ -264,9 +323,14 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
         // It is also the one switch (#165): this viewer is root.
         return Viewer { roles: vec!["admin".into()], root: true, ..Viewer::anonymous() };
     }
-    if let Some(Signed { user, install }) = signed(state, req) {
-        if let Some(t) = install {
-            return install_viewer(user, t);
+    if let Some(Signed { user, via }) = signed(state, req) {
+        match via {
+            Via::Install(t) => return install_viewer(user, t),
+            Via::Cluster { token, roles } => {
+                let roles = crate::users::console_roles(&roles);
+                return Viewer { user: Some(user), token: Some(token), roles, ssh_keys: vec![], root: false };
+            }
+            Via::Config => {}
         }
         let token = state.config.kube_token_for(&user);
         // A session opened with the console's own token is the token's, and
@@ -312,8 +376,8 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
 /// session only while the file still carries its token.
 fn signed(state: &AppState, req: &Request) -> Option<Signed> {
     let s = cookie_session(req).and_then(|id| state.sessions.get(&id))?;
-    match &s.install {
-        Some(t) if state.install.user_for(t).is_none() => None,
+    match &s.via {
+        Via::Install(t) if state.install.user_for(t).is_none() => None,
         _ => Some(s),
     }
 }
@@ -333,7 +397,7 @@ fn cert_viewer(req: &Request) -> Option<Viewer> {
     Some(Viewer { user: Some(format!("cert:{cn}")), token: None, roles: vec![role.to_string()], ssh_keys: vec![], root: false })
 }
 
-fn cookie_session(req: &Request) -> Option<String> {
+pub(crate) fn cookie_session(req: &Request) -> Option<String> {
     let cookies = req.headers().get(header::COOKIE)?.to_str().ok()?;
     cookies.split(';').find_map(|c| {
         let (k, v) = c.trim().split_once('=')?;
@@ -507,6 +571,13 @@ fn refuse_read_only(who: &Viewer, req: &Request) -> Option<Response> {
     if who.may_write() {
         return None;
     }
+    // A storage-admin (#266) writes destructive storage and nothing else:
+    // the storage guard then asks the apiserver about it as them (#82).
+    if who.has_role("storage-admin")
+        && console_core::storage::classify(req.method(), path, req.uri().query()).is_some()
+    {
+        return None;
+    }
     Some(
         (
             StatusCode::FORBIDDEN,
@@ -583,7 +654,28 @@ pub async fn login(
     // the installer's — and the session acts upstream as it.
     let install = (!as_user).then(|| state.install.user_for(&body.password)).flatten();
     let as_token = !as_user && install.is_none() && state.token.matches(&body.password);
-    if !as_user && install.is_none() && !as_token {
+    // A user kept on the apiserver (#266), last: it is the one that asks
+    // something of the network.
+    let mut cluster = None;
+    if !as_user && install.is_none() && !as_token && !body.username.is_empty() {
+        if let Some(users) = &state.users {
+            match users.sign_in(&body.username, &body.password).await {
+                Ok(s) => cluster = Some(s),
+                Err(crate::users::Refused::Invalid) => {}
+                Err(crate::users::Refused::Unreachable(why)) => {
+                    tracing::warn!(user = %body.username, "sign-in: the apiserver did not answer: {why}");
+                    state.audit.sign_in(&body.username, from, false);
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(json!({"error": "users are kept on the apiserver, which is not answering: \
+                                              sign in with this node's API token meanwhile"})),
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
+    if !as_user && install.is_none() && !as_token && cluster.is_none() {
         // The name it was given, never the password; which may be a token someone mistyped into
         // the name field, so a name that long is not kept.
         let tried = if body.username.len() > 64 { "(too long to be a name)" } else { body.username.as_str() };
@@ -593,17 +685,21 @@ pub async fn login(
     }
     // Signed in with a token, whatever name was typed: the session is the
     // token's, an administrator's, not a user of that name's.
-    let (user, kept): (String, Option<String>) = match install {
-        Some(u) => {
+    let (user, via): (String, Via) = match (install, cluster) {
+        (Some(u), _) => {
             tracing::info!(user = %u, "signed in with the install token");
-            (u, Some(body.password.clone()))
+            (u, Via::Install(body.password.clone()))
         }
-        None if as_user => (body.username.clone(), None),
-        None => (TOKEN_USER.into(), None),
+        (None, Some(c)) => {
+            tracing::info!(user = %body.username, roles = %c.cluster_roles.join(","), "signed in as a user of the apiserver");
+            (body.username.clone(), Via::Cluster { token: c.token, roles: c.cluster_roles })
+        }
+        (None, None) if as_user => (body.username.clone(), Via::Config),
+        (None, None) => (TOKEN_USER.into(), Via::Config),
     };
     let user = user.as_str();
     state.audit.sign_in(user, from, true);
-    let id = state.sessions.create(user, kept);
+    let id = state.sessions.create(user, via);
     let cookie = format!(
         "{SESSION_COOKIE}={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
         SESSION_TTL.as_secs()
@@ -628,7 +724,7 @@ pub async fn session(State(state): State<AppState>, req: Request) -> Response {
     // right one: named users, and a token (the install token, #66, or the
     // console's own bearer).
     let mut sign_in = vec![];
-    if !state.config.api.users.is_empty() {
+    if !state.config.api.users.is_empty() || state.users.is_some() {
         sign_in.push("password");
     }
     if state.install.configured() || state.config.api.auth_token.is_some() || state.config.api.auth_token_file.is_some() {
@@ -755,6 +851,18 @@ mod tests {
             assert!(refuse_read_only(&reader(), &req(m.clone(), path)).is_some(), "{m} {path}");
             assert!(refuse_read_only(&operator(), &req(m, path)).is_none(), "{path}");
         }
+    }
+
+    /// A storage-admin (#266) passes the write gate for destructive storage
+    /// only — the storage guard then asks the apiserver as them — and is a
+    /// reader everywhere else.
+    #[test]
+    fn a_storage_admin_writes_destructive_storage_and_nothing_else() {
+        let sa = Viewer { user: Some("s".into()), roles: vec!["storage-admin".into()], ..Viewer::anonymous() };
+        assert!(refuse_read_only(&sa, &req(Method::POST, "/api/plugins/drive/format")).is_none());
+        assert!(refuse_read_only(&sa, &req(Method::DELETE, "/api/plugins/sb/proxy/api/v1/volumes/v1")).is_none());
+        assert!(refuse_read_only(&sa, &req(Method::DELETE, "/api/plugins/vm/machines/default/web-1")).is_some());
+        assert!(refuse_read_only(&sa, &req(Method::POST, "/api/plugins/k8s/apply")).is_some());
     }
 
     /// Signing in is a POST made by somebody who holds no roles yet, and
