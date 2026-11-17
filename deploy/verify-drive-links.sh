@@ -72,6 +72,8 @@ check "$(L | j 'len([r for r in d["drives"] if r["serial"]=="BEE001"][0]["histor
 say "2. the alarm: in the feed, from the condition"
 F() { curl -s "$C/api/v1/components"; }
 alarms() { F | j '[(c["health"], c["detail"].split(":")[0], c["link"]) for c in d if c["kind"]=="alarm"]'; }
+# The feed's snapshot follows the plugin's read within a refresh.
+for _ in $(seq 30); do [ "$(F | j 'len([c for c in d if c["kind"]=="alarm"])')" = 2 ] && break; sleep 1; done
 check "$(alarms)" "[('error', 'Drive link failing', '#/drives?drive=drive:drive:5000cca26a819e69'), ('warn', 'Drive link degraded', '#/drives?drive=drive:@storm-b:drive:5000c500aaaa0001')]" \
   "bay 3 failing (red) and storm-b's degraded (amber), each linking to the drive"
 check "$(F | j '[c["detail"] for c in d if c["kind"]=="alarm" and c["health"]=="error"][0]' | grep -c 'bay 3 of shelf0 on .* (NET003) at 12 Gbit — drive phy 0 loss of sync 500/min — the drive.s receiver or its slot')" 1 \
@@ -95,8 +97,9 @@ check "$BRC" 0 "the browser walk"
 say "5. bay 3 reseated: ok again for 2 min — still listed, clearing"
 curl -s -X POST -H 'content-type: application/json' -d '{"bay": 3, "level": "ok", "okFor": 120}' "http://127.0.0.1:$D1/_set" >/dev/null
 for _ in $(seq 80); do [ "$(row NET003 '["link"]["level"]')" = ok ] && break; sleep 1; done
+for _ in $(seq 30); do F | grep -q 'Drive link ok again' && break; sleep 1; done
 check "$(row NET003 '["link"]["level"]')" ok "the next minute's read has it ok"
-check "$(F | j '[(c["health"], c["detail"][:27]) for c in d if c["kind"]=="alarm" and "NET003" in c["detail"]]')" "[('warn', 'Drive link ok again for 2 min')]" \
+check "$(F | j '[(c["health"], c["detail"][:29]) for c in d if c["kind"]=="alarm" and "NET003" in c["detail"]]')" "[('warn', 'Drive link ok again for 2 min')]" \
   "the alarm stays, amber, saying how long it has been ok"
 
 say "6. ok for over an hour: cleared"

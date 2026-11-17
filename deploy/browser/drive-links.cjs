@@ -60,5 +60,7 @@ walk('drive links', async (t) => {
 
   // ?filter=link, the bar's "Drive links".
   await page.goto(`${t.BASE}/#/drives?filter=link`)
+  // The walk left the page in list view, which it remembers.
+  await page.getByRole('button', { name: 'Map' }).click()
   t.check(await t.until(async () => (await page.locator('button.bay').count()) === 2, 8000), 'the filter shows the two links', `${await page.locator('button.bay').count()}`)
 })

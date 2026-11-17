@@ -78,11 +78,11 @@
       {/if}
     </p>
   {:else}
-    <p data-testid="link-rate"><strong>{rateLine(link)}</strong>{#if link.policy}<span class="dim"> · policy {link.policy}: set by a person, held every boot</span>{/if}{#if link.hostPhy}<span class="dim"> · {row.hostSide} phy {link.hostPhy}</span>{/if}</p>
+    <p data-testid="link-rate"><strong>{rateLine(link)}</strong>{#if link.policy}<span class="dim">{` · policy ${link.policy}: set by a person, held every boot`}</span>{/if}{#if link.hostPhy}<span class="dim">{` · ${row.hostSide} phy ${link.hostPhy}`}</span>{/if}</p>
     <p class="dim small">{levelWords(level)}</p>
     {#if level === 'degraded' || level === 'failing'}
       <p class="{tone}" data-testid="link-message">
-        {link.message}{#if link.recommendation}. <strong>{link.recommendation}</strong>{/if}
+        {link.message}{#if link.recommendation}{'. '}<strong>{link.recommendation}</strong>{/if}
       </p>
     {/if}
     {#if rows.length}
