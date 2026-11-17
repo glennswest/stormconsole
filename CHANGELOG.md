@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-17 — Drive link health (#339)
+- **feat:** the drive plugin reads every node's Drive objects once a minute for their SAS link (stormdrive v0.49.0's `status.link`, `LinkDegraded`/`LinkFailing`, stormdrive#149) and serves `GET /api/plugins/drive/links`: both sides' counters and rates, the rate against the maximum, the policy, the recommendation, and each drive's last 60 samples of loss of sync.
+- **feat:** the alarm: an `alarm` feed row per drive whose link condition is on (failing red, degraded amber), kept an hour after the link is ok again; the alarm bar shows it on every page, linking to the drive.
+- **feat:** Drives page: a Link panel on the picked drive (counters per side and phy with rates, totals, recommendation, the 24 h loss-of-sync trend from ironprom, else the kept samples); the level on the map (a bar on the bay, `colour by SAS link`), the list (`failing · 500/min sync`), each shelf's line, a `link` chip and filter; `?drive=` and `?filter=` open the page on them.
+- **feat:** metrics: a drive's `link_sync` and `link_errors` charts (per minute, by side), `?only=link`, and the Drives level's "Drive links: loss of sync".
+- **fix:** clippy in plugin-stormdrive (#344).
+- **test:** `deploy/verify-drive-links.sh` and the `drive-links` browser walk.
+
 ## [v0.33.0] — 2026-11-17
 
 ### 2026-11-17 — Login with user and password; Admin → Users (#266)

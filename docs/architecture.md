@@ -1723,7 +1723,11 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
 - **Alert bar.** `AlertBar.svelte`, above every view, is the feed's
   `health:api:` rows in error (or the node row when the summary itself is
   stale): live with the feed's push, not dismissable, the first linking to
-  the API.
+  the API. It is also the console's alarm list for drives (#339): the drive
+  plugin adds an `alarm` row per drive whose `LinkFailing` (red) or
+  `LinkDegraded` (amber) condition is on, and keeps it an hour after the
+  link is ok again, linking to `#/drives?drive=<id>`. Red sorts first; the
+  bar is amber when nothing is red.
 - **History** is read on demand: `GET /api/plugins/health/history?process=&
   api=&limit=` tails each `<history_dir>/<process>.jsonl` (256 KiB), the
   line format stormd and PID 1 share (`ts, process, api, url, from, to,
