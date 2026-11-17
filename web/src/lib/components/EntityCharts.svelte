@@ -44,6 +44,7 @@
     bytes,
     bytes_per_sec: (v) => `${bytes(v)}/s`,
     per_sec: (v) => `${small(v)}/s`,
+    per_min: (v) => `${small(v)}/min`,
     seconds,
     cores: (v) => (v >= 1 ? `${v.toFixed(2)} cores` : `${Math.round(v * 1000)}m`),
   }

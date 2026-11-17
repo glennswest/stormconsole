@@ -33,6 +33,8 @@
   import FirmwareDialog from '../components/FirmwareDialog.svelte'
   import MaintainProgress from '../components/MaintainProgress.svelte'
   import ControllerBanner from '../components/ControllerBanner.svelte'
+  import DriveLink from '../components/DriveLink.svelte'
+  import { listMetric } from '../drivelink.js'
   import { replaceWhy, rows as replaceRows } from '../drivereplace.js'
   import { rows as firmwareRows } from '../drivefirmware.js'
   import { commonActions } from '../driveactions.js'
@@ -50,6 +52,8 @@
   let placement = $state(null)
   let enginePool = $state(null)
   let usageError = $state('')
+  // Every drive's SAS link (#339): read by the drive plugin once a minute.
+  let links = $state(null)
   // The format records (#308): who may be formatted, and each run's progress.
   let formats = $state(null)
   let guard = $state(null)
@@ -59,13 +63,15 @@
   let fwGuard = $state(null)
   let now = $state(Math.floor(Date.now() / 1000))
   async function refresh() {
-    const [u, p, pool, f] = await Promise.allSettled([
+    const [u, p, pool, f, l] = await Promise.allSettled([
       get('/api/plugins/drive/usage'),
       get('/api/plugins/sb/placement'),
       get('/api/plugins/sb/proxy/api/v1/slabs/pool'),
       get('/api/plugins/drive/formats'),
+      get('/api/plugins/drive/links'),
     ])
     if (f.status === 'fulfilled') formats = f.value
+    if (l.status === 'fulfilled') links = l.value
     await refreshMaintain()
     if (u.status === 'fulfilled') {
       usage = u.value
@@ -110,11 +116,12 @@
   }
 
   let search = $state('')
-  let filter = $state('')
+  // `?filter=` and `?drive=` (the alarm bar's links, #339) open the page on them.
+  let filter = $state(route.current.query.get('filter') || '')
   let by = $state(stored('by', 'chassis'))
   let mode = $state(stored('mode', 'health'))
   let view = $state(stored('view', 'map'))
-  let selected = $state(null)
+  let selected = $state(route.current.query.get('drive'))
   // The offered drive being asked about (stormblock#154).
   let asking = $state(null)
   let busy = $state('')
@@ -218,7 +225,7 @@
     actNote = { ok: !failed, text: `${a.label}: ${on.length - failed} of ${on.length} done${failed ? `, ${failed} failed` : ''}` }
   }
 
-  const model = $derived(build(feed.components, { usage, placement }))
+  const model = $derived(build(feed.components, { usage, placement, links }))
   const poolRows = $derived(poolsOf(model.records))
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—')
   /// Where a component id leads, by the rule ResourceTable uses.
@@ -229,6 +236,7 @@
   const records = $derived(model.records)
   const shelves = $derived(model.shelves)
   const all = $derived(totals(records))
+  const linkBad = $derived(all.linkFailing + all.linkDegraded)
   const shown = $derived(groupBy(records, { by, filter, search }))
   const shownCount = $derived(shown.reduce((n, g) => n + g.drives.length, 0))
   const shelfCount = $derived(new Set(records.map(shelfKey)).size)
@@ -247,6 +255,9 @@
       // A drive the RAID controller holds says so first, never as missing (#325).
       if (d.controllerFailed) metrics = [{ label: 'controller', value: 'Failed by the controller', tone: 'error' }, ...metrics.filter((m) => m.label !== 'controller')]
       if (d.use?.in_use) metrics = [{ label: 'use', value: d.use.badge || 'In use', tone: d.use.use === 'system' ? 'error' : 'warn' }, ...metrics]
+      // The SAS link with its rate (#339): failing red, degraded amber, ok nothing.
+      const lm = listMetric(d.linkLevel, d.link?.link)
+      if (lm) metrics = [lm, ...metrics.filter((m) => m.label !== 'link errors')]
       return metrics === c.metrics ? c : { ...c, metrics }
     }),
   )
@@ -386,6 +397,10 @@
             {n} {f}
           </button>
         {/each}
+        <!-- The SAS link (#339): failing red, degraded amber; ok says nothing. -->
+        <button class="chip {all.linkFailing ? 'error' : linkBad ? 'warn' : ''}" class:on={filter === 'link'} disabled={!linkBad && filter !== 'link'} onclick={() => (filter = filter === 'link' ? '' : 'link')} data-testid="link-chip">
+          {linkBad} link{all.linkFailing ? ` (${all.linkFailing} failing)` : ''}
+        </button>
       </span>
     </div>
 
@@ -431,6 +446,13 @@
         {/if}
         <span><i class="ring"></i>rebuilding</span>
         <span><i class="inuse-key"></i>in use (system, slab, RAID)</span>
+        {#if mode === 'link'}
+          <span><i style="background: var(--ok)"></i>link ok</span>
+          <span><i style="background: var(--warn-strong)"></i>link degraded</span>
+          <span><i style="background: var(--error)"></i>link failing</span>
+        {:else}
+          <span><i class="linkfail-key"></i>link failing / degraded (#339)</span>
+        {/if}
         {#if selecting}<span><i class="chosen-key"></i>selected</span>{/if}
       </div>
     {/if}
@@ -538,6 +560,7 @@
             {/if}
           </p>
         {/if}
+        <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} local={pick.local} />
         {#if pick.usage}
           {@const u = pick.usage}
           {@const cap = pick.capacity || u.slab + u.unslabbed}
@@ -640,6 +663,8 @@
               {#if g.totals.failing}<span class="error"> · {g.totals.failing} failing</span>{/if}
               {#if g.totals.degraded}<span class="warn"> · {g.totals.degraded} degraded</span>{/if}
               {#if g.totals.rebuilding}<span class="warn"> · {g.totals.rebuilding} rebuilding</span>{/if}
+              {#if g.totals.linkFailing}<span class="error" data-testid="group-link-failing"> · {g.totals.linkFailing} link failing</span>{/if}
+              {#if g.totals.linkDegraded}<span class="warn"> · {g.totals.linkDegraded} link degraded</span>{/if}
             </span>
             {#if selecting}
               <button class="selgroup" onclick={() => chooseAll(g.drives)}>{g.drives.every((d) => chosen[d.id]) ? 'Unselect' : 'Select'} {by === 'chassis' ? 'shelf' : by}</button>
@@ -677,8 +702,10 @@
                           class:sel={selected === d.id}
                           class:inuse={d.use?.in_use}
                           class:chosen={!!chosen[d.id]}
+                          class:linkwarn={mode !== 'link' && d.linkLevel === 'degraded'}
+                          class:linkfail={mode !== 'link' && d.linkLevel === 'failing'}
                           style={h.css ? `background: ${h.css}` : ''}
-                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}{d.controllerFailed && mode !== 'health' ? ' · Failed by the controller' : ''}"
+                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}{d.controllerFailed && mode !== 'health' ? ' · Failed by the controller' : ''}{mode !== 'link' && (d.linkLevel === 'degraded' || d.linkLevel === 'failing') ? ` · link ${d.linkLevel}` : ''}"
                           aria-label="{d.c.label}, {h.text}{d.use?.in_use ? `, in use: ${d.use.badge || 'in use'}` : ''}"
                           aria-pressed={selecting ? !!chosen[d.id] : undefined}
                           data-drive={d.c.label}
@@ -787,6 +814,9 @@
   .bay { width: 18px; height: 18px; padding: 0; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
   .bay.empty { background: none; border: 1px dashed var(--border); cursor: default; }
   .bay.failing { border-color: var(--error); }
+  /* The SAS link (#339), in every colour mode: a bar along the bay's foot. */
+  .bay.linkfail::before, .bay.linkwarn::before, .legend i.linkfail-key::before { content: ''; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 3px; border-radius: 1px; background: var(--error); }
+  .bay.linkwarn::before { background: var(--warn-strong); }
   .bay.rebuild { outline: 2px solid var(--accent); outline-offset: 0; }
   .bay.sel { outline: 2px solid var(--text); outline-offset: 1px; }
   .bay:focus-visible { outline: 2px solid var(--text); }
@@ -829,6 +859,7 @@
   /* In use: a corner mark on the bay, whatever it is coloured by. */
   .bay { position: relative; }
   .bay.inuse::after, .legend i.inuse-key::after { content: ''; position: absolute; right: 1px; top: 1px; width: 6px; height: 6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 1px var(--panel); }
+  .legend i.linkfail-key { position: relative; border: 1px solid var(--border); }
   .legend i.inuse-key { position: relative; background: var(--text-faint); }
   .bay.chosen, .legend i.chosen-key { box-shadow: inset 0 0 0 2px var(--accent); }
   .legend i.chosen-key { border: 2px solid var(--accent); }

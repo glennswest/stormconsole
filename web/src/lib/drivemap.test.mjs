@@ -265,4 +265,25 @@ console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toF
   assert.equal(heat(bad, 'health').css, 'var(--error)')
   assert.equal(totals([ok, bad, ub]).failing, 2)
 }
+// The SAS link (#339): the Drive object's level when read, else the feed's word, on every view.
+{
+  const drive = (id, bay, word) => ({
+    id, kind: 'drive', label: `sd${bay}`, health: 'ok', detail: '',
+    metrics: [{ label: 'node', value: 'forge1' }, { label: 'bay', value: String(bay) }, ...(word ? [{ label: 'link errors', value: word }] : [])],
+  })
+  const comps = [drive('drive:drive:a', 0), drive('drive:drive:b', 1, 'degraded'), drive('drive:drive:c', 3)]
+  const links = { drives: [{ component: 'drive:drive:c', link: { level: 'failing' } }, { component: 'drive:drive:a', link: { level: 'ok' } }] }
+  const { records } = build(comps, { links })
+  const by = Object.fromEntries(records.map((r) => [r.id, r]))
+  assert.equal(by['drive:drive:c'].linkLevel, 'failing', 'from the Drive object')
+  assert.equal(by['drive:drive:b'].linkLevel, 'degraded', 'from the feed alone')
+  assert.equal(by['drive:drive:a'].linkLevel, 'ok')
+  assert.deepEqual(records.filter((r) => passes(r, 'link')).map((r) => r.id).sort(), ['drive:drive:b', 'drive:drive:c'])
+  const t = totals(records)
+  assert.deepEqual([t.linkFailing, t.linkDegraded], [1, 1])
+  assert.equal(heat(by['drive:drive:c'], 'link').css, 'var(--error)')
+  assert.equal(heat(by['drive:drive:b'], 'link').css, 'var(--warn-strong)')
+  assert.equal(heat(by['drive:drive:a'], 'link').css, 'var(--ok)')
+  assert.equal(heat(build([drive('drive:drive:z', 5)]).records[0], 'link').css, null, 'no link reported: hatched, not green')
+}
 console.log('PASS')

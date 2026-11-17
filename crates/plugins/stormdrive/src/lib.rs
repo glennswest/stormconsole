@@ -907,6 +907,8 @@ async fn replace_free(State(inner): State<Arc<Inner>>, viewer: Viewer, Json(req)
 }
 
 /// A remote node's drive actions, through the console.
+// Each argument is an axum extractor the proxy passes on; a struct of them would only rename them.
+#[allow(clippy::too_many_arguments)]
 async fn node_proxy(
     State(inner): State<Arc<Inner>>,
     Path((host, path)): Path<(String, String)>,

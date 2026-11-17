@@ -261,7 +261,7 @@ pub fn alarm(r: &Value, now: u64) -> Option<Alarm> {
 
 /// 12000 Mb/s → "12 Gbit", 1500 → "1.5 Gbit".
 pub fn gbit(mbps: u64) -> String {
-    if mbps % 1000 == 0 {
+    if mbps.is_multiple_of(1000) {
         format!("{} Gbit", mbps / 1000)
     } else {
         format!("{:.1} Gbit", mbps as f64 / 1000.0)

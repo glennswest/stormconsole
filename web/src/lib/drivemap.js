@@ -19,10 +19,14 @@
 //     (stormdrive v0.13.0+, stormdrive#12/#13): used, free, outside any slab,
 //     what the slabs may promise under overcommit, each slab, any drain;
 //   - `placement`: `/api/plugins/sb/placement` — this node's volumes by the
-//     drive they sit on (stormblock#136), each with its consumer.
+//     drive they sit on (stormblock#136), each with its consumer;
+//   - `links`: `/api/plugins/drive/links` — each SAS drive's link, both sides,
+//     from its Drive object (#339, stormdrive#149). Without it a drive's level
+//     still comes from the feed (stormdrive's `link errors` metric).
 
 import { failedMetric } from './controllers.js'
 import { engineDrives, offerFor } from './driveoffer.js'
+import { linkLevel } from './drivelink.js'
 
 const UNITS = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4, PB: 1024 ** 5, EB: 1024 ** 6 }
 
@@ -123,6 +127,7 @@ export function build(components, extra = {}) {
     else if (c.kind === 'k8s-node' && metric(c, 'rack')) rack.set(c.label, metric(c, 'rack'))
   }
   const usageBy = new Map((extra.usage?.drives || []).map((r) => [r.component, r]))
+  const linkBy = new Map((extra.links?.drives || []).map((r) => [r.component, r]))
   const offers = engineDrives(components)
   const onDrive = extra.placement?.drives || {}
   const records = drives.map((c) => {
@@ -196,6 +201,9 @@ export function build(components, extra = {}) {
       // What this node's engine found on it (stormblock#154). The engine is
       // this node's, so a remote drive is not answered for.
       offer: local ? offerFor(offers, { serial, dev: metric(c, 'dev') || '' }) : null,
+      // The SAS link (#339): the Drive object's, else the feed's word for it.
+      link: linkBy.get(c.id) || null,
+      linkLevel: linkLevel(linkBy.get(c.id), metric(c, 'link errors')),
     }
   })
   return { records, shelves, byId }
@@ -209,6 +217,7 @@ export const FILTERS = [
   ['draining', 'Draining'],
   ['full', 'Full (90%+)'],
   ['hot', 'Hot (50 °C+)'],
+  ['link', 'Link degraded or failing'],
   ['out', 'Out of fleet'],
   ['spare', 'Spares'],
   ['offered', 'Offered'],
@@ -232,6 +241,8 @@ export function passes(d, filter) {
       return !!d.usage && d.usage.frac >= 0.9
     case 'hot':
       return d.temp !== null && d.temp >= 50
+    case 'link':
+      return d.linkLevel === 'degraded' || d.linkLevel === 'failing'
     case 'out':
       return d.outOfFleet
     case 'spare':
@@ -326,7 +337,7 @@ export function enclosures(records) {
 }
 
 export function totals(list) {
-  const t = { drives: 0, capacity: 0, failing: 0, degraded: 0, rebuilding: 0, draining: 0, full: 0, hot: 0, nodes: new Set(), withUsage: 0, used: 0, slab: 0, left: 0, usageCapacity: 0 }
+  const t = { drives: 0, capacity: 0, failing: 0, degraded: 0, rebuilding: 0, draining: 0, full: 0, hot: 0, linkFailing: 0, linkDegraded: 0, nodes: new Set(), withUsage: 0, used: 0, slab: 0, left: 0, usageCapacity: 0 }
   for (const d of list) {
     t.drives++
     t.capacity += d.capacity
@@ -337,6 +348,8 @@ export function totals(list) {
     if (passes(d, 'draining')) t.draining++
     if (passes(d, 'full')) t.full++
     if (passes(d, 'hot')) t.hot++
+    if (d.linkLevel === 'failing') t.linkFailing++
+    else if (d.linkLevel === 'degraded') t.linkDegraded++
     if (d.usage) {
       t.withUsage++
       t.used += d.usage.used
@@ -393,6 +406,7 @@ export const MODES = [
   ['temp', 'Temperature'],
   ['wear', 'Wear'],
   ['usage', 'Usage'],
+  ['link', 'SAS link'],
 ]
 
 /// A cell's colour for a mode: a CSS colour, and the value it stands for.
@@ -410,6 +424,12 @@ export function heat(d, mode) {
     case 'usage':
       if (!d.usage) return none(noUsage(d))
       return { css: ramp(d.usage.frac), value: d.usage.frac, text: `${Math.round(d.usage.frac * 100)}% used` }
+    case 'link': {
+      // ok says nothing, degraded is amber, failing red (#339).
+      const css = { ok: 'var(--ok)', degraded: 'var(--warn-strong)', failing: 'var(--error)' }[d.linkLevel]
+      if (!css) return none(d.linkLevel === 'settling' ? 'link settling: the first sample since a reset' : 'no SAS link reported')
+      return { css, value: d.linkLevel, text: `link ${d.linkLevel}` }
+    }
     default: {
       if (d.controllerFailed) return { css: 'var(--error)', value: 'error', text: 'Failed by the controller' }
       const css = { ok: 'var(--ok)', warn: 'var(--warn-strong)', error: 'var(--error)', idle: 'var(--text-faint)' }[d.health]
