@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.33.0] — 2026-11-17
+
 ### 2026-11-17 — Login with user and password; Admin → Users (#266)
 - **feat:** users kept on the apiserver (`[api] user_namespace = "storm-users"`, stormcos#802), in sc#27's shape: ServiceAccount `<name>` labelled `storm.io/user`, Secret `<name>-password` (argon2id), ClusterRoleBindings `storm-user:<name>:<role>`. Signing in verifies the hash and mints a token for the account, so the person acts upstream as themselves. `cluster-admin` (admin) passes every check; a `storage-admin` passes the write gate for destructive storage only, which the storage guard asks about as them.
 - **feat:** `[api] admin_password_file` seeds `admin-password` from the install's hash (stormpump#210): made when absent, replaced only when this node seeded it and nobody changed it since (`storm.io/seeded-by`, `storm.io/seeded-hash`). `[api] node_name` names the node.

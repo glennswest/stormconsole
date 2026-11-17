@@ -2516,24 +2516,28 @@ feed row has a `controller` metric and `controller-good`/`controller-jbod`; the 
 - Not seen: forge1 or a real PERC (no perccli in the image yet, stormcentral#1310), so a real personality change and a real
   `set good force` are stormdrive's to prove. Another node's controllers come through its proxy; only one node with one was in the rig
 
-### Users and passwords in `storm-users` (#266) — in progress 2026-11-17
+### Users and passwords in `storm-users` (#266) ✅ 2026-11-17 (v0.33.0)
 The shape is sc#27's, as built (sc 66c91e9): ServiceAccount `storm-users/<name>`
 labelled `storm.io/user`, Secret `<name>-password` (`type: storm.io/user-password`,
 `data.hash` argon2id PHC), ClusterRoleBinding `storm-user:<name>:<role>`;
 admin's Secret is `admin-password`, its binding stormcos's.
-- [ ] `[api] user_namespace` turns it on (auth on); `[api] admin_password_file`
+- [x] `[api] user_namespace` turns it on (auth on); `[api] admin_password_file`
       seeds `admin-password` (create when absent; replace only when this node
       seeded it and nobody changed `hash` since: annotations `storm.io/seeded-by`,
       `storm.io/seeded-hash` = sha256 of the hash)
-- [ ] sign-in: verify the Secret's hash, the account not disabled, then a
+- [x] sign-in: verify the Secret's hash, the account not disabled, then a
       TokenRequest for the account (24 h) is the session's apiserver identity;
       console roles from the bindings naming it (cluster-admin → admin,
       storage-admin/operator/edit → operator, others viewer); a sweep every
       30 s ends sessions of disabled/deleted users and refreshes roles
-- [ ] Admin → Users (`/api/v1/users`, admin only, done **as the admin's own
+- [x] Admin → Users (`/api/v1/users`, admin only, done **as the admin's own
       token**): list, create, delete, reset password, disable, set roles
-- [ ] docs: README, rbac.md (the console's rights in `storm-users`), config;
+- [x] docs: README, rbac.md (the console's rights in `storm-users`), config;
       a verify script against a real rustkube
+- Verified: `deploy/verify-users.sh` on a build VM, 103 checks, rustkube v0.15.3 + fastetcd v1.2.0,
+  the console on exactly `deploy/rbac/stormconsole.yaml`, Chromium walk `users.cjs`.
+- Left: the registry's `[api] user_namespace` / `admin_password_file` lines, applied by the master with
+  stormcos#200 (sign-in closes :9094 to stormcentral's anonymous reads, stormcentral#807). Groups: #334.
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
