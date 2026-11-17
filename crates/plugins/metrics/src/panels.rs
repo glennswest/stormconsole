@@ -51,6 +51,9 @@ pub const LEVELS: &[Level] = &[
                 query: r#"topk(12, smartctl_device_percentage_used{job="stormdrive"})"#, legend: &["device", "serial"] },
             Panel { id: "errors", title: "Drive IO errors", unit: "per_sec", job: "stormdrive",
                 query: r#"topk(12, rate(stormdrive_drive_io_errors_total{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
+            // The SAS link (#339, stormdrive#149): loss of DWORD sync per minute, the drives where it moves.
+            Panel { id: "link_sync", title: "Drive links: loss of sync", unit: "per_min", job: "stormdrive",
+                query: r#"topk(12, sum by (bay, serial, side) (rate(stormdrive_drive_link_errors_total{job="stormdrive",counter="loss_of_sync"}[5m])) * 60 > 0)"#, legend: &["bay", "serial", "side"] },
             Panel { id: "disk_read", title: "Drive reads", unit: "bytes_per_sec", job: "stormdrive",
                 query: r#"topk(12, rate(stormdrive_drive_read_bytes_total{job="stormdrive"}[5m]) or rate(smartctl_device_bytes_read{job="stormdrive"}[5m]))"#, legend: &["device", "serial"] },
             Panel { id: "disk_write", title: "Drive writes", unit: "bytes_per_sec", job: "stormdrive",
@@ -169,6 +172,11 @@ pub const LEVELS: &[Level] = &[
 ];
 
 const DRIVE: &[Panel] = &[
+    // The SAS link, both sides (#339, stormdrive#149): the drive page's Link trend.
+    Panel { id: "link_sync", title: "Link: loss of sync", unit: "per_min", job: "stormdrive",
+        query: r#"sum by (side) (rate(stormdrive_drive_link_errors_total{job="stormdrive",counter="loss_of_sync",__THE__}[5m])) * 60"#, legend: &["side"] },
+    Panel { id: "link_errors", title: "Link: every counter", unit: "per_min", job: "stormdrive",
+        query: r#"sum by (side, counter) (rate(stormdrive_drive_link_errors_total{job="stormdrive",__THE__}[5m])) * 60"#, legend: &["side", "counter"] },
     Panel { id: "temperature", title: "Temperature", unit: "celsius", job: "stormdrive",
         query: r#"smartctl_device_temperature{job="stormdrive",temperature_type="current",__THE__}"#, legend: &["device"] },
     Panel { id: "wear", title: "Wear", unit: "percent", job: "stormdrive",
@@ -484,6 +492,16 @@ mod tests {
         }
     }
 
+    /// The drive page's Link trend (#339): loss of sync per minute, each side a line.
+    #[test]
+    fn a_drives_link_is_charted_per_minute_by_side() {
+        let e = Entity::Drive { serial: "2EG3K1XJ".into() };
+        let p = DRIVE.iter().find(|p| p.id == "link_sync").unwrap();
+        let q = query(p, Some(&e), None).unwrap();
+        assert!(q.contains(r#"counter="loss_of_sync",serial="2EG3K1XJ""#) && q.ends_with("* 60"), "{q}");
+        assert_eq!((p.unit, p.legend), ("per_min", &["side"][..]));
+    }
+
     #[test]
     fn a_watch_is_not_latency_in_either_spelling() {
         let q = panel("apiserver", "latency").query;
@@ -493,7 +511,7 @@ mod tests {
     #[test]
     fn an_object_cannot_end_its_string() {
         let e = Entity::Drive { serial: r#"Z"} or up{a="\"#.into() };
-        let q = query(&DRIVE[0], Some(&e), None).unwrap();
+        let q = query(&DRIVE[2], Some(&e), None).unwrap();
         assert!(q.contains(r#"serial="Z\"} or up{a=\"\\"}"#), "{q}");
     }
 

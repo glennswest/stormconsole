@@ -248,7 +248,7 @@ struct ChartsQuery {
     name: Option<String>,
     serial: Option<String>,
     window: Option<i64>,
-    /// `disk`: only an object's disk charts, for the pod page's Stats tab.
+    /// `disk`: only an object's disk charts, for the pod page's Stats tab; `link`: a drive's link charts (#339).
     only: Option<String>,
 }
 
@@ -353,9 +353,14 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
     let end = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let start = end - window;
     let mut out = Vec::with_capacity(list.len());
-    let wanted = q.only.as_deref() != Some("disk");
+    // `disk`: an object's disk charts (the pod page); `link`: a drive's link charts (#339).
+    let only = |p: &Panel| match q.only.as_deref() {
+        Some("disk") => p.id.starts_with("disk_"),
+        Some("link") => p.id.starts_with("link_"),
+        _ => true,
+    };
     let network = inner.network();
-    for p in list.iter().filter(|p| (wanted || p.id.starts_with("disk_")) && carried(&network, p.job)) {
+    for p in list.iter().filter(|p| only(p) && carried(&network, p.job)) {
         let query = panels::query(p, entity.as_ref(), visible.as_deref());
         out.push(chart(&inner, p, query, (start, end, step), targets.as_deref()).await);
     }

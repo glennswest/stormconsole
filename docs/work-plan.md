@@ -2539,6 +2539,17 @@ admin's Secret is `admin-password`, its binding stormcos's.
 - Left: the registry's `[api] user_namespace` / `admin_password_file` lines, applied by the master with
   stormcos#200 (sign-in closes :9094 to stormcentral's anonymous reads, stormcentral#807). Groups: #334.
 
+### Drive link health (#339) — in progress 2026-11-17
+From stormdrive v0.49.0's Drive `status.link` + `LinkDegraded`/`LinkFailing` (stormdrive#149, stormblock#642).
+- [ ] drive plugin: every node's Drive objects once a minute → `GET /api/plugins/drive/links` (rows +
+      the last 60 samples' loss-of-sync rate per side); an `alarm` feed row per drive whose condition is on,
+      kept an hour after the link is ok again, linking to `#/drives?drive=<id>`
+- [ ] metrics: drive panels `link_sync`, `link_errors` (per minute, by side), `?only=link`; fleet `link_sync`
+- [ ] web: alarm bar shows `alarm` rows; Drives: Link panel on the picked drive (rate vs maximum, policy,
+      the four counters × sides with rates, recommendation, trend from ironprom else the 60 samples),
+      level on map bays, list, shelves, group totals, a "link" filter and colour mode; `?drive=` opens it
+- [ ] docs, verify script with a stand-in stormdrive serving bay 3's object, Chromium walk
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

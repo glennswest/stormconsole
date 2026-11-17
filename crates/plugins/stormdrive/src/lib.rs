@@ -29,6 +29,7 @@ pub mod controllers;
 pub mod firmware;
 pub mod format;
 pub mod inuse;
+pub mod links;
 mod resources;
 pub mod usage;
 
@@ -77,6 +78,8 @@ struct Inner {
     /// This node's engine, for the RAID sets a firmware update must not take
     /// two members of at once (#317). `None` with no engine configured.
     engine: Option<Arc<console_core::engine::Engine>>,
+    /// Every drive's SAS link, read once a minute (#339).
+    links: RwLock<links::Seen>,
 }
 
 pub struct DrivesPlugin {
@@ -179,6 +182,7 @@ impl DrivesPlugin {
                 firmware: tokio::sync::Mutex::new(None),
                 controllers: tokio::sync::Mutex::new(None),
                 engine: None,
+                links: RwLock::new(links::Seen::default()),
             }),
         }
     }
@@ -234,6 +238,7 @@ impl ConsolePlugin for DrivesPlugin {
             )
             .route("/replace", post(replace_free))
             .route("/controllers", get(controllers_route))
+            .route("/links", get(links_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -247,6 +252,10 @@ impl ConsolePlugin for DrivesPlugin {
         for (host, feed) in self.inner.remotes.read().await.iter() {
             out.extend(with_node(feed.components().await, host));
         }
+        // A drive's link alarm (#339): in the feed, so the alarm bar shows it on every page.
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let seen = self.inner.links.read().await;
+        out.extend(seen.rows.iter().filter_map(|r| links::alarm(r, now)).map(|a| links::component(&a, NAME)));
         out
     }
 
@@ -285,8 +294,13 @@ impl ConsolePlugin for DrivesPlugin {
     }
 
     async fn run(&self, shutdown: CancellationToken) {
+        let mut links_at: Option<std::time::Instant> = None;
         loop {
             self.refresh_nodes().await;
+            if links_at.is_none_or(|t| t.elapsed() >= links::EVERY) {
+                links_at = Some(std::time::Instant::now());
+                read_links(&self.inner).await;
+            }
             let mut polls = vec![self.inner.local.clone()];
             polls.extend(self.inner.remotes.read().await.values().cloned());
             let client = self.inner.client.clone();
@@ -412,6 +426,36 @@ async fn read_formats(inner: &Inner) -> serde_json::Value {
         }
     }
     json!({"drives": drives, "nodes": nodes})
+}
+
+/// Every node's Drive objects, reduced to their links (#339), into the plugin's state.
+async fn read_links(inner: &Inner) {
+    let targets = targets(inner).await;
+    let answers = futures_util::future::join_all(
+        targets.iter().map(|(_, base, _)| read_json(&inner.dial, base, "/apis/storage.storm.io/v1/drives")),
+    )
+    .await;
+    let mut rows = Vec::new();
+    let mut nodes = Vec::new();
+    for ((node, _, pre), answer) in targets.iter().zip(answers) {
+        match answer {
+            Ok(v) => {
+                let before = rows.len();
+                for o in v.get("items").and_then(serde_json::Value::as_array).into_iter().flatten() {
+                    rows.extend(links::row(o, node, pre));
+                }
+                nodes.push(json!({"node": node, "ok": true, "links": rows.len() - before}));
+            }
+            Err(e) => nodes.push(json!({"node": node, "ok": false, "error": e})),
+        }
+    }
+    inner.links.write().await.take(rows, nodes);
+}
+
+/// `GET /links` (#339): every drive's SAS link, both sides, with its trend of
+/// the last hour's samples, as last read (once a minute).
+async fn links_route(State(inner): State<Arc<Inner>>) -> Response {
+    Json(inner.links.read().await.answer()).into_response()
 }
 
 /// `GET /resources/{drives|enclosures}` (#96): stormdrive's `storage.storm.io/v1` objects from every node,
