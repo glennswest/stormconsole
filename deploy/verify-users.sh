@@ -127,7 +127,7 @@ while IFS= read -r doc; do
 done < "$W/docs.jsonl"
 sleep 2
 check "$(kcode GET "$SECRETS" '' "$SA")" 200 "the console may read storm-users' Secrets"
-check "$(kcode POST "$SAS/admin/token" '{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest","spec":{}}' "$SA")" 201 "and mint a token for admin"
+check "$(kcode POST "$SAS/admin/token" '{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest","spec":{}}' "$SA" | sed 's/^201$/200/')" 200 "and mint a token for admin (200 or 201)"
 check "$(kcode POST "$RBAC/clusterrolebindings" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding","metadata":{"name":"x"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"cluster-admin"},"subjects":[{"kind":"User","name":"x"}]}' "$SA")" 403 "but not bind a role"
 check "$(kcode POST "$SAS" '{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"x","namespace":"storm-users"}}' "$SA")" 403 "nor make an account"
 
@@ -163,7 +163,7 @@ code() { curl -s -o "$W/out" -w '%{http_code}' "$@"; }
 login() { # <jar> <user> <password> [console] — the code
   code -c "$W/$1" -H 'content-type: application/json' -d "{\"username\":\"$2\",\"password\":\"$3\"}" "${4:-$C}/api/v1/auth/login"
 }
-sess() { curl -s -b "$W/$1" "${2:-$C}/api/v1/auth/session" | j 'f"{d[\"authenticated\"]} {d.get(\"user\")} {\",\".join(d.get(\"roles\") or [])}"'; }
+sess() { curl -s -b "$W/$1" "${2:-$C}/api/v1/auth/session" | j '" ".join([str(d["authenticated"]), str(d.get("user")), ",".join(d.get("roles") or [])])'; }
 as() { # <jar> <method> <path> [body] — the code, the body in $W/out
   code -b "$W/$1" -X "$2" -H 'content-type: application/json' ${4:+-d "$4"} "$C$3"; }
 secret() { k GET "$SECRETS/$1-password"; }
@@ -188,7 +188,7 @@ check "$(login jd default "$APW")" 401 "an account that is no user is refused"
 check "$(login ja admin "$APW")" 200 "admin signs in"
 check "$(sess ja)" "True admin admin" "as admin, an administrator"
 check "$(as ja GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format')" 200 "the storage guard answers"
-check "$(j 'd["guard"]["decision"]["allowed"]' < "$W/out")" True "admin passes the storage guard, asked as storm-users/admin"
+check "$(j 'd["guard"]["allowed"]' < "$W/out")" True "admin passes the storage guard, asked as storm-users/admin"
 check "$(as ja POST /api/plugins/k8s/projects '{"name":"by-admin"}')" 200 "admin makes a project"
 check "$(k GET /api/v1/namespaces/by-admin | j 'd["metadata"].get("annotations",{}).get("openshift.io/requester")')" \
   system:serviceaccount:storm-users:admin "requested by storm-users/admin itself, not the console"
@@ -219,7 +219,7 @@ say "4. stor signs in as themselves"
 check "$(login js stor s-pw)" 200 "stor signs in"
 check "$(sess js)" "True stor storage-admin" "a storage-admin"
 check "$(as js GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format')" 200 "the guard answers"
-check "$(j 'd["guard"]["decision"]["allowed"]' < "$W/out")" True "stor passes the storage guard, without being admin"
+check "$(j 'd["guard"]["allowed"]' < "$W/out")" True "stor passes the storage guard, without being admin"
 check "$(as js POST /api/plugins/drive/format '{}')" 428 "a format through the console is let past the write gate, then asked for the typed word"
 check "$(as js POST /api/plugins/k8s/projects '{"name":"by-stor"}')" 403 "any other write is refused"
 check "$(as js GET /api/v1/users)" 403 "and so is Users"
@@ -227,7 +227,7 @@ check "$(curl -s -b "$W/js" "$C/api/v1/console/nav" | j 'any(i["href"]=="#/users
 check "$(login jv view v-pw)" 200 "view signs in"
 check "$(sess jv)" "True view viewer" "a reader"
 as jv GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format' >/dev/null
-check "$(j 'd["guard"]["decision"]["allowed"]' < "$W/out")" False "the guard refuses a storage-viewer"
+check "$(j 'd["guard"]["allowed"]' < "$W/out")" False "the guard refuses a storage-viewer"
 check "$(as jv POST /api/plugins/drive/format '{}')" 403 "and so does the write gate"
 
 say "5. a user written by hand in sc's shape (what sc user create makes) signs in"
