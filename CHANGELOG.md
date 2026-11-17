@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.34.0] — 2026-11-17
+
 ### 2026-11-17 — Drive link health (#339)
 - **feat:** the drive plugin reads every node's Drive objects once a minute for their SAS link (stormdrive v0.49.0's `status.link`, `LinkDegraded`/`LinkFailing`, stormdrive#149) and serves `GET /api/plugins/drive/links`: both sides' counters and rates, the rate against the maximum, the policy, the recommendation, and each drive's last 60 samples of loss of sync.
 - **feat:** the alarm: an `alarm` feed row per drive whose link condition is on (failing red, degraded amber), kept an hour after the link is ok again; the alarm bar shows it on every page, linking to the drive.
