@@ -2600,6 +2600,16 @@ stormdrive formats an NVMe namespace only as a worker job `format` step (Format 
 - Not seen: a real NVMe namespace formatted by a real stormdrive; the worker's shapes are from stormdrive `worker.rs`, served by the stand-in
 - stormdrive reports no namespace LBA formats: stormdrive#155 (until then 512/4096 offered, stormdrive's refusal shown)
 
+### Traceability both ways (#347) — in progress 2026-11-18
+Node objects now carry it: rustkube-node#372 (shipped) writes `storm.io/volume.<name>` (engine id of each pod volume, mirror pods' `root`/`data`/`logs` too), `storm.io/image-digest.<c>`, `storm.io/golden.<c>`, `storm.io/image-build.<c>`, and Pod owners on container roots. Still open: stormd#75 (Service owner), stormblock#649 (Volume object owner), stormvm#129 (VM disk owner), stormblock-csi#69, stormblock-registry#174.
+- [ ] sb volume rows: owner as `Pod ns/name · container c` with its link; `unclaimed` only with no owner, no consumer and nothing attached; attached with no owner says the owner is not recorded
+- [ ] `runs-on`: by the pod's engine ids and owner, union; `container` filter; each row says its pod volume name, owner and kind
+- [ ] Pod page: a Volumes list per container (root clone, data, logs, claims): id, golden, written/size, health, link; gaps name their issue
+- [ ] Image line from the node's own objects: digest (`image-digest`), golden, registry origin, build (`image-build`); the stormcentral lookup and its words go (`[stormcentral]` accepted, ignored, warned)
+- [ ] PVC list: *Used by* (pod · container at path, ro); PV through its claim; `bound, not mounted by any pod` when none
+- [ ] VM page: its disks by owner, the gap naming stormvm#129
+- [ ] tests, CHANGELOG, docs, sc-build, image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
