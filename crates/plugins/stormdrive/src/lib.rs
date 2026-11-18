@@ -410,20 +410,21 @@ async fn read_json(dial: &console_core::dial::Dial, base: &str, path: &str) -> R
 async fn read_formats(inner: &Inner) -> serde_json::Value {
     let targets = targets(inner).await;
     let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| async move {
-        let (drives, objects) = tokio::join!(
+        // An NVMe namespace's format runs as a worker job (#356).
+        tokio::join!(
             read_json(&inner.dial, base, "/api/v1/drives"),
             read_json(&inner.dial, base, "/apis/storage.storm.io/v1/drives"),
-        );
-        (drives, objects)
+            read_json(&inner.dial, base, "/api/v1/worker/jobs"),
+        )
     }))
     .await;
     let mut drives = Vec::new();
     let mut nodes = Vec::new();
-    for ((node, _, pre), (rest, objects)) in targets.iter().zip(answers) {
+    for ((node, _, pre), (rest, objects, jobs)) in targets.iter().zip(answers) {
         match rest {
             Ok(body) => {
-                let d = format::reduce(&body, objects.as_ref().ok(), node, pre);
-                nodes.push(json!({"node": node, "ok": true, "drives": d.len(), "plans": objects.is_ok()}));
+                let d = format::reduce(&body, objects.as_ref().ok(), jobs.as_ref().ok(), node, pre);
+                nodes.push(json!({"node": node, "ok": true, "drives": d.len(), "plans": objects.is_ok(), "jobs": jobs.is_ok()}));
                 drives.extend(d);
             }
             Err(e) => nodes.push(json!({"node": node, "ok": false, "error": e})),
@@ -556,6 +557,11 @@ async fn format_start(
         if let Some(why) = d["whyNot"].as_str() {
             return refuse(StatusCode::CONFLICT, format!("{} ({}): {why}", d["name"].as_str().unwrap_or(&w.id), w.node));
         }
+        if format::is_nvme(d) {
+            if let Err(e) = format::check_nvme(w) {
+                return refuse(StatusCode::BAD_REQUEST, format!("{} ({}): {e}", d["name"].as_str().unwrap_or(&w.id), w.node));
+            }
+        }
         serials.push(d["serial"].as_str().unwrap_or("").to_string());
         names.push(format!("{}/{} ({})", w.node, d["name"].as_str().unwrap_or(""), d["serial"].as_str().unwrap_or("")));
     }
@@ -566,10 +572,13 @@ async fn format_start(
     let bases = targets(&inner).await;
     let mut results = Vec::new();
     let mut all_ok = true;
-    for (node, block_size, protection, ids) in format::batches(&req.drives) {
+    let nvme = |w: &format::Wanted| list.iter().any(|d| d["node"] == w.node.as_str() && d["id"] == w.id.as_str() && format::is_nvme(d));
+    for b in format::batches(&req.drives, nvme) {
+        let format::Batch { node, block_size, protection, ids, nvme } = b.clone();
         let Some((_, base, _)) = bases.iter().find(|t| t.0 == node) else { continue };
+        let method = if nvme { "Format NVM worker job" } else { "FORMAT UNIT" };
         tracing::info!(
-            user = viewer.user.as_deref().unwrap_or("anonymous"), node, block_size, protection, drives = ?names,
+            user = viewer.user.as_deref().unwrap_or("anonymous"), node, block_size, protection, method, drives = ?names,
             "drive format requested"
         );
         let route = match inner.dial.route(base).await {
@@ -577,17 +586,14 @@ async fn format_start(
             Err(e) => {
                 all_ok = false;
                 results.push(json!({
-                    "node": node, "drives": ids, "block_size": block_size, "protection": protection,
+                    "node": node, "drives": ids, "block_size": block_size, "protection": protection, "nvme": nvme,
                     "ok": false, "status": 502, "error": e,
                 }));
                 continue;
             }
         };
-        let mut call = route
-            .client
-            .post(format!("{}/api/v1/format", route.base))
-            .timeout(Duration::from_secs(120))
-            .json(&json!({"drives": ids, "block_size": block_size, "protection": protection}));
+        let (path, body) = b.request();
+        let mut call = route.client.post(format!("{}{path}", route.base)).timeout(Duration::from_secs(120)).json(&body);
         if let Some(t) = &bearer {
             call = call.bearer_auth(t);
         }
@@ -598,11 +604,16 @@ async fn format_start(
             }
             Err(e) => (502, json!({"error": e.to_string()})),
         };
-        let ok = (200..300).contains(&status);
+        // A worker job runs what passed its guards and refuses the rest in
+        // the same answer; a refused namespace is not a started one.
+        let refused = format::refused(&body);
+        let ok = (200..300).contains(&status) && refused.is_empty();
         all_ok &= ok;
         results.push(json!({
-            "node": node, "drives": ids, "block_size": block_size, "protection": protection,
+            "node": node, "drives": ids, "block_size": block_size, "protection": protection, "nvme": nvme, "refused": refused,
             "ok": ok, "status": status, "error": body.get("error"),
+            // The worker job's id, where an NVMe format runs (#356).
+            "job": if nvme { body.get("id").cloned() } else { None },
         }));
     }
     // The next read shows the runs.
