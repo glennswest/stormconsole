@@ -85,6 +85,7 @@ k() { # method, path, [json], [content type]
     || { echo "FAILED: $1 $2" >&2; curl -sk -X "$1" "$API$2" -H "Authorization: Bearer $ADMIN" -H "content-type: ${4:-application/json}" ${3:+-d "$3"} >&2; return 1; }
 }
 
+CDIGEST=$(printf 'c%.0s' $(seq 64))
 say "the cluster: a node, a namespace, a Deployment → ReplicaSet → pod, a Service and its Endpoints"
 k POST /api/v1/nodes '{"apiVersion":"v1","kind":"Node","metadata":{"name":"n1"}}'
 k PATCH /api/v1/nodes/n1/status '{"status":{"addresses":[{"type":"InternalIP","address":"127.0.0.1"},{"type":"Hostname","address":"n1"}],"conditions":[{"type":"Ready","status":"True"}]}}' application/merge-patch+json
@@ -101,6 +102,10 @@ k POST /api/v1/namespaces/shop/pods "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",
     \"annotations\":{\"note\":\"the pod page check\",
       \"storm.io/start-timing\":\"scheduled=2.0ms wait=1.1s image=900ms volumes=12ms sandbox=40ms sandbox/cni=30ms volume/data=12ms containers=80ms container/app=70ms report=3.0ms total=1.3s attempts=1 workers=1/4 pending=2\",
       \"k8s.v1.cni.cncf.io/networks\":\"storage@net1, other/fast\",
+      \"storm.io/instance.agent\":\"r9\",\"storm.io/golden.agent\":\"cilium-abc123def456\",
+      \"storm.io/image-digest.agent\":\"sha256:$CDIGEST\",
+      \"storm.io/image-build.agent\":\"{\\\"version\\\":\\\"1.16.3\\\",\\\"revision\\\":\\\"abc123def4567890\\\"}\",
+      \"storm.io/volume.data\":\"w1\",
       \"k8s.v1.cni.cncf.io/network-status\":\"[{\\\"name\\\":\\\"shop/storage\\\",\\\"interface\\\":\\\"net1\\\",\\\"ips\\\":[\\\"10.5.0.2\\\"]}]\"},
     \"ownerReferences\":[{\"apiVersion\":\"apps/v1\",\"kind\":\"ReplicaSet\",\"name\":\"web-7d9f\",\"uid\":\"$RUID\",\"controller\":true}]},
   \"spec\":{\"nodeName\":\"n1\",\"serviceAccountName\":\"default\",\"priority\":0,
@@ -135,7 +140,7 @@ k POST /apis/k8s.cni.cncf.io/v1/namespaces/shop/network-attachment-definitions '
 say "a bound claim behind the pod's data volume, and the kubelet's events (#124)"
 k POST /api/v1/persistentvolumes '{"apiVersion":"v1","kind":"PersistentVolume","metadata":{"name":"pvc-web-data"},
   "spec":{"capacity":{"storage":"10Gi"},"accessModes":["ReadWriteOnce"],"persistentVolumeReclaimPolicy":"Delete","storageClassName":"stormblock",
-    "csi":{"driver":"stormblock.storm.io","volumeHandle":"shop-web-data"}}}'
+    "claimRef":{"namespace":"shop","name":"web-data"},"csi":{"driver":"stormblock.storm.io","volumeHandle":"shop-web-data"}}}'
 k POST /api/v1/namespaces/shop/persistentvolumeclaims '{"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"web-data"},
   "spec":{"accessModes":["ReadWriteOnce"],"storageClassName":"stormblock","resources":{"requests":{"storage":"10Gi"}},"volumeName":"pvc-web-data"}}'
 k PATCH /api/v1/namespaces/shop/persistentvolumeclaims/web-data/status '{"status":{"phase":"Bound","capacity":{"storage":"10Gi"}}}' application/merge-patch+json
@@ -173,7 +178,7 @@ status() { # restartCount of app
 }
 status 0
 
-say "a console over it, with stormcentral configured"
+say "a console over it; its [stormcentral] section is ignored now (#347), and said so"
 cat > "$W/c.toml" <<EOF
 listen_addr = "127.0.0.1:$P"
 data_dir = "$W/c"
@@ -220,12 +225,33 @@ check '[ "$(echo "$D" | q "d[\"owners\"][1][\"href\"]")" = "#/grid?id=k8s:deploy
 check 'echo "$D" | has "[c[\"name\"]+\":\"+c[\"role\"] for c in d[\"containers\"]] == [\"migrate:init\", \"app:container\", \"agent:container\"]"' "init and regular containers, in order"
 check '[ "$(echo "$D" | q "d[\"containers\"][1][\"digest\"]")" = "$DIGEST" ]' "app's digest from its imageID"
 check '[ "$(echo "$D" | q "d[\"containers\"][0][\"digest\"]")" = "$MDIGEST" ]' "init container's digest"
-check '[ "$(echo "$D" | q "d[\"containers\"][2][\"digest\"]")" = "None" ]' "stormpump:// has no digest"
+check '[ "$(echo "$D" | q "d[\"containers\"][2][\"digest\"]")" = "sha256:$CDIGEST" ]' "stormpump://: the digest the node wrote (storm.io/image-digest.agent), not its imageID"
 check '[ "$(echo "$D" | q "d[\"containers\"][1][\"pullPolicy\"]")" = "IfNotPresent" ]' "pull policy defaulted for a tag"
-check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"name\"]")" = "cilium-abc123def456" ]' "the newest cilium golden from stormcentral"
-check '[ "$(echo "$D" | q "d[\"containers\"][2][\"golden\"][\"builtAt\"]")" = "1790900000" ]' "its built_at"
-check 'echo "$D" | q "d[\"containers\"][2][\"golden\"][\"which\"]" | grep -q "not confirmed running"' "and it says it is the newest, not necessarily the running one"
-check 'echo "$D" | q "[g[\"what\"]+\" \"+g[\"issue\"] for g in d[\"gaps\"]]" | grep -q "image digest rustkube-node#130"' "the stormpump digest gap names rustkube-node#130"
+check 'echo "$D" | has "d[\"containers\"][2][\"clonedFrom\"] == \"cilium-abc123def456\" and d[\"containers\"][2][\"imageBuild\"][\"revision\"] == \"abc123def4567890\""' "its registry image and build, the node's word (#347)"
+check 'echo "$D" | has "\"golden\" not in d[\"containers\"][2]"' "nothing asked of stormcentral (#347)"
+check '! echo "$D" | grep -qi stormcentral' "no stormcentral word in the pod's answer (#347)"
+check 'echo "$D" | has "d[\"containers\"][2][\"volumeIds\"] == [\"r9\"] and d[\"containers\"][1][\"volumeIds\"] == [\"w1\"]"' "each container's engine volumes: agent's root, app's data"
+check 'echo "$D" | has "d[\"volumes\"][0][\"engineId\"] == \"w1\""' "the data volume's engine id (storm.io/volume.data)"
+check 'echo "$D" | has "not any(g[\"what\"] in (\"image digest\", \"build info\") for g in d[\"gaps\"])"' "digest and build are not gaps when the node writes them"
+check 'grep -q "\[stormcentral\] is ignored" "$W/c.log"' "the ignored [stormcentral] section is said at start"
+
+say "both ways (#347): the pod's volumes on the engine, and each volume's owner"
+R=$(J "/api/plugins/sb/runs-on?owner=Pod&namespace=shop&name=web-1&container=agent&ids=r9")
+echo "$R" | q 'json.dumps([(v["runsOn"]["id"], v["owner"], (v["clonedFrom"] or {}).get("name")) for v in d["volumes"]])'
+check 'echo "$R" | has "[v[\"runsOn\"][\"id\"] for v in d[\"volumes\"]] == [\"r9\"]"' "agent's volumes: its root, only"
+check 'echo "$R" | has "d[\"volumes\"][0][\"owner\"] == {\"words\": \"Pod shop/web-1 · container agent\", \"link\": \"k8s:pod:shop/web-1\"}"' "owned by the pod and its container, with the link"
+check 'echo "$R" | has "d[\"volumes\"][0][\"clonedFrom\"][\"name\"] == \"cilium-abc123def456\" and d[\"volumes\"][0][\"kind\"] == \"clone\""' "a clone of cilium's registry image"
+R=$(J "/api/plugins/sb/runs-on?owner=Pod&namespace=shop&name=web-1&container=app&ids=w1")
+check 'echo "$R" | has "[v[\"runsOn\"][\"id\"] for v in d[\"volumes\"]] == [\"w1\"] and d[\"volumes\"][0][\"owner\"][\"words\"] == \"PersistentVolumeClaim shop/web-data\""' "app's data volume, owned by its claim"
+for _ in $(seq 20); do J /api/v1/components | grep -q '"sb:volume:r9"' && break; sleep 1; done
+COMPS=$(J /api/v1/components)
+metric() { echo "$COMPS" | python3 -c "import json,sys; c=[x for x in json.load(sys.stdin) if x['id']=='$1'][0]; print(([m['value'] for m in c['metrics'] if m['label']=='$2'] or ['-'])[0])"; }
+echo "  r9 owner: $(metric sb:volume:r9 owner) | u1: $(metric sb:volume:u1 owner) | o1: $(metric sb:volume:o1 owner)"
+check '[ "$(metric sb:volume:r9 owner)" = "Pod shop/web-1 · container agent" ]' "a container root's row names the pod and container"
+check '[ "$(metric sb:volume:u1 owner)" = "not recorded" ]' "a used clone with no owner is not called unclaimed"
+check '[ "$(metric sb:volume:o1 owner)" = "unclaimed" ]' "only a clone nothing owns or uses is unclaimed"
+check '[ "$(metric k8s:pvc:shop/web-data "used by")" = "web-1 · app at /var/lib/web" ]' "the claim says which pod and container mount it, and where"
+check '[ "$(metric k8s:pv:pvc-web-data "used by")" = "web-1 · app at /var/lib/web" ]' "its volume says it through the claim"
 check '! echo "$D" | q "[g[\"what\"] for g in d[\"gaps\"]]" | grep -q "interface detail"' "the CNI wrote its account (#167), so interface detail is not a gap"
 check 'echo "$D" | has "d[\"network\"][\"podIPs\"] == [\"10.244.0.15\", \"fd00:10:244::f\"]"' "both pod addresses"
 check 'echo "$D" | has "[s[\"name\"] for s in d[\"network\"][\"services\"]] == [\"web\"]"' "the Service that selects it, not db"
