@@ -2582,11 +2582,12 @@ Owner: "CRD we should have a grid to display there contents." Like OpenShift's C
 - Left: `web/dist/assets/xterm.js` carries xterm's own throw in an abstract method (`setFromCharData`, an abstract
   method inside @xterm/xterm 5.5.0, vendored) — not the console's surface.
 
-### flowsdn's live module rows (#355) — in progress 2026-11-18
+### flowsdn's live module rows (#355) ✅ 2026-11-18
 - [x] The Idle-on-"not implemented" mapping: already gone in v0.35.1 (#350); `Module::health` doc comment corrected
 - [x] Unit fixture: `agent.api` / `agent.kubernetes` (Degraded) / `agent.policy` (Degraded) as flowsdn 2ba23b6 writes them; a test that "not implemented" no longer changes a row's health
 - [x] Stand-in agent, `verify-flowsdn.sh`, browser walk: `agent.controllers` → `agent.kubernetes` (k8s mode only)
-- [ ] `sc-build` default and `sc-build deploy/verify-flowsdn.sh`; image
+- [x] `sc-build` (default: 180 s, pass) and `sc-build deploy/verify-flowsdn.sh` (0 failed, browser walk 0 failed); image requested
+- Not seen: a real flowsdn 2ba23b6 agent; the rows are its documented shapes, served by the stand-in
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
