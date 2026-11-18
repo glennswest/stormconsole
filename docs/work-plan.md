@@ -2589,13 +2589,15 @@ Owner: "CRD we should have a grid to display there contents." Like OpenShift's C
 - [x] `sc-build` (default: 180 s, pass) and `sc-build deploy/verify-flowsdn.sh` (0 failed, browser walk 0 failed); image requested
 - Not seen: a real flowsdn 2ba23b6 agent; the rows are its documented shapes, served by the stand-in
 
-### Format NVM from the console (#356) — in progress 2026-11-18
+### Format NVM from the console (#356) ✅ 2026-11-18 (v0.36.0)
 stormdrive formats an NVMe namespace only as a worker job `format` step (Format NVM, `POST /api/v1/worker/jobs`).
 - [x] `format.rs`: no NVMe refusal; NVMe batches go as a worker job (`select.drives`, `steps: [{op: format, block_size}]`), PI refused for NVMe; the node's worker jobs read beside the Drive list and the latest Format step's drive job made the drive's `format` record (state, phase, times, error, done lines, the block size stormdrive read back)
 - [x] `lib.rs`: `read_formats` reads `/api/v1/worker/jobs`; `format_start` sends NVMe batches there, as the viewer, behind the same guard and typed serial
 - [x] web: NVMe options 4096/512 no PI (Format NVM), the note; progress row: no percent (one command), the job's step lines
 - [x] Rust + node tests; `verify-drive-format.sh` stand-in (two namespaces, one lacking 4096) + browser walk
-- [ ] `sc-build`, `sc-build deploy/verify-drive-format.sh`, web/dist, image
+- [x] `sc-build` (pass, no warnings) and `sc-build deploy/verify-drive-format.sh` (164 ok, 0 failed; browser start/follow/nologin 0 failed); web/dist; image
+- Rig fix on the way (#360): no ironprom in the rig, and the browser walks name the URL behind a 5xx
+- Not seen: a real NVMe namespace formatted by a real stormdrive; the worker's shapes are from stormdrive `worker.rs`, served by the stand-in
 - stormdrive reports no namespace LBA formats: stormdrive#155 (until then 512/4096 offered, stormdrive's refusal shown)
 
 ### Phase 4 — fleet/nodes plugin
