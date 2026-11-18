@@ -128,7 +128,7 @@ impl Kind {
         let chosen = versions
             .iter()
             .find(|v| served(v) && v.get("storage").and_then(Value::as_bool).unwrap_or(false))
-            .or_else(|| versions.iter().find(served))
+            .or_else(|| versions.iter().find(|v| served(v)))
             .or_else(|| versions.first())
             .copied();
         let version = chosen
@@ -495,7 +495,7 @@ async fn list(inner: &Inner, viewer: &Viewer, kind: &Kind, project: Option<&str>
                 None => inner.store.namespaces().await,
             };
             let lists = futures_util::future::join_all(
-                projects.iter().map(|ns| client.get_as(&kind.collection(Some(ns)), token)),
+                projects.iter().map(|ns| async move { client.get_as(&kind.collection(Some(ns)), token).await }),
             )
             .await;
             let mut any = false;
