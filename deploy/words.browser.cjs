@@ -37,7 +37,8 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   const hits = (text) => text.split('\n').filter((l) => /golden/i.test(l))
 
   // The one tooltip, which may also carry stormcentral's name for the object.
-  const allowed = (l) => l.startsWith('@title: registry image (golden) — “golden” is the API’s name for it')
+  // A pod's own annotations (`storm.io/golden.<c>`, #347) are data, shown as written.
+  const allowed = (l) => l.startsWith('@title: registry image (golden) — “golden” is the API’s name for it') || /^\s*storm\.io\/golden\.\S+=/.test(l)
 
   async function visit(hash, what, expect = [], act = null) {
     await page.goto(`${BASE}/${hash}`)
@@ -93,8 +94,8 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   await page.screenshot({ path: `${SHOTS}/words-create-menu.png`, fullPage: true })
 
   // The pod page: the Registry image row, and the one tooltip.
-  const pod = await visit('#/pod/shop/web-1', 'pod page', ['Registry image', 'cilium@abc123def456', 'registry/cilium:1.16.3@sha256:', 'from cilium@abc123'])
-  check(pod.split('\n').filter(allowed).length === 1, 'the API word appears once, in the tooltip')
+  const pod = await visit('#/pod/shop/web-1', 'pod page', ['Registry image', 'version 1.16.3 · revision abc123def456', 'registry/cilium:1.16.3@sha256:', 'registry/cilium:abc123def456'])
+  check(pod.split('\n').filter((l) => allowed(l) && l.startsWith('@title')).length === 1, 'the API word appears once, in the tooltip')
 
   for (const e of errors) console.log(`  ${e}`)
   check(errors.length === 0, 'no page errors', `${errors.length}`)
