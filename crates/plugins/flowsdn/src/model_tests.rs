@@ -131,7 +131,7 @@ fn modules() -> Vec<Module> {
                "Updated": "2026-10-10T10:00:00Z", "Stopped": "0001-01-01T00:00:00Z", "Final": "", "Count": 1}),
         json!({"ID": {"Module": ["agent"], "Component": ["controllers"]}, "Level": "Degraded",
                "Message": "Kubernetes node discovery enabled; identity and policy controllers are not",
-               "Error": "not implemented", "LastOK": "0001-01-01T00:00:00Z",
+               "Error": "identity controller has not synced", "LastOK": "0001-01-01T00:00:00Z",
                "Updated": "2026-10-10T10:00:00Z", "Stopped": "0001-01-01T00:00:00Z", "Final": "", "Count": 1}),
     ]
     .iter()
@@ -146,7 +146,7 @@ fn modules_read_with_never_left_blank() {
     assert_eq!((m[0].health, m[0].last_ok.as_str()), (Health::Ok, "2026-10-10T10:00:00Z"));
     assert_eq!(m[1].id, "agent.controllers");
     assert_eq!(m[1].last_ok, "", "0001-01-01 is the agent's never");
-    assert_eq!(m[1].health, Health::Idle, "not implemented is not a fault");
+    assert_eq!(m[1].health, Health::Warn, "a degraded module is a warning: what flowsdn says, as it says it");
 }
 
 #[test]

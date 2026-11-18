@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-18 — No stubs (#350)
+- **fix:** the Format page no longer calls NVMe format a missing feature: it says an NVMe namespace is reformatted by stormdrive's worker job Format NVM step (stormdrive#154). Starting that job from the console is #356.
+- **fix:** flowsdn modules are shown as flowsdn reports them: a Degraded module is a warning, with no exception read out of its error text (one error string used to turn it idle). flowsdn's own stub answers are flowsdn#418.
+
 ## [v0.35.0] — 2026-11-18
 
 ### 2026-11-18 — A grid for every custom resource (#348)
@@ -585,8 +589,8 @@
   flowsdn edition, from the agent's read-only loopback listener
   (`http://127.0.0.1:9878`, flowsdn#297), polled every 5 s with the last
   good answer kept per route while the agent is away. Feed: the agent
-  (health from its API, Kubernetes view and modules; "not implemented" is
-  idle, not a warning), one row per endpoint led by `namespace/pod` with
+  (health from its API, Kubernetes view and modules; a module flowsdn had
+  not built was idle, not a warning — dropped in #350), one row per endpoint led by `namespace/pod` with
   node and namespace as placement columns and the identity as a metric,
   one per IPAM pool (exact u128 counts). Endpoints and Services in
   namespaces the viewer may not see are withheld.

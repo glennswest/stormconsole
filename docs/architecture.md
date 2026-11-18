@@ -1667,9 +1667,9 @@ console shows its own; the page says so.
   "not served", not an error). A route that fails keeps its **last good
   answer**; the agent row then says it stopped answering and how long ago.
 - **Feed** (`model.rs`, pure): the agent (health = the API's state, a
-  Stopped module, the Kubernetes view's state, a Degraded module — but a
-  module Degraded with "not implemented" is Idle: flowsdn saying a
-  controller does not exist yet), one `flowsdn:ep:<id>` per endpoint
+  Stopped module, the Kubernetes view's state, a Degraded module, each as
+  flowsdn reports it — a module flowsdn calls Degraded is a warning here,
+  with no exceptions read out of its error text, #350), one `flowsdn:ep:<id>` per endpoint
   labelled `namespace/pod` with `belongs_to` namespace and node (so the
   table gives them columns) and `has_one` pod, the numeric identity a
   metric; one `flowsdn:pool:<pool>:<family>` per IPAM pool, counts kept as

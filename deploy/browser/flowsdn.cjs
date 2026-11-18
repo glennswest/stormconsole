@@ -42,7 +42,7 @@ walk('flowsdn', async (t) => {
   await tab('IPAM', /18446744073709551611/, 'IPAM: the IPv6 pool exact past 2^53')
   t.check(/249/.test(await t.text(page)) && /98% free/.test(await t.text(page)), 'IPAM: IPv4 249 available, 98% free')
   await tab('Health', /agent\.controllers/, 'Health: per module')
-  t.check(/flowsdn does not have it yet/.test(await t.text(page)), 'Health: "not implemented" is said as not built, not broken')
+  t.check(/identity and policy controllers are not/.test(await t.text(page)), 'Health: a module says what it does not run, in its own words')
   t.check(/direct node routes ✓/.test(await t.text(page)), 'Health: booleans as marks')
   await tab('Config', /datapath-mode veth/, 'Config: what the agent believes')
   await tab('Services', /default\/kubernetes/, 'Services: the frontends it programs')

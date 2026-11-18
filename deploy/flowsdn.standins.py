@@ -24,9 +24,9 @@ def modules():
     rows = [
         ("api", "OK", "initial endpoint API listening", ""),
         ("restore", "OK", "endpoint restore and deletion replay completed", ""),
-        ("controllers", "Degraded",
+        ("controllers", "OK",
          "Kubernetes node discovery enabled; identity and policy controllers are not" if K8S
-         else "Kubernetes, identity and policy controllers are not enabled", "not implemented"),
+         else "Kubernetes, identity and policy controllers are not enabled", ""),
     ]
     return [{"ID": {"Module": ["agent"], "Component": [c]}, "Level": lvl, "Message": msg, "Error": err,
              "LastOK": "2026-10-10T10:00:00Z" if lvl == "OK" else NEVER,

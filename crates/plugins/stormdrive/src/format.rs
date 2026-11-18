@@ -52,8 +52,11 @@ pub fn why_not(d: &Value) -> Option<String> {
         "system" => return Some("designated system: it holds the node's own data".into()),
         _ => {}
     }
+    // This page's format is SCSI FORMAT UNIT. stormdrive reformats an NVMe
+    // namespace through a worker job's Format NVM step (stormdrive#154), which
+    // the console does not offer yet (#356): said as where it is done.
     if text(d, "kind") == "nvme_ssd" {
-        return Some("NVMe: namespace format is not implemented".into());
+        return Some("NVMe: this page formats SCSI drives; an NVMe namespace is reformatted by stormdrive's worker job Format NVM step".into());
     }
     None
 }

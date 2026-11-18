@@ -271,7 +271,7 @@
               <td class="mono">{m.id}</td>
               <td><StatusPill health={m.health} label={m.level} /></td>
               <td>{m.message}</td>
-              <td>{m.error}{#if m.health === 'idle'} <span class="dim">— flowsdn does not have it yet</span>{/if}</td>
+              <td>{m.error}</td>
               <td class="mono small">{m.updated}</td>
               <td class="mono small">{m.last_ok || 'never'}</td>
             </tr>

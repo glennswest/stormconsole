@@ -2575,6 +2575,13 @@ Owner: "CRD we should have a grid to display there contents." Like OpenShift's C
   stormcos#1028, stormcos-cilium#55 (the six forge1 CRDs with no printer columns). stormview's DataGrid
   can only colour a cell through its `metrics` render; links in cells would need a snippet render.
 
+### No stubs (#350) ✅ 2026-11-18
+- [x] stormdrive `format.rs`: the NVMe refusal names stormdrive's Format NVM worker job; the console's gap is #356 (P2)
+- [x] flowsdn: no special case on the error text; the module as flowsdn says it (flowsdn#418 is flowsdn's)
+- [x] stand-in, unit test, browser walk, architecture.md, the old CHANGELOG line
+- Left: `web/dist/assets/xterm.js` carries xterm's own throw in an abstract method (`setFromCharData`, an abstract
+  method inside @xterm/xterm 5.5.0, vendored) — not the console's surface.
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

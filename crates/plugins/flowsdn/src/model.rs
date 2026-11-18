@@ -198,7 +198,6 @@ impl Module {
         let error = s(v, "/Error").unwrap_or("").to_string();
         let health = match level.as_str() {
             "OK" => Health::Ok,
-            "Degraded" if error == "not implemented" => Health::Idle,
             "Degraded" => Health::Warn,
             "Stopped" => Health::Error,
             _ => Health::Unknown,
