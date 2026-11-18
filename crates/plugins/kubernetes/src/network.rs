@@ -126,21 +126,20 @@ pub(crate) fn selects(policy: &Value, labels: &HashMap<String, String>) -> bool 
         policy.pointer("/spec/podSelector"),
         policy.pointer("/spec/nodeSelector"),
     ];
-    for sel in selectors.into_iter().flatten() {
-        if sel.get("matchExpressions").is_some() {
-            return false;
-        }
-        let Some(m) = sel.get("matchLabels").and_then(Value::as_object) else {
-            // An empty selector selects everything in scope, which is what
-            // a default-deny policy is.
-            return sel.as_object().is_some_and(|o| o.is_empty());
-        };
-        return m.iter().all(|(k, v)| {
-            let k = k.strip_prefix("k8s:").unwrap_or(k);
-            labels.get(k).map(String::as_str) == v.as_str()
-        });
+    // The first selector the policy carries is the one that decides.
+    let Some(sel) = selectors.into_iter().flatten().next() else { return false };
+    if sel.get("matchExpressions").is_some() {
+        return false;
     }
-    false
+    let Some(m) = sel.get("matchLabels").and_then(Value::as_object) else {
+        // An empty selector selects everything in scope, which is what
+        // a default-deny policy is.
+        return sel.as_object().is_some_and(|o| o.is_empty());
+    };
+    m.iter().all(|(k, v)| {
+        let k = k.strip_prefix("k8s:").unwrap_or(k);
+        labels.get(k).map(String::as_str) == v.as_str()
+    })
 }
 
 /// A workload's endpoint, and the kind its identity is under: whichever network's objects

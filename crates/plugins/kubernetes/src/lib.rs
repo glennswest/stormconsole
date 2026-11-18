@@ -15,7 +15,7 @@ pub mod authz;
 pub mod cache;
 pub mod client;
 mod components;
-pub mod crs;
+mod crs;
 mod dayto;
 mod flows;
 mod rack;
@@ -100,7 +100,7 @@ struct Inner {
     /// Which network this node runs (#285).
     build: Option<Arc<console_core::build::Build>>,
     /// The aggregated groups' kinds, by discovery, and when (#348).
-    discovered: tokio::sync::Mutex<Option<(std::time::Instant, Vec<crs::Kind>)>>,
+    discovered: crs::Discovered,
 }
 
 impl Inner {

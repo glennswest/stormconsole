@@ -45,6 +45,9 @@ const COUNT_WITHIN: Duration = Duration::from_secs(5);
 /// A kind with no printer columns shows this many of its status fields.
 const STATUS_FIELDS: usize = 6;
 
+/// The aggregated groups' kinds by discovery, and when they were asked.
+pub type Discovered = tokio::sync::Mutex<Option<(Instant, Vec<Kind>)>>;
+
 /// One printer column.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {
