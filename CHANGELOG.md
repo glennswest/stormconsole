@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.35.0] — 2026-11-18
+
 ### 2026-11-18 — A grid for every custom resource (#348)
 - **feat:** Cluster → **Custom resources** (`#/crds`): every CRD, and every kind an aggregated group serves, with group, versions, scope, printer columns, established, and how many of it you may see (or that you may not list them); search, storm.io only, with instances.
 - **feat:** **any kind's instances** (`#/cr/<plural.group>`) on stormview's DataGrid: NAME, NAMESPACE, the CRD's `additionalPrinterColumns` resolved as rustkube's Table resolves them for `oc get` (same cells), AGE; `priority > 0` behind **Wide**; the project filter; search; sort; **live** from your own watch (SSE), polling every 10 s when you may list only some projects. A kind with no printer columns shows its status fields and says so.

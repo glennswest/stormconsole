@@ -2553,20 +2553,27 @@ From stormdrive v0.49.0's Drive `status.link` + `LinkDegraded`/`LinkFailing` (st
   stand-in ironprom, Chromium), 0 failed. Not yet on forge1: needs a release carrying stormdrive
   v0.49.0+ and this console.
 
-### A grid for every custom resource (#348) — in progress 2026-11-18
+### A grid for every custom resource (#348) ✅ 2026-11-18 (v0.35.0)
 Owner: "CRD we should have a grid to display there contents." Like OpenShift's CRDs → Instances.
-- [ ] k8s plugin `crs.rs`: `GET /crds` (every CRD from the watch cache + aggregated groups by discovery:
+- [x] k8s plugin `crs.rs`: `GET /crds` (every CRD from the watch cache + aggregated groups by discovery:
       group, versions, scope, established, printer columns, instance count as the viewer)
-- [ ] `GET /cr/{plural.group}` → columns from `additionalPrinterColumns` resolved exactly as rustkube's
-      `table.rs` (NAME, the columns, AGE when the CRD has none; `priority > 0` wide); no columns → NAME,
+- [x] `GET /cr/{plural.group}` → columns from `additionalPrinterColumns` resolved exactly as rustkube's
+      `table.rs` (NAME, the columns, AGE unless the CRD prints its own; `priority > 0` wide); no columns → NAME,
       NAMESPACE, AGE + first-level status scalars and `gap: true`; `?project=`; hidden projects dropped
-- [ ] `GET /cr/{crd}/watch` (SSE: snapshot, then the viewer's own watch as rows; ends → browser re-lists)
-- [ ] `GET|PUT|DELETE /cr/{crd}/object/{ns|_}/{name}`: object, YAML, conditions, printer values, events,
+- [x] `GET /cr/{crd}/watch` (SSE: snapshot, then the viewer's own watch as rows; ends → browser re-lists)
+- [x] `GET|PUT|DELETE /cr/{crd}/object/{ns|_}/{name}`: object, YAML, conditions, printer values, events,
       owner references as links; edit/delete as the viewer with the apiserver's refusal said
-- [ ] web: `#/crds` (search), `#/cr/<crd>` (DataGrid, project filter, search, wide, live), `#/cr/<crd>/<ns>/<name>`;
-      curated renderers per storm.io kind in `crgrid.js` (drive health/link, RAID phase, progress, owner link)
-- [ ] sidebar Cluster → Custom resources = `#/crds`; "All <kind>" in plugin menus
-- [ ] docs, CHANGELOG, verify script against a real rustkube with stormraid's/stormdrive's CRDs
+- [x] web: `#/crds`, `#/cr/<crd>` (DataGrid, project filter, search, wide, live), `#/cr/<crd>/<ns>/<name>`;
+      curated renderers per storm.io kind in `crgrid.js` (drive health/link, RAID phase bar, progress, owner)
+- [x] sidebar Cluster → Custom resources = `#/crds`; "All <kind>" in plugin menus (names checked on forge1)
+- [x] docs, CHANGELOG, `deploy/verify-crd-grid.sh` + `crds.cjs`
+- Verified: `deploy/verify-crd-grid.sh` on a build VM, rustkube v0.15.3 + fastetcd v1.2.0, 0 failed — the
+  grid's columns and every cell equal the apiserver's own `as=Table` (what `oc get` prints) for raidsets and
+  drives; Chromium walk 0 failed. Workspace clippy `-D warnings` and tests pass (clippy 1.95 fixes: #341,
+  #349, #351, #353).
+- Filed: sc#49 (`sc get` ignores printer columns — the proof's `sc get raidsets`), stormcert#152,
+  stormcos#1028, stormcos-cilium#55 (the six forge1 CRDs with no printer columns). stormview's DataGrid
+  can only colour a cell through its `metrics` render; links in cells would need a snippet render.
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
