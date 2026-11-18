@@ -2553,6 +2553,21 @@ From stormdrive v0.49.0's Drive `status.link` + `LinkDegraded`/`LinkFailing` (st
   stand-in ironprom, Chromium), 0 failed. Not yet on forge1: needs a release carrying stormdrive
   v0.49.0+ and this console.
 
+### A grid for every custom resource (#348) — in progress 2026-11-18
+Owner: "CRD we should have a grid to display there contents." Like OpenShift's CRDs → Instances.
+- [ ] k8s plugin `crs.rs`: `GET /crds` (every CRD from the watch cache + aggregated groups by discovery:
+      group, versions, scope, established, printer columns, instance count as the viewer)
+- [ ] `GET /cr/{plural.group}` → columns from `additionalPrinterColumns` resolved exactly as rustkube's
+      `table.rs` (NAME, the columns, AGE when the CRD has none; `priority > 0` wide); no columns → NAME,
+      NAMESPACE, AGE + first-level status scalars and `gap: true`; `?project=`; hidden projects dropped
+- [ ] `GET /cr/{crd}/watch` (SSE: snapshot, then the viewer's own watch as rows; ends → browser re-lists)
+- [ ] `GET|PUT|DELETE /cr/{crd}/object/{ns|_}/{name}`: object, YAML, conditions, printer values, events,
+      owner references as links; edit/delete as the viewer with the apiserver's refusal said
+- [ ] web: `#/crds` (search), `#/cr/<crd>` (DataGrid, project filter, search, wide, live), `#/cr/<crd>/<ns>/<name>`;
+      curated renderers per storm.io kind in `crgrid.js` (drive health/link, RAID phase, progress, owner link)
+- [ ] sidebar Cluster → Custom resources = `#/crds`; "All <kind>" in plugin menus
+- [ ] docs, CHANGELOG, verify script against a real rustkube with stormraid's/stormdrive's CRDs
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
