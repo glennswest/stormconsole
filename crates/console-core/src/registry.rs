@@ -392,6 +392,8 @@ impl Registry {
             all.extend(slice);
         }
 
+        used_by(&mut all);
+
         let changed = { **self.snapshot.read().await != all };
         if changed {
             let arc = Arc::new(all);
@@ -475,6 +477,45 @@ pub(crate) fn severity(h: Health) -> u8 {
         Health::Ok => 2,
         Health::Idle => 3,
         Health::Unknown => 4,
+    }
+}
+
+/// `claims` references turned round (#347): a VM names the claims its disks are on,
+/// and the claim's row says the VM uses it — beside the pods the kubernetes plugin
+/// already names there, which are in its own slice. A claim's `bound, not mounted by
+/// any pod` gives way to the machine that does use it.
+pub fn used_by(all: &mut [ComponentSummary]) {
+    let mut users: std::collections::HashMap<String, Vec<(String, String)>> = Default::default();
+    for c in all.iter() {
+        for r in c.relations.iter().filter(|r| r.name == "claims") {
+            let words = if c.id.starts_with("vm:") { format!("VM {}", c.label) } else { c.label.clone() };
+            for t in &r.targets {
+                users.entry(t.clone()).or_default().push((c.id.clone(), words.clone()));
+            }
+        }
+    }
+    if users.is_empty() {
+        return;
+    }
+    for c in all.iter_mut() {
+        let Some(by) = users.remove(&c.id) else { continue };
+        let ids: Vec<String> = by.iter().map(|(id, _)| id.clone()).collect();
+        match c.relations.iter_mut().find(|r| r.name == "used by") {
+            Some(r) => {
+                let new: Vec<String> = ids.into_iter().filter(|i| !r.targets.contains(i)).collect();
+                r.targets.extend(new);
+            }
+            None => c.relations.push(Relation { name: "used by".into(), kind: stormview::RelationKind::HasOne, targets: ids, href: None }),
+        }
+        let words = by.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join("; ");
+        match c.metrics.iter_mut().find(|m| m.label == "used by") {
+            Some(m) if m.value.starts_with("bound, not mounted") => {
+                m.value = words;
+                m.tone = Some("accent".into());
+            }
+            Some(m) => m.value = format!("{}; {words}", m.value),
+            None => c.metrics.push(stormview::Metric::new("used by", words).tone("accent")),
+        }
     }
 }
 
@@ -735,5 +776,36 @@ mod tests {
         // #308) is still confirmed by that drive's serial.
         let g = r.guard(&admin, &m, "/api/plugins/drive/proxy/api/v1/drives/7f3a/sanitize", None).await.unwrap();
         assert_eq!(g.confirm, "ZC1234");
+    }
+
+    #[test]
+    fn a_claim_says_which_machine_uses_it() {
+        let comp = |id: &str, label: &str| ComponentSummary {
+            id: id.into(),
+            kind: "x".into(),
+            label: label.into(),
+            health: Health::Ok,
+            detail: String::new(),
+            metrics: vec![],
+            actions: vec![],
+            relations: vec![],
+            link: None,
+        };
+        let mut vm = comp("vm:machine:shop/vm1", "vm1");
+        vm.relations.push(Relation { name: "claims".into(), kind: stormview::RelationKind::HasOne, targets: vec!["k8s:pvc:shop/pg".into(), "k8s:pvc:shop/gone".into()], href: None });
+        let mut pg = comp("k8s:pvc:shop/pg", "pg");
+        pg.metrics.push(stormview::Metric::new("used by", "bound, not mounted by any pod"));
+        let mut both = comp("k8s:pvc:shop/both", "both");
+        both.metrics.push(stormview::Metric::new("used by", "web-0 · app at /data"));
+        both.relations.push(Relation { name: "used by".into(), kind: stormview::RelationKind::HasOne, targets: vec!["k8s:pod:shop/web-0".into()], href: None });
+        let mut vm2 = comp("vm:machine:shop/vm2", "vm2");
+        vm2.relations.push(Relation { name: "claims".into(), kind: stormview::RelationKind::HasOne, targets: vec!["k8s:pvc:shop/both".into()], href: None });
+        let mut all = vec![vm, pg, both, vm2];
+        used_by(&mut all);
+        let m = |c: &ComponentSummary| c.metrics.iter().find(|m| m.label == "used by").map(|m| m.value.clone());
+        assert_eq!(m(&all[1]).as_deref(), Some("VM vm1"));
+        assert_eq!(all[1].relations[0].targets, vec!["vm:machine:shop/vm1"]);
+        assert_eq!(m(&all[2]).as_deref(), Some("web-0 · app at /data; VM vm2"));
+        assert_eq!(all[2].relations[0].targets, vec!["k8s:pod:shop/web-0", "vm:machine:shop/vm2"]);
     }
 }

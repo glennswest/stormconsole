@@ -93,8 +93,6 @@ struct Inner {
     runs: Arc<logruns::LogRuns>,
     /// Every pod's stats over the last hour, from each node's kubelet (#124).
     stats: Arc<stats::Stats>,
-    /// Where a `stormpump://` golden's provenance is read (#69).
-    stormcentral: Option<podpage::Stormcentral>,
     /// Hubble relay, for flows (#4).
     hubble_relay: String,
     /// Which network this node runs (#285).
@@ -151,9 +149,6 @@ fn member(name: &str, node: &Value) -> console_core::members::Member {
 }
 
 impl KubernetesPlugin {
-    /// stormcentral, for the provenance of a `stormpump://` image on the
-    /// pod page. Called right after `new`, before anything shares the
-    /// plugin.
     /// What this node's build carries (#285). Called right after `new`.
     pub fn with_build(mut self, build: Arc<console_core::build::Build>) -> Self {
         self.inner.store.set_build(build.clone());
@@ -176,13 +171,6 @@ impl KubernetesPlugin {
         self
     }
 
-    pub fn with_stormcentral(mut self, url: String, token: Option<String>) -> Self {
-        if let Some(inner) = Arc::get_mut(&mut self.inner) {
-            inner.stormcentral = Some(podpage::Stormcentral { url, token });
-        }
-        self
-    }
-
     /// The shared namespace-authorization answer, so the VM plugin asks
     /// the same question once rather than a second time.
     pub fn namespace_access(&self) -> Arc<authz::NamespaceAccess> {
@@ -200,7 +188,7 @@ impl KubernetesPlugin {
         let server = conn.as_ref().map(|c| c.server().to_string());
         let client = conn.clone().map(RkClient::new);
         let probe = client.as_ref().map(|c| Probe::new(format!("{}/version", c.base())));
-        // Plain: stormcentral and the Cilium agent's loopback health server.
+        // Plain: the Cilium agent's loopback health server.
         // Nothing here carries the console's apiserver bearer.
         let http = reqwest::Client::new();
         let store = Arc::new(Store::default());
@@ -216,7 +204,6 @@ impl KubernetesPlugin {
                 access: authz::NamespaceAccess::new(conn, store),
                 runs: Arc::new(logruns::LogRuns::default()),
                 stats: Arc::new(stats::Stats::new()),
-                stormcentral: None,
                 hubble_relay: "http://127.0.0.1:4245".to_string(),
                 build: None,
                 discovered: Default::default(),

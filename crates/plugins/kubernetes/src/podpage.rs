@@ -24,13 +24,6 @@ use crate::{refuse_hidden, Inner};
 /// with a TokenReview against the same apiserver.
 const KUBELET_PORT: u16 = 10250;
 
-/// Where stormcentral is, for the provenance of a `stormpump://` golden.
-#[derive(Clone)]
-pub struct Stormcentral {
-    pub url: String,
-    pub token: Option<String>,
-}
-
 fn not_found(ns: &str, name: &str) -> Response {
     (StatusCode::NOT_FOUND, Json(json!({"error": format!("no pod {ns}/{name}")}))).into_response()
 }
@@ -76,17 +69,13 @@ pub async fn detail(
     // The runs the console kept, on each container.
     let uid = pod.pointer("/metadata/uid").and_then(Value::as_str).unwrap_or("");
     let runs = inner.runs.of(uid).await;
-    let asset = pod.pointer("/metadata/labels/storm.io~1asset").and_then(Value::as_str).map(str::to_string);
+    // The image's provenance is the node's own word (#347): its digest, the golden
+    // it was cloned from and its build, on the pod; the registry and the engine are
+    // asked by the page. Nothing here is asked of anything off the node.
     if let Some(cs) = d["containers"].as_array_mut() {
         for c in cs.iter_mut() {
             let cname = c["name"].as_str().unwrap_or("").to_string();
             c["runs"] = json!(runs.get(&cname).cloned().unwrap_or_default());
-            if c["source"] == "stormpump" {
-                let image = c["image"].as_str().unwrap_or("");
-                let component = asset.clone().unwrap_or_else(|| golden_component(image));
-                let running = c["clonedFrom"].as_str().map(String::from);
-                c["golden"] = golden(&inner, &component, running.as_deref()).await;
-            }
         }
     }
     d["keptRuns"] = json!(crate::logruns::KEEP);
@@ -153,68 +142,6 @@ pub async fn events(
         }
         Err(e) => Json(json!({"available": false, "reason": format!("the apiserver did not answer for events: {e}"), "items": []}))
             .into_response(),
-    }
-}
-
-/// The component a `stormpump://` image names: `stormpump://cilium` and
-/// `stormpump://cilium:1.2` are both `cilium`.
-pub fn golden_component(image: &str) -> String {
-    let rest = image.strip_prefix("stormpump://").unwrap_or(image);
-    let rest = rest.split('/').next().unwrap_or(rest);
-    rest.split(':').next().unwrap_or(rest).to_string()
-}
-
-/// What stormcentral recorded of the image a container was cloned from, when the kubelet
-/// said which (rustkube-node#130). Only without that word is it the newest built for the
-/// component, and it says so: a node on an older release runs an older one.
-async fn golden(inner: &Inner, component: &str, running: Option<&str>) -> Value {
-    let Some(sc) = &inner.stormcentral else {
-        return json!({
-            "available": false,
-            "reason": "stormcentral is not configured here ([stormcentral] url and token_file)",
-        });
-    };
-    let url = format!("{}/api/v1/goldens?component={component}", sc.url.trim_end_matches('/'));
-    let mut req = inner.http.get(&url).timeout(Duration::from_secs(5));
-    if let Some(t) = &sc.token {
-        req = req.bearer_auth(t.trim());
-    }
-    let resp = match req.send().await {
-        Ok(r) => r,
-        Err(e) => return json!({"available": false, "reason": format!("stormcentral did not answer: {e}")}),
-    };
-    if !resp.status().is_success() {
-        return json!({"available": false, "reason": format!("stormcentral answered {}", resp.status())});
-    }
-    let body: Value = resp.json().await.unwrap_or(Value::Null);
-    let list = body.get("goldens").and_then(Value::as_array).cloned().unwrap_or_default();
-    let (found, which) = match running {
-        Some(name) => match list.iter().find(|g| g.get("name").and_then(Value::as_str) == Some(name)) {
-            Some(g) => (Some(g), "the registry image the node says this container was cloned from".to_string()),
-            None => return json!({
-                "available": false,
-                "reason": format!("the node says {name}, and stormcentral has no record of it"),
-            }),
-        },
-        None => (list.first(), "the newest registry image stormcentral built for this component, not confirmed running: the node did not say which".to_string()),
-    };
-    match found {
-        Some(g) => json!({
-            "available": true,
-            "component": component,
-            "which": which,
-            "name": g.get("name"),
-            "version": g.get("version"),
-            "commit": g.get("commit"),
-            "buildId": g.get("build_id"),
-            "builtAt": g.get("built_at"),
-            "builtBy": g.get("built_by"),
-            "tarSha256": g.get("tar_sha256"),
-            "deviceSha256": g.get("device_sha256"),
-            "sources": g.get("sources"),
-            "releases": g.get("releases"),
-        }),
-        None => json!({"available": false, "reason": format!("stormcentral has no registry image for {component}")}),
     }
 }
 
@@ -482,13 +409,6 @@ pub async fn traffic(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_golden_is_named_by_its_component() {
-        assert_eq!(golden_component("stormpump://cilium"), "cilium");
-        assert_eq!(golden_component("stormpump://cilium:1.16"), "cilium");
-        assert_eq!(golden_component("stormpump://stormd/agent"), "stormd");
-    }
 
     #[test]
     fn a_field_path_names_its_container() {

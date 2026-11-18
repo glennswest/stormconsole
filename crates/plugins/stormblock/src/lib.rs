@@ -277,7 +277,14 @@ async fn runs_on_route(
             }
             None => Value::Null,
         };
-        out.push(serde_json::json!({"runsOn": runs_on::runs_on(&full), "clonedFrom": cloned}));
+        out.push(serde_json::json!({
+            "runsOn": runs_on::runs_on(&full),
+            "clonedFrom": cloned,
+            // Whose it is and what it is, from the listing (#347).
+            "owner": runs_on::owner_of(v),
+            "kind": volume_kind(v),
+            "attached": attachments(v),
+        }));
     }
     axum::Json(serde_json::json!({"volumes": out})).into_response()
 }
@@ -686,19 +693,8 @@ fn volume(v: &Value) -> ComponentSummary {
     // Until this was recorded the only thing carrying ownership was the
     // *name*: `vmimages-data` meant "vmimages' data volume" because somebody
     // wrote it that way, not because anything recorded it.
-    let owner = v.get("owner").and_then(|o| {
-        let kind = o.get("kind").and_then(Value::as_str).unwrap_or("");
-        let name = o.get("name").and_then(Value::as_str).unwrap_or("");
-        if kind.is_empty() || name.is_empty() {
-            return None;
-        }
-        let ns = o.get("namespace").and_then(Value::as_str).unwrap_or("");
-        Some(if ns.is_empty() {
-            format!("{kind}/{name}")
-        } else {
-            format!("{kind}/{ns}/{name}")
-        })
-    });
+    // In words with its link, and the container when the owner names one (#347).
+    let owner = v.get("owner").and_then(console_core::value::owner_words);
 
     // Kind first, because it is what the eye should land on.
     let mut metrics = vec![
@@ -750,17 +746,23 @@ fn volume(v: &Value) -> ComponentSummary {
         metrics.push(Metric::new("attached", "nothing").tone("warn"));
     }
     match &owner {
-        // The consumer already says it, from the owner when there is one.
-        Some(_) if used_by.is_some() => {}
-        Some(o) => metrics.push(Metric::new("owner", o.clone()).tone("accent")),
-        // Said out loud rather than left blank. A golden or a blank having no
-        // owner is correct and uninteresting; a *clone* with none is the
-        // orphan question — and an empty cell cannot be told from a column
-        // nothing ever wrote to, which is exactly how this looked when the
-        // field shipped and no writer existed yet.
-        None if kind == "clone" => {
+        // The consumer already says it, when it says all of it (stormblock derives the
+        // consumer from the owner, without the container).
+        Some((o, _)) if used_by.as_ref().is_some_and(|(w, _)| w == o) => {}
+        Some((o, target)) => {
+            metrics.push(Metric::new("owner", o.clone()).tone("accent"));
+            if let Some(t) = target {
+                relations.push(Relation::belongs_to("owner", t.clone()));
+            }
+        }
+        // Said out loud rather than left blank. A golden or a blank having no owner is
+        // correct and uninteresting; a *clone* with none is the orphan question. It is
+        // `unclaimed` only when nothing uses it either (#347): a clone something consumes
+        // or has attached is somebody's, and what is missing is the record of whose.
+        None if kind == "clone" && used_by.is_none() && served.is_empty() && in_use != Some(true) => {
             metrics.push(Metric::new("owner", "unclaimed").tone("warn"))
         }
+        None if kind == "clone" => metrics.push(Metric::new("owner", "not recorded").tone("muted")),
         None => {}
     }
 
@@ -1109,6 +1111,30 @@ mod tests {
             "consumer": {"kind": "Mount", "name": "/data/x"}}));
         assert!(m.metrics.iter().any(|x| x.label == "attached" && x.value == "ublk /dev/ublkb0 → /data/x"));
         assert!(m.relations.iter().all(|r| r.name != "consumer"));
+    }
+
+    #[test]
+    fn a_clone_is_unclaimed_only_when_nothing_owns_or_uses_it() {
+        let owner = |c: &ComponentSummary| c.metrics.iter().find(|m| m.label == "owner").map(|m| m.value.clone());
+        // A container's root (#347): its owner with the container, and a link to the pod.
+        let root = volume(&json!({"id": "r1", "name": "ctr-ct-1", "kind": "volume", "parent": "g1", "in_use": true,
+            "attachments": [{"transport": "ublk", "device": "/dev/ublkb3"}],
+            "consumer": {"kind": "Pod", "namespace": "kube-system", "name": "fastetcd"},
+            "owner": {"kind": "Pod", "namespace": "kube-system", "name": "fastetcd", "container": "fastetcd"}}));
+        assert_eq!(owner(&root).as_deref(), Some("Pod kube-system/fastetcd · container fastetcd"));
+        assert!(root.relations.iter().any(|r| r.name == "owner" && r.targets == vec!["k8s:pod:kube-system/fastetcd"]));
+        // Used, but nobody wrote whose: not an orphan.
+        let used = volume(&json!({"id": "d1", "name": "fastetcd-data", "kind": "volume", "parent": "g2", "in_use": true,
+            "attachments": [{"transport": "ublk", "mounted_at": "/data/fastetcd"}],
+            "consumer": {"kind": "Mount", "name": "/data/fastetcd"}}));
+        assert_eq!(owner(&used).as_deref(), Some("not recorded"));
+        let attached = volume(&json!({"id": "d2", "kind": "volume", "parent": "g2", "attachments": [{"transport": "ublk"}]}));
+        assert_eq!(owner(&attached).as_deref(), Some("not recorded"));
+        // Nothing owns it and nothing uses it.
+        let orphan = volume(&json!({"id": "o1", "kind": "volume", "parent": "g2", "in_use": false, "attachments": []}));
+        assert_eq!(owner(&orphan).as_deref(), Some("unclaimed"));
+        // A golden needs no owner.
+        assert_eq!(owner(&volume(&json!({"id": "g", "kind": "golden", "sealed": true}))), None);
     }
 
     #[test]

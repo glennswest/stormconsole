@@ -29,6 +29,11 @@ pub struct Query {
     pub owner: Option<String>,
     pub namespace: Option<String>,
     pub name: Option<String>,
+    /// Engine volume ids, comma separated: what a pod's `storm.io/instance.<c>` and
+    /// `storm.io/volume.<name>` name (#347). Taken with `owner`, either finds a volume.
+    pub ids: Option<String>,
+    /// With `owner`: only that container's, when the owner names a container.
+    pub container: Option<String>,
 }
 
 /// How long an image that did not answer is left alone. Every `/digest` without a cached
@@ -57,8 +62,10 @@ fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(Value::as_str).unwrap_or("")
 }
 
-/// The listed volumes this asks about.
+/// The listed volumes this asks about. `ids` and `owner` are a union (#347): a pod's
+/// volumes are the ones the node names on it and the ones whose owner names it.
 pub fn select<'a>(volumes: &'a [Value], q: &Query) -> Vec<&'a Value> {
+    let ids: Vec<&str> = q.ids.as_deref().unwrap_or("").split(',').map(str::trim).filter(|i| !i.is_empty()).collect();
     volumes
         .iter()
         .filter(|v| {
@@ -68,13 +75,30 @@ pub fn select<'a>(volumes: &'a [Value], q: &Query) -> Vec<&'a Value> {
             if let Some(path) = &q.mounted {
                 return v.get("attachments").and_then(Value::as_array).into_iter().flatten().any(|a| s(a, "mounted_at") == path);
             }
+            if ids.contains(&s(v, "id")) {
+                return true;
+            }
             if let (Some(kinds), Some(ns), Some(name)) = (&q.owner, &q.namespace, &q.name) {
                 let o = v.get("owner").filter(|o| o.is_object()).or_else(|| v.get("consumer").filter(|o| o.is_object()));
-                return o.is_some_and(|o| kinds.split(',').any(|k| k == s(o, "kind")) && s(o, "namespace") == ns && s(o, "name") == name);
+                let container_ok = |o: &Value| match (&q.container, o.get("container").and_then(Value::as_str)) {
+                    (Some(want), Some(c)) if !c.is_empty() => want == c,
+                    _ => true,
+                };
+                return o.is_some_and(|o| {
+                    kinds.split(',').any(|k| k == s(o, "kind")) && s(o, "namespace") == ns && s(o, "name") == name && container_ok(o)
+                });
             }
             false
         })
         .collect()
+}
+
+/// Who owns a listed volume, in words with its link (#347); `null` when nobody wrote it.
+pub fn owner_of(v: &Value) -> Value {
+    match v.get("owner").and_then(console_core::value::owner_words) {
+        Some((words, link)) => json!({"words": words, "link": link}),
+        None => Value::Null,
+    }
 }
 
 /// The sealed image a volume reads through: its nearest sealed ancestor, past a
@@ -164,6 +188,35 @@ mod tests {
         let owner = Query { owner: Some("VirtualMachine,VirtualMachineInstance".into()), namespace: Some("shop".into()), name: Some("vm1".into()), ..Default::default() };
         assert_eq!(ids(owner), ["c", "d"], "another project's machine of the same name is not this one");
         assert!(ids(Query::default()).is_empty());
+    }
+
+    #[test]
+    fn a_pods_volumes_are_what_the_node_names_and_what_names_the_pod() {
+        let vols = vec![
+            json!({"id": "r1", "name": "ctr-ct-1", "owner": {"kind": "Pod", "namespace": "kube-system", "name": "db", "container": "db"}}),
+            json!({"id": "r2", "name": "ctr-ct-2", "owner": {"kind": "Pod", "namespace": "kube-system", "name": "db", "container": "sidecar"}}),
+            json!({"id": "d1", "name": "db-data"}),
+            json!({"id": "x", "name": "other"}),
+        ];
+        let ids = |q: Query| select(&vols, &q).iter().map(|v| s(v, "id").to_string()).collect::<Vec<_>>();
+        let pod = |container: Option<&str>, ids: &str| Query {
+            owner: Some("Pod".into()),
+            namespace: Some("kube-system".into()),
+            name: Some("db".into()),
+            container: container.map(String::from),
+            ids: Some(ids.into()),
+            ..Default::default()
+        };
+        assert_eq!(ids(pod(Some("db"), "d1")), ["r1", "d1"], "its own root and the data volume the node names");
+        assert_eq!(ids(pod(Some("sidecar"), "")), ["r2"]);
+        assert_eq!(ids(pod(None, " d1 ,")), ["r1", "r2", "d1"], "the whole pod");
+        assert_eq!(
+            ids(Query { ids: Some("x".into()), ..Default::default() }),
+            ["x"],
+            "ids alone, without an owner"
+        );
+        assert_eq!(owner_of(&vols[0])["words"], "Pod kube-system/db · container db");
+        assert_eq!(owner_of(&vols[2]), Value::Null);
     }
 
     #[test]

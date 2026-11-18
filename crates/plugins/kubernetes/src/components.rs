@@ -525,6 +525,7 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
                 == Some("true")
         })
         .map(|(k, _)| k.clone());
+    let users = claim_users(of("pod"));
     for (key, obj) in of("pvc") {
         let (ns, name) = split_key(key);
         // `Pending` is the API's own default for a claim's phase; an
@@ -566,6 +567,7 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         if let Some(v) = s(obj, "/spec/volumeName") {
             c.relations.push(Relation::belongs_to("volume", format!("k8s:pv:{v}")));
         }
+        used_by(&mut c, users.get(key), phase == "Bound");
         if waits {
             // Somewhere to use it: the machines in its project, one click
             // each. A pod's volumes are fixed at creation, so for a pod the
@@ -604,6 +606,8 @@ pub fn map(snap: &Snapshot, agent: AgentState) -> Vec<ComponentSummary> {
         }
         if let (Some(cns), Some(cname)) = (s(obj, "/spec/claimRef/namespace"), s(obj, "/spec/claimRef/name")) {
             c.relations.push(Relation::belongs_to("claim", format!("k8s:pvc:{cns}/{cname}")));
+            // Through its claim (#347).
+            used_by(&mut c, users.get(&format!("{cns}/{cname}")), phase == "Bound");
         }
         out.push(c);
     }
@@ -1082,6 +1086,66 @@ fn render_mem(bytes: i64) -> String {
     format!("{bytes}")
 }
 
+/// Who mounts each claim (#347), keyed `ns/claim`: each pod that declares it, and a line
+/// per mount — `web-0 · app at /var/lib/web (read-only)` — as `describe pvc`'s *Used By*,
+/// with where. A pod that declares a claim no container mounts says so.
+pub fn claim_users(pods: &HashMap<String, Value>) -> HashMap<String, Vec<(String, String)>> {
+    let mut out: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (key, pod) in pods {
+        let (ns, name) = split_key(key);
+        let Some(ns) = ns else { continue };
+        let label = short_label(name, s(pod, "/spec/nodeName"));
+        for v in pod.pointer("/spec/volumes").and_then(Value::as_array).into_iter().flatten() {
+            let Some(claim) = s(v, "/persistentVolumeClaim/claimName").filter(|c| !c.is_empty()) else { continue };
+            let vname = s(v, "/name").unwrap_or("");
+            let mut lines = Vec::new();
+            for ptr in ["/spec/initContainers", "/spec/containers"] {
+                for c in pod.pointer(ptr).and_then(Value::as_array).into_iter().flatten() {
+                    for m in c.get("volumeMounts").and_then(Value::as_array).into_iter().flatten() {
+                        if s(m, "/name") != Some(vname) {
+                            continue;
+                        }
+                        let ro = m.get("readOnly").and_then(Value::as_bool) == Some(true);
+                        lines.push(format!(
+                            "{label} · {} at {}{}",
+                            s(c, "/name").unwrap_or("?"),
+                            s(m, "/mountPath").unwrap_or("?"),
+                            if ro { " (read-only)" } else { "" }
+                        ));
+                    }
+                }
+            }
+            if lines.is_empty() {
+                lines.push(format!("{label} (declared, no container mounts it)"));
+            }
+            let entry = out.entry(format!("{ns}/{claim}")).or_default();
+            for l in lines {
+                entry.push((format!("k8s:pod:{key}"), l));
+            }
+        }
+    }
+    for users in out.values_mut() {
+        users.sort();
+    }
+    out
+}
+
+/// A claim's (or its volume's) *Used by* (#347): the pods as references and the
+/// mounts in words; a bound claim nothing mounts says that rather than nothing.
+fn used_by(c: &mut ComponentSummary, users: Option<&Vec<(String, String)>>, bound: bool) {
+    match users.filter(|u| !u.is_empty()) {
+        Some(u) => {
+            let mut pods: Vec<String> = u.iter().map(|(id, _)| id.clone()).collect();
+            pods.dedup();
+            let words: Vec<&str> = u.iter().map(|(_, w)| w.as_str()).collect();
+            c.metrics.push(Metric::new("used by", words.join("; ")).tone("accent"));
+            c.relations.push(Relation { name: "used by".into(), kind: console_core::RelationKind::HasOne, targets: pods, href: None });
+        }
+        None if bound => c.metrics.push(Metric::new("used by", "bound, not mounted by any pod").tone("muted")),
+        None => {}
+    }
+}
+
 fn short_label(name: &str, node: Option<&str>) -> String {
     match node {
         Some(nd) if !nd.is_empty() => match name.strip_suffix(nd) {
@@ -1142,6 +1206,45 @@ mod tests {
         let c = out.iter().find(|c| c.id == "k8s:pvc:gw-work/testbig1").unwrap();
         assert_eq!(c.health, Health::Warn);
         assert!(c.actions.iter().all(|a| a.id != "attach"));
+    }
+
+    #[test]
+    fn a_claim_says_which_pods_mount_it_and_where() {
+        let mut snap = snap_with(
+            "pvc",
+            "shop/data",
+            json!({"metadata": {"name": "data"}, "spec": {"volumeName": "pv-1"}, "status": {"phase": "Bound"}}),
+        );
+        snap.get_mut("pvc").unwrap().insert(
+            "shop/idle".into(),
+            json!({"metadata": {"name": "idle"}, "status": {"phase": "Bound"}}),
+        );
+        snap.insert("pv", HashMap::from([(
+            "pv-1".to_string(),
+            json!({"spec": {"claimRef": {"namespace": "shop", "name": "data"}}, "status": {"phase": "Bound"}}),
+        )]));
+        snap.insert("pod", HashMap::from([
+            ("shop/web-0".to_string(), json!({"spec": {
+                "volumes": [{"name": "d", "persistentVolumeClaim": {"claimName": "data"}}],
+                "containers": [
+                    {"name": "app", "volumeMounts": [{"name": "d", "mountPath": "/var/lib/web"}]},
+                    {"name": "backup", "volumeMounts": [{"name": "d", "mountPath": "/src", "readOnly": true}]}]}})),
+            ("other/web-0".to_string(), json!({"spec": {
+                "volumes": [{"name": "d", "persistentVolumeClaim": {"claimName": "data"}}], "containers": []}})),
+        ]));
+        let out = map(&snap, None);
+        let get = |id: &str| out.iter().find(|c| c.id == id).unwrap();
+        let m = |c: &ComponentSummary| c.metrics.iter().find(|m| m.label == "used by").map(|m| m.value.clone());
+        let data = get("k8s:pvc:shop/data");
+        assert_eq!(m(data).as_deref(), Some("web-0 · app at /var/lib/web; web-0 · backup at /src (read-only)"), "another project's claim of that name is not this one");
+        let r = data.relations.iter().find(|r| r.name == "used by").unwrap();
+        assert_eq!(r.targets, vec!["k8s:pod:shop/web-0"]);
+        assert_eq!(m(get("k8s:pv:pv-1")), m(data), "the volume says it through its claim");
+        assert_eq!(m(get("k8s:pvc:shop/idle")).as_deref(), Some("bound, not mounted by any pod"));
+        assert_eq!(
+            claim_users(snap.get("pod").unwrap())["other/data"][0].1,
+            "web-0 (declared, no container mounts it)"
+        );
     }
 
     #[test]

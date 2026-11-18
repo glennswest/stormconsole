@@ -683,10 +683,9 @@ impl Default for Stormcluster {
     }
 }
 
-/// stormcentral, where a `stormpump://` golden's provenance is recorded
-/// (#69): component, commit, build id, built at, built by. Off unless a
-/// url is set — its golden list is authenticated, and a node holds no
-/// stormcentral token by default.
+/// Retired (#347): the pod page read a `stormpump://` golden's provenance
+/// from stormcentral; it now reads the node's own objects. Still parsed so a
+/// config that has the section starts, with a warning at start.
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Stormcentral {

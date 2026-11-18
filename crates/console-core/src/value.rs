@@ -23,6 +23,17 @@ pub fn consumer_words(c: &Value) -> Option<(String, Option<String>)> {
     Some((words, target))
 }
 
+/// Who owns a volume (stormblock#115), in words and with its link, as [`consumer_words`]
+/// says a consumer, plus the container when the owner names one (rustkube-node#372):
+/// `Pod kube-system/fastetcd · container fastetcd`.
+pub fn owner_words(o: &Value) -> Option<(String, Option<String>)> {
+    let (mut words, target) = consumer_words(o)?;
+    if let Some(c) = o.get("container").and_then(Value::as_str).filter(|c| !c.is_empty()) {
+        words.push_str(&format!(" · container {c}"));
+    }
+    Some((words, target))
+}
+
 pub fn field(v: &Value, keys: &[&str]) -> Option<String> {
     for k in keys {
         match v.get(*k) {
@@ -59,6 +70,17 @@ pub fn human_bytes(n: u64) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_owner_names_its_container() {
+        let o = json!({"kind": "Pod", "namespace": "kube-system", "name": "fastetcd", "container": "fastetcd"});
+        assert_eq!(
+            owner_words(&o),
+            Some(("Pod kube-system/fastetcd · container fastetcd".into(), Some("k8s:pod:kube-system/fastetcd".into())))
+        );
+        assert_eq!(owner_words(&json!({"kind": "Service", "name": "fastetcd"})), Some(("Service fastetcd".into(), None)));
+        assert_eq!(owner_words(&json!({"kind": "Pod"})), None);
+    }
 
     #[test]
     fn field_takes_the_first_present_key() {

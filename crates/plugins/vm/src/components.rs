@@ -50,6 +50,27 @@ pub fn memory(domain: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The claims a machine's disks are on (#347), as a reference the console turns
+/// round: the claim's row says this machine uses it. A `dataVolume` is a claim of
+/// the same name.
+pub fn claims(ns: &str, spec: &Value) -> Option<Relation> {
+    let mut targets: Vec<String> = Vec::new();
+    for v in spec.pointer("/volumes").and_then(Value::as_array).into_iter().flatten() {
+        let claim = v
+            .pointer("/persistentVolumeClaim/claimName")
+            .or_else(|| v.pointer("/dataVolume/name"))
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty());
+        if let Some(c) = claim {
+            let t = format!("k8s:pvc:{ns}/{c}");
+            if !targets.contains(&t) {
+                targets.push(t);
+            }
+        }
+    }
+    (!targets.is_empty()).then(|| Relation { name: "claims".into(), kind: console_core::RelationKind::HasOne, targets, href: None })
+}
+
 /// Disks, named as the guest sees them, with the volume each is backed by.
 pub fn disks(spec: &Value) -> Vec<(String, String)> {
     let volumes: HashMap<&str, &Value> = spec
@@ -204,6 +225,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             c.metrics.push(Metric::new("memory", m));
         }
         c.metrics.push(Metric::new("disks", ds.len().to_string()).tone("muted"));
+        c.relations.extend(claims(ns, &spec));
         // The address, and how it is reached — the two facts somebody scanning
         // a list of machines is actually looking for (#24).
         //
@@ -459,6 +481,7 @@ pub fn map_with(snap: &Snapshot, running: &Running) -> Vec<ComponentSummary> {
             relations: vec![Relation::belongs_to("namespace", format!("k8s:ns:{ns}"))],
             link: Some(format!("#/vm/{ns}/{name}")),
         };
+        c.relations.extend(claims(ns, &spec));
         if let Some(cp) = vcpus(&domain) {
             c.metrics.push(Metric::new("vcpu", cp.to_string()));
         }
@@ -849,6 +872,10 @@ mod tests {
         assert_eq!(d[0], ("root".into(), "instance of rocky-10".into()));
         assert_eq!(d[1], ("data".into(), "pvc pg".into()));
         assert_eq!(d[2], ("orphan".into(), "no volume".into()));
+        let r = claims("shop", &spec).unwrap();
+        assert_eq!((r.name.as_str(), r.kind), ("claims", RelationKind::HasOne));
+        assert_eq!(r.targets, vec!["k8s:pvc:shop/rocky-10", "k8s:pvc:shop/pg"]);
+        assert!(claims("shop", &json!({"volumes": [{"name": "c", "cloudInitNoCloud": {}}]})).is_none());
     }
 
     #[test]

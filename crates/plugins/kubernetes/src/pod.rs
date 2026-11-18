@@ -142,7 +142,15 @@ pub fn containers(pod: &Value) -> Vec<Value> {
             let image = s(c, "/image");
             let image_id = st.map(|v| s(v, "/imageID")).unwrap_or("");
             let running_image = st.map(|v| s(v, "/image")).filter(|i| !i.is_empty()).unwrap_or(image);
-            let digest = digest_of(image_id).or_else(|| digest_of(running_image));
+            let annotations = pod.pointer("/metadata/annotations").and_then(Value::as_object);
+            // The node's own word on the digest first (rustkube-node#372): under the
+            // stormpump runtime the imageID repeats the image name.
+            let digest = annotations
+                .and_then(|a| a.get(&format!("storm.io/image-digest.{name}")))
+                .and_then(Value::as_str)
+                .and_then(digest_of)
+                .or_else(|| digest_of(image_id))
+                .or_else(|| digest_of(running_image));
             let (policy, defaulted) = pull_policy(c);
             let ports: Vec<Value> = c
                 .get("ports")
@@ -160,7 +168,6 @@ pub fn containers(pod: &Value) -> Vec<Value> {
                         .collect()
                 })
                 .unwrap_or_default();
-            let annotations = pod.pointer("/metadata/annotations").and_then(Value::as_object);
             // Read the day the node writes it (rustkube-node#130).
             let resolved = annotations
                 .and_then(|a| a.get(&format!("storm.io/image-resolved.{name}")))
@@ -171,10 +178,22 @@ pub fn containers(pod: &Value) -> Vec<Value> {
             let note = |k: &str| annotations.and_then(|a| a.get(&format!("storm.io/{k}.{name}"))).and_then(Value::as_str);
             let pod_note = |k: &str| annotations.and_then(|a| a.get(&format!("storm.io/{k}"))).and_then(Value::as_str);
             let build = note("image-build").and_then(|b| serde_json::from_str::<Value>(b).ok()).unwrap_or(Value::Null);
+            // The engine volumes this container is on (#347): its own root, then each pod
+            // volume it mounts that the node names (`storm.io/volume.<name>`).
+            let mut volume_ids: Vec<String> = note("instance").map(String::from).into_iter().collect();
+            for m in c.get("volumeMounts").and_then(Value::as_array).into_iter().flatten() {
+                let id = annotations
+                    .and_then(|a| a.get(&format!("storm.io/volume.{}", s(m, "/name"))))
+                    .and_then(Value::as_str);
+                if let Some(id) = id.filter(|i| !i.is_empty() && !volume_ids.iter().any(|v| v == i)) {
+                    volume_ids.push(id.to_string());
+                }
+            }
             out.push(json!({
                 "name": name,
                 "role": role,
                 "instance": note("instance"),
+                "volumeIds": volume_ids,
                 "clonedFrom": note("golden").or(pod_note("golden")),
                 "provenance": pod_note("golden-provenance"),
                 "imageBuild": build,
@@ -501,11 +520,13 @@ pub fn gaps(pod: &Value, containers: &[Value]) -> Vec<Value> {
             STATUS_ISSUE,
         ));
     }
-    out.push(gap(
-        "build info",
-        "the node does not read the image's OCI config, so its build date and org.opencontainers labels are not reported".into(),
-        STATUS_ISSUE,
-    ));
+    if containers.iter().all(|c| c["imageBuild"].is_null()) {
+        out.push(gap(
+            "build info",
+            "the node does not read the image's OCI config, so its build date and org.opencontainers labels are not reported".into(),
+            STATUS_ISSUE,
+        ));
+    }
     let restarted_without_last = containers
         .iter()
         .any(|c| c["restartCount"].as_i64().unwrap_or(0) > 0 && c["lastState"].is_null());
@@ -769,10 +790,17 @@ pub fn volumes(snap: &Snapshot, ns: &str, pod: &Value) -> Vec<Value> {
                 }
             }
         });
+        // The engine volume the node says this is (rustkube-node#372).
+        let engine_id = pod
+            .pointer("/metadata/annotations")
+            .and_then(|a| a.get(format!("storm.io/volume.{name}")))
+            .cloned()
+            .unwrap_or(Value::Null);
         out.push(json!({
             "name": name,
             "kind": kind,
             "source": line,
+            "engineId": engine_id,
             "mounts": mounts.remove(&name).unwrap_or_default(),
             "claim": claim,
         }));
@@ -1250,5 +1278,35 @@ container_memory_working_set_bytes{container="app",id="abc",namespace="shop",pod
         assert_eq!(v[3]["source"], "serviceAccountToken, configMap");
         assert_eq!(v[4]["claim"], json!({"name": "nope", "found": false}));
         assert_eq!(v[3]["claim"], Value::Null);
+        assert!(v[0]["engineId"].is_null(), "the node named none");
+    }
+
+    #[test]
+    fn the_node_names_each_containers_digest_build_and_volumes() {
+        // A mirror pod as rustkube-node#372 writes it.
+        let pod = json!({
+            "metadata": {"name": "fastetcd-n1", "annotations": {
+                "storm.io/instance.fastetcd": "r-1",
+                "storm.io/golden.fastetcd": "golden-fastetcd-aaaaaaaaaaaa",
+                "storm.io/image-digest.fastetcd": format!("sha256:{}", "c".repeat(64)),
+                "storm.io/image-build.fastetcd": r#"{"version":"0.9.1","revision":"abc123"}"#,
+                "storm.io/volume.root": "r-1",
+                "storm.io/volume.data": "d-1"}},
+            "spec": {
+                "volumes": [{"name": "root", "hostPath": {"path": "/run/r-1"}},
+                            {"name": "data", "persistentVolumeClaim": {"claimName": "fastetcd-data-n1"}}],
+                "containers": [{"name": "fastetcd", "image": "stormpump://fastetcd",
+                                "volumeMounts": [{"name": "root", "mountPath": "/run/r-1"}, {"name": "data", "mountPath": "/data"}]}]},
+            "status": {"containerStatuses": [{"name": "fastetcd", "image": "stormpump://fastetcd", "imageID": "stormpump://fastetcd"}]}
+        });
+        let c = containers(&pod);
+        assert_eq!(c[0]["digest"], format!("sha256:{}", "c".repeat(64)), "the node's word, not the imageID");
+        assert_eq!(c[0]["volumeIds"], json!(["r-1", "d-1"]), "its root once, then its data");
+        assert_eq!(c[0]["imageBuild"]["revision"], "abc123");
+        assert_eq!(c[0]["clonedFrom"], "golden-fastetcd-aaaaaaaaaaaa");
+        let v = volumes(&Snapshot::default(), "kube-system", &pod);
+        assert_eq!((v[0]["engineId"].as_str(), v[1]["engineId"].as_str()), (Some("r-1"), Some("d-1")));
+        let whats: Vec<String> = gaps(&pod, &c).iter().map(|g| g["what"].as_str().unwrap().to_string()).collect();
+        assert!(!whats.iter().any(|w| w == "image digest" || w == "build info"), "{whats:?}");
     }
 }

@@ -155,16 +155,10 @@ async fn run() {
         if let Some(url) = &config.kubernetes.hubble_relay {
             k8s = k8s.with_hubble_relay(url.clone());
         }
-        // The provenance of a `stormpump://` image on the pod page (#69).
-        if let Some(url) = &config.stormcentral.url {
-            let token = config.stormcentral.token_file.as_deref().and_then(|f| match std::fs::read_to_string(f) {
-                Ok(t) => Some(t.trim().to_string()),
-                Err(e) => {
-                    tracing::warn!(file = f, "stormcentral token_file unreadable: {e}");
-                    None
-                }
-            });
-            k8s = k8s.with_stormcentral(url.clone(), token);
+        // The pod page reads an image's provenance from the node's own objects (#347):
+        // a `[stormcentral]` section is accepted so an old config still starts, and said.
+        if config.stormcentral.url.is_some() || config.stormcentral.token_file.is_some() {
+            tracing::warn!("[stormcentral] is ignored: the pod page reads the node's own objects (#347); remove the section");
         }
         let k8s = Arc::new(k8s);
         k8s.namespace_access().set_system_namespaces(config.kubernetes.system_namespaces.clone());
