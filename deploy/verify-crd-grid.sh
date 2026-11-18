@@ -17,7 +17,7 @@
 #   one object   printer values, conditions, owners as links, events, YAML
 #   edit/delete  as the viewer: saved; a stale save 409 in the apiserver's
 #                words; a viewer without the right refused in its words
-#   rights       alice, edit on widgets in team-a only, sees team-a's alone
+#   rights       alice, a member of team-a with edit on widgets there, sees team-a's alone
 #                (listed per project); bob, nothing, is told so
 #   Chromium     deploy/browser/crds.cjs
 #
@@ -130,7 +130,7 @@ k POST /api/v1/namespaces/default/events '{"apiVersion":"v1","kind":"Event","met
 
 say "who may do what"
 k POST $RB/clusterroles '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"name":"reads"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["get","list","watch"]}]}'
-k POST $RB/clusterroles '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"name":"widgets-edit"},"rules":[{"apiGroups":["example.io"],"resources":["widgets"],"verbs":["*"]},{"apiGroups":[""],"resources":["events"],"verbs":["get","list"]}]}'
+k POST $RB/clusterroles '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"name":"widgets-edit"},"rules":[{"apiGroups":["example.io"],"resources":["widgets"],"verbs":["*"]},{"apiGroups":[""],"resources":["events","pods"],"verbs":["get","list"]}]}'
 crb() { k POST $RB/clusterrolebindings "{\"apiVersion\":\"rbac.authorization.k8s.io/v1\",\"kind\":\"ClusterRoleBinding\",\"metadata\":{\"name\":\"$1-$2\"},\"roleRef\":{\"apiGroup\":\"rbac.authorization.k8s.io\",\"kind\":\"ClusterRole\",\"name\":\"$2\"},\"subjects\":[{\"kind\":\"User\",\"apiGroup\":\"rbac.authorization.k8s.io\",\"name\":\"$1\"}]}"; }
 crb stormconsole reads; crb root cluster-admin
 k POST "$RB/namespaces/team-a/rolebindings" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"alice-widgets"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"widgets-edit"},"subjects":[{"kind":"User","apiGroup":"rbac.authorization.k8s.io","name":"alice"}]}'
@@ -196,7 +196,7 @@ check "$(j '[c["name"] for c in d["columns"]]' < "$W/w.json")" "['Name', 'Namesp
 check "$(j '(d["gap"], [r["id"] for r in d["rows"]])' < "$W/w.json")" "(True, ['team-a/w1', 'team-a/w2', 'team-b/w3'])" "it says it has none; every project's"
 check "$(as root "$K/cr/widgets.example.io?project=team-b" | j '[r["id"] for r in d["rows"]]')" "['team-b/w3']" "?project=team-b"
 check "$(as alice "$K/cr/widgets.example.io" | j '([r["id"] for r in d["rows"]], d["live"])')" "(['team-a/w1', 'team-a/w2'], False)" "alice: team-a's only, listed per project (no watch across projects)"
-check "$(code alice "$K/cr/widgets.example.io?project=team-b")" 403 "alice asking for team-b: refused"
+check "$(code alice "$K/cr/widgets.example.io?project=team-b")" 404 "alice asking for team-b: no such project, to her"
 check "$(code bob "$K/cr/raidsets.storage.storm.io")" 403 "bob: refused"
 contains "$(j 'd["error"]' < "$W/out")" "the apiserver says you may not list raidsets.storage.storm.io" "in so many words"
 check "$(code root "$K/cr/nothings.example.io")" 404 "a kind nobody serves: 404"
@@ -239,7 +239,7 @@ as root "$K/cr/drives.storage.storm.io/object/_/wwn-5000c5001" > "$W/od.json"
 check "$(j '[(o["kind"], o["name"], o["href"], o["controller"]) for o in d["owners"]]' < "$W/od.json")" \
   "[('RaidSet', 'md0', '#/cr/raidsets.storage.storm.io/_/md0', True)]" "a drive's owner is a link to its RaidSet"
 check "$(as alice "$K/cr/widgets.example.io/object/team-a/w1" | j '(d["namespace"], d["editable"], d["deletable"])')" "('team-a', True, True)" "alice's own widget"
-check "$(code alice "$K/cr/widgets.example.io/object/team-b/w3")" 403 "not team-b's"
+check "$(code alice "$K/cr/widgets.example.io/object/team-b/w3")" 404 "not team-b's"
 
 say "6. edit and delete, as the viewer"
 as root "$K/cr/raidsets.storage.storm.io/object/_/md0" | j 'd["yaml"]' > "$W/md0.yaml"

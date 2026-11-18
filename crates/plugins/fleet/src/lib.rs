@@ -802,6 +802,22 @@ fn human_bytes(n: u64) -> String {
     format!("{n} B")
 }
 
+/// Percent-encode a path segment for a hash route.
+///
+/// Service names are plain today, but a name with a space or a `#` in it
+/// would silently truncate the route rather than fail, and a link that goes
+/// somewhere else is worse than one that does not work.
+fn urlencode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod beacon_render_tests {
     use super::*;
@@ -951,20 +967,4 @@ mod beacon_render_tests {
         assert!(m.iter().any(|m| m.label == "services" && m.value == "2"));
         assert!(!m.iter().any(|m| m.label == "cores"));
     }
-}
-
-/// Percent-encode a path segment for a hash route.
-///
-/// Service names are plain today, but a name with a space or a `#` in it
-/// would silently truncate the route rather than fail, and a link that goes
-/// somewhere else is worse than one that does not work.
-fn urlencode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }

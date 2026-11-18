@@ -49,7 +49,7 @@ pub fn request(i: &Import) -> Result<Value, String> {
         ));
     }
     let sha = i.sha256.trim().trim_start_matches("sha256:").to_ascii_lowercase();
-    if !sha.is_empty() && !(sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit())) {
+    if !(sha.is_empty() || sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit())) {
         return Err("a sha256 is 64 hex digits".into());
     }
     let format = match i.format.trim() {
