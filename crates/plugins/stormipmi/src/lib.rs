@@ -103,7 +103,7 @@ impl ConsolePlugin for StormipmiPlugin {
         // tag and a BMC that somebody powers on and eventually replaces.
         vec![NavSection::new("Hardware", 45).admin().item_at("Machines", "#/machines", 0)
             // Every object of the kind, in the generic grid (#348).
-            .item_at("All machines", "#/cr/machines.metal.storm.io", 93)
+            .item_at("All machines", "#/cr/machines.storm.io", 93)
             .item_at("All machine boots", "#/cr/machineboots.metal.storm.io", 94)]
     }
 
