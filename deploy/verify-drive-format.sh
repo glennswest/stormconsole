@@ -114,6 +114,10 @@ enabled = false
 enabled = false
 [stormcluster]
 enabled = false
+# No ironprom here (#360): with it on, the Link panel's chart read is a 503 it
+# falls back from, which the browser logs as an error.
+[ironprom]
+enabled = false
 CONF
 } >"$W/c.toml"
 mkdir -p "$W/c"

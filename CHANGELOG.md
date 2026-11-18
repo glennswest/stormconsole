@@ -4,6 +4,7 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-11-18 — Format an NVMe drive from the console (#356)
+- **test:** `verify-drive-format.sh` runs with ironprom off (#360): the Drives page's Link panel asked a console with no ironprom for its chart, a 503 the panel falls back from but the browser logs as an error; the browser walks now name the URL behind a 5xx.
 - **feat:** an NVMe namespace can be formatted from the Format page, a drive's Actions menu and a Drives-page selection. It uses stormdrive's worker job Format NVM step (`POST /api/v1/worker/jobs`), behind the same storage guard and typed serial, done as the viewer. Choices: 4096 or 512, no PI. PI on NVMe is refused before a node is asked. Refused namespaces come back with stormdrive's reasons.
 - **feat:** the run is read from the node's worker jobs: queued, then Format NVM, with the worker's own phase line, elapsed time, the job id, the step lines and the block size read back. There is no percent, because Format NVM is one command. It survives a reload or console restart like a SCSI format. stormdrive does not yet list a namespace's LBA formats (stormdrive#155), so an absent size fails in the job, in stormdrive's words.
 
