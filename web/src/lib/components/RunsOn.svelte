@@ -7,7 +7,8 @@
   import { formatBytes } from '../drivemap.js'
   import { registryName } from '../imagename.js'
 
-  let { query, node = '', word = 'its volume', cloned = '' } = $props()
+  // `gap`: the issue whose writer records what this asks by, said when nothing answers.
+  let { query, node = '', word = 'its volume', cloned = '', gap = '' } = $props()
 
   let answer = $state(null)
   let error = $state('')
@@ -27,7 +28,7 @@
 {:else if answer?.error}
   <p class="none">{answer.error}</p>
 {:else if answer && !answer.volumes.length}
-  <p class="none">This node's engine holds no {word}.{#if node} It runs on {node}: that node's console can say.{/if}</p>
+  <p class="none">This node's engine holds no {word}.{#if node} It runs on {node}: that node's console can say.{/if}{#if gap} Its disks are found by their owner, which they do not record yet ({gap}).{/if}</p>
 {:else if answer}
   {#each answer.volumes as v (v.runsOn.id)}
     <dl class="runs">

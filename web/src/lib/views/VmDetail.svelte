@@ -718,7 +718,7 @@
 
         <div class="card wide">
           <h2>Each disk's instance</h2>
-          <RunsOn query={{ owner: 'VirtualMachineInstance,VirtualMachine', namespace: ns, name }} node={vm.node} word="disk owned by this machine" />
+          <RunsOn query={{ owner: 'VirtualMachineInstance,VirtualMachine', namespace: ns, name }} node={vm.node} word="disk owned by this machine" gap="stormvm#129" />
         </div>
 
         <div class="card">

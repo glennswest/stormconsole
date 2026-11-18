@@ -19,7 +19,8 @@
   import EventBox from '../components/EventBox.svelte'
   import RunsOn from '../components/RunsOn.svelte'
   import ImageOrigin from '../components/ImageOrigin.svelte'
-  import { imageLine, registryName, versionOf } from '../imagename.js'
+  import ContainerVolumes from '../components/ContainerVolumes.svelte'
+  import { imageLine, registryName, versionOf, buildLine } from '../imagename.js'
   import CopyButton from '../components/CopyButton.svelte'
   import PodLogs from './PodLogs.svelte'
   import PodStats from './PodStats.svelte'
@@ -193,12 +194,6 @@
     return bits.join(' · ')
   }
   const short = (d) => (d ? `${d.slice(0, 19)}…` : '')
-  // `from rustkube-node@4263d80, …` — what the registry image was built from.
-  const sourcesLine = (g) => {
-    const parts = Object.entries(g?.sources || {}).map(([repo, commit]) => `${repo}@${String(commit).slice(0, 7)}`)
-    return parts.length ? ` from ${parts.join(', ')}` : ''
-  }
-  const builtAt = (g) => (g?.builtAt ? new Date(g.builtAt * 1000).toISOString().replace('.000', '') : '')
   const gapFor = (what) => pod?.gaps?.find((g) => g.what === what)
   const invoke = (a) => call(a.method, a.path)
   const deleteAction = $derived(component?.actions?.find((a) => a.id === 'delete'))
@@ -478,6 +473,15 @@
         {/if}
       </section>
 
+      <!-- Each container's volumes on this node's engine, both ways (#347). -->
+      <section class="card wide" aria-label="Each container's volumes">
+        <h2>Each container's volumes</h2>
+        {#each pod.containers as c (c.role + c.name)}
+          <h3 class="mono">{c.name}</h3>
+          <ContainerVolumes {ns} pod={name} container={c} volumes={pod.volumes || []} node={pod.metadata.node} mirror={pod.metadata.mirror} />
+        {/each}
+      </section>
+
       <section class="card wide">
         <h2>Images</h2>
         {#each pod.containers as c (c.role + c.name)}
@@ -488,7 +492,7 @@
             {:else if c.image?.startsWith('/pallets/')}
               <RunsOn query={{ mounted: c.image }} node={pod.metadata.node} word="volume mounted for this service" />
             {:else if c.reported && c.source === 'stormpump'}
-              <p class="none">The node has not said which volume this container runs on (rustkube-node#130).</p>
+              <p class="none">The node has not said which volume this container runs on (rustkube-node#372).</p>
             {/if}
             <dl>
               <dt>Reference</dt><dd class="mono">{c.image}<CopyButton value={c.image} label="Copy image" /></dd>
@@ -513,36 +517,26 @@
                      know that. -->
                 <dt>
                   Registry image
-                  <span class="info" title={`registry image (golden) — “golden” is the API’s name for it${c.golden?.name ? `; stormcentral’s name for this one is ${c.golden.name}` : ''}`}>ⓘ</span>
+                  <span class="info" title="registry image (golden) — “golden” is the API’s name for it">ⓘ</span>
                 </dt>
                 <dd>
                   {#if imageLine(c)}
                     <span class="mono ref">{imageLine(c).ref}{#if imageLine(c).digest}@{imageLine(c).digest}{/if}</span><CopyButton value={imageLine(c).digest ? `${imageLine(c).ref}@${imageLine(c).digest}` : imageLine(c).ref} label="Copy image" />
-                    {#if !imageLine(c).digest}<div class="dim">its digest is not recorded</div>{/if}
-                  {/if}
-                  {#if c.golden?.available}
-                    <div class="dim">{c.golden.component}@{(c.golden.commit || '').slice(0, 12)} · build {c.golden.buildId || '—'} · by {c.golden.builtBy || '—'} · built {builtAt(c.golden).slice(0, 10)}{sourcesLine(c.golden)}</div>
-                    <div class="dim">{c.golden.which}</div>
+                    {#if !imageLine(c).digest}<div class="dim">its digest is not recorded by the node ({gapFor('image digest')?.issue || 'rustkube-node#372'})</div>{/if}
                   {:else}
-                    <div class="dim">{c.golden?.reason || 'unknown'}</div>
+                    <div class="dim">the node has not said which registry image this container was cloned from (rustkube-node#372)</div>
                   {/if}
                 </dd>
                 <dt>Made from</dt>
-                <dd><ImageOrigin name={c.clonedFrom || c.golden?.name || ''} gap="stormcentral-compliance-operations#219" /></dd>
+                <dd><ImageOrigin name={c.clonedFrom || ''} /></dd>
               {/if}
               {#if c.clonedFrom}
                 <dt>The node says</dt><dd class="mono"><span title={c.clonedFrom}>{registryName(c.clonedFrom) || c.clonedFrom}</span>{#if c.provenance} <span class="dim">{c.provenance}</span>{/if}</dd>
               {/if}
-              {#if c.imageBuild?.version || c.imageBuild?.created}
-                <dt>Image build</dt><dd class="mono">{c.imageBuild.version || ''} {c.imageBuild.created || ''}</dd>
-              {/if}
-              <dt>Built</dt>
+              <dt>Build</dt>
               <dd>
-                {#if c.source === 'stormpump'}
-                  {#if c.golden?.available}{builtAt(c.golden)}{:else}<span class="dim">—</span>{/if}
-                {:else}
-                  <span class="dim">{gapFor('build info')?.why} ({gapFor('build info')?.issue})</span>
-                {/if}
+                {#if buildLine(c)}<span class="mono">{buildLine(c)}</span>
+                {:else}<span class="dim">{gapFor('build info')?.why || 'not reported by the node'} ({gapFor('build info')?.issue || 'rustkube-node#130'})</span>{/if}
               </dd>
             </dl>
           </div>

@@ -26,18 +26,32 @@ export function registryName(name) {
 
 const withAlgo = (d) => (!d ? '' : d.includes(':') ? d : `sha256:${d}`)
 
-/// The version a container runs: the node's word on its image first, then stormcentral's
-/// record of it.
+/// The version a container runs: the node's word on its image (`storm.io/image-build.<c>`).
 export function versionOf(c) {
-  return c?.imageBuild?.version || c?.golden?.version || ''
+  return c?.imageBuild?.version || ''
 }
 
-/// A container's image as the row leads with it. `null` when nothing names one.
+/// A container's image as the row leads with it, from the node's own objects (#347): the
+/// registry image it was cloned from (`storm.io/golden.<c>`), its version and the digest
+/// the node recorded (`storm.io/image-digest.<c>`). `null` when the node names none.
 export function imageLine(c) {
   const named = c?.clonedFrom ? fromName(c.clonedFrom) : null
-  const component = c?.golden?.component || named?.repository
-  if (!component) return null
-  const tag = versionOf(c) || named?.tag || fromName(c?.golden?.name).tag || (c?.golden?.commit || '').slice(0, 12)
-  const ref = tag ? `registry/${component}:${tag}` : `registry/${component}`
-  return { ref, digest: withAlgo(c?.golden?.deviceSha256), version: versionOf(c) }
+  if (!named?.repository) return null
+  const tag = versionOf(c) || named.tag
+  const ref = tag ? `registry/${named.repository}:${tag}` : `registry/${named.repository}`
+  return { ref, digest: withAlgo(c?.digest), version: versionOf(c) }
+}
+
+/// The image's build as the node read it from its OCI config: version, revision (the
+/// commit), created, source — the keys it carries, in that order, then any others.
+export function buildLine(c) {
+  const b = c?.imageBuild
+  if (!b || typeof b !== 'object') return ''
+  const short = (k) => k.replace(/^org\.opencontainers\.image\./, '')
+  const order = ['version', 'revision', 'created', 'source']
+  const entries = Object.entries(b)
+    .filter(([, v]) => v !== null && v !== '' && typeof v !== 'object')
+    .map(([k, v]) => [short(k), String(v)])
+    .sort(([a], [z]) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(z) < 0 ? 99 : order.indexOf(z)))
+  return entries.map(([k, v]) => `${k} ${k === 'revision' ? v.slice(0, 12) : v}`).join(' · ')
 }

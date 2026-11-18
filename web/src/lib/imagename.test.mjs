@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { fromName, registryName, versionOf, imageLine } from './imagename.js'
+import { fromName, registryName, versionOf, imageLine, buildLine } from './imagename.js'
 
 // The same names as holdings::from_name's test.
 assert.deepEqual(fromName('golden-stormlb-aaaaaaaaaaaa'), { repository: 'stormlb', tag: 'aaaaaaaaaaaa' })
@@ -11,15 +11,20 @@ assert.equal(registryName('golden-stormlb-aaaaaaaaaaaa'), 'registry/stormlb:aaaa
 assert.equal(registryName('fedora-44'), '', 'not a component image: left as named')
 assert.equal(registryName(''), '')
 
-const rec = { component: 'cilium', version: '1.16.3', commit: 'abc123def4567890', name: 'cilium-abc123def456', deviceSha256: 'f'.repeat(64) }
-assert.deepEqual(imageLine({ golden: rec }), { ref: 'registry/cilium:1.16.3', digest: `sha256:${'f'.repeat(64)}`, version: '1.16.3' })
-assert.equal(imageLine({ golden: rec, imageBuild: { version: '1.16.4' } }).ref, 'registry/cilium:1.16.4', "the node's word first")
-assert.equal(imageLine({ golden: { ...rec, deviceSha256: 'sha256:ab' } }).digest, 'sha256:ab', 'not prefixed twice')
-assert.equal(imageLine({ clonedFrom: 'golden-app-aaaaaaaaaaaa' }).ref, 'registry/app:aaaaaaaaaaaa', 'no record, no version: its tag')
+// From the node's own objects (#347): golden name, image-build, image-digest.
+const D = `sha256:${'c'.repeat(64)}`
+assert.deepEqual(imageLine({ clonedFrom: 'cilium-abc123def456', imageBuild: { version: '1.16.3' }, digest: D }), { ref: 'registry/cilium:1.16.3', digest: D, version: '1.16.3' })
+assert.equal(imageLine({ clonedFrom: 'golden-app-aaaaaaaaaaaa' }).ref, 'registry/app:aaaaaaaaaaaa', 'no version: its tag')
 assert.equal(imageLine({ clonedFrom: 'golden-app-aaaaaaaaaaaa' }).digest, '')
-assert.equal(imageLine({ golden: { component: 'x', commit: 'c'.repeat(40) } }).ref, `registry/x:${'c'.repeat(12)}`, 'the commit, last')
-assert.equal(imageLine({ golden: { component: 'x' } }).ref, 'registry/x')
+assert.equal(imageLine({ clonedFrom: 'x', digest: 'ab' }).digest, 'sha256:ab', 'prefixed once')
+assert.equal(imageLine({ clonedFrom: 'x' }).ref, 'registry/x')
 assert.equal(imageLine({}), null)
-assert.equal(imageLine({ golden: { available: false } }), null)
+assert.equal(imageLine({ digest: D }), null, 'no registry image named, none invented')
 assert.equal(versionOf({}), '')
+assert.equal(
+  buildLine({ imageBuild: { 'org.opencontainers.image.created': '2026-11-18', revision: 'abc123def4567890', version: '1.16.3' } }),
+  'version 1.16.3 · revision abc123def456 · created 2026-11-18'
+)
+assert.equal(buildLine({ imageBuild: null }), '')
+assert.equal(buildLine({}), '')
 console.log('imagename.test.mjs PASS')

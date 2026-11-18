@@ -26,7 +26,7 @@
   <span class="mono">{answer.source}</span>
   <div class="dim mono wrap">{answer.upstreamDigest || 'upstream digest not recorded'}</div>
 {:else if answer}
-  <span class="dim">no upstream recorded: built here, or its origin is not recorded yet ({gap})</span>
+  <span class="dim">no upstream recorded: built here, or its origin is not recorded yet{#if gap} ({gap}){/if}</span>
   {#if answer.releases?.length}<div class="dim">in {answer.releases.join(', ')}</div>{/if}
 {:else}
   <span class="dim">asking the registry…</span>
