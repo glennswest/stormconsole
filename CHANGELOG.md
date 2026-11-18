@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.35.1] — 2026-11-18
+
 ### 2026-11-18 — No stubs (#350)
 - **fix:** the Format page no longer calls NVMe format a missing feature: it says an NVMe namespace is reformatted by stormdrive's worker job Format NVM step (stormdrive#154). Starting that job from the console is #356.
 - **fix:** flowsdn modules are shown as flowsdn reports them: a Degraded module is a warning, with no exception read out of its error text (one error string used to turn it idle). flowsdn's own stub answers are flowsdn#418.
