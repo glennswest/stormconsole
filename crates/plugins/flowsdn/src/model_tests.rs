@@ -155,14 +155,16 @@ fn the_agent_is_as_healthy_as_its_worst_part() {
         "kubernetes": {"state": "Ok", "msg": "node-a: 3 nodes, 12 pods", "node-name": "node-a",
                        "auto-direct-node-routes": true, "service-lb": true}}));
     assert_eq!(ok.kubernetes.as_ref().unwrap().node, "node-a");
-    assert_eq!(agent_health(&ok, &modules()), (Health::Ok, "node-a: 3 nodes, 12 pods".into()));
+    // Every module well: the fixture's controllers module is degraded.
+    let healthy: Vec<Module> = modules().into_iter().map(|m| Module { health: Health::Ok, ..m }).collect();
+    assert_eq!(agent_health(&ok, &healthy), (Health::Ok, "node-a: 3 nodes, 12 pods".into()));
 
     let mut warn = ok.clone();
     warn.kubernetes.as_mut().unwrap().state = "Warning".into();
     warn.kubernetes.as_mut().unwrap().message = "annotations: 409".into();
-    assert_eq!(agent_health(&warn, &modules()).0, Health::Warn);
+    assert_eq!(agent_health(&warn, &healthy).0, Health::Warn);
 
-    let mut degraded = modules();
+    let mut degraded = healthy.clone();
     degraded[1].health = Health::Warn;
     assert_eq!(agent_health(&ok, &degraded).0, Health::Warn);
     degraded[0].health = Health::Error;
@@ -170,7 +172,7 @@ fn the_agent_is_as_healthy_as_its_worst_part() {
 
     let standalone = Healthz::from_agent(&json!({"agent": {"state": "Ok", "msg": "initial endpoint API ready"}}));
     assert!(standalone.kubernetes.is_none());
-    assert_eq!(agent_health(&standalone, &modules()), (Health::Ok, "initial endpoint API ready".into()));
+    assert_eq!(agent_health(&standalone, &healthy), (Health::Ok, "initial endpoint API ready".into()));
 }
 
 #[test]
