@@ -115,17 +115,17 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
         Some(json!({"digest_gap": gap("image digest")})),
     );
 
-    // The build date: a golden's, from stormcentral, when the console has
-    // one to ask; else why not.
+    // The build date: the node's word on the image (`storm.io/image-build.<c>`, #347);
+    // else the gap the page names.
     let built: Vec<String> = containers
         .iter()
-        .filter_map(|c| c["golden"]["builtAt"].as_i64().map(|t| format!("{}: built {t} ({})", c["name"].as_str().unwrap_or("?"), c["golden"]["name"].as_str().unwrap_or(""))))
+        .filter_map(|c| {
+            let b = &c["imageBuild"];
+            let when = b["created"].as_str().or(b["org.opencontainers.image.created"].as_str())?;
+            Some(format!("{}: built {when} ({})", c["name"].as_str().unwrap_or("?"), c["clonedFrom"].as_str().unwrap_or("")))
+        })
         .collect();
-    let why_not: Vec<String> = containers
-        .iter()
-        .filter_map(|c| c["golden"]["reason"].as_str().map(|w| format!("{}: {w}", c["name"].as_str().unwrap_or("?"))))
-        .chain(gap("build info"))
-        .collect();
+    let why_not: Vec<String> = gap("build info").into_iter().collect();
     r.record(
         "cilium-build-date",
         if !built.is_empty() { Outcome::Pass(built.join(" · ")) } else { Outcome::Skip(format!("not shown: {}", why_not.join(" · "))) },

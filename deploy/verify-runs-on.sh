@@ -5,8 +5,9 @@
 #
 # A real engine (stormblock main) on file-backed drives, whose sealed images, clones and
 # seal records are its own, and a real apiserver with pods carrying the annotations
-# rustkube-node writes (pod_manager.rs annotations_for). stormcentral's record and a
-# slow engine (a digest that takes longer than the budget) are stand-ins. Then Chromium.
+# rustkube-node writes (pod_manager.rs annotations_for). A slow engine (a digest that
+# takes longer than the budget) is a stand-in; the console's [stormcentral] section is
+# ignored since #347, and the stand-in behind it must never be asked. Then Chromium.
 set -euo pipefail
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-runs-on.XXXXXX")
@@ -177,7 +178,8 @@ pod() { # name annotations-json
   k PATCH "/api/v1/namespaces/shop/pods/$1/status" application/merge-patch+json "{\"status\":{\"phase\":\"Running\",\"containerStatuses\":[{\"name\":\"app\",\"image\":\"stormpump://app\",\"imageID\":\"stormpump://app\",\"restartCount\":0,\"ready\":true,\"state\":{\"running\":{\"startedAt\":\"2026-11-05T11:00:03Z\"}}}]}}" >/dev/null
 }
 BUILD='{\"version\":\"1.0\",\"created\":\"2026-10-01T00:00:00Z\"}'
-pod web "{\"storm.io/instance.app\":\"$ROOT\",\"storm.io/golden.app\":\"$OLD\",\"storm.io/image-resolved.app\":\"2026-11-05T10:59:00Z\",\"storm.io/image-build.app\":\"$BUILD\"}"
+ADIG="sha256:$(printf 'a%.0s' $(seq 64))"
+pod web "{\"storm.io/instance.app\":\"$ROOT\",\"storm.io/golden.app\":\"$OLD\",\"storm.io/image-digest.app\":\"$ADIG\",\"storm.io/image-resolved.app\":\"2026-11-05T10:59:00Z\",\"storm.io/image-build.app\":\"$BUILD\"}"
 pod quiet '{}'
 pod elsewhere "{\"storm.io/instance.app\":\"00000000-0000-4000-8000-000000000075\",\"storm.io/golden.app\":\"golden-app-unrecorded\"}"
 k POST /apis/kubevirt.io/v1/namespaces/shop/virtualmachines application/json '{"apiVersion":"kubevirt.io/v1","kind":"VirtualMachine","metadata":{"name":"vm1","namespace":"shop"},"spec":{"running":false,"template":{"spec":{"domain":{"cpu":{"cores":1},"memory":{"guest":"1Gi"},"devices":{"disks":[{"name":"root","disk":{"bus":"virtio"}}]}},"volumes":[{"name":"root","containerDisk":{"image":"stormpump://app"}}]}}}}' >/dev/null
@@ -189,14 +191,13 @@ D=$(q k8s/pods/shop/web)
 check "$(echo "$D" | j 'd["containers"][0]["instance"]')" "$ROOT" "the volume the kubelet says it runs on"
 check "$(echo "$D" | j 'd["containers"][0]["clonedFrom"]')" "$OLD" "the image the kubelet says it was cloned from"
 check "$(echo "$D" | j 'd["containers"][0]["imageBuild"]["version"]')" 1.0 "its build"
-check "$(echo "$D" | j 'd["containers"][0]["golden"]["name"]')" "$OLD" "stormcentral's record of THAT one, not the newest"
-check "$(echo "$D" | j 'd["containers"][0]["golden"]["version"]')" 1.0 "its version"
-check "$(echo "$D" | j '"says this container was cloned from" in d["containers"][0]["golden"]["which"]')" True "said as what the node said"
+check "$(echo "$D" | j 'd["containers"][0]["digest"]')" "$ADIG" "its digest, the node's word (#347)"
+check "$(echo "$D" | j '"golden" in d["containers"][0]')" False "nothing asked off the node (#347)"
 D=$(q k8s/pods/shop/quiet)
-check "$(echo "$D" | j 'd["containers"][0]["golden"]["name"]')" "$NEW" "no word from the node: the newest"
-check "$(echo "$D" | j '"not confirmed running" in d["containers"][0]["golden"]["which"]')" True "and it says it is not confirmed"
+check "$(echo "$D" | j '(d["containers"][0]["clonedFrom"], "golden" in d["containers"][0])')" "(None, False)" "no word from the node: none, and no newest guessed (#347)"
 D=$(q k8s/pods/shop/elsewhere)
-check "$(echo "$D" | j '"golden-app-unrecorded" in d["containers"][0]["golden"]["reason"]')" True "a name stormcentral has no record of: said, not the newest instead"
+check "$(echo "$D" | j 'd["containers"][0]["clonedFrom"]')" golden-app-unrecorded "the name the node gave, as given"
+check "$(grep -q '\[stormcentral\] is ignored' "$W/a.log" && echo said)" said "the [stormcentral] section is said to be ignored"
 
 say "the engine's answer"
 R=$(q "sb/runs-on?volume=$ROOT"); echo "$R" | head -c 900; echo

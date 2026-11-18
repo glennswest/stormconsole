@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-18 — Traceability both ways (#347)
+- **feat:** the pod page has **Each container's volumes**: its root clone, its data and logs volumes and its claims, found on this node's engine by the ids the kubelet writes (`storm.io/instance.<c>`, `storm.io/volume.<name>`, rustkube-node#372) and by the owner the engine records (Pod, container). Each row shows how the container mounts it, links to the volume, and gives its kind, what it was cloned from (and that image's digest), how much is written of its size, its health and its owner. An owner nobody recorded names the issue of the writer that should record it (stormd#75 for a node service, stormblock-csi#69 for a claim, rustkube-node#372 otherwise). A container with no volumes says so.
+- **feat:** a volume row's owner reads `Pod kube-system/fastetcd · container fastetcd`, linked to the pod (or the claim or VM). `unclaimed` is shown only for a clone that nothing owns, consumes or has attached. A clone in use with no owner written shows `not recorded`.
+- **feat:** a claim's row has **used by**: each pod and container that mounts it and where (`web-0 · app at /var/lib/web (read-only)`), with the pods as links, or `bound, not mounted by any pod`. A PV shows the same through its claim. A VM names the claims its disks are on, and the claim's row says the VM uses it. The VM page's disk list names stormvm#129 when its disks do not record their owner yet.
+- **BREAKING:** the pod page no longer asks stormcentral for a `stormpump://` image's golden. The digest, registry image and build come from the node's own annotations (`storm.io/image-digest.<c>`, `storm.io/golden.<c>`, `storm.io/image-build.<c>`). The "stormcentral is not configured here" line is gone, and so is any guess at the newest build. `[stormcentral]` is still accepted so an old config starts, and a warning at start says it is ignored. The digest and build gaps appear only when the node does not write them.
+
 ## [v0.36.0] — 2026-11-18
 
 ### 2026-11-18 — Format an NVMe drive from the console (#356)

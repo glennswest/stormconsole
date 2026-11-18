@@ -627,11 +627,13 @@ is a thin typed layer over the standard REST paths.
   drawn from the watch cache plus three reads the cache cannot make: the
   owner chain past a ReplicaSet (asked as the viewer; ReplicaSets are not
   watched), each selecting Service's Endpoints (is this pod in the ready
-  addresses), and, for a `stormpump://` image, the newest golden
-  stormcentral built for that component (`GET /api/v1/goldens?component=`,
-  only with `[stormcentral]`). Containers — init, regular, ephemeral —
+  addresses). Nothing is asked off the node (#347): a `stormpump://`
+  image's digest, registry image and build are the kubelet's annotations
+  (`storm.io/image-digest.<c>`, `storm.io/golden.<c>`,
+  `storm.io/image-build.<c>`, rustkube-node#372); `[stormcentral]` is
+  accepted and ignored. Containers — init, regular, ephemeral —
   carry the spec beside the status: image, `imageID`, the `sha256:` found
-  in either, pull policy (defaulted as Kubernetes does), ports, resources,
+  in the node's digest annotation or either of those, pull policy (defaulted as Kubernetes does), ports, resources,
   state, `lastState`. What the node does not write comes back as `gaps`,
   each with its issue (rustkube-node#130, #131), and is read the day it
   does (`lastState`, `storm.io/image-resolved.<container>`,
@@ -1388,6 +1390,22 @@ engine's read carries on and fills its cache, the image is left alone for five m
 digest is being read (stormblock#535 asks for it on the volume itself). The engine is this node's: a container
 on another node is that node's console's to show. Clone time is `storm.io/image-resolved.<c>` for a container,
 and not known for a VM's disk yet.
+
+**Both ways (#347).** The owner: "Every pod and container must have traceablity." The kubelet writes
+`storm.io/volume.<name>` with the engine id of each pod volume (a mirror pod's `root`, `data`, `logs` too) and
+owns each container root as `{kind: Pod, namespace, name, uid, container}` (rustkube-node#372). The pod page's
+**Each container's volumes** asks `runs-on` with `ids` (the container's `instance` and the ids of the volumes it
+mounts) **and** `owner=Pod&namespace&name&container` — a union, so a volume either side names is listed — and
+shows each: how the container mounts it, the volume (a link to its row), kind, what it was cloned from, written of
+size, health and owner. A volume nobody recorded an owner for names the writer's issue: stormd#75 for a node
+service, stormblock-csi#69 for a claim, rustkube-node#372 otherwise. The other way, a volume row's `owner` reads
+`Pod kube-system/fastetcd · container fastetcd` with an `owner` relation to the pod (or claim, or VM); it is
+`unclaimed` only for a clone that nothing owns, consumes or has attached, and `not recorded` for one that is in
+use with no owner written. A claim's row (and its PV's, through the claim) has **used by**: each pod and
+container that mounts it and where (`web-0 · app at /var/lib/web (read-only)`), the pods as references, and
+`bound, not mounted by any pod` when none; a VM names the claims its disks are on (`claims`), and the registry
+turns that round into the claim's `used by` (`console_core::registry::used_by`). A VM page's disks are found by
+their owner, which stormvm#129 has them record.
 
 **Words:** a row says "Runs on", not instance, for a container, as stormcos GLOSSARY has a pod's clone as its
 container (#85); a VM's disk is an instance.

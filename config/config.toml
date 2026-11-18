@@ -266,9 +266,6 @@ enabled = true
 # /api/v1/history and on the History page. A diskless boot has none, and says so.
 # system_data = "/run/stormblock/system-data"
 
-# [stormcentral]
-# Where a stormpump:// image's golden is recorded: the pod page shows its
-# build (built at, by, commit, build id) beside the image. Off unless a url
-# is set; stormcentral's golden list needs a bearer it accepts.
-# url = "http://stormcentral.g8.lo"
-# token_file = "/etc/stormconsole/stormcentral.token"
+# [stormcentral] is retired (#347): the pod page reads an image's digest,
+# registry image and build from the node's own objects. A config that still
+# has the section starts, and says at start that it is ignored.
