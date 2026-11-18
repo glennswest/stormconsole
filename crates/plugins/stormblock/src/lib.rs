@@ -96,7 +96,11 @@ impl ConsolePlugin for StormblockPlugin {
             .item("Unattached volumes", "#/grid?id=sb:engine&rel=unattached")
             .item("Slabs", "#/grid?id=sb:engine&rel=slabs")
             .item("RAID sets", "#/raid")
-            .item("Exports", "#/grid?id=sb:engine&rel=exports")]
+            .item("Exports", "#/grid?id=sb:engine&rel=exports")
+            // Every object of the kind, in the generic grid with its printer columns (#348).
+            .item_at("All volumes", "#/cr/volumes.storage.storm.io", 90)
+            .item_at("All RAID sets", "#/cr/raidsets.storage.storm.io", 91)
+            .item_at("All replications", "#/cr/replications.storage.storm.io", 92)]
     }
 
     fn creators(&self) -> Vec<Creator> {

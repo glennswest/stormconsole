@@ -265,7 +265,9 @@ impl ConsolePlugin for VmPlugin {
         // in front of them rather than in another part of the navigator.
         //
         // Next to Pods, at a position the kubernetes plugin left free.
-        vec![NavSection::new("Workloads", 10).item_at("Virtual machines", "#/vms", 10)]
+        vec![NavSection::new("Workloads", 10).item_at("Virtual machines", "#/vms", 10)
+            // Every object of the kind, in the generic grid (#348).
+            .item_at("All virtual machines", "#/cr/virtualmachines.kubevirt.io", 11)]
     }
 
     fn creators(&self) -> Vec<Creator> {

@@ -41,6 +41,9 @@
   import ImagesView from './lib/views/ImagesView.svelte'
   import AttachClaim from './lib/views/AttachClaim.svelte'
   import Login from './lib/views/Login.svelte'
+  import CrdList from './lib/views/CrdList.svelte'
+  import CrInstances from './lib/views/CrInstances.svelte'
+  import CrObject from './lib/views/CrObject.svelte'
 
   checkAuth().then(() => {
     if (!auth.required || auth.authenticated) startFeed()
@@ -81,6 +84,9 @@
     registry: RegistryView,
     images: ImagesView,
     attachclaim: AttachClaim,
+    crds: CrdList,
+    crinstances: CrInstances,
+    crobject: CrObject,
   }
 
   let View = $derived(views[route.current.name] || Overview)

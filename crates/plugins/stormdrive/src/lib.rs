@@ -220,7 +220,11 @@ impl ConsolePlugin for DrivesPlugin {
             .item_at("Format", "#/drives/format", 15)
             .item_at("Controllers", "#/drives/controllers", 17)
             .item_at("Shelves", "#/drives?group=shelf", 20)
-            .item_at("Pools", "#/drives?group=pool", 30)]
+            .item_at("Pools", "#/drives?group=pool", 30)
+            // Every object of the kind, in the generic grid with its printer columns (#348).
+            .item_at("All drives", "#/cr/drives.storage.storm.io", 90)
+            .item_at("All drive operations", "#/cr/driveoperations.storage.storm.io", 91)
+            .item_at("All shelves", "#/cr/shelves.storage.storm.io", 92)]
     }
 
     fn routes(&self) -> Router {

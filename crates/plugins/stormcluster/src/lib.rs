@@ -123,7 +123,9 @@ impl ConsolePlugin for StormclusterPlugin {
     fn nav(&self) -> Vec<NavSection> {
         // First in Cluster: which machines the cluster is made of comes
         // before what the apiserver says about them.
-        vec![NavSection::new("Cluster", 60).admin().item_at("Membership", "#/cluster", -1)]
+        vec![NavSection::new("Cluster", 60).admin().item_at("Membership", "#/cluster", -1)
+            // Every object of the kind, in the generic grid (#348).
+            .item_at("All cluster members", "#/cr/clustermembers.cluster.storm.io", 90)]
     }
 
     fn routes(&self) -> Router {

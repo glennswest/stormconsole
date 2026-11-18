@@ -60,6 +60,11 @@ const routes = [
   // One pod, all of it (#69).
   { pattern: '#/pod/:ns/:name', name: 'poddetail' },
   { pattern: '#/k8s/events', name: 'k8sevents' },
+  // A grid for every custom resource (#348): the kinds, one kind's
+  // instances, one object (`_` for no project).
+  { pattern: '#/crds', name: 'crds' },
+  { pattern: '#/cr/:crd', name: 'crinstances' },
+  { pattern: '#/cr/:crd/:ns/:name', name: 'crobject' },
   // A project is a place, not a row: it has a page of its own, and it is
   // matched before the generic kind list because it is longer. The path is
   // the API's word, as in `#/k8s/pod`; the page's word is project (#162).
@@ -71,6 +76,8 @@ const routes = [
 // the Projects page (#162); an old link lands there.
 const MOVED = {
   '#/k8s/ns': '#/projects',
+  // Every CRD, with its instances a click away (#348).
+  '#/k8s/crd': '#/crds',
   // One page for each, whichever network this is (#168).
   '#/k8s/netpol': '#/network/policies',
   '#/k8s/cnp': '#/network/policies',

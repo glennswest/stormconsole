@@ -193,7 +193,9 @@ impl ConsolePlugin for StormupdatePlugin {
 
     fn nav(&self) -> Vec<NavSection> {
         // Beside API health and History: this node's own, asked what it runs.
-        vec![NavSection::new("Compute", 20).admin().item_at("Update", "#/update", 12)]
+        vec![NavSection::new("Compute", 20).admin().item_at("Update", "#/update", 12)
+            // Every object of the kind, in the generic grid (#348).
+            .item_at("All cluster updates", "#/cr/clusterupdates.stormupdate.storm.io", 13)]
     }
 
     fn routes(&self) -> Router {
