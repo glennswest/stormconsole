@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-18 — flowsdn's live module rows (#355)
+- **fix:** the flowsdn Health tab is read against the rows flowsdn reports from 2ba23b6 (flowsdn#418): `agent.api`, `agent.restore`, and with Kubernetes `agent.kubernetes` / `agent.policy`, each row's Level (OK/Degraded/Stopped) with its Message and Error as-is. The Idle-on-"not implemented" mapping went in v0.35.1 (#350); its stale doc comment is corrected, a unit test pins that no error text changes a row's health, and the unit fixture, the stand-in agent, `verify-flowsdn.sh` and the browser walk drop the retired `agent.controllers` row.
+
 ## [v0.35.1] — 2026-11-18
 
 ### 2026-11-18 — No stubs (#350)

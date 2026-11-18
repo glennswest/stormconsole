@@ -123,15 +123,22 @@ fn pool_counts_are_strings_and_stay_exact_past_u64() {
     assert_eq!(Pool::from_agent(&json!({})).health(), Health::Unknown);
 }
 
-/// `/v1/health/modules` as health_api.rs writes it.
+/// `/v1/health/modules` as flowsdn writes it from 2ba23b6 (flowsdn#418,
+/// docs/agent-api.md): `agent.api`, `agent.restore`, and with Kubernetes
+/// `agent.kubernetes` (Degraded with the healthz message as Error while
+/// lists are not synced) and `agent.policy` (Degraded: not enforced).
 fn modules() -> Vec<Module> {
     [
         json!({"ID": {"Module": ["agent"], "Component": ["api"]}, "Level": "OK",
-               "Message": "initial endpoint API listening", "Error": "", "LastOK": "2026-10-10T10:00:00Z",
+               "Message": "endpoint API listening: 3 endpoints", "Error": "", "LastOK": "2026-10-10T10:00:00Z",
                "Updated": "2026-10-10T10:00:00Z", "Stopped": "0001-01-01T00:00:00Z", "Final": "", "Count": 1}),
-        json!({"ID": {"Module": ["agent"], "Component": ["controllers"]}, "Level": "Degraded",
-               "Message": "Kubernetes node discovery enabled; identity and policy controllers are not",
-               "Error": "identity controller has not synced", "LastOK": "0001-01-01T00:00:00Z",
+        json!({"ID": {"Module": ["agent"], "Component": ["kubernetes"]}, "Level": "Degraded",
+               "Message": "Kubernetes lists not synced",
+               "Error": "node-a: waiting for Pod and EndpointSlice lists", "LastOK": "0001-01-01T00:00:00Z",
+               "Updated": "2026-10-10T10:00:00Z", "Stopped": "0001-01-01T00:00:00Z", "Final": "", "Count": 1}),
+        json!({"ID": {"Module": ["agent"], "Component": ["policy"]}, "Level": "Degraded",
+               "Message": "NetworkPolicy is not enforced", "Error": "policy maps could not be shared",
+               "LastOK": "0001-01-01T00:00:00Z",
                "Updated": "2026-10-10T10:00:00Z", "Stopped": "0001-01-01T00:00:00Z", "Final": "", "Count": 1}),
     ]
     .iter()
@@ -144,9 +151,24 @@ fn modules_read_with_never_left_blank() {
     let m = modules();
     assert_eq!(m[0].id, "agent.api");
     assert_eq!((m[0].health, m[0].last_ok.as_str()), (Health::Ok, "2026-10-10T10:00:00Z"));
-    assert_eq!(m[1].id, "agent.controllers");
+    assert_eq!(m[1].id, "agent.kubernetes");
     assert_eq!(m[1].last_ok, "", "0001-01-01 is the agent's never");
     assert_eq!(m[1].health, Health::Warn, "a degraded module is a warning: what flowsdn says, as it says it");
+    assert_eq!(m[1].error, "node-a: waiting for Pod and EndpointSlice lists", "its Error as-is");
+    assert_eq!((m[2].id.as_str(), m[2].health), ("agent.policy", Health::Warn));
+    assert_eq!(m[2].message, "NetworkPolicy is not enforced", "its Message as-is");
+}
+
+#[test]
+fn a_module_is_its_level_whatever_its_error_says() {
+    // #355: the old Idle-on-"not implemented" exception is gone for good.
+    let row = |level: &str, error: &str| {
+        Module::from_agent(&json!({"ID": {"Module": ["agent"], "Component": ["x"]}, "Level": level, "Error": error})).health
+    };
+    assert_eq!(row("Degraded", "not implemented"), Health::Warn);
+    assert_eq!(row("Stopped", "not implemented"), Health::Error);
+    assert_eq!(row("OK", ""), Health::Ok);
+    assert_eq!(row("", ""), Health::Unknown);
 }
 
 #[test]
@@ -155,7 +177,7 @@ fn the_agent_is_as_healthy_as_its_worst_part() {
         "kubernetes": {"state": "Ok", "msg": "node-a: 3 nodes, 12 pods", "node-name": "node-a",
                        "auto-direct-node-routes": true, "service-lb": true}}));
     assert_eq!(ok.kubernetes.as_ref().unwrap().node, "node-a");
-    // Every module well: the fixture's controllers module is degraded.
+    // Every module well: the fixture's kubernetes and policy modules are degraded.
     let healthy: Vec<Module> = modules().into_iter().map(|m| Module { health: Health::Ok, ..m }).collect();
     assert_eq!(agent_health(&ok, &healthy), (Health::Ok, "node-a: 3 nodes, 12 pods".into()));
 

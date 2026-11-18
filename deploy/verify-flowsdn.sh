@@ -170,7 +170,7 @@ check "$(echo "$E" | py 'import json,sys; d=json.load(sys.stdin); print(d["row"]
 check "$(curl -sf "$A/api/plugins/flowsdn/endpoint/sb-2:eth0" | py 'import json,sys; print(json.load(sys.stdin)["row"]["pod"])')" "db-0" "by CNI attachment id"
 check "$(curl -s -o /dev/null -w '%{http_code}' $A/api/plugins/flowsdn/endpoint/99)" "404" "an unknown endpoint is 404"
 check "$(curl -sf $A/api/plugins/flowsdn/state/health | py 'import json,sys; print([r["row"]["id"] for r in json.load(sys.stdin)["rows"]])')" \
-  "['agent.api', 'agent.restore', 'agent.controllers']" "the health table, as rows"
+  "['agent.api', 'agent.restore', 'agent.kubernetes']" "the health table, as rows"
 check "$(curl -s -o /dev/null -w '%{http_code}' $A/api/plugins/flowsdn/state/secrets)" "404" "a table off the allowlist is not asked for"
 check "$(tail -n +$((OWN+1)) "$W/agent-a.log" | grep -vE '^(GET |POST /v1/statedb/query$)' | grep -v '^$' | head -3)" "" "the console only ever read from the agent"
 check "$(grep -c '^GET /v1/healthz' "$W/agent-a.log" | awk '{print ($1 >= 2)}')" "1" "and polls it"

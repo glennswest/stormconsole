@@ -1669,7 +1669,9 @@ console shows its own; the page says so.
 - **Feed** (`model.rs`, pure): the agent (health = the API's state, a
   Stopped module, the Kubernetes view's state, a Degraded module, each as
   flowsdn reports it — a module flowsdn calls Degraded is a warning here,
-  with no exceptions read out of its error text, #350), one `flowsdn:ep:<id>` per endpoint
+  with no exceptions read out of its error text, #350/#355; the rows are
+  flowsdn#418's live ones: `agent.api`, `agent.restore`, and with Kubernetes
+  `agent.kubernetes` / `agent.policy`), one `flowsdn:ep:<id>` per endpoint
   labelled `namespace/pod` with `belongs_to` namespace and node (so the
   table gives them columns) and `has_one` pod, the numeric identity a
   metric; one `flowsdn:pool:<pool>:<family>` per IPAM pool, counts kept as

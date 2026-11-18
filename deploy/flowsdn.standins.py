@@ -24,10 +24,12 @@ def modules():
     rows = [
         ("api", "OK", "initial endpoint API listening", ""),
         ("restore", "OK", "endpoint restore and deletion replay completed", ""),
-        ("controllers", "OK",
-         "Kubernetes node discovery enabled; identity and policy controllers are not" if K8S
-         else "Kubernetes, identity and policy controllers are not enabled", ""),
     ]
+    # flowsdn#418 (2ba23b6): live rows only; agent.kubernetes with Kubernetes,
+    # its message the healthz one. agent.policy appears only while the policy
+    # maps could not be shared, which this agent's healthz does not say.
+    if K8S:
+        rows.append(("kubernetes", "OK", healthz()["kubernetes"]["msg"], ""))
     return [{"ID": {"Module": ["agent"], "Component": [c]}, "Level": lvl, "Message": msg, "Error": err,
              "LastOK": "2026-10-10T10:00:00Z" if lvl == "OK" else NEVER,
              "Updated": "2026-10-10T10:00:00Z", "Stopped": NEVER, "Final": "", "Count": 1}

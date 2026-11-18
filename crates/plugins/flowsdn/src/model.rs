@@ -177,9 +177,9 @@ pub struct Module {
     pub updated: String,
     pub last_ok: String,
     pub count: u64,
-    /// What it means for the node: a degraded module whose error is "not
-    /// implemented" is flowsdn saying a controller does not exist yet, not
-    /// that something broke — idle, not a warning on every node for ever.
+    /// The row's Level as flowsdn reports it: OK, Degraded a warning,
+    /// Stopped an error, anything else unknown. No error text is read into
+    /// it (#350, #355): flowsdn reports only what it observed (flowsdn#418).
     pub health: Health,
 }
 
