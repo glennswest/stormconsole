@@ -197,7 +197,7 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
   // The NVMe namespaces' job (#356), started by the rig before the restart.
   const nrow = running.locator('[data-testid=progress-row][data-drive="nvme0n1"]')
   t.check(await t.until(async () => /Format NVM is one command/.test(await nrow.innerText()) && /stormdrive worker job j01/.test(await nrow.innerText())), 'nvme0n1: its worker job, no percent from a one-command format', await nrow.innerText().catch(() => ''))
-  t.check(/format nvm lbaf 1/.test(await nrow.innerText()) && /format nvm/.test(await nrow.locator('[data-testid=progress-state]').innerText().catch(() => '')), 'in the worker\'s words, at the Format NVM step', await nrow.innerText().catch(() => ''))
+  t.check(/format nvm lbaf 1/.test(await nrow.innerText()) && (await nrow.locator('.steps li.now').innerText().catch(() => '')) === 'format nvm', 'in the worker\'s words, at the Format NVM step', await nrow.innerText().catch(() => ''))
   await t.shot(page, 'format-nvm-running')
   const ended = page.locator('[data-testid=ended]')
   t.check(await t.until(async () => {

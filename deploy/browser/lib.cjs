@@ -14,6 +14,8 @@ exports.walk = (name, fn) => {
   ;(async () => {
     let failed = 0
     const errors = []
+    // Which URL answered 5xx: the console line alone does not say (#360).
+    const fivexx = []
     const browser = await chromium.launch()
     const t = {
       BASE,
@@ -39,6 +41,9 @@ exports.walk = (name, fn) => {
         const page = await ctx.newPage()
         page.setDefaultTimeout(8000)
         const who = user || 'anonymous'
+        page.on('response', (r) => {
+          if (r.status() >= 500 && r.status() !== 501) fivexx.push(`${who} ${r.request().method()} ${r.status()} ${r.url().replace(/^https?:\/\/[^/]+/, '')}`)
+        })
         page.on('pageerror', (e) => errors.push(`${who} pageerror: ${e.message.split('\n')[0]}`))
         page.on('console', (m) => {
           if (m.type() !== 'error') return
@@ -85,6 +90,7 @@ exports.walk = (name, fn) => {
     } catch (e) {
       t.check(false, 'the walk ran to its end', e.message.split('\n')[0])
     }
+    if (errors.length && fivexx.length) console.log(`    5xx answers: ${[...new Set(fivexx)].join(' | ')}`)
     t.check(errors.length === 0, 'no page errors', errors.join(' | '))
     await browser.close()
     console.log(`--- browser: ${name}: ${failed} failed`)
