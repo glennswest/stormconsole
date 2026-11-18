@@ -170,6 +170,14 @@ impl RkClient {
         Ok(resp.status())
     }
 
+    /// Delete, with the apiserver's body: its refusal is in its own words (#348).
+    pub async fn delete_json(&self, path: &str, as_viewer: Option<&str>) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.request(reqwest::Method::DELETE, path, as_viewer).send().await?;
+        let status = resp.status();
+        let body = resp.json().await.unwrap_or(Value::Null);
+        Ok((status, body))
+    }
+
     /// Open a watch stream and send each event's `{type, object}` down the
     /// channel, preserving apiserver order. Returns when the connection
     /// ends (the caller re-lists and redials).
@@ -180,14 +188,28 @@ impl RkClient {
         shutdown: &tokio_util::sync::CancellationToken,
         events: tokio::sync::mpsc::Sender<(String, Value)>,
     ) -> Result<(), RkError> {
+        self.watch_as(path, resource_version, None, shutdown, events).await
+    }
+
+    /// [`watch`](Self::watch), as a viewer: a grid's live updates are that
+    /// viewer's own watch, so the apiserver's RBAC decides what reaches them
+    /// (#348). `None` is the console's own credential.
+    pub async fn watch_as(
+        &self,
+        path: &str,
+        resource_version: &str,
+        as_viewer: Option<&str>,
+        shutdown: &tokio_util::sync::CancellationToken,
+        events: tokio::sync::mpsc::Sender<(String, Value)>,
+    ) -> Result<(), RkError> {
         let sep = if path.contains('?') { '&' } else { '?' };
         let url = format!(
             "{}{}{}watch=true&resourceVersion={}&allowWatchBookmarks=true",
             self.base, path, sep, resource_version
         );
-        // The watch is the console's own read of the whole cluster, so it
-        // always carries the console's credential, never a viewer's.
-        let req = match self.conn.token() {
+        // The cache's watch is the console's own read of the whole cluster,
+        // so it carries the console's credential; a grid's is the viewer's.
+        let req = match self.auth(as_viewer) {
             Some(t) => self.conn.http().get(url).bearer_auth(t),
             None => self.conn.http().get(url),
         };

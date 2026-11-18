@@ -15,6 +15,7 @@ pub mod authz;
 pub mod cache;
 pub mod client;
 mod components;
+pub mod crs;
 mod dayto;
 mod flows;
 mod rack;
@@ -98,6 +99,8 @@ struct Inner {
     hubble_relay: String,
     /// Which network this node runs (#285).
     build: Option<Arc<console_core::build::Build>>,
+    /// The aggregated groups' kinds, by discovery, and when (#348).
+    discovered: tokio::sync::Mutex<Option<(std::time::Instant, Vec<crs::Kind>)>>,
 }
 
 impl Inner {
@@ -216,6 +219,7 @@ impl KubernetesPlugin {
                 stormcentral: None,
                 hubble_relay: "http://127.0.0.1:4245".to_string(),
                 build: None,
+                discovered: Default::default(),
             }),
         }
     }
@@ -271,7 +275,7 @@ impl ConsolePlugin for KubernetesPlugin {
                 .item("Nodes", "#/k8s/node")
                 .item("Persistent volumes", "#/k8s/pv")
                 .item("Storage classes", "#/k8s/sc")
-                .item("Custom resources", "#/k8s/crd")
+                .item("Custom resources", "#/crds")
                 .item("Cluster roles", "#/k8s/crole"),
         ]
     }
@@ -288,6 +292,11 @@ impl ConsolePlugin for KubernetesPlugin {
     fn routes(&self) -> Router {
         Router::new()
             .route("/kinds", get(kinds))
+            // A grid for every custom resource (#348).
+            .route("/crds", get(crs::crds))
+            .route("/cr/{crd}", get(crs::instances))
+            .route("/cr/{crd}/watch", get(crs::watch))
+            .route("/cr/{crd}/object/{ns}/{name}", get(crs::object).put(crs::save).delete(crs::remove))
             .route("/network/policies", get(network_policies))
             .route("/flows", get(flows::list))
             .route("/flows/stream", get(flows::stream))
@@ -1121,7 +1130,7 @@ async fn events(
     }
 }
 
-fn event_row(e: &Value) -> Value {
+pub(crate) fn event_row(e: &Value) -> Value {
     let g = |p: &str| e.pointer(p).and_then(Value::as_str).unwrap_or("");
     json!({
         "time": e.pointer("/lastTimestamp").and_then(Value::as_str)
