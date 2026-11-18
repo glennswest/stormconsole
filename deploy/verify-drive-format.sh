@@ -137,7 +137,8 @@ LOCAL=$(curl -s -b "$W/jar.alice" "$C/api/plugins/drive/formats" | python3 -c 'i
 
 say "the read: every node, joined"
 fmt() { curl -s -b "$W/jar.alice" "$C/api/plugins/drive/formats" | python3 -c "import json,sys; d=json.load(sys.stdin); r={x['id']:x for x in d['drives']}; print($1)"; }
-check "$(fmt 'len(d["drives"]), [n["node"] for n in d["nodes"] if not n["ok"]]')" "10 []" "10 drives on 2 nodes"
+check "$(fmt 'len(d["drives"]), [n["node"] for n in d["nodes"] if not n["ok"]]')" "12 []" "12 drives on 2 nodes"
+check "$(fmt 'r["n1"]["kind"], r["n1"]["whyNot"], r["n1"]["format"]')" "nvme_ssd None None" "an NVMe namespace is offered too (#356), nothing run on it yet"
 check "$(fmt 'r["d2"]["planned"]["protection"], r["d2"]["bay"], r["d2"]["whyNot"], r["d2"]["use"]["in_use"]')" "type1 3 None False" "a free drive: its plan, its bay, nothing against it, not in use"
 check "$(fmt 'r["d2"]["supports"]["pi_types"]')" "[1, 2]" "and what it can be formatted to"
 check "$(fmt 'r["d5"]["whyNot"]')" "in use: sde is in the storage fleet" "a fleet drive: in use"
@@ -181,6 +182,24 @@ check "$(curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; p
 grep -q 'drive format requested' "$W/c.log" && check 1 1 "recorded: who and which drives" || check 0 1 "recorded: who and which drives"
 grep 'drive format requested' "$W/c.log" | tail -1 | cut -c1-260
 
+say "an NVMe namespace: stormdrive's worker job Format NVM step (#356)"
+nv='{"drives":[{"node":"'$LOCAL'","id":"n1","block_size":4096,"protection":"none"},{"node":"'$LOCAL'","id":"n2","block_size":4096,"protection":"none"}],"confirm":"format 2 drives"}'
+check "$(post alice format "$(printf '{"drives":[{"node":"%s","id":"n1","block_size":4096,"protection":"type1"}],"confirm":"NVM001"}' "$LOCAL")")" "400" "PI on NVMe: 400, before any node is asked"
+check "$(post alice format "${nv/format 2 drives/NVM001}")" "428" "the wrong phrase: 428"
+check "$(post bob format "$nv")" "403" "storage-viewer: 403"
+check "$(post alice format "$nv")" "200" "alice formats both: 200"
+check "$(python3 -c 'import json; r=json.load(open("'"$W/out"'"))["results"]; print(len(r), r[0]["nvme"], r[0]["job"], r[0]["refused"])')" "1 True j01 []" "one worker job for both, its id said back"
+nw() { curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys
+w=[x for x in json.load(sys.stdin) if x["path"]=="/api/v1/worker/jobs"]
+print(len(w), json.dumps(w[-1]["body"], sort_keys=True) if w else "-", (w[-1]["bearer"]==sys.argv[1]) if w else "-")' "$ALICE"; }
+check "$(nw)" '1 {"select": {"drives": ["n1", "n2"]}, "steps": [{"block_size": 4096, "op": "format"}]} True' "POST /api/v1/worker/jobs: one Format step at 4096, no destroy, as alice"
+check "$(curl -s "http://127.0.0.1:$D1/_writes" | python3 -c 'import json,sys; print(sum(1 for x in json.load(sys.stdin) if x["path"]=="/api/v1/format" and any(i in ("n1","n2") for i in x["body"]["drives"])))')" "0" "and never FORMAT UNIT"
+sleep 2
+check "$(fmt 'r["n1"]["format"]["method"], r["n1"]["format"]["job"], r["n1"]["format"]["state"], r["n1"]["format"]["toBlockSize"], r["n1"]["format"]["progressPct"]')" "nvm j01 running 4096 None" "its run is the job's: running, to 4096, no percent (one command)"
+check "$(fmt 'r["n1"]["format"]["detail"]')" "format nvm lbaf 1 (was 512)" "in the worker's words"
+check "$(fmt 'r["n1"]["whyNot"]')" "a format is already running" "and it is not offered again meanwhile"
+check "$(post alice format "$(printf '{"drives":[{"node":"%s","id":"n1","block_size":512,"protection":"none"}],"confirm":"NVM001"}' "$LOCAL")")" "409" "a second format while it runs: 409"
+
 say "the console restarts while they run"
 before=$(fmt 'r["d2"]["format"]["progressPct"]')
 kill "$CPID"; wait "$CPID" 2>/dev/null || true
@@ -194,6 +213,8 @@ check "$state" "running" "still running after the restart"
 
 say "the page: following it to the read-back"
 deploy/browser/run.sh "$W" driveformat.cjs "$C" PHASE=follow || RC=1
+check "$(fmt 'r["n1"]["format"]["state"], r["n1"]["format"]["blockSizeAfter"], r["n1"]["format"]["done"], r["n1"]["blockSize"]')" "done 4096 ['Format NVM to 4096-byte blocks'] 4096" "nvme0n1: done, 4096 as stormdrive reads it back"
+check "$(fmt 'r["n2"]["format"]["state"], r["n2"]["format"]["error"]')" "failed no LBA format with 4096-byte data and no metadata" "nvme1n1: failed, in stormdrive's words"
 check "$(curl -s "http://127.0.0.1:$D2/_writes" | python3 -c 'import json,sys; w=json.load(sys.stdin)[-1]; print(w["bearer"]==sys.argv[1], w["body"]["drives"])' "$ALICE")" "True ['b1']" "the other node's format went there, as alice"
 
 say "no sign-in at all: what forge1 runs (#165)"

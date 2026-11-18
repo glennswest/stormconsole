@@ -139,6 +139,14 @@ export function parseKey(k) {
 /// the physical block is 4K. stormdrive formats PI type 1 or none, so a drive
 /// listing type 2 or 3 gets a note, not an option.
 export function options(rec) {
+  // An NVMe namespace (#356): stormdrive's worker job Format NVM step picks
+  // the namespace's LBA format of that data size, with no metadata and no PI.
+  // stormdrive does not list a namespace's LBA formats yet (stormdrive#155),
+  // so both sizes are offered and its refusal is shown.
+  if (isNvme(rec)) {
+    const now = rec.blockSize === 4096 ? 4096 : rec.blockSize === 512 ? 512 : null
+    return [4096, 512].map((bs) => ({ block_size: bs, protection: 'none', basis: 'nvm', now: bs === now }))
+  }
   const s = rec.supports || null
   const pis = s?.pi_types || (rec.offersPi ? [1] : [])
   const out = []
@@ -174,6 +182,11 @@ export function defaultOption(rec) {
   return (p && opts.find((o) => o.block_size === p.blockSize && o.protection === p.protection)) || opts[0] || { block_size: 4096, protection: 'none' }
 }
 
+export const isNvme = (rec) => rec?.kind === 'nvme_ssd'
+
+/// What the dialog says under an NVMe namespace's choice.
+export const NVM_NOTE = 'NVMe: stormdrive formats it with a worker job (Format NVM), to the namespace’s LBA format of that size with no metadata; stormdrive refuses a size the namespace does not have'
+
 /// PI types the drive has that stormdrive does not format to.
 export function piNote(rec) {
   const extra = (rec.supports?.pi_types || []).filter((t) => t > 1)
@@ -206,10 +219,16 @@ export function requestFor(records, choice, confirm) {
 /// Where a run is, in three steps: probe (stormdrive's prepare and queue),
 /// format (FORMAT UNIT running) and read-back (rescan and READ CAPACITY).
 export const STEPS = ['probe', 'format', 'read-back']
+/// An NVMe namespace's run is a worker job (#356): queued behind its
+/// controller's lane, then Format NVM, one command, with stormdrive reading
+/// the geometry back after it.
+export const NVM_STEPS = ['queued', 'format nvm']
+export const stepsOf = (f) => (f?.method === 'nvm' ? NVM_STEPS : STEPS)
 export function stepOf(f) {
   if (!f) return null
   if (f.state === 'done') return 'done'
   if (f.state && f.state !== 'running') return 'failed'
+  if (f.method === 'nvm') return f.phase === 'queued' ? 'queued' : 'format nvm'
   switch (f.phase) {
     case 'format':
     case 'formatting':

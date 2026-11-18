@@ -1216,6 +1216,26 @@ prepare/queued, format, read-back = rescan/verify), the drive's percent, elapsed
 and left, then what READ CAPACITY reads back; the rows come back after a reload.
 The feed's `format-4k` action (4096 with no PI) is taken off every drive.
 
+**An NVMe namespace (#356).** stormdrive's `POST /api/v1/format` is SCSI FORMAT
+UNIT and refuses NVMe; a namespace changes its LBA format only through a worker
+job's `format` step (Format NVM, stormdrive#154). So the same dialog, guard and
+typed serial apply. `POST /format` sends a node's NVMe drives as one `POST
+/api/v1/worker/jobs` (`select.drives` by id, `steps: [{op: format, block_size}]`,
+no `destroy` and no `iKnowInUse`, so stormdrive's own guards stand), as the
+viewer. SCSI and NVMe drives never share a request, and PI on NVMe is refused
+(400) before a node is asked. A worker job is not all-or-nothing: it runs the
+drives that passed its guards, and the answer carries the refused ones with
+stormdrive's reasons. The run is read from the node's `GET /api/v1/worker/jobs`.
+The newest job with a format step for the drive becomes its `format` record:
+`method: nvm`, the job id, queued/running/done/failed/refused, the worker's
+phase line (`format nvm lbaf 1 (was 512)`), the step lines, and the block size
+stormdrive reads back. Format NVM is one blocking command with no progress, so
+the row shows steps (queued, format nvm), elapsed time and the job, but no
+percent or estimate. The choices are 4096 and 512 with no PI (the size it has
+now is marked). stormdrive does not report a namespace's LBA formats
+(stormdrive#155), so a size the namespace lacks fails in the job, in
+stormdrive's words. stormdrive keeps its last 64 jobs.
+
 **The Actions menu (#308).** A drive's feed actions in one menu
 (`driveactions.js`): Locate, Test, Fleet, Designate, Other, and the destructive
 ones last in a group marked "destroys data", Format… first among them. The menu

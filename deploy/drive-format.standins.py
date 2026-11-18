@@ -4,7 +4,10 @@ v0.39.0's shapes, this node laid out as forge1 is (sda the system drive: the ESP
 both stormblock slabs; sdb-sdd free, 512 today, PI 1 + 2, planned 4096 + PI type 1) (src/api/mod.rs, src/api/kube.rs, src/format.rs, src/history.rs):
 /api/v1/drives, /apis/storage.storm.io/v1/drives, POST /api/v1/format
 (all-or-nothing, 409 {error, code}) and a drive's history. A format runs on a
-clock, RUN seconds, and records every write with its bearer at /_writes."""
+clock, RUN seconds, and records every write with its bearer at /_writes.
+Two NVMe namespaces (#356) are formatted only as stormdrive does it, a worker job's
+Format NVM step (src/worker.rs, erase.rs): GET/POST /api/v1/worker/jobs. nvme0n1 has a
+4096-byte LBA format; nvme1n1 has none, so its job fails as stormdrive's does."""
 import json
 import sys
 import threading
@@ -45,6 +48,10 @@ DRIVES = {
         drive("d7", "sdg", "OLD007", 8, block_size=4096, plan={"error": "not probed yet (SCSI drives only)"}, supports=None),
         drive("d8", "sdh", "NET008", 9),
         drive("d9", "sdi", "NET009", 10),
+        drive("n1", "nvme0n1", "NVM001", 11, kind="nvme_ssd", model="SAMSUNG MZQL23T8HCLS", block_size=512,
+              physical_block_size=512, plan={"error": "not probed yet (SCSI drives only)"}, supports=None),
+        drive("n2", "nvme1n1", "NVM002", 12, kind="nvme_ssd", model="INTEL SSDPE2KX010T8", block_size=512,
+              physical_block_size=512, plan={"error": "not probed yet (SCSI drives only)"}, supports=None),
     ]},
     OTHER: {"b1": drive("b1", "sdx", "BEE001", 1)},
 }
@@ -62,6 +69,38 @@ HISTORY = {"d2": [{"at": "2026-10-01T00:00:00Z", "kind": "action", "severity": "
     "before": {"block_size": 520}, "after": {"block_size": 512, "prot_type": 0}}},
     {"at": "2026-10-01T00:00:01Z", "kind": "moved", "severity": "info", "message": "moved"}]}
 WRITES = {HERE: [], OTHER: []}
+# The namespaces' LBA formats by data size (Identify Namespace, no metadata).
+LBAF = {"n1": [512, 4096], "n2": [512]}
+JOBS = {HERE: [], OTHER: []}
+
+
+def systime(t):
+    return None if t is None else {"secs_since_epoch": int(t), "nanos_since_epoch": 0}
+
+
+def job_view(port, j):
+    """A worker job (worker.rs Job::view), on the clock: queued a moment, Format NVM for RUN seconds."""
+    now = time.time()
+    drives = []
+    for dj in j["drives"]:
+        dj = dict(dj)
+        if dj["state"] != "refused":
+            start = j["created"] + 1
+            if now < start:
+                dj.update(state="queued", phase="queued")
+            elif now < start + RUN:
+                d = DRIVES[port][dj["drive"]]
+                dj.update(state="running", phase=f"format nvm lbaf {LBAF[dj['drive']].index(j['bs']) if j['bs'] in LBAF[dj['drive']] else '?'} (was {d['block_size']})", started=systime(start))
+            elif j["bs"] in LBAF[dj["drive"]]:
+                DRIVES[port][dj["drive"]]["block_size"] = j["bs"]
+                dj.update(state="done", phase="done", started=systime(start), finished=systime(start + RUN),
+                          done=[f"Format NVM to {j['bs']}-byte blocks"])
+            else:
+                dj.update(state="failed", phase="failed", started=systime(start), finished=systime(start + 1),
+                          error=f"no LBA format with {j['bs']}-byte data and no metadata")
+        drives.append(dj)
+    return {"id": j["id"], "created": systime(j["created"]), "select": j["select"], "steps": j["steps"], "drives": drives,
+            "finished": all(d["state"] not in ("queued", "running") for d in drives)}
 LOCK = threading.Lock()
 
 
@@ -144,6 +183,8 @@ def handler(port):
             f = status(d["id"])
             if f and f["state"] == "running":
                 out["activity"] = "formatting"
+            if nvme_running(port, d["id"]):
+                out["activity"] = "formatting"
             # A controller reset rides on the live run only (format.rs).
             if d["id"] in RUNS and d["id"] == "d2":
                 out["format_run"] = {"resets": ["host3: IOC reset count 0 → 1"]}
@@ -161,6 +202,8 @@ def handler(port):
                     return self.send(200, WRITES[port])
                 if path == "/api/v1/components":
                     return self.send(200, [card(d) for d in DRIVES[port].values()])
+                if path == "/api/v1/worker/jobs":
+                    return self.send(200, {"jobs": [job_view(port, j) for j in JOBS[port]]})
                 if path == "/api/v1/drives":
                     return self.send(200, {"drives": [self.rest(d) for d in DRIVES[port].values()]})
                 if path == "/apis/storage.storm.io/v1/drives":
@@ -177,12 +220,16 @@ def handler(port):
                 WRITES[port].append({"path": self.path, "bearer": a[7:] if a.startswith("Bearer ") else None, "body": body})
                 if self.path.startswith("/api/v1/drives/") and self.path.endswith("/locate/on"):
                     return self.send(200, {"message": "locate on"})
+                held = DRIVES[port]
+                if self.path == "/api/v1/worker/jobs":
+                    return self.worker(body, held)
                 if self.path != "/api/v1/format":
                     return self.send(404, {"error": "no such path", "code": "not_found"})
-                held = DRIVES[port]
                 blocked = []
                 for id in body["drives"]:
                     why = blocker(held[id]) if id in held else "unknown drive"
+                    if not why and held[id]["kind"] == "nvme_ssd":
+                        why = 'NVMe: this is SCSI FORMAT UNIT; reformat an NVMe namespace with a worker job\'s "format" step (POST /api/v1/worker/jobs, Format NVM)'
                     if why:
                         blocked.append(f"{held[id]['name'] if id in held else id} ({why})")
                 if blocked:
@@ -198,7 +245,37 @@ def handler(port):
                         "message": "format", "action": {"op": "format", "params": {"block_size": body["block_size"], "protection": body["protection"]},
                         "result": "done", "requester": "alice", "before": {"block_size": 520}, "after": {"block_size": body["block_size"], "prot_type": 0}}})
                 return self.send(200, {"block_size": body["block_size"], "protection": body["protection"], "started": body["drives"]})
+        def worker(self, body, held):
+            """POST /api/v1/worker/jobs (worker.rs submit): the guards per drive; refused ones ride in the job."""
+            steps = body.get("steps") or []
+            if [s.get("op") for s in steps] != ["format"]:
+                return self.send(400, {"error": "this stand-in runs one format step", "code": "bad_request"})
+            bs = steps[0]["block_size"]
+            djs = []
+            for id in body["select"]["drives"]:
+                if id not in held:
+                    return self.send(400, {"error": f"unknown drive {id!r}", "code": "bad_request"})
+                d = held[id]
+                why = blocker(d) or ("busy: formatting" if nvme_running(port, id) else None)
+                if not why and d["kind"] != "nvme_ssd":
+                    why = None  # a SCSI drive in a worker job: not what the console sends for one
+                djs.append({"drive": id, "name": d["name"], "serial": d["serial"], "wwn": d["wwid"], "kind": d["kind"],
+                            "state": "refused" if why else "queued", "step": 0, "phase": "refused" if why else "queued",
+                            "progress_pct": None, "error": why, "done": [], "destroy_named": False, "started": None, "finished": None})
+            if not any(dj["state"] == "queued" for dj in djs):
+                return self.send(409, {"error": "nothing to run: " + json.dumps([{"name": x["name"], "reason": x["error"]} for x in djs]), "code": "conflict"})
+            j = {"id": f"j{len(JOBS[port]) + 1:02x}", "created": time.time(), "select": body["select"], "steps": steps, "drives": djs, "bs": bs}
+            JOBS[port].append(j)
+            return self.send(200, job_view(port, j))
     return H
+
+
+def nvme_running(port, id):
+    for j in JOBS[port]:
+        for dj in job_view(port, j)["drives"]:
+            if dj["drive"] == id and dj["state"] in ("queued", "running"):
+                return True
+    return False
 
 
 for p in (HERE, OTHER):

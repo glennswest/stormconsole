@@ -187,7 +187,7 @@
               <tr>
                 <td>{r.node} · {r.name} <span class="mono dim">{r.serial}</span></td>
                 <td class:bad={f.state !== 'done'}>{f.state}{#if f.error}<div class="small">{f.error}</div>{/if}</td>
-                <td>{formatText(f.toBlockSize, f.protection)}{#each f.refused || [] as why}<div class="dim">refused: {why}</div>{/each}</td>
+                <td>{formatText(f.toBlockSize, f.protection)}{#if f.method === 'nvm'}<div class="dim">Format NVM · worker job {f.job}</div>{/if}{#each f.refused || [] as why}<div class="dim">refused: {why}</div>{/each}</td>
                 <td class:bad={back && !back.matches}>{back ? back.text : '—'}{#if back && !back.matches}<div class="small">not what was asked</div>{/if}</td>
                 <td>{duration(timing(f, now).elapsed)}</td>
                 <td>{f.finishedUnix ? new Date(f.finishedUnix * 1000).toLocaleString() : '—'}</td>

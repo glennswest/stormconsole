@@ -14,7 +14,7 @@
   import { formatBytes } from '../drivemap.js'
   import {
     badgeOf, confirmLine, currentText, defaultOption, formatText, inUse, isRunning, optionKey, options, parseKey,
-    phrase, piNote, planFor, requestFor, resultText, selectable,
+    phrase, piNote, planFor, requestFor, resultText, selectable, isNvme, NVM_NOTE,
   } from '../driveformat.js'
 
   let { records = [], picked = [], guard = null, onclose, ondone } = $props()
@@ -74,8 +74,10 @@
       const r = await postJson('/api/plugins/drive/format', body, 'POST', { 'X-Storm-Confirm': guard?.confirm || 'format' })
       const results = r.results || []
       for (const o of results) {
-        const what = `${o.drives.length} ${o.drives.length === 1 ? 'drive' : 'drives'} on ${o.node}: ${formatText(o.block_size, o.protection)}`
-        noteActivity({ reason: 'Format', message: o.ok ? `started, ${what}` : `refused, ${what}: ${o.error}`, source: `drives/${o.node}`, warning: !o.ok })
+        const what = `${o.drives.length} ${o.drives.length === 1 ? 'drive' : 'drives'} on ${o.node}: ${formatText(o.block_size, o.protection)}${o.nvme ? ` (Format NVM, worker job ${o.job || '?'})` : ''}`
+        const refusedText = (o.refused || []).map((x) => `${x.name}: ${x.error}`).join('; ')
+        const message = o.ok ? `started, ${what}` : o.status < 300 ? `started, ${what}; refused ${refusedText}` : `refused, ${what}: ${o.error}`
+        noteActivity({ reason: 'Format', message, source: `drives/${o.node}`, warning: !o.ok })
       }
       ondone?.(results)
     } catch (e) {
@@ -127,11 +129,12 @@
                   <label class="to">becomes
                     <select aria-label="Format for {r.name}" bind:value={choice[key(r)]} disabled={!allowed}>
                       {#each opts as o (optionKey(o))}
-                        <option value={optionKey(o)}>{resultText(o.block_size, o.protection)}{o.basis === 'try' ? ' (a try)' : ''}{planFor(r, o).onPlan ? ' · its plan' : ''}</option>
+                        <option value={optionKey(o)}>{resultText(o.block_size, o.protection)}{o.basis === 'try' ? ' (a try)' : ''}{o.now ? ' · as now' : ''}{planFor(r, o).onPlan ? ' · its plan' : ''}</option>
                       {/each}
                     </select>
                   </label>
                   {#if piNote(r)}<span class="dim small">{piNote(r)}</span>{/if}
+                  {#if isNvme(r)}<span class="dim small" data-testid="dialog-nvm">{NVM_NOTE}</span>{/if}
                   {#if r.use?.holds}<span class="warn small">holds {r.use.holds}: it goes</span>{/if}
                 {/if}
               </div>
@@ -160,7 +163,7 @@
             {@const o = planFor(r, parseKey(choice[key(r)]))}
             <li>
               <strong>{r.node} · {confirmLine(r, o)}</strong>
-              <span class="dim">{r.serial} · now {currentText(r)}{o.fallbacks.length ? ` · if the drive refuses: ${fallbackText(o)}` : ''}</span>
+              <span class="dim">{r.serial} · now {currentText(r)}{isNvme(r) ? ' · Format NVM, a stormdrive worker job' : ''}{o.fallbacks.length ? ` · if the drive refuses: ${fallbackText(o)}` : ''}</span>
             </li>
           {/each}
         </ul>

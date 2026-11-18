@@ -113,6 +113,11 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
       t.check(/4096 \+ T10 PI type 1/.test(await sel.locator('option:checked').innerText()), `${n}: its plan by default`)
       t.check(/PI type 2; stormdrive formats type 1 or none/.test(await r.innerText()), `${n}: type 2 said, not offered`)
     }
+    // An NVMe namespace (#356): no PI, both sizes, how stormdrive does it.
+    const dnv = dialogRow(dialog, 'nvme0n1')
+    const nvOpts = await dnv.locator('select option').allInnerTexts()
+    t.check(nvOpts.length === 2 && /^4096, no PI/.test(nvOpts[0]) && /^512, no PI · as now/.test(nvOpts[1]), 'nvme0n1: 4096 or 512, no PI, the size it is now marked', nvOpts.join(' | '))
+    t.check(/worker job \(Format NVM\)/.test(await dnv.innerText()), 'and says stormdrive formats it with a worker job', await dnv.innerText())
     t.check(/3 chosen/.test(await dialog.innerText()), '3 chosen')
     await t.shot(page, 'format-dialog')
     await dialog.locator('[data-testid=dialog-next]').click()
@@ -189,6 +194,11 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
   const running = page.locator('[data-testid=running]')
   t.check(/\d+%/.test(await running.innerText()), 'with their progress', await running.innerText())
   t.check(await t.until(async () => /verify/.test(await running.locator('[data-testid=progress-state]').allInnerTexts().then((x) => x.join(' '))), 60000), 'a run reaches the read-back (verify)')
+  // The NVMe namespaces' job (#356), started by the rig before the restart.
+  const nrow = running.locator('[data-testid=progress-row][data-drive="nvme0n1"]')
+  t.check(await t.until(async () => /Format NVM is one command/.test(await nrow.innerText()) && /stormdrive worker job j01/.test(await nrow.innerText())), 'nvme0n1: its worker job, no percent from a one-command format', await nrow.innerText().catch(() => ''))
+  t.check(/format nvm lbaf 1/.test(await nrow.innerText()) && /format nvm/.test(await nrow.locator('[data-testid=progress-state]').innerText().catch(() => '')), 'in the worker\'s words, at the Format NVM step', await nrow.innerText().catch(() => ''))
+  await t.shot(page, 'format-nvm-running')
   const ended = page.locator('[data-testid=ended]')
   t.check(await t.until(async () => {
     const x = await ended.innerText()
@@ -198,6 +208,8 @@ walk(`drive format, ${process.env.PHASE}`, async (t) => {
   for (const n of ['sdb', 'sdc', 'sdd']) t.check(/done/.test(await line(n)) && /4096 \+ PI type 1/.test(await line(n)), `${n}: done, read back 4096 + PI type 1`, await line(n))
   t.check(/done/.test(await line('sdh')) && /4096, no PI/.test(await line('sdh')) && /refused:/.test(await line('sdh')), 'a fallback: read back 4096, no PI, with the refusal', await line('sdh'))
   t.check(/failed/.test(await line('sdi')) && /512, no PI/.test(await line('sdi')) && /not what was asked/.test(await line('sdi')), 'a run that reads back otherwise: failed, saying what it reads', await line('sdi'))
+  t.check(await t.until(async () => /done/.test(await line('nvme0n1')) && /Format NVM/.test(await line('nvme0n1')), 60000), 'nvme0n1: done, by Format NVM', await line('nvme0n1').catch(() => ''))
+  t.check(/failed/.test(await line('nvme1n1')) && /no LBA format with 4096-byte data/.test(await line('nvme1n1')), 'nvme1n1: failed, with stormdrive\'s reason', await line('nvme1n1').catch(() => ''))
   await t.shot(page, 'format-ended')
 
   // History.

@@ -4,7 +4,7 @@
   // it has run and how long is left, and what the drive reads back. All of it
   // is stormdrive's record of the run, which outlives a reload, a console
   // restart and a stormdrive restart, so the rows come back with the page.
-  import { STEPS, duration, formatText, readBack, stepOf, timing } from '../driveformat.js'
+  import { duration, formatText, readBack, stepOf, stepsOf, timing } from '../driveformat.js'
 
   let { rows = [], now } = $props()
   const key = (r) => `${r.node}/${r.id}`
@@ -23,21 +23,24 @@
         <span class="to">to {formatText(f.toBlockSize, f.protection)}</span>
       </div>
       <ol class="steps" aria-label="Steps">
-        {#each STEPS as st, i}
-          {@const at = STEPS.indexOf(s)}
+        {#each stepsOf(f) as st, i}
+          {@const at = stepsOf(f).indexOf(s)}
           <li class:now={st === s} class:past={s === 'done' || (at >= 0 && i < at)} class:bad={s === 'failed' && !['failed', 'done', 'queued', ''].includes(f.phase || '') && st === stepOf({ state: 'running', phase: f.phase })}>{st}</li>
         {/each}
         <li class="state" data-testid="progress-state">{s === 'done' ? 'done' : s === 'failed' ? f.state : f.phase || 'queued'}</li>
       </ol>
-      {#if s !== 'done' && s !== 'failed'}
+      {#if f.method === 'nvm'}
+        <p class="dim small" data-testid="progress-job">stormdrive worker job {f.job}{f.detail ? ` · ${f.detail}` : ''}</p>
+      {/if}
+      {#if s !== 'done' && s !== 'failed' && f.method !== 'nvm'}
         <div class="bar" role="progressbar" aria-valuenow={f.progressPct ?? 0} aria-valuemin="0" aria-valuemax="100"><i style="width: {f.progressPct ?? 0}%"></i></div>
       {/if}
       <div class="facts">
         {#if s !== 'done' && s !== 'failed'}
-          <span class="pct" data-testid="progress-pct">{f.progressPct === null || f.progressPct === undefined ? 'no percent from the drive yet' : `${f.progressPct}%`}</span>
+          <span class="pct" data-testid="progress-pct">{f.method === 'nvm' ? 'Format NVM is one command: the drive reports no percent' : f.progressPct === null || f.progressPct === undefined ? 'no percent from the drive yet' : `${f.progressPct}%`}</span>
         {/if}
         <span>elapsed {duration(t.elapsed)}</span>
-        {#if s !== 'done' && s !== 'failed'}<span>{t.left === null ? 'no estimate yet' : `about ${duration(t.left)} left`}</span>{/if}
+        {#if s !== 'done' && s !== 'failed' && f.method !== 'nvm'}<span>{t.left === null ? 'no estimate yet' : `about ${duration(t.left)} left`}</span>{/if}
         {#if back}
           <span class:bad={!back.matches} data-testid="progress-back">reads back {back.text}{back.matches ? '' : ': not what was asked'}</span>
         {:else if s === 'done'}
@@ -45,6 +48,7 @@
         {/if}
       </div>
       {#if f.error}<p class="error small">{f.error}</p>{/if}
+      {#each f.done || [] as line}<p class="dim small" data-testid="progress-done">{line}</p>{/each}
       {#each f.refused || [] as why}<p class="warn small">The drive refused a format: {why}</p>{/each}
       {#each r.resets || [] as line}<p class="warn small">Controller reset: {line}</p>{/each}
     </div>

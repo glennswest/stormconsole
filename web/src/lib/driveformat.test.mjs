@@ -111,3 +111,21 @@ console.log('PASS driveformat.test.mjs')
   assert.deepEqual(rows.map((r) => r.name), ['sdb', 'sdc'])
 }
 console.log('driveformat #308 ok')
+
+{
+  // #356: an NVMe namespace, formatted by stormdrive's worker job Format NVM step.
+  const m = await import('./driveformat.js')
+  const nv = { node: 'n', id: 'nv1', name: 'nvme0n1', kind: 'nvme_ssd', serial: 'NV1', blockSize: 512, supports: null, planned: null }
+  assert.equal(m.isNvme(nv), true)
+  assert.deepEqual(m.options(nv).map(m.optionKey), ['4096:none', '512:none'], 'no PI on NVMe; both sizes until stormdrive#155 lists the LBA formats')
+  assert.equal(m.options(nv).find((o) => o.now).block_size, 512, 'the size it is now is marked')
+  assert.equal(m.optionKey(m.defaultOption(nv)), '4096:none')
+  assert.deepEqual(m.requestFor([nv], {}, 'NV1').drives, [{ node: 'n', id: 'nv1', block_size: 4096, protection: 'none' }])
+  assert.deepEqual(m.stepsOf({ method: 'nvm' }), ['queued', 'format nvm'])
+  assert.deepEqual(m.stepsOf({ state: 'running' }), m.STEPS)
+  assert.equal(m.stepOf({ method: 'nvm', state: 'running', phase: 'queued' }), 'queued')
+  assert.equal(m.stepOf({ method: 'nvm', state: 'running', phase: 'formatting' }), 'format nvm')
+  assert.equal(m.stepOf({ method: 'nvm', state: 'refused' }), 'failed')
+  assert.equal(m.isRunning({ format: { method: 'nvm', state: 'running' } }), true)
+  console.log('driveformat #356 ok')
+}
