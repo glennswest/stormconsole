@@ -207,6 +207,8 @@ pub async fn forward_dial(
 
 /// Destructive storage goes upstream with the viewer's bearer, not this
 /// target's (#82): see [`crate::storage::upstream_bearer`].
+// An axum handler takes what it needs as extractors, one argument each.
+#[allow(clippy::too_many_arguments)]
 async fn handler(
     State(t): State<Arc<Target>>,
     Path(path): Path<String>,

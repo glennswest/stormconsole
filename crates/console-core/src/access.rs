@@ -159,7 +159,10 @@ impl Access {
 /// (#45). A test on the action rather than on its component, because a
 /// component of one plugin may carry an action another plugin serves.
 #[derive(Clone)]
-pub struct Offers(Option<Arc<dyn Fn(&Action) -> bool + Send + Sync>>);
+pub struct Offers(Option<OfferTest>);
+
+/// Whether one action is offered.
+type OfferTest = Arc<dyn Fn(&Action) -> bool + Send + Sync>;
 
 impl Offers {
     pub fn all() -> Self {
