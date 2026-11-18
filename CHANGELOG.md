@@ -3,6 +3,15 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-18 — A grid for every custom resource (#348)
+- **feat:** Cluster → **Custom resources** (`#/crds`): every CRD, and every kind an aggregated group serves, with group, versions, scope, printer columns, established, and how many of it you may see (or that you may not list them); search, storm.io only, with instances.
+- **feat:** **any kind's instances** (`#/cr/<plural.group>`) on stormview's DataGrid: NAME, NAMESPACE, the CRD's `additionalPrinterColumns` resolved as rustkube's Table resolves them for `oc get` (same cells), AGE; `priority > 0` behind **Wide**; the project filter; search; sort; **live** from your own watch (SSE), polling every 10 s when you may list only some projects. A kind with no printer columns shows its status fields and says so.
+- **feat:** **one object** (`#/cr/<crd>/<ns or _>/<name>`): printer values on top, spec and status as sections (printer-column fields marked), conditions as a table, owner references as links, its events, the YAML with copy; **Edit** and **Delete** as you, refused in the apiserver's words.
+- **feat:** curated renderers for our kinds on the same grid: a Drive's health and link dots, a RaidSet's/RaidPool's phase bar, a Replication's progress bar, a Volume's owner; any kind's Phase/Status/State/Health/Ready coloured by one vocabulary.
+- **feat:** "All <kind>" in every plugin's menu: drives, drive operations, shelves, volumes, RAID sets, replications, cluster members, machines, machine boots, cluster updates, virtual machines.
+- **fix:** clippy 1.95 in console-core and plugin-stormblock (#341, #349).
+- **test:** `deploy/verify-crd-grid.sh` (real rustkube; cells compared with the apiserver's Table) and the `crds` browser walk; `web/src/lib/crgrid.test.mjs`.
+
 ## [v0.34.0] — 2026-11-17
 
 ### 2026-11-17 — Drive link health (#339)

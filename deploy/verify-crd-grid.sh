@@ -41,6 +41,7 @@ API=https://127.0.0.1:$AP
 C=http://127.0.0.1:$P
 
 say "the SPA and the console from this commit"
+node web/src/lib/crgrid.test.mjs
 (cd web && npm ci --no-audit --no-fund >/dev/null && npx vite build --logLevel warn)
 cargo build -q --locked -p stormconsole
 BIN=$(realpath "${CARGO_TARGET_DIR:-target}/debug/stormconsole")

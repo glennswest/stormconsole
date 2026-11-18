@@ -583,6 +583,24 @@ is a thin typed layer over the standard REST paths.
   instantly and emits the plugin's components slice (pods and workloads
   with `belongs_to` namespace edges, `has_many` pod edges, health derived
   from status/conditions). ReplicaSets are not watched.
+- **Custom resources** (#348, `crs.rs`), as OpenShift's *CRDs → Instances*: `GET /crds` is every CRD in the
+  watch cache plus what the aggregated groups serve by discovery (`/apis`, groups that are nobody's built-in API,
+  kept a minute), each with scope, versions, printer columns and an instance count **as the viewer** (`null` and
+  `forbidden` when they may not list it). `GET /cr/{plural.group}` is the grid: NAME, NAMESPACE (namespaced kinds),
+  the served version's `additionalPrinterColumns` resolved exactly as rustkube's `table.rs` resolves them for
+  `oc get` (a leading `.`, dotted fields, numeric indices; unresolved is empty), AGE unless the CRD prints its own;
+  `priority > 0` columns are the SPA's Wide. A kind with none shows its first-level `status` scalars and
+  `gap: true`. `?project=` narrows a namespaced kind. Listed as the viewer: a viewer who may not list across
+  projects is listed per project they may see (no watch then; listed again every 10 s); hidden projects dropped.
+  `GET /cr/{crd}/watch` is SSE: a `snapshot`, then each `ADDED`/`MODIFIED`/`DELETED` from **the viewer's own
+  watch** as a row; a broken watch lists again; the stream ends at five minutes so rights are asked again.
+  `GET|PUT|DELETE /cr/{crd}/object/{ns|_}/{name}`: the object, YAML, printer values, conditions, events (the
+  project's or the cluster's, as the viewer, matched on `involvedObject`), owner references as links (a CRD kind's
+  page, a pod's, a VM's, a node's, a cached kind's grid), and `editable`/`deletable` from the viewer's rules; a
+  save or delete is the viewer's, refused in the apiserver's words. Curated renderers for the storm.io kinds live
+  in the SPA (`web/src/lib/crgrid.js`): drive health/link dots, a RAID set's phase bar, a replication's progress
+  bar, a volume's owner; every other kind's state columns are coloured by one vocabulary. Each plugin's menu has
+  "All <kind>" into the grid; Cluster → Custom resources is `#/crds` (`#/k8s/crd` lands there).
 - **Project views**: the Project selector scopes every namespaced page; a
   project's page (`#/k8s/ns/<name>`, the API's word in the path) — inventory whose
   every count is a link, quota, limit ranges, events, YAML, and the
