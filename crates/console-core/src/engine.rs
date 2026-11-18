@@ -101,7 +101,7 @@ mod tests {
     fn a_ca_not_there_stops_it_and_says_which() {
         let files = TlsFiles { ca: Some("/nonexistent/ca.crt".into()), cert: None, key: None };
         let e = Engine::new("https://127.0.0.1:9090", files, Arc::new(FileToken::fixed(Some("t".into()))));
-        let why = e.get("/api/v1/health").err().expect("read with no CA");
+        let why = e.get("/api/v1/health").expect_err("read with no CA");
         assert!(why.contains("[stormblock]") && why.contains("/nonexistent/ca.crt"), "{why}");
     }
 }

@@ -803,7 +803,7 @@ fn slab(v: &Value) -> ComponentSummary {
     let id = field(v, &["id"]).unwrap_or_default();
     let total = u64_field(v, "total_bytes").unwrap_or(0);
     let free = u64_field(v, "free_bytes").unwrap_or(0);
-    let used_pct = if total > 0 { ((total - free) * 100 / total) as u8 } else { 0 };
+    let used_pct = ((total - free) * 100).checked_div(total).unwrap_or(0) as u8;
     let health = if total == 0 {
         Health::Unknown
     } else if free * 100 < total * 5 {
