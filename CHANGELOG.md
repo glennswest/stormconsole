@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.37.0] — 2026-11-18
+
 ### 2026-11-18 — Traceability both ways (#347)
 - **feat:** the pod page has **Each container's volumes**: its root clone, its data and logs volumes and its claims, found on this node's engine by the ids the kubelet writes (`storm.io/instance.<c>`, `storm.io/volume.<name>`, rustkube-node#372) and by the owner the engine records (Pod, container). Each row shows how the container mounts it, links to the volume, and gives its kind, what it was cloned from (and that image's digest), how much is written of its size, its health and its owner. An owner nobody recorded names the issue of the writer that should record it (stormd#75 for a node service, stormblock-csi#69 for a claim, rustkube-node#372 otherwise). A container with no volumes says so.
 - **feat:** a volume row's owner reads `Pod kube-system/fastetcd · container fastetcd`, linked to the pod (or the claim or VM). `unclaimed` is shown only for a clone that nothing owns, consumes or has attached. A clone in use with no owner written shows `not recorded`.

@@ -2600,7 +2600,7 @@ stormdrive formats an NVMe namespace only as a worker job `format` step (Format 
 - Not seen: a real NVMe namespace formatted by a real stormdrive; the worker's shapes are from stormdrive `worker.rs`, served by the stand-in
 - stormdrive reports no namespace LBA formats: stormdrive#155 (until then 512/4096 offered, stormdrive's refusal shown)
 
-### Traceability both ways (#347) — in progress 2026-11-18
+### Traceability both ways (#347) ✅ 2026-11-18 (v0.37.0)
 Node objects now carry it: rustkube-node#372 (shipped) writes `storm.io/volume.<name>` (engine id of each pod volume, mirror pods' `root`/`data`/`logs` too), `storm.io/image-digest.<c>`, `storm.io/golden.<c>`, `storm.io/image-build.<c>`, and Pod owners on container roots. Still open: stormd#75 (Service owner), stormblock#649 (Volume object owner), stormvm#129 (VM disk owner), stormblock-csi#69, stormblock-registry#174.
 - [x] sb volume rows: owner as `Pod ns/name · container c` with its link; `unclaimed` only with no owner, no consumer and nothing attached; attached with no owner says the owner is not recorded
 - [x] `runs-on`: by the pod's engine ids and owner, union; `container` filter; each row says its pod volume name, owner and kind
@@ -2610,7 +2610,8 @@ Node objects now carry it: rustkube-node#372 (shipped) writes `storm.io/volume.<
 - [x] VM page: its disks by owner, the gap naming stormvm#129
 - [x] unit tests (owner words, unclaimed rule, runs-on union, node annotations, PVC/PV used by, VM claims turned round); `sc-build` 38a52e1 pass, no warnings
 - [x] rigs: `verify-pod-page.sh` (stand-in engine volumes owned by the pod, annotations as rustkube-node#372 writes them, PV claimRef), `verify-runs-on.sh` and the blade test read the node's words, not stormcentral's
-- [ ] `sc-build deploy/verify-pod-page.sh`, `sc-build` clippy + test crate + `deploy/verify-runs-on.sh`; web/dist; image
+- [x] `sc-build deploy/verify-pod-page.sh` (0 API failed, browser 0 failed; first run failed three rig checks, #361, fixed in the rig), `sc-build` clippy -D warnings + test crate + `deploy/verify-runs-on.sh` (0 failed); web/dist; image
+- Not seen: a real node. rustkube-node#372 is on pvetest2 (12.93); the proof is checked on the first test machine that installs this console
 - Open elsewhere: stormd#75 (Service owner on service volumes), stormblock#649/#651 (Volume object owner; container kept), stormvm#129, stormblock-csi#69
 
 ### Phase 4 — fleet/nodes plugin
