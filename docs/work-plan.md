@@ -1546,6 +1546,8 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       stormblock-registry#150's fix (12.62, stormcentral#1232), so install that on a pvetest machine (stormcentral#512
       still open). Then: `stormcentral test run stormconsole blade --tag
       pvetest1` on a release carrying 379ebd7 or later, record each answer on #76, file differences, close #76
+- [ ] 2026-11-19: stormcentral#512 closed and pvetest runs pass again; pvetest1 runs 12.95. Run 2c5e658197
+      (blade, 624f647) queued on pvetest1
 
 ### The ring's hold-off from the end of the work (#154)
 The golden's `cargo test --release --target musl` failed
