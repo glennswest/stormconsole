@@ -2673,7 +2673,12 @@ resets and the reload/restart survival were already built (#165, #308, #356).
       The whole log rather than the tail, since a refusal at the start of a 19 h run leaves the 20-line tail in minutes
 - [x] methodText on the progress rows and the ended table
 - [x] Stand-ins in v0.47.0's shapes; verify-drive-format.sh + driveformat.cjs checks
-- [ ] sc-build, sc-build deploy/verify-drive-format.sh, web/dist, image
+- [x] sc-build d055784 (v0.38.0): 659 tests, 0 failed, no warnings; clippy --all-targets -D warnings; `sc-build
+      deploy/verify-drive-format.sh` a5fd186: 182 ok, 0 failed, browser 0 failed (the first run, ca9e656, failed one
+      rig check: bob was not signed in again after the console restart); web/dist rebuilt (83f5b2b); image
+- Not seen: a real drive's log. That is forge1's 4 × 10 TB SAS format on a release carrying this console and stormdrive v0.47.0.
+- web/dist's build warns that stormview 0.4.0 has a `svelte` field without an exports condition. stormview#14 fixed
+  it upstream; this console still pins 0.4.0 (pre-existing, not from #335).
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
