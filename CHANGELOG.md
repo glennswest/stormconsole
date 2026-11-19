@@ -5,6 +5,7 @@
 
 ### 2026-11-19 — The blade suite on a real node (#76)
 - **test:** `blade`'s `vm-counters` reads the machine's Metrics tab (`/api/plugins/metrics/charts?entity=vm`): the network lines pass, the tab's own note is a skip, and a tab with nothing to say fails. stormvm#48 closed and #14 moved a machine's counters to that tab, so the "traffic counters" gap it looked for no longer exists (run 2c5e658197 failed it on pvetest1, 12.95).
+- **docs:** #76 is done. On pvetest1 (d9872e73d0, 14 pass, 0 fail, 7 skip) and pvetest2 (029ff929e1, 5 pass, 0 fail, 4 skip), every #69 done-when passes or is a skip naming what the node does not supply. A bridged VM's missing network series is filed as stormvm#136.
 - **test:** `vm-counters` waits up to 5½ min for the Metrics tab's `rate(…[5m])` network lines (run b6f7802c22 read none after 2 min). A pallet's missing digest and build date on 12.95 are filed as rustkube-node#413.
 - **test:** `cilium-stats` refused with "the console has no credential" is a skip naming stormcos#76 (the node mounts no ServiceAccount token for the console, and the kubelet takes no anonymous caller), not a console failure.
 - **test:** `vm-running` that fails carries the instance's message, conditions and events (run ae4bd5545f's VM went `Failed` with only "Failed" to say why).
