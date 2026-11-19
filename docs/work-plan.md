@@ -2651,6 +2651,19 @@ terminal never calls. Upstream code, not a surface of ours; `check-stubs.sh` ski
 - [x] sc-build 42e1bdc pass (no_stubs: 3 ok); web/dist rebuilt (7e30b49); check-stubs passes on the checkout; image requested
 - Filed stormcentral#1488: check-stubs.sh's grep drops the file name for a one-file batch (`-H`)
 
+### API health probes for the registry (#150, stormcentral#596) — 2026-11-19
+stormd probes each declared API with a cheap **real** read. The live registry entry still declares no `apis`. The
+registry is the owner's setting: this session's token is refused, both for `component edit` and for
+`POST /api/v1/config/components/check`. So the master runs the command.
+- `console` → `/api/summary`: no sign-in needed (auth.rs `gate`), reads the plugin registry's feed and overall health
+- `logs` → `/api/plugins/logs/events?last=1`: one redb read transaction that walks the ring backwards and stops after
+  one record. Not `/api/plugins/logs/summary`: that decodes every event in the ring, too costly every 15 s
+- No `token_file`: the node's config has no `[api]` section, so authentication is off. If it is turned on, `logs`
+  needs one (a 401 shows as `down`)
+- [x] Probes chosen from the code; README "Ports, health, metrics" names them
+- [ ] Master runs `component edit stormconsole --set apis=…` (note sent; owner action card)
+- [ ] `component build stormconsole` carries it as `[[process.api]]`; shipped once a node's summary shows both APIs
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

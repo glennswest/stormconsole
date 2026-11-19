@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19 — API health probes (#150)
+- **docs:** the console's APIs for stormd's health probing (stormcentral#596): `console` = `/api/summary`, `logs` = `/api/plugins/logs/events?last=1` (a one-record read of the log ring; the ring's `/summary` reads every event, too costly every 15 s). The registry entry is the owner's setting, so the master was sent the exact `component edit` command; README "Ports, health, metrics" and the work plan name the probes.
+
 ### 2026-11-19 — Docs refreshed from the code
 - **docs:** architecture no longer says users on the apiserver (#266) are "still to come"; the README no longer lists them as not built; the repository layout names the stormupdate and metrics plugins. Everything else since 2026-11-12 (custom resources, drive links, Format NVM, traceability, host ports, vendor chunks, stub sweep) was already documented with its change.
 
