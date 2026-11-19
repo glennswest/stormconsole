@@ -394,7 +394,22 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
         tokio::time::sleep(Duration::from_secs(5)).await;
     };
     if !running {
-        let why = format!("phase {} — {}", last["phase"], last["reason"].as_str().unwrap_or(""));
+        let mut why = format!("phase {} — {}", last["phase"], last["reason"].as_str().unwrap_or(""));
+        // What the node said about it, so a failure carries its cause: the
+        // instance's message and conditions, and the events about it.
+        if let Ok(Some(vmi)) = ctx.kube.get(&format!("{path}/{name}")).await {
+            if let Some(m) = vmi.pointer("/status/message").and_then(Value::as_str) {
+                why.push_str(&format!(" · message: {m}"));
+            }
+            for c in vmi.pointer("/status/conditions").and_then(Value::as_array).into_iter().flatten() {
+                why.push_str(&format!(" · {} {} {} {}", c["type"].as_str().unwrap_or("?"), c["status"].as_str().unwrap_or(""), c["reason"].as_str().unwrap_or(""), c["message"].as_str().unwrap_or("")));
+            }
+        }
+        if let Ok(Some(ev)) = ctx.kube.get(&format!("/api/v1/namespaces/{ns}/events")).await {
+            for e in ev["items"].as_array().into_iter().flatten().filter(|e| e.pointer("/involvedObject/name").and_then(Value::as_str) == Some(name.as_str())).take(8) {
+                why.push_str(&format!(" · event {}: {}", e["reason"].as_str().unwrap_or("?"), e["message"].as_str().unwrap_or("")));
+            }
+        }
         let outcome = if why.contains("golden") || why.contains(&golden) {
             Outcome::Skip(format!("the golden {golden} is not on this node: {why}"))
         } else {
