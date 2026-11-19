@@ -234,6 +234,7 @@ impl ConsolePlugin for DrivesPlugin {
             .route("/resources/{kind}", get(resources_route))
             .route("/formats", get(formats_route))
             .route("/formats/history", get(format_history))
+            .route("/formats/log", get(format_log))
             .route("/format", post(format_start))
             .route("/firmware", get(firmware_route).post(firmware_start))
             .route(
@@ -519,6 +520,22 @@ async fn format_history(State(inner): State<Arc<Inner>>, axum::extract::Query(q)
     }
     match read_json(&inner.dial, &base, &format!("/api/v1/drives/{}/history?limit=1000", q.id)).await {
         Ok(h) => Json(json!({"active": h.get("active"), "runs": format::runs(&h)})).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response(),
+    }
+}
+
+/// A drive's whole format log (#335): every sense, retry, refused fast format
+/// and fallback stormdrive logged, with times (stormdrive#140). The page shows
+/// the newest lines from the Drive object; this is the rest, asked for.
+async fn format_log(State(inner): State<Arc<Inner>>, axum::extract::Query(q): axum::extract::Query<HistoryQuery>) -> Response {
+    let Some((_, base, _)) = targets(&inner).await.into_iter().find(|t| t.0 == q.node) else {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": format!("no stormdrive known on {}", q.node)}))).into_response();
+    };
+    if !q.id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "bad drive id"}))).into_response();
+    }
+    match read_json(&inner.dial, &base, &format!("/api/v1/drives/{}/format/log", q.id)).await {
+        Ok(v) => Json(format::log(&v)).into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response(),
     }
 }

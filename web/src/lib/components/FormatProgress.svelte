@@ -4,7 +4,9 @@
   // it has run and how long is left, and what the drive reads back. All of it
   // is stormdrive's record of the run, which outlives a reload, a console
   // restart and a stormdrive restart, so the rows come back with the page.
-  import { duration, formatText, readBack, stepOf, stepsOf, timing } from '../driveformat.js'
+  // How it formats and its error log (#335) are stormdrive's too.
+  import { duration, formatText, hasLog, methodText, readBack, stepOf, stepsOf, timing } from '../driveformat.js'
+  import FormatLog from './FormatLog.svelte'
 
   let { rows = [], now } = $props()
   const key = (r) => `${r.node}/${r.id}`
@@ -29,6 +31,9 @@
         {/each}
         <li class="state" data-testid="progress-state">{s === 'done' ? 'done' : s === 'failed' ? f.state : f.phase || 'queued'}</li>
       </ol>
+      {#if methodText(f)}
+        <p class="dim small" class:warn={!!f.fastSkipped} data-testid="progress-method">{methodText(f)}</p>
+      {/if}
       {#if f.method === 'nvm'}
         <p class="dim small" data-testid="progress-job">stormdrive worker job {f.job}{f.detail ? ` · ${f.detail}` : ''}</p>
       {/if}
@@ -51,6 +56,7 @@
       {#each f.done || [] as line}<p class="dim small" data-testid="progress-done">{line}</p>{/each}
       {#each f.refused || [] as why}<p class="warn small">The drive refused a format: {why}</p>{/each}
       {#each r.resets || [] as line}<p class="warn small">Controller reset: {line}</p>{/each}
+      {#if hasLog(f)}<FormatLog {r} />{/if}
     </div>
   {:else}
     <p class="dim">No format is running.</p>

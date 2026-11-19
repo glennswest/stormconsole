@@ -189,6 +189,25 @@ pub fn runs(history: &Value) -> Vec<Value> {
     out
 }
 
+/// A drive's whole format log (#335), from stormdrive's
+/// `GET /api/v1/drives/{id}/format/log` (stormdrive#140: the newest 500
+/// lines). Each line's time is serde's `SystemTime`, made the `atUnix` the
+/// Drive object's `status.format.logTail` already uses, so the page reads both
+/// the same way.
+pub fn log(answer: &Value) -> Value {
+    let lines: Vec<Value> = answer
+        .get("log")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|l| {
+            let at = l.get("atUnix").and_then(Value::as_u64).or_else(|| l.pointer("/at/secs_since_epoch").and_then(Value::as_u64));
+            json!({"atUnix": at, "line": l.get("line").and_then(Value::as_str).unwrap_or("")})
+        })
+        .collect();
+    json!({"name": answer.get("name"), "running": answer.get("running"), "lines": lines})
+}
+
 /// The phrase that confirms a format: a drive's serial, read off the screen,
 /// or for several how many are about to lose their data.
 pub fn phrase(serials: &[&str]) -> String {
@@ -328,6 +347,21 @@ mod tests {
         assert_eq!(r[1]["whyNot"], "in use: sdc is in the storage fleet");
         assert_eq!(r[1]["use"]["badge"], "Slab member");
         assert_eq!(r[0]["supports"]["pi_types"][1], 2);
+    }
+
+    #[test]
+    fn the_whole_log_reads_stormdrives_times_as_unix_seconds() {
+        let answer = json!({"drive": "a1", "name": "sdb", "running": true, "log": [
+            {"at": {"secs_since_epoch": 1_700_000_000u64, "nanos_since_epoch": 5}, "line": "sdb: fast format (FFMT 01b) to 4096 with no PI"},
+            {"at": {"secs_since_epoch": 1_700_000_030u64, "nanos_since_epoch": 0}, "line": "sdb: fast format refused (05/24/00); a full format instead"},
+        ]});
+        let l = log(&answer);
+        assert_eq!(l["name"], "sdb");
+        assert_eq!(l["running"], true);
+        assert_eq!(l["lines"][0]["atUnix"], 1_700_000_000u64);
+        assert_eq!(l["lines"][1]["line"], "sdb: fast format refused (05/24/00); a full format instead");
+        let empty = log(&json!({"drive": "a1", "name": "sdb", "running": null, "log": []}));
+        assert_eq!(empty["lines"].as_array().map(Vec::len), Some(0));
     }
 
     #[test]

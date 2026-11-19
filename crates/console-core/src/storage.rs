@@ -455,6 +455,7 @@ mod tests {
         assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("driveoperations", "create", "format"));
         assert!(classify(&Method::GET, "/api/plugins/drive/formats", None).is_none());
         assert!(classify(&Method::GET, "/api/plugins/drive/formats/history", None).is_none());
+        assert!(classify(&Method::GET, "/api/plugins/drive/formats/log", None).is_none());
     }
 
     #[test]

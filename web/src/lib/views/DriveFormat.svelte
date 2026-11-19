@@ -10,12 +10,13 @@
   import { get } from '../api.js'
   import { route } from '../router.svelte.js'
   import { formatBytes } from '../drivemap.js'
-  import { badgeOf, byNode, currentText, defaultOption, duration, finished, formatText, isRunning, planFor, readBack, resultText, selectable, timing } from '../driveformat.js'
+  import { badgeOf, byNode, currentText, defaultOption, duration, finished, formatText, hasLog, isRunning, methodText, planFor, readBack, resultText, selectable, timing } from '../driveformat.js'
   import PageHeader from '../components/PageHeader.svelte'
   import ControllerBanner from '../components/ControllerBanner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import FormatDialog from '../components/FormatDialog.svelte'
   import FormatProgress from '../components/FormatProgress.svelte'
+  import FormatLog from '../components/FormatLog.svelte'
 
   let data = $state(null)
   let error = $state('')
@@ -186,7 +187,7 @@
               {@const back = readBack(f)}
               <tr>
                 <td>{r.node} · {r.name} <span class="mono dim">{r.serial}</span></td>
-                <td class:bad={f.state !== 'done'}>{f.state}{#if f.error}<div class="small">{f.error}</div>{/if}</td>
+                <td class:bad={f.state !== 'done'}>{f.state}{#if f.error}<div class="small">{f.error}</div>{/if}{#if methodText(f)}<div class="dim small" data-testid="ended-method">{methodText(f)}</div>{/if}{#if hasLog(f)}<FormatLog {r} />{/if}</td>
                 <td>{formatText(f.toBlockSize, f.protection)}{#if f.method === 'nvm'}<div class="dim">Format NVM · worker job {f.job}</div>{/if}{#each f.refused || [] as why}<div class="dim">refused: {why}</div>{/each}</td>
                 <td class:bad={back && !back.matches}>{back ? back.text : '—'}{#if back && !back.matches}<div class="small">not what was asked</div>{/if}</td>
                 <td>{duration(timing(f, now).elapsed)}</td>

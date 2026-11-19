@@ -129,3 +129,35 @@ console.log('driveformat #308 ok')
   assert.equal(m.isRunning({ format: { method: 'nvm', state: 'running' } }), true)
   console.log('driveformat #356 ok')
 }
+
+// #335: the method, and the error log.
+{
+  const m = await import('./driveformat.js')
+  assert.equal(m.methodText({ method: 'auto', methodUsed: 'fast' }), 'fast format (FFMT)')
+  assert.equal(m.methodText({ method: 'auto', methodUsed: 'full', fastSkipped: '05/24/00 invalid field in CDB' }), 'full format (FORMAT UNIT): the drive refused the fast one (05/24/00 invalid field in CDB)')
+  assert.match(m.methodText({ method: 'auto', methodUsed: 'full_blocking' }), /no progress until it ends$/)
+  assert.equal(m.methodText({ method: 'auto', already: true }), 'already at this format: nothing sent')
+  assert.match(m.methodText({ method: 'auto' }), /^auto: the fast format first/, 'before it has sent one')
+  assert.equal(m.methodText({ method: 'nvm' }), null, 'a worker job says its own')
+  assert.equal(m.methodText({ state: 'running' }), null, 'an older stormdrive says nothing')
+
+  // stormdrive's own lines (formatcli.rs, format.rs).
+  assert.equal(m.logTone('sdb: fast format (FFMT 01b) to 4096 with PI type 1'), '')
+  assert.equal(m.logTone('sdb: formatting 41.2% after 3 h 12 m'), '')
+  assert.equal(m.logTone('sdb: fast format refused (05/24/00); a full format instead'), 'warn')
+  assert.equal(m.logTone('sdb: IMMED refused (05/24/00); the blocking format, no progress until it ends'), 'warn')
+  assert.equal(m.logTone('sdb: read capacity: 02/04/04 (still not ready; formatting it)'), 'warn')
+  assert.equal(m.logTone('sdb: host3: IOC reset count 0 → 1 during the format; no new format starts until stormdrive restarts'), 'warn')
+  assert.equal(m.logTone('sdb: putting the 512-byte length back: 05/24/00'), 'warn')
+  assert.equal(m.logTone('sdb: failed: transport error'), 'bad')
+  const lines = [{ atUnix: 1, line: 'sdb: fast format (FFMT 01b) to 4096 with no PI' }, { atUnix: 2, line: 'sdb: fast format refused (05/24/00); a full format instead' }, { atUnix: 3, line: 'sdb: formatting 1%' }]
+  assert.deepEqual(m.errorLines(lines).map((l) => l.atUnix), [2])
+  assert.deepEqual(m.errorLines(undefined), [])
+
+  assert.equal(m.hasLog({ method: 'auto', logTail: [] }), true)
+  assert.equal(m.hasLog({ method: 'nvm', logTail: [] }), false)
+  assert.equal(m.hasLog({ state: 'running' }), false, 'older than v0.47.0: no log to read')
+  assert.notEqual(m.logMark({ state: 'running', logTail: lines }), m.logMark({ state: 'running', logTail: lines.slice(0, 2) }), 'a new line is a new mark')
+  assert.notEqual(m.logMark({ state: 'running', logTail: lines }), m.logMark({ state: 'done', logTail: lines }), 'so is the end')
+  console.log('driveformat #335 ok')
+}

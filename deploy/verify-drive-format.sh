@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Live check of the drive format page (#165) and the Format dialog, the drives'
-# use and the Actions menu (#308), on a build VM:
+# use and the Actions menu (#308), and each run's method and log (#335), on a build VM:
 #
 #   sc-build deploy/verify-drive-format.sh
 #
 # A real fastetcd and rustkube apiserver carrying the release's storage roles,
-# stand-in stormdrives in v0.39.0's shapes (a format runs on a clock; no real
+# stand-in stormdrives in v0.39.0's shapes, v0.47.0's for a run's method and log
+# (a format runs on a clock; no real
 # drive is formatted), a real console with its SPA, and a headless Chromium.
 #
 #   alice  operator, storage-admin      bob   operator, storage-viewer
@@ -220,6 +221,18 @@ deploy/browser/run.sh "$W" driveformat.cjs "$C" PHASE=follow || RC=1
 check "$(fmt 'r["n1"]["format"]["state"], r["n1"]["format"]["blockSizeAfter"], r["n1"]["format"]["done"], r["n1"]["blockSize"]')" "done 4096 ['Format NVM to 4096-byte blocks'] 4096" "nvme0n1: done, 4096 as stormdrive reads it back"
 check "$(fmt 'r["n2"]["format"]["state"], r["n2"]["format"]["error"]')" "failed no LBA format with 4096-byte data and no metadata" "nvme1n1: failed, in stormdrive's words"
 check "$(curl -s "http://127.0.0.1:$D2/_writes" | python3 -c 'import json,sys; w=json.load(sys.stdin)[-1]; print(w["bearer"]==sys.argv[1], w["body"]["drives"])' "$ALICE")" "True ['b1']" "the other node's format went there, as alice"
+
+say "how it formatted, and its log (#335, stormdrive#140)"
+check "$(fmt 'r["d2"]["format"]["method"], r["d2"]["format"]["methodUsed"], r["d2"]["format"]["fastSkipped"]')" "auto fast None" "sdb: auto, the fast format took"
+check "$(fmt 'r["d3"]["format"]["methodUsed"], r["d3"]["format"]["fastSkipped"], len(r["d3"]["format"]["logTail"])')" "full 05/24/00 ILLEGAL REQUEST, invalid field in CDB 20" "sdc: refused fast, so full, with the sense; the Drive object carries the newest 20 lines"
+flog() { curl -s -b "$W/jar.$1" "$C/api/plugins/drive/formats/log?node=$2&id=$3" | python3 -c "import json,sys; d=json.load(sys.stdin); l=d.get('lines') or []; print($4)"; }
+check "$(flog alice "$LOCAL" d3 'd["name"], len(l) > 20, all(isinstance(x["atUnix"], int) for x in l)')" "sdc True True" "the whole log: more than the tail, every line with its unix time"
+check "$(flog alice "$LOCAL" d3 '[x["line"] for x in l if "refused" in x["line"]]')" "['sdc: fast format refused (05/24/00 ILLEGAL REQUEST, invalid field in CDB); a full format instead']" "with the refused fast format and its sense, long out of the tail"
+check "$(flog alice "$LOCAL" d9 'l[-1]["line"]')" "sdi: failed: reads back 512 after a format to 4096" "a failed run's log ends with why"
+check "$(flog bob "$LOCAL" d3 'len(l) > 20')" "True" "a storage-viewer reads it too"
+check "$(curl -s -o /dev/null -w '%{http_code}' "$C/api/plugins/drive/formats/log?node=$LOCAL&id=d3")" "401" "nobody signed in: 401"
+check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/jar.alice" "$C/api/plugins/drive/formats/log?node=$LOCAL&id=../x")" "400" "a bad drive id: 400"
+check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/jar.alice" "$C/api/plugins/drive/formats/log?node=nowhere&id=d3")" "404" "a node with no stormdrive: 404"
 
 say "no sign-in at all: what forge1 runs (#165)"
 python3 - "$W/c.toml" "$W/open.toml" "$W/open" <<'TOML'

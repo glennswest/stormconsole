@@ -2664,6 +2664,17 @@ registry is the owner's setting: this session's token is refused, both for `comp
 - [ ] Master runs `component edit stormconsole --set apis=…` (note sent; owner action card)
 - [ ] `component build stormconsole` carries it as `[[process.api]]`; shipped once a node's summary shows both APIs
 
+### A format's method and error log, live (#335) — 2026-11-19
+stormdrive#140 (v0.47.0) is closed: `status.format` carries `method`, `methodUsed`, `fastSkipped`, `already` and the
+newest 20 log lines (`logTail`); `GET /api/v1/drives/{id}/format/log` has the newest 500. Start, progress, refusals,
+resets and the reload/restart survival were already built (#165, #308, #356).
+- [x] `GET /api/plugins/drive/formats/log?node=&id=` (format::log: SystemTime → atUnix)
+- [x] FormatLog.svelte: error lines always, the whole log folded; re-read when `logTail` gains a line or the run ends.
+      The whole log rather than the tail, since a refusal at the start of a 19 h run leaves the 20-line tail in minutes
+- [x] methodText on the progress rows and the ended table
+- [x] Stand-ins in v0.47.0's shapes; verify-drive-format.sh + driveformat.cjs checks
+- [ ] sc-build, sc-build deploy/verify-drive-format.sh, web/dist, image
+
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's

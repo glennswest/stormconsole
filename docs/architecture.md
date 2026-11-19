@@ -1174,7 +1174,8 @@ the plan (`status.plannedFormat`), the current format and the run
 /api/plugins/drive/formats` (cached 3 s, like the page's 5 s poll). A reload or
 a console restart reads the same run. A stormdrive older than v0.39.0 has no
 plan or record, and the node says so. A drive's every format is in its history
-(`GET …/formats/history?node=&id=`, from `/api/v1/drives/{id}/history`).
+(`GET …/formats/history?node=&id=`, from `/api/v1/drives/{id}/history`), and
+its last run's log at `GET …/formats/log?node=&id=` (#335).
 
 **Why a drive is refused** (`format::why_not`) mirrors stormdrive's
 `format_blocker` so the page can say it first. It is only a preview: stormdrive
@@ -1217,6 +1218,23 @@ a row per drive from stormdrive's record: its phase in three steps (probe =
 prepare/queued, format, read-back = rescan/verify), the drive's percent, elapsed
 and left, then what READ CAPACITY reads back; the rows come back after a reload.
 The feed's `format-4k` action (4096 with no PI) is taken off every drive.
+
+**How it formats, and its log (#335, stormdrive#140, v0.47.0).** stormdrive
+formats a SCSI drive `auto`: the fast format (FFMT) first, a full FORMAT UNIT
+only if the drive refuses it. Each row and each ended run says which ran
+(`methodUsed`): fast, full, or full after the drive refused the fast one, with
+its sense (`fastSkipped`), or a blocking full format with no progress; a drive
+already at the format says nothing was sent. Each run's log is stormdrive's,
+written with times: the method, each sense, a refused fast format and the
+fallback, progress, the end. The Drive object carries the newest 20 lines
+(`status.format.logTail`), and a 19 h format logs progress every 30 s, so a
+refusal at the start leaves the tail within minutes. So the row reads the whole
+log, `GET /api/plugins/drive/formats/log?node=&id=` (from `/api/v1/drives/{id}/format/log`,
+the newest 500 lines, each line's time made `atUnix`). It reads it again each time
+the tail gains a line, which the page's 5 s poll brings, and once more when the run ends.
+The error lines (a failure, a sense, a refusal, a retry, a fallback, a reset)
+are always shown in the row; the whole log folds open under them. A worker job
+(NVMe) and a stormdrive older than v0.47.0 keep no log, and the row shows none.
 
 **An NVMe namespace (#356).** stormdrive's `POST /api/v1/format` is SCSI FORMAT
 UNIT and refuses NVMe; a namespace changes its LBA format only through a worker

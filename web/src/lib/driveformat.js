@@ -248,3 +248,51 @@ export function progressRows(records, now, recent = null) {
   const ended = finished(records).filter((r) => recent === null || now - (r.format.finishedUnix ?? 0) <= recent)
   return [...running, ...ended]
 }
+
+// --- #335: how the run formats, and its error log -------------------------
+
+/// How stormdrive is formatting the drive (stormdrive#140, v0.47.0): `auto`
+/// is the fast format (FFMT) first and the full one only if the drive
+/// refuses it. `methodUsed` is what it really sent; `fastSkipped` is the
+/// drive's sense when it refused the fast one. Null for an NVMe worker job
+/// and for a stormdrive older than v0.47.0, which says neither.
+export function methodText(f) {
+  if (!f || f.method === 'nvm') return null
+  if (f.already) return 'already at this format: nothing sent'
+  switch (f.methodUsed) {
+    case 'fast':
+      return 'fast format (FFMT)'
+    case 'full':
+      return f.fastSkipped ? `full format (FORMAT UNIT): the drive refused the fast one (${f.fastSkipped})` : 'full format (FORMAT UNIT)'
+    case 'full_blocking':
+      return `full format, blocking: the drive refused IMMED, so no progress until it ends${f.fastSkipped ? `; it refused the fast one (${f.fastSkipped})` : ''}`
+  }
+  if (f.method === 'auto') return 'auto: the fast format first, the full one if the drive refuses it'
+  if (f.method === 'fast') return 'fast format only (FFMT)'
+  if (f.method === 'full') return 'full format (FORMAT UNIT)'
+  return null
+}
+
+/// What a line of a format's log is, in stormdrive's words (formatcli.rs,
+/// format.rs): 'bad' for a failure, 'warn' for a sense, a refusal, a retry, a
+/// fallback or a controller reset, '' for the method and the progress.
+export function logTone(line) {
+  const l = String(line || '')
+  if (/\bfailed\b|\berror\b/i.test(l)) return 'bad'
+  if (/refused|instead|reset|restarted|interrupted|not ready|read capacity:|start unit:|putting the .* back|waiting for the running format|retr(y|ies)|sense/i.test(l)) return 'warn'
+  return ''
+}
+
+/// The error log: the lines that are not the method or the progress.
+export const errorLines = (lines) => (lines || []).filter((l) => logTone(l.line))
+
+/// Whether stormdrive keeps a log for this run (v0.47.0's `logTail`); an NVMe
+/// worker job and an older stormdrive have none to read.
+export const hasLog = (f) => !!f && f.method !== 'nvm' && Array.isArray(f.logTail)
+
+/// What changes when the log gains a line: the newest line's time and text,
+/// and the run's state, so an ended run is read once more.
+export function logMark(f) {
+  const last = f?.logTail?.at(-1)
+  return `${f?.state}|${last?.atUnix ?? ''}|${last?.line ?? ''}|${f?.logTail?.length ?? 0}`
+}
