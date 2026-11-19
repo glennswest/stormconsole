@@ -2614,7 +2614,7 @@ Node objects now carry it: rustkube-node#372 (shipped) writes `storm.io/volume.<
 - Not seen: a real node. rustkube-node#372 is on pvetest2 (12.93); the proof is checked on the first test machine that installs this console
 - Open elsewhere: stormd#75 (Service owner on service volumes), stormblock#649/#651 (Volume object owner; container kept), stormvm#129, stormblock-csi#69
 
-### A node's Network page: every port from NetworkPort, graphs from ironprom (#336)
+### A node's Network page: every port from NetworkPort, graphs from ironprom (#336) ✅ 2026-11-19
 stormpump#236 (main 43b3e23) + stormcos#960: `network.storm.io/v1alpha1` `NetworkPort`, cluster-scoped,
 `<node>-<ifname>`, `spec.{node,ifname,mac,fec,autoneg,speed,mtu,pause,rings,offloads}`, status link/speed/fec/
 module/driver/pause/lastChange/counters/Applied; stormport serves `storm_port_*` on 127.0.0.1:9112, ironprom job
@@ -2628,7 +2628,10 @@ module/driver/pause/lastChange/counters/Applied; stormport serves `storm_port_*`
 - [x] web: `#/node/<host>/network` — DataGrid of ports, a port's settings/state/module/counters, an edit form
       (FEC applied; the rest says not applied yet), Applied condition coming back live, the port's charts
 - [x] RBAC yaml + rbac.rs + docs/rbac.md; README, architecture, CHANGELOG; `verify-node-network.sh` (real stormport + ironprom, PID 1 stand-in) + `node-network.cjs`
-- [ ] sc-build; web/dist; image; close with the RBAC answer for stormcos#959
+- [x] sc-build a56bbe8 (clippy -D warnings, every test, ports.test.mjs, vite) pass; `sc-build deploy/verify-node-network.sh` 6c9e0f5:
+      0 failed (stormpump b7e2cd1's stormport, ironprom 0f3a2da, rustkube v0.15.3; browser reader/admin/charts 0 failed); web/dist; image
+- Not seen: forge1's real ConnectX-4 Lx. The proof there is the issue's done-when, on a release carrying this console and stormport.
+- The rig's rustkube v0.15.3 sets no `metadata.generation` on CRs (every spec is `generation 0`); fixed in rustkube#198, so a newer apiserver says the generation.
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
