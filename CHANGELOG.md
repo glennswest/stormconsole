@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.39.0] — 2026-11-19
+
 ### 2026-11-19 — Install-config users seeded (#372)
 - **feat:** the console seeds the install-config's users from `users/<name>.hash` + `<name>.role` (stormpump#242, beside `admin-password.hash`), so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stormcos#200 turns sign-in on. Each becomes a user as Admin → Users makes one (ServiceAccount, owned Secret `<name>-password`, ClusterRoleBinding `storm-user:<name>:<role>`), written as `admin` with a minted token, never on the console's own role. Same rule as admin's password: made when absent, replaced only when this node seeded it and nobody changed it since; an account or binding missing from an earlier pass is put back. Role words: `admin` → `cluster-admin`, `viewer` → `view`, `operator` → `edit`, else the ClusterRole of that name.
 - **feat:** `[api] install_users_dir`, defaulting to `users/` beside `admin_password_file`, so a node needs no registry change.

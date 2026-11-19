@@ -2688,7 +2688,11 @@ so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stor
       written **as admin** (a minted token); same `seed_rule`; a missing account or binding is put back
 - [x] Role words: `admin` → cluster-admin, `viewer` → view, `operator` → edit, else the ClusterRole of that name
 - [x] Unit tests; `verify-users.sh` §2b/§10b on a real rustkube
-- [ ] sc-build; image
+- [x] sc-build b8f95f2: build + every test pass; clippy --all-targets -D warnings clean; `sc-build deploy/verify-users.sh`
+      2176638: 0 failed (§2b, §10b and the browser walk). v0.39.0; image requested
+- Not seen: files written by stormpump on a real node, nor a sign-in through :9094 (that waits on stormcos#200).
+- The repair path (binding put back while the Secret already holds the install's hash) has no live check; §10b's
+  binding came back by the replace path
 
 
 - [x] Node discovery from multicast presence — and the piece that was
