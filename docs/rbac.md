@@ -40,6 +40,7 @@ All are cluster-wide.
 | k8s.cni.cncf.io | network-attachment-definitions | get, list, watch | a project's contents (optional kind) |
 | cilium.io | ciliumendpoints, ciliumnodes, ciliumidentities, ciliumnetworkpolicies, ciliumclusterwidenetworkpolicies | get, list, watch | the network pages on a cilium node (optional kinds) |
 | flowsdn.io | flowsdnendpoints, flowsdnidentities, flowsdnnetworkpolicies, flowsdnclusterwidenetworkpolicies | get, list, watch | the network pages on a flowsdn node (optional kinds, #168) |
+| network.storm.io | networkports | get, list, watch | a node's Network page: every host port's settings, state, module and counters, from stormpump (optional kind, #336) |
 | core | events | get, list | cluster-wide events, filtered to what the viewer may see; object event boxes |
 | core | pods/log | get | the last 5 runs per container, kept in the background (#69) |
 | core | endpoints | get | a pod page's Services, for someone with no identity |
@@ -84,6 +85,9 @@ as the install token (#66), is unaffected:
   deleting a pod, scaling a Deployment or StatefulSet.
 - **Machines in them:** creating and deleting a virtual machine.
 - **Nodes:** cordon, uncordon and drain, which the console itself refuses with no identity, as it does a node's rack.
+- **Host ports:** a port's settings (FEC, MTU, …) are a merge patch of its NetworkPort's `spec`, made as the signed-in
+  admin (`patch` on `networkports` in `network.storm.io`, #336). The console refuses it with no identity; its role
+  only reads them.
 - **Secrets:** every Secret outside the keys home, including a project's Secrets tab.
 
 ## The one write this role does not bound: new projects

@@ -109,7 +109,7 @@ fn level_of(job: &str) -> &'static str {
         "apiserver" | "controller-manager" | "scheduler" => "Control plane",
         "fastetcd" => "Datastore",
         "stormvm" => "Virtual machines",
-        "cilium-agent" | "cilium-operator" | "hubble" | "stormlb" | "coredns" => "Network",
+        "cilium-agent" | "cilium-operator" | "hubble" | "stormlb" | "coredns" | "stormport" => "Network",
         "stormd" => "Service supervisors",
         "ironprom" => "The scraper",
         _ => "Other",
@@ -247,6 +247,8 @@ struct ChartsQuery {
     ns: Option<String>,
     name: Option<String>,
     serial: Option<String>,
+    node: Option<String>,
+    ifname: Option<String>,
     window: Option<i64>,
     /// `disk`: only an object's disk charts, for the pod page's Stats tab; `link`: a drive's link charts (#339).
     only: Option<String>,
@@ -259,7 +261,9 @@ fn entity_of(q: &ChartsQuery) -> Result<Option<Entity>, String> {
         Some("drive") => Ok(Some(Entity::Drive { serial: need(&q.serial, "serial")? })),
         Some("pod") => Ok(Some(Entity::Pod { ns: need(&q.ns, "project")?, name: need(&q.name, "name")? })),
         Some("vm") => Ok(Some(Entity::Vm { ns: need(&q.ns, "project")?, name: need(&q.name, "name")? })),
-        Some(other) => Err(format!("{other:?} has no series here: a drive, a pod or a virtual machine")),
+        // A host port (#336): stormport labels its series with the node and the interface.
+        Some("port") => Ok(Some(Entity::Port { node: need(&q.node, "node")?, ifname: need(&q.ifname, "interface")? })),
+        Some(other) => Err(format!("{other:?} has no series here: a drive, a pod, a virtual machine or a port")),
     }
 }
 
@@ -313,7 +317,8 @@ async fn chart(inner: &Inner, p: &Panel, q: Result<String, String>, range: (i64,
     out
 }
 
-/// `GET /charts?level=` or `?entity=drive&serial=`, `?entity=pod|vm&ns=&name=`, with `window` in seconds.
+/// `GET /charts?level=` or `?entity=drive&serial=`, `?entity=pod|vm&ns=&name=`, `?entity=port&node=&ifname=`,
+/// with `window` in seconds.
 async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query<ChartsQuery>) -> Response {
     let refuse = |code: StatusCode, why: String| (code, Json(json!({"error": why}))).into_response();
     let entity = match entity_of(&q) {
@@ -357,6 +362,8 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
     let only = |p: &Panel| match q.only.as_deref() {
         Some("disk") => p.id.starts_with("disk_"),
         Some("link") => p.id.starts_with("link_"),
+        // A port's FEC and errors, the charts to watch over a FEC change (#336).
+        Some("fec") => matches!(p.id, "link" | "fec_mode" | "fec_blocks" | "errors"),
         _ => true,
     };
     let network = inner.network();
@@ -475,6 +482,9 @@ mod tests {
         assert!(entity_of(&q("pod", "", "b", "")).is_err());
         assert!(entity_of(&q("drive", "", "", "")).is_err());
         assert!(entity_of(&q("volume", "a", "b", "c")).unwrap_err().contains("no series"));
+        let port = ChartsQuery { entity: Some("port".into()), node: Some("forge1".into()), ifname: Some("ens1f0np0".into()), ..Default::default() };
+        assert_eq!(entity_of(&port).unwrap(), Some(Entity::Port { node: "forge1".into(), ifname: "ens1f0np0".into() }));
+        assert!(entity_of(&ChartsQuery { ifname: None, ..port }).unwrap_err().contains("interface"));
         assert_eq!(entity_of(&ChartsQuery::default()).unwrap(), None);
     }
 }

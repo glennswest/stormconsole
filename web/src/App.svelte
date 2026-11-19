@@ -16,6 +16,7 @@
   import DriveFormat from './lib/views/DriveFormat.svelte'
   import DriveControllers from './lib/views/DriveControllers.svelte'
   import NodeDetail from './lib/views/NodeDetail.svelte'
+  import NodeNetwork from './lib/views/NodeNetwork.svelte'
   import NodesView from './lib/views/NodesView.svelte'
   import VmList from './lib/views/VmList.svelte'
   import VmDetail from './lib/views/VmDetail.svelte'
@@ -61,6 +62,7 @@
     drivecontrollers: DriveControllers,
     nodes: NodesView,
     nodedetail: NodeDetail,
+    nodenetwork: NodeNetwork,
     vmlist: VmList,
     vmdetail: VmDetail,
     poddetail: PodDetail,

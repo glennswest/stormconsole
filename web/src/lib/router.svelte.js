@@ -56,6 +56,8 @@ const routes = [
   { pattern: '#/registry', name: 'registry' },
   { pattern: '#/attach/:ns/:name', name: 'attachclaim' },
   { pattern: '#/node/:host', name: 'nodedetail' },
+  // A node's host ports, from stormpump's NetworkPort objects (#336); the port travels in the query.
+  { pattern: '#/node/:host/network', name: 'nodenetwork' },
   { pattern: '#/vm/:ns/:name', name: 'vmdetail' },
   // One pod, all of it (#69).
   { pattern: '#/pod/:ns/:name', name: 'poddetail' },

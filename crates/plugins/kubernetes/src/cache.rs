@@ -139,6 +139,8 @@ pub const RESOURCES: &[ResourceSpec] = &[
         "/apis/cilium.io/v2/ciliumclusterwidenetworkpolicies",
         false,
     ),
+    // stormpump's: one per physical host port, on every network (#336, stormpump#236).
+    crd("np", "NetworkPort", "Network ports", "/apis/network.storm.io/v1alpha1/networkports", false),
     // flowsdn's, the same schemas under its own group (flowsdn docs/crds.md, #168).
     crd("fsep", "FlowsdnEndpoint", "Network endpoints", "/apis/flowsdn.io/v1alpha1/flowsdnendpoints", true),
     crd("fsid", "FlowsdnIdentity", "Network identities", "/apis/flowsdn.io/v1alpha1/flowsdnidentities", false),

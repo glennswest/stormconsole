@@ -88,6 +88,9 @@
       <a class="sc-btn" href={`#/logs?host=${encodeURIComponent(host)}`}>
         <Icon name="logs" size={13} /> Logs
       </a>
+      <a class="sc-btn" href={`#/node/${encodeURIComponent(host)}/network`}>
+        <Icon name="network" size={13} /> Network
+      </a>
       <button onclick={refresh} disabled={busy} title="Probe this node again">
         <Icon name="refresh" size={13} /> {busy ? 'Probing…' : 'Refresh'}
       </button>

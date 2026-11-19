@@ -56,6 +56,11 @@ rules:
   - apiGroups: [flowsdn.io]
     resources: [flowsdnendpoints, flowsdnidentities, flowsdnnetworkpolicies, flowsdnclusterwidenetworkpolicies]
     verbs: [get, list, watch]
+  # A node's host ports (#336, stormcos#959): stormpump's NetworkPort objects. Read only: a port's
+  # settings are a spec patch made as the signed-in user, never on this role.
+  - apiGroups: [network.storm.io]
+    resources: [networkports]
+    verbs: [get, list, watch]
   # --- What it reads on demand ---
   - apiGroups: [""]
     resources: [events]

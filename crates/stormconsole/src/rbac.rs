@@ -117,6 +117,10 @@ fn it_is_not_cluster_admin_by_another_name() {
         ("rbac.authorization.k8s.io", "clusterroles", "create"),
         ("kubevirt.io", "virtualmachines", "create"),
         ("kubevirt.io", "virtualmachines", "delete"),
+        // A host port's settings go as the signed-in admin (#336), never on the console's credential.
+        ("network.storm.io", "networkports", "patch"),
+        ("network.storm.io", "networkports", "update"),
+        ("network.storm.io", "networkports/status", "patch"),
     ] {
         assert!(!allows(&role, group, resource, verb), "{group}/{resource} {verb} is a signed-in user's");
     }

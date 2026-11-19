@@ -17,7 +17,7 @@ pub const MAX_SERIES: usize = 12;
 pub struct Panel {
     pub id: &'static str,
     pub title: &'static str,
-    /// celsius, percent, bytes, bytes_per_sec, per_sec, seconds, cores.
+    /// celsius, percent, bytes, bytes_per_sec, per_sec, per_min, seconds, cores, updown, flag, mbps, mw.
     pub unit: &'static str,
     /// The job that scrapes it, which is what explains an empty chart.
     pub job: &'static str,
@@ -165,6 +165,17 @@ pub const LEVELS: &[Level] = &[
         title: "Network",
         note: "",
         panels: &[
+            // This node's host ports, from stormport (#336, stormpump#236): one line per interface.
+            Panel { id: "port_link", title: "Host port links (1 up, 0 down)", unit: "updown", job: "stormport",
+                query: r#"storm_port_link_up{job="stormport"}"#, legend: &["ifname"] },
+            Panel { id: "port_fec_uncorrectable", title: "Host ports: FEC uncorrectable blocks", unit: "per_sec", job: "stormport",
+                query: r#"topk(12, rate(storm_port_fec_uncorrectable_blocks_total{job="stormport"}[5m]))"#, legend: &["ifname"] },
+            Panel { id: "port_errors", title: "Host ports: errors, rx and tx", unit: "per_sec", job: "stormport",
+                query: r#"topk(12, sum by (ifname) (rate(storm_port_rx_errors_total{job="stormport"}[5m]) + rate(storm_port_tx_errors_total{job="stormport"}[5m])))"#, legend: &["ifname"] },
+            Panel { id: "port_rx", title: "Host ports: received", unit: "bytes_per_sec", job: "stormport",
+                query: r#"rate(storm_port_rx_bytes_total{job="stormport"}[5m])"#, legend: &["ifname"] },
+            Panel { id: "port_tx", title: "Host ports: sent", unit: "bytes_per_sec", job: "stormport",
+                query: r#"rate(storm_port_tx_bytes_total{job="stormport"}[5m])"#, legend: &["ifname"] },
             Panel { id: "drops", title: "Packets dropped", unit: "per_sec", job: "cilium-agent",
                 query: r#"topk(10, sum by (reason, direction) (rate(cilium_drop_count_total{job="cilium-agent"}[5m])))"#, legend: &["reason", "direction"] },
         ],
@@ -240,6 +251,40 @@ const VM: &[Panel] = &[
         query: r#"sum by (interface) (rate(kubevirt_vmi_network_transmit_packets_total{job="stormvm",__THE__}[5m]))"#, legend: &["interface"] },
 ];
 
+// One host port (#336): stormport's `storm_port_*` (stormpump `crates/stormport`), labelled `node`, `ifname`
+// and `mac`. Each counter is its own series, so a chart of several is several rates, each named in `counter`.
+const PORT: &[Panel] = &[
+    Panel { id: "link", title: "Link (1 up, 0 down)", unit: "updown", job: "stormport",
+        query: r#"storm_port_link_up{job="stormport",__THE__}"#, legend: &["ifname"] },
+    Panel { id: "fec_mode", title: "FEC mode in use (1 while in use)", unit: "flag", job: "stormport",
+        query: r#"storm_port_fec_active{job="stormport",__THE__}"#, legend: &["fec"] },
+    Panel { id: "fec_blocks", title: "FEC blocks", unit: "per_sec", job: "stormport",
+        query: r#"label_replace(rate(storm_port_fec_corrected_blocks_total{job="stormport",__THE__}[5m]), "counter", "corrected", "", "") or label_replace(rate(storm_port_fec_uncorrectable_blocks_total{job="stormport",__THE__}[5m]), "counter", "uncorrectable", "", "")"#,
+        legend: &["counter"] },
+    Panel { id: "errors", title: "Errors", unit: "per_sec", job: "stormport",
+        query: r#"label_replace(rate(storm_port_rx_errors_total{job="stormport",__THE__}[5m]), "counter", "rx errors", "", "") or label_replace(rate(storm_port_tx_errors_total{job="stormport",__THE__}[5m]), "counter", "tx errors", "", "") or label_replace(rate(storm_port_rx_crc_errors_total{job="stormport",__THE__}[5m]), "counter", "rx CRC", "", "") or label_replace(rate(storm_port_rx_missed_errors_total{job="stormport",__THE__}[5m]), "counter", "rx missed", "", "")"#,
+        legend: &["counter"] },
+    Panel { id: "drops", title: "Drops", unit: "per_sec", job: "stormport",
+        query: r#"label_replace(rate(storm_port_rx_dropped_total{job="stormport",__THE__}[5m]), "counter", "rx", "", "") or label_replace(rate(storm_port_tx_dropped_total{job="stormport",__THE__}[5m]), "counter", "tx", "", "")"#,
+        legend: &["counter"] },
+    Panel { id: "traffic", title: "Traffic", unit: "bytes_per_sec", job: "stormport",
+        query: r#"label_replace(rate(storm_port_rx_bytes_total{job="stormport",__THE__}[5m]), "counter", "received", "", "") or label_replace(rate(storm_port_tx_bytes_total{job="stormport",__THE__}[5m]), "counter", "sent", "", "")"#,
+        legend: &["counter"] },
+    Panel { id: "packets", title: "Packets", unit: "per_sec", job: "stormport",
+        query: r#"label_replace(rate(storm_port_rx_packets_total{job="stormport",__THE__}[5m]), "counter", "received", "", "") or label_replace(rate(storm_port_tx_packets_total{job="stormport",__THE__}[5m]), "counter", "sent", "", "")"#,
+        legend: &["counter"] },
+    Panel { id: "pause", title: "Pause frames", unit: "per_sec", job: "stormport",
+        query: r#"label_replace(rate(storm_port_pause_rx_frames_total{job="stormport",__THE__}[5m]), "counter", "rx", "", "") or label_replace(rate(storm_port_pause_tx_frames_total{job="stormport",__THE__}[5m]), "counter", "tx", "", "")"#,
+        legend: &["counter"] },
+    Panel { id: "speed", title: "Speed", unit: "mbps", job: "stormport",
+        query: r#"storm_port_speed_mbps{job="stormport",__THE__}"#, legend: &["ifname"] },
+    Panel { id: "module_temperature", title: "Module temperature", unit: "celsius", job: "stormport",
+        query: r#"storm_port_module_temperature_celsius{job="stormport",__THE__}"#, legend: &["ifname"] },
+    Panel { id: "module_power", title: "Module optical power", unit: "mw", job: "stormport",
+        query: r#"label_replace(storm_port_module_rx_power_mw{job="stormport",__THE__}, "dir", "rx", "", "") or label_replace(storm_port_module_tx_power_mw{job="stormport",__THE__}, "dir", "tx", "", "")"#,
+        legend: &["dir", "lane"] },
+];
+
 /// Why a disk chart is empty when its source has yet to report it: the series is not
 /// there at all, which reads as a fault without this. `None` for every other chart.
 pub fn unreported(p: &Panel) -> Option<String> {
@@ -260,6 +305,8 @@ pub enum Entity {
     Drive { serial: String },
     Pod { ns: String, name: String },
     Vm { ns: String, name: String },
+    /// A node's host port (#336).
+    Port { node: String, ifname: String },
 }
 
 impl Entity {
@@ -268,13 +315,14 @@ impl Entity {
             Entity::Drive { .. } => DRIVE,
             Entity::Pod { .. } => POD,
             Entity::Vm { .. } => VM,
+            Entity::Port { .. } => PORT,
         }
     }
 
     /// The project it is in, which decides whether this viewer may see it.
     pub fn namespace(&self) -> Option<&str> {
         match self {
-            Entity::Drive { .. } => None,
+            Entity::Drive { .. } | Entity::Port { .. } => None,
             Entity::Pod { ns, .. } | Entity::Vm { ns, .. } => Some(ns),
         }
     }
@@ -284,6 +332,7 @@ impl Entity {
             Entity::Drive { serial } => format!("serial={}", quote(serial)),
             Entity::Pod { ns, name } => format!("namespace={},pod={}", quote(ns), quote(name)),
             Entity::Vm { ns, name } => format!("namespace={},name={}", quote(ns), quote(name)),
+            Entity::Port { node, ifname } => format!("node={},ifname={}", quote(node), quote(ifname)),
         }
     }
 
@@ -292,6 +341,8 @@ impl Entity {
         match self {
             // stormvm `metrics.rs`: the counters are the tap's, and these two have none.
             Entity::Vm { .. } => "An interface on qemu's userspace network or passt has no kernel interface, so it has no network series.",
+            // stormpump docs/ports.md: a BASE-T port has no module and no FEC.
+            Entity::Port { .. } => "A BASE-T port has no module and no FEC, so those charts stay empty for it. Per-queue counters are not served yet.",
             _ => "",
         }
     }
@@ -301,6 +352,7 @@ impl Entity {
             Entity::Drive { serial } => format!("Drive {serial}"),
             Entity::Pod { ns, name } => format!("Pod {name} in {ns}"),
             Entity::Vm { ns, name } => format!("Virtual machine {name} in {ns}"),
+            Entity::Port { node, ifname } => format!("Port {ifname} on {node}"),
         }
     }
 }
@@ -460,7 +512,7 @@ mod tests {
             assert!(!q.contains("__"), "{q}");
             assert!(q.contains(&format!(r#"job="{}""#, p.job)), "{q}");
         }
-        for p in [DRIVE, POD, VM].into_iter().flatten() {
+        for p in [DRIVE, POD, VM, PORT].into_iter().flatten() {
             let q = query(p, Some(&e), None).unwrap();
             assert!(!q.contains("__THE__"), "{q}");
             assert!(q.contains(&format!(r#"job="{}""#, p.job)), "{q}");
@@ -500,6 +552,32 @@ mod tests {
         let q = query(p, Some(&e), None).unwrap();
         assert!(q.contains(r#"counter="loss_of_sync",serial="2EG3K1XJ""#) && q.ends_with("* 60"), "{q}");
         assert_eq!((p.unit, p.legend), ("per_min", &["side"][..]));
+    }
+
+    /// A port's charts (#336): stormport's series for that node and interface only, each counter a line.
+    #[test]
+    fn a_ports_charts_are_its_own_series() {
+        let e = Entity::Port { node: "forge1".into(), ifname: "ens1f0np0".into() };
+        assert_eq!(e.namespace(), None, "a port is in no project");
+        for p in PORT {
+            let q = query(p, Some(&e), None).unwrap();
+            assert_eq!(q.matches(r#"job="stormport",node="forge1",ifname="ens1f0np0""#).count(), q.matches("storm_port_").count(), "{q}");
+            assert!(!q.contains("__THE__"), "{q}");
+        }
+        let fec = PORT.iter().find(|p| p.id == "fec_blocks").unwrap();
+        let q = query(fec, Some(&e), None).unwrap();
+        assert!(q.contains("fec_corrected_blocks_total") && q.contains("fec_uncorrectable_blocks_total"), "{q}");
+        assert_eq!(fec.legend, &["counter"]);
+        // Every series name is one stormport serves (stormpump docs/ports.md).
+        let served = ["link_up", "speed_mbps", "fec_active", "module_temperature_celsius", "module_rx_power_mw", "module_tx_power_mw",
+            "rx_packets_total", "tx_packets_total", "rx_bytes_total", "tx_bytes_total", "rx_errors_total", "tx_errors_total",
+            "rx_dropped_total", "tx_dropped_total", "rx_crc_errors_total", "rx_missed_errors_total", "fec_corrected_blocks_total",
+            "fec_uncorrectable_blocks_total", "pause_rx_frames_total", "pause_tx_frames_total"];
+        for p in PORT.iter().chain(LEVELS.iter().flat_map(|l| l.panels).filter(|p| p.job == "stormport")) {
+            for name in p.query.split("storm_port_").skip(1).map(|r| r.split(['{', '[']).next().unwrap()) {
+                assert!(served.contains(&name), "storm_port_{name} is not a stormport series");
+            }
+        }
     }
 
     #[test]

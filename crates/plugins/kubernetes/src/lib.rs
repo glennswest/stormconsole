@@ -27,6 +27,7 @@ pub mod logruns;
 pub mod objevents;
 pub mod pod;
 mod podpage;
+pub mod ports;
 pub mod projects;
 pub mod stats;
 
@@ -37,7 +38,7 @@ use async_trait::async_trait;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use console_core::build::Network;
 use console_core::{
@@ -291,6 +292,8 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/pods/{ns}/{name}/delete", post(delete_pod))
             .route("/pods/{ns}/{name}", get(podpage::detail))
             .route("/nodes/{name}/rack", get(rack::read).put(rack::write))
+            .route("/nodes/{name}/ports", get(ports::list))
+            .route("/ports/{name}", patch(ports::change))
             .route("/nodes/{name}/cordon", post(dayto::cordon))
             .route("/nodes/{name}/uncordon", post(dayto::uncordon))
             .route("/nodes/{name}/drain", get(dayto::drain_plan).post(dayto::drain))

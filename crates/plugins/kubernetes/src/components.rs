@@ -803,6 +803,9 @@ fn cilium(snap: &Snapshot, agent: AgentState, out: &mut Vec<ComponentSummary>) {
         out.push(c);
     }
 
+    // Host ports (#336): a row each, so a port down or a refused spec is seen.
+    out.extend(crate::ports::components(of("np"), of("node")));
+
     let mut identity_ids = Vec::new();
     for (key, obj) in of("cid") {
         let labels = obj.get("security-labels");

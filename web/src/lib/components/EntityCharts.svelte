@@ -47,6 +47,11 @@
     per_min: (v) => `${small(v)}/min`,
     seconds,
     cores: (v) => (v >= 1 ? `${v.toFixed(2)} cores` : `${Math.round(v * 1000)}m`),
+    // A host port (#336): link and FEC mode are 1 or 0, speed in Mb/s, optical power in mW.
+    updown: (v) => (v >= 0.5 ? 'up' : 'down'),
+    flag: (v) => (v >= 0.5 ? 'in use' : 'not'),
+    mbps: (v) => (v >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)} Gb/s` : `${Math.round(v)} Mb/s`),
+    mw: (v) => `${v.toFixed(3)} mW`,
   }
   const hasPoints = (c) => c.series.some((s) => s.points.some((p) => p.v !== null))
 </script>
