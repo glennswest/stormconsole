@@ -267,7 +267,7 @@ Started and silent (its stormd up, the service not answering) stays an error.
 | `GET /api/version` | `{console, release}` — the release from the nodes' `osImage` |
 | `GET /api/summary` | the stormd plugin card |
 | `GET /metrics` | Prometheus text (#41): `stormconsole_build_info`, `_plugin_health{plugin,health}`, `_plugin_components{plugin}`, `_feed_refreshes_total`, `_feed_refresh_seconds`, `_websocket_clients`, `_logs_entries`, `_logs_occurrences`, `_logs_duplicates_total`, `_logs_hosts`. **Needs a credential** when authentication is on, like everything but health: the bearer, a session or a mapped client certificate |
-| API health (#150) | the registry entry asks stormd to probe two cheap real reads (stormcentral#596): `console` = `GET /api/summary` (the plugin feed; no session needed) and `logs` = `GET /api/plugins/logs/events?last=1` (one read of the log ring, newest first). Not `/healthz`, which answers while the work is stuck; not `/api/plugins/logs/summary`, which reads the whole ring |
+| API health (#150) | the cheap real reads for stormd's API probes (stormcentral#596): `console` = `GET /api/summary` (the plugin feed; no session needed) and `logs` = `GET /api/plugins/logs/events?last=1` (one read of the log ring, newest first). Not `/healthz`, which answers while the work is stuck; not `/api/plugins/logs/summary`, which reads the whole ring |
 | outbound | each pod's node at **:10250** (the kubelet's `/metrics/cadvisor`, with the viewer's or the console's bearer — rustkube has no node proxy, rustkube#108) |
 | unknown `/api/…`, `/ws/…` | JSON **404** `{"error": "no such route: …"}`; any other path is the app |
 
