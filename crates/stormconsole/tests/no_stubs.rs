@@ -40,5 +40,6 @@ fn the_check_finds_a_marker() {
     git(&["add", "page.js"]);
     let out = Command::new("bash").arg(root().join("deploy/check-stubs.sh")).arg(&d).output().unwrap();
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("page.js:1:"));
+    // The line it found is said (grep names the file only when given two or more).
+    assert!(String::from_utf8_lossy(&out.stderr).contains(&format!("1:label('{marker}')")), "{}", String::from_utf8_lossy(&out.stderr));
 }
