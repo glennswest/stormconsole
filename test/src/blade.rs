@@ -491,13 +491,15 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
     // Counters: stormvm#48 serves them, and the machine's Metrics tab draws
     // them from ironprom (#14), so the facts no longer name a gap. Read the
     // tab's network charts: lines, or the tab's own sentence for why not.
-    // ironprom needs two scrapes for a rate, so give it a while.
+    // The charts are `rate(…[5m])`: ironprom needs two scrapes of stormvm
+    // inside that window, so give a fresh VM up to 5½ min (run b6f7802c22
+    // read nothing after 2).
     let charts = format!("/api/plugins/metrics/charts?entity=vm&ns={ns}&name={name}&window=900");
     let t = Instant::now();
     let counters = loop {
         let a = ctx.console.get(&charts).await;
         let done = matches!(&a, Ok(a) if a.status == 200 && drawn(&net(&a.body)));
-        if done || t.elapsed() > Duration::from_secs(120) {
+        if done || t.elapsed() > Duration::from_secs(330) {
             break a;
         }
         tokio::time::sleep(Duration::from_secs(10)).await;

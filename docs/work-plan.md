@@ -1550,7 +1550,8 @@ blade --tag pvetest1` (owner 2026-10-10: tests on pvetest machines only;
       (blade, 624f647) queued on pvetest1
 - [x] 2c5e658197: everything on the done-when answered except what the node lacks (stormcos#76 credential, pallet build date);
       host-bridge fix seen live. Suite fixed (9554a70, fcdb26c). ae4bd5545f: VM `Failed`, no reason
-- [ ] b6f7802c22 (fcdb26c): VM counters via the Metrics tab, VM failure cause; then file rustkube-node (pallet digest/date) if still so, close #76
+- [x] b6f7802c22 (fcdb26c): passed 14/0/7; VM Running again; pallet digest/date filed as rustkube-node#413
+- [ ] VM counters: the Metrics tab read nothing in 2 min (rate over 5m); the suite waits 5½ min; rerun, then close #76 and request the golden
 
 ### The ring's hold-off from the end of the work (#154)
 The golden's `cargo test --release --target musl` failed
