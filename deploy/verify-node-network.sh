@@ -157,7 +157,7 @@ check "$(row ens1f0np0 '["module"]["compliance"]')" "['25GBASE-CR CA-N', 'passiv
 check "$(row ens1f0np0 '["driver"]["firmware"]')" "14.32.1010 (MT_2420110034)" "driver and firmware"
 check "$(row ens1f0np0 '["applied"]["reason"]')" NodeSetting "nothing wanted: the node's setting"
 check "$(row eno1 '["state"]') $(row eno1 '["speedWord"]')" "up 1G" "the 1G port is up at 1G"
-check "$(row eno1 '["fec"]["active"]')" None "a BASE-T port has no FEC"
+check "$(row eno1 '["fec"].get("active")')" None "a BASE-T port has no FEC"
 check "$(row ens1f0np0 '["counters"]["rxCrcErrors"] > 0')" True "and the counters move"
 check "$(ports reader | j 'd["may"]')" False "a viewer may not change one"
 holds "$(ports reader | j 'd["why"]')" "admin role" "and is told why"
