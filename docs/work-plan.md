@@ -2679,6 +2679,10 @@ resets and the reload/restart survival were already built (#165, #308, #356).
 - Not seen: a real drive's log. That is forge1's 4 × 10 TB SAS format on a release carrying this console and stormdrive v0.47.0.
 - web/dist's build warns that stormview 0.4.0 has a `svelte` field without an exports condition. stormview#14 fixed
   it upstream; this console still pins 0.4.0 (pre-existing, not from #335).
+- 2026-11-19 proof reopened: on pvetest2 (12.96-flowsdn) the route answered the expected `no stormdrive known on nowhere`,
+  but with a 404, and a `get:` proof needs a 2xx. Now `node={name}&id=482de427-…` returns 200 `{"lines":[],"name":"sda",…}` on pvetest2 and
+  pvetest3. A pve VM's sda has no WWN or serial, so its id is uuid5 of the model, the same on every pve machine.
+  Re-shipped `on any:pve` with that proof; no code change
 
 ### Install-config users seeded (#372) — 2026-11-19
 stormpump#242 writes `/state/config/console/users/<name>.{hash,role}` (the console sees `/etc/stormconsole/install/users/`),
