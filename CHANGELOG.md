@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19 — Docs refreshed from the code
+- **docs:** architecture no longer says users on the apiserver (#266) are "still to come"; the README no longer lists them as not built; the repository layout names the stormupdate and metrics plugins. Everything else since 2026-11-12 (custom resources, drive links, Format NVM, traceability, host ports, vendor chunks, stub sweep) was already documented with its change.
+
 ### 2026-11-19 — The blade suite on a real node (#76)
 - **test:** `blade`'s `vm-counters` reads the machine's Metrics tab (`/api/plugins/metrics/charts?entity=vm`): the network lines pass, the tab's own note is a skip, and a tab with nothing to say fails. stormvm#48 closed and #14 moved a machine's counters to that tab, so the "traffic counters" gap it looked for no longer exists (run 2c5e658197 failed it on pvetest1, 12.95).
 - **docs:** #76 is done. On pvetest1 (d9872e73d0, 14 pass, 0 fail, 7 skip) and pvetest2 (029ff929e1, 5 pass, 0 fail, 4 skip), every #69 done-when passes or is a skip naming what the node does not supply. A bridged VM's missing network series is filed as stormvm#136.

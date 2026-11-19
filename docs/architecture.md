@@ -537,7 +537,7 @@ what and how it ended, under `<data_dir>/audit.jsonl` (two files of 4 MiB at mos
 and never the query or body, since a console door's `?token=` is in the query. `#/audit` and
 `GET /api/v1/console/audit` are an administrator's. It records a console opening, not how long it stayed open.
 
-Still to come (#266, stormcos#802): sign-in with a password minted at install, and users with roles managed from a page, in place of `[[api.users]]` in a file. Until then a console with no sign-in acts as root (#165).
+Users kept on the apiserver (#266, stormcos#802) are built: `[api] user_namespace` turns it on, the install's `admin_password_file` is seeded into `storm-users/admin-password`, and Admin → Users manages them (see README). `[[api.users]]` in a file still works. A console with no sign-in at all acts as root (#165).
 
 ### The network's view, inside the views people use
 
@@ -2315,6 +2315,8 @@ stormconsole/
       stormipmi/             # bare metal: the Machines API and SOL
       stormcluster/          # cluster membership: form, join, promote, split
       flowsdn/               # this node's pod network on a flowsdn build
+      stormupdate/           # the Update page
+      metrics/               # ironprom series: charts, panels, host-port charts
       apihealth/             # every API on this node: state, latency, stall alerts, history
       history/               # the node's record of itself in system-data: /api/v1/history
   web/                       # Svelte 5 SPA (stormview npm); web/dist committed, embedded
