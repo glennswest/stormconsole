@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19 — Install-config users seeded (#372)
+- **feat:** the console seeds the install-config's users from `users/<name>.hash` + `<name>.role` (stormpump#242, beside `admin-password.hash`), so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stormcos#200 turns sign-in on. Each becomes a user as Admin → Users makes one (ServiceAccount, owned Secret `<name>-password`, ClusterRoleBinding `storm-user:<name>:<role>`), written as `admin` with a minted token, never on the console's own role. Same rule as admin's password: made when absent, replaced only when this node seeded it and nobody changed it since; an account or binding missing from an earlier pass is put back. Role words: `admin` → `cluster-admin`, `viewer` → `view`, `operator` → `edit`, else the ClusterRole of that name.
+- **feat:** `[api] install_users_dir`, defaulting to `users/` beside `admin_password_file`, so a node needs no registry change.
+- **test:** unit tests for reading the files and the role words; `verify-users.sh` §2b and §10b on a real rustkube: stormcentral is made as admin, signs in as a viewer, reads `/api/plugins/logs/events`, is refused Users and writes; an unknown role and a bad hash write nothing and are logged without the hash; a new install's hash replaces it, an admin's change survives a reboot, a deleted binding is put back.
+
 ## [v0.38.0] — 2026-11-19
 
 ### 2026-11-19 — A format's method and error log, live (#335)

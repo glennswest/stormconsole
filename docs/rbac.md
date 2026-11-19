@@ -131,6 +131,11 @@ With `[api] user_namespace = "storm-users"`, people sign in as users kept on the
 token is bound to `cluster-admin` by `89-storm-users.yaml`), so RBAC checks them as it checks `sc user`. The console
 never binds a role on its own credential, which would let its role grant anyone anything.
 
+**Install-config users (#372)** need nothing more either. For each `<name>.hash` + `<name>.role` stormpump#242
+writes under `users/`, the console reads the Secret, account and bindings on its own credential (the rows above), and
+when something must be written it mints a token for `storm-users/admin` (the `serviceaccounts/token` right above) and
+makes the account, the Secret and the binding **as admin**, so RBAC checks those writes as it checks the Users page.
+
 ## For stormcos
 
 What stormcos has to do under stormcos#76 step 2. None of it is there yet: no ServiceAccount, no binding, no token,
