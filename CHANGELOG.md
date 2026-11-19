@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19 — The blade suite on a real node (#76)
+- **test:** `blade`'s `vm-counters` reads the machine's Metrics tab (`/api/plugins/metrics/charts?entity=vm`): the network lines pass, the tab's own note is a skip, and a tab with nothing to say fails. stormvm#48 closed and #14 moved a machine's counters to that tab, so the "traffic counters" gap it looked for no longer exists (run 2c5e658197 failed it on pvetest1, 12.95).
+- **test:** `cilium-stats` refused with "the console has no credential" is a skip naming stormcos#76 (the node mounts no ServiceAccount token for the console, and the kubelet takes no anonymous caller), not a console failure.
+- **test:** `cilium-build-date` with a build but no date says what the node wrote (build, golden, provenance) instead of an empty reason.
+
 ### 2026-11-19 — Third-party chunks under assets/vendor/ (#366)
 - **fix:** the web build puts a chunk made only of third-party code (xterm, its fit addon, noVNC, IronRDP) under `web/dist/assets/vendor/`. stormcentral's stub sweep read xterm's own upstream marker (a method of its `JoinedCellData` the terminal never calls) as a stub of the console's; vendored code is outside what it reads.
 - **build:** `deploy/check-stubs.sh` (stormcentral#1455) runs in `cargo test` (`tests/no_stubs.rs`): a stub marker in a tracked file fails the build, and a negative control shows the check finds one.

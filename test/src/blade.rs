@@ -128,7 +128,19 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
     let why_not: Vec<String> = gap("build info").into_iter().collect();
     r.record(
         "cilium-build-date",
-        if !built.is_empty() { Outcome::Pass(built.join(" · ")) } else { Outcome::Skip(format!("not shown: {}", why_not.join(" · "))) },
+        if !built.is_empty() {
+            Outcome::Pass(built.join(" · "))
+        } else if !why_not.is_empty() {
+            Outcome::Skip(format!("not shown: {}", why_not.join(" · ")))
+        } else {
+            // The node wrote a build, with no date in it (a pallet's is its release
+            // provenance and version): say what it wrote, so the gap can be filed.
+            let wrote: Vec<String> = containers
+                .iter()
+                .map(|c| format!("{}: build {} · golden {} · provenance {}", c["name"].as_str().unwrap_or("?"), c["imageBuild"], c["clonedFrom"], c["provenance"]))
+                .collect();
+            Outcome::Skip(format!("the node's build has no date: {}", wrote.join(" · ")))
+        },
         0,
         None,
     );
@@ -174,6 +186,11 @@ async fn cilium(ctx: &Ctx, r: &mut Report) {
                 })
                 .collect();
             r.record("cilium-stats", Outcome::Pass(cs.join(" · ")), 0, Some(json!({"missing": a.body["missing"], "samples": a.body["samples"]})))
+        }
+        // The node gives the console no ServiceAccount token (stormcos#76),
+        // and the kubelet takes no anonymous caller: the page says so.
+        Ok(a) if a.body["reason"].as_str().is_some_and(|w| w.contains("the console has no credential")) => {
+            r.record("cilium-stats", Outcome::Skip(format!("{} (stormcos#76)", a.body["reason"].as_str().unwrap_or(""))), 0, None)
         }
         Ok(a) => r.record("cilium-stats", Outcome::Fail(a.body["reason"].as_str().map(String::from).unwrap_or_else(|| short(&a.text))), 0, None),
         Err(e) => r.record("cilium-stats", Outcome::Fail(e), 0, None),
@@ -456,17 +473,21 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
         None,
     );
 
-    // Counters: none yet for a machine (stormvm#48); the page must say so.
-    let counters_gap = d["gaps"].as_array().and_then(|g| g.iter().find(|g| g["what"] == "traffic counters")).cloned();
-    r.record(
-        "vm-counters",
-        match counters_gap {
-            Some(g) => Outcome::Skip(format!("the page says: {} ({})", g["why"].as_str().unwrap_or(""), g["issue"].as_str().unwrap_or(""))),
-            None => Outcome::Fail("no counters and no gap named".into()),
-        },
-        0,
-        None,
-    );
+    // Counters: stormvm#48 serves them, and the machine's Metrics tab draws
+    // them from ironprom (#14), so the facts no longer name a gap. Read the
+    // tab's network charts: lines, or the tab's own sentence for why not.
+    // ironprom needs two scrapes for a rate, so give it a while.
+    let charts = format!("/api/plugins/metrics/charts?entity=vm&ns={ns}&name={name}&window=900");
+    let t = Instant::now();
+    let counters = loop {
+        let a = ctx.console.get(&charts).await;
+        let done = matches!(&a, Ok(a) if a.status == 200 && drawn(&net(&a.body)));
+        if done || t.elapsed() > Duration::from_secs(120) {
+            break a;
+        }
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    };
+    r.record("vm-counters", vm_counters(counters.as_ref().map(|a| (a.status, &a.body)).map_err(|e| e.as_str())), 0, None);
 
     // The serial log, through the console's door.
     let t = Instant::now();
@@ -511,6 +532,51 @@ async fn bridged_vm(ctx: &Ctx, r: &mut Report) {
     let _ = ctx.kube.delete(&format!("{path}/{name}")).await;
 }
 
+/// The Metrics tab's network charts (received, sent).
+fn net(b: &Value) -> Vec<Value> {
+    b["charts"].as_array().into_iter().flatten().filter(|c| matches!(c["id"].as_str(), Some("rx" | "tx"))).cloned().collect()
+}
+
+/// Whether any of them has a line.
+fn drawn(cs: &[Value]) -> bool {
+    cs.iter().any(|c| c["series"].as_array().is_some_and(|s| !s.is_empty()))
+}
+
+/// The VM's Metrics tab, read as a person would: network lines pass; a
+/// chart's own note or the tab's refusal is the page saying why (a skip);
+/// neither is a page with nothing to say (a fail).
+fn vm_counters(a: Result<(u16, &Value), &str>) -> Outcome {
+    match a {
+        Err(e) => Outcome::Fail(e.to_string()),
+        Ok((200, b)) => {
+            let cs = net(b);
+            if cs.is_empty() {
+                return Outcome::Fail("the Metrics tab has no network charts".into());
+            }
+            if drawn(&cs) {
+                let lines: Vec<String> = cs
+                    .iter()
+                    .map(|c| {
+                        let ifs: Vec<&str> = c["series"].as_array().into_iter().flatten().filter_map(|s| s["name"].as_str()).collect();
+                        format!("{}: {}", c["title"].as_str().unwrap_or("?"), ifs.join(", "))
+                    })
+                    .collect();
+                return Outcome::Pass(lines.join(" · "));
+            }
+            let said: Vec<&str> = cs.iter().filter_map(|c| c["note"].as_str().or(c["error"].as_str())).collect();
+            if said.is_empty() {
+                Outcome::Fail("the network charts are empty and say nothing".into())
+            } else {
+                Outcome::Skip(format!("the Metrics tab says: {}", said.join(" · ")))
+            }
+        }
+        Ok((code, b)) => match b["error"].as_str() {
+            Some(why) => Outcome::Skip(format!("the Metrics tab says ({code}): {why}")),
+            None => Outcome::Fail(format!("the Metrics tab answered {code} and said nothing")),
+        },
+    }
+}
+
 fn short(s: &str) -> String {
     let s = s.trim();
     if s.chars().count() > 200 {
@@ -531,6 +597,24 @@ fn d_pod_timing(page: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vm_counters_reads_the_metrics_tab() {
+        let lines = json!({"charts": [
+            {"id": "cpu", "title": "CPU", "series": []},
+            {"id": "rx", "title": "Network received", "series": [{"name": "default", "points": [[1, 2.0]]}]},
+            {"id": "tx", "title": "Network sent", "series": [{"name": "default", "points": [[1, 3.0]]}]}]});
+        assert!(matches!(vm_counters(Ok((200, &lines))), Outcome::Pass(p) if p.contains("Network received: default")));
+        let said = json!({"charts": [{"id": "rx", "title": "Network received", "series": [], "note": "stormvm is not scraped"}]});
+        assert!(matches!(vm_counters(Ok((200, &said))), Outcome::Skip(s) if s.contains("stormvm is not scraped")));
+        let mute = json!({"charts": [{"id": "rx", "title": "Network received", "series": []}]});
+        assert!(matches!(vm_counters(Ok((200, &mute))), Outcome::Fail(_)));
+        assert!(matches!(vm_counters(Ok((200, &json!({"charts": []})))), Outcome::Fail(_)));
+        let refused = json!({"error": "ironprom did not answer"});
+        assert!(matches!(vm_counters(Ok((503, &refused))), Outcome::Skip(_)));
+        assert!(matches!(vm_counters(Ok((500, &json!({})))), Outcome::Fail(_)));
+        assert!(matches!(vm_counters(Err("refused")), Outcome::Fail(_)));
+    }
 
     #[test]
     fn the_guest_is_bridged_and_boots_the_golden() {
