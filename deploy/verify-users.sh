@@ -24,6 +24,10 @@
 #   roles          storage-viewer now: the guard refuses
 #   other node     a sweep on another console ends a deleted user's session there
 #   delete         gone, and admin can be neither deleted nor disabled
+#   install users  stormpump#242's users/<name>.{hash,role}: stormcentral
+#                  (viewer) is made as admin, signs in, reads logs, and is
+#                  refused an admin action; a bad file costs only itself;
+#                  a new install's hash replaces it, an admin's change stays
 #   reseed         a reinstall's new hash replaces it; an admin's change stays
 #                  changed; a joining node never overwrites it
 #   apiserver down the user sign-in says so (503); the node's bearer still gets in
@@ -137,6 +141,16 @@ HF=$W/install/admin-password.hash
 mkdir -p "$W/install"
 writehash() { (umask 077; printf %s "$(printf %s "$1" | "$BIN" --hash-password)" > "$HF.new"); mv "$HF.new" "$HF"; }
 writehash "$APW"
+# The install-config's users (#372), as stormpump#242 writes them beside it:
+# users/<name>.hash (the PHC alone, no newline, 0600) and users/<name>.role.
+UD=$W/install/users
+mkdir -p "$UD"
+userfile() { (umask 077; printf %s "$(printf %s "$2" | "$BIN" --hash-password)" > "$UD/$1.hash.new"; printf %s "$3" > "$UD/$1.role.new")
+  mv "$UD/$1.hash.new" "$UD/$1.hash"; mv "$UD/$1.role.new" "$UD/$1.role"; }
+SCPW=sc-pw-$RANDOM
+userfile stormcentral "$SCPW" viewer
+userfile ghost "g-pw" no-such-role
+printf 'not-a-hash' > "$UD/junk.hash"; printf viewer > "$UD/junk.role"
 check "$(tail -c1 "$HF" | od -An -c | tr -d ' ')" "$(printf %s "$(tail -c1 "$HF")")" "no trailing newline"
 printf '%s' "$SA" > "$W/sa.token"
 conf() { # <file> <port> <node>
@@ -153,7 +167,8 @@ server = "$KAPI"
 token_file = "$W/sa.token"
 ca_file = "$W/ca.crt"
 EOF
-  for s in fleet logs stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormipmi stormcluster flowsdn health history; do printf '[%s]\nenabled = false\n' "$s" >> "$1"; done
+  printf '[logs]\nmcast_group = "239.255.42.46:%s"\n' "$2" >> "$1"
+  for s in fleet stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormipmi stormcluster flowsdn health history; do printf '[%s]\nenabled = false\n' "$s" >> "$1"; done
   mkdir -p "$W/d$2"
 }
 conf "$W/c.toml" "$P" n1
@@ -193,6 +208,28 @@ check "$(as ja POST /api/plugins/k8s/projects '{"name":"by-admin"}')" 200 "admin
 check "$(k GET /api/v1/namespaces/by-admin | j 'd["metadata"].get("annotations",{}).get("openshift.io/requester")')" \
   system:serviceaccount:storm-users:admin "requested by storm-users/admin itself, not the console"
 
+say "2b. install-config users (#372): made as admin, from users/<name>.{hash,role}"
+for _ in $(seq 30); do [ "$(kcode GET "$RBAC/clusterrolebindings/storm-user:stormcentral:view")" = 200 ] && break; sleep 1; done
+sa=$(k GET "$SAS/stormcentral")
+check "$(echo "$sa" | j 'd["metadata"]["labels"]["storm.io/user"]')" stormcentral "ServiceAccount storm-users/stormcentral, labelled for it"
+check "$(hashof stormcentral)" "$(cat "$UD/stormcentral.hash")" "Secret stormcentral-password holds the file's hash"
+check "$(secret stormcentral | j 'd["metadata"]["ownerReferences"][0]["uid"]')" "$(echo "$sa" | j 'd["metadata"]["uid"]')" "owned by the account"
+check "$(ann stormcentral storm.io/seeded-by)" n1 "marked as seeded by n1"
+check "$(k GET "$RBAC/clusterrolebindings/storm-user:stormcentral:view" | j '(d["roleRef"]["name"], d["subjects"][0]["name"], d["metadata"]["labels"]["storm.io/user"])')" \
+  "('view', 'stormcentral', 'stormcentral')" "role viewer is a binding to ClusterRole view"
+check "$(login jsc stormcentral wrong)" 401 "a wrong password is refused"
+check "$(login jsc stormcentral "$SCPW")" 200 "stormcentral signs in with the install's password"
+check "$(sess jsc)" "True stormcentral viewer" "a viewer"
+check "$(as jsc GET /api/plugins/logs/events)" 200 "its session reads /api/plugins/logs/events"
+check "$(as jsc GET /api/v1/users)" 403 "but not Users"
+check "$(as jsc POST /api/v1/users '{"name":"evil","password":"x","roles":["cluster-admin"]}')" 403 "nor makes a user"
+check "$(as jsc POST /api/plugins/k8s/projects '{"name":"by-sc"}')" 403 "nor writes"
+check "$(kcode GET "$SAS/ghost")$(kcode GET "$SECRETS/ghost-password")" 404404 "a user whose role is no ClusterRole: nothing written"
+grep -q 'ghost: its role: no ClusterRole no-such-role' "$W/c.log" && echo "  ok   and that is said" || { echo "  FAIL ghost's refusal not logged"; FAILED=$((FAILED+1)); }
+grep -q 'junk.hash is not an argon2 hash' "$W/c.log" && echo "  ok   a bad hash file is said, not seeded" || { echo "  FAIL junk.hash not reported"; FAILED=$((FAILED+1)); }
+grep -q 'not-a-hash' "$W/c.log" && { echo "  FAIL a hash file's text is in the log"; FAILED=$((FAILED+1)); } || echo "  ok   and not quoted"
+check "$(kcode POST "$SAS" '{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"stormcentral2","namespace":"storm-users"}}' "$SA")" 403 "the console's own token still may not make an account: admin made it"
+
 say "3. the Users API: a storage-admin and a storage-viewer, in sc#27's shape"
 check "$(as ja POST /api/v1/users '{"name":"stor","password":"s-pw","roles":["storage-admin"]}')" 201 "create stor (storage-admin)"
 check "$(as ja POST /api/v1/users '{"name":"view","password":"v-pw","roles":["storage-viewer"]}')" 201 "create view (storage-viewer)"
@@ -211,7 +248,7 @@ check "$(echo "$crb" | j '(d["roleRef"]["name"], d["subjects"][0]["name"], d["su
   "('storage-admin', 'stor', 'storm-users', 'stor')" "ClusterRoleBinding storm-user:stor:storage-admin"
 as ja GET /api/v1/users >/dev/null
 check "$(j '[(u["name"], ",".join(u["roles"]), u["password"], u["disabled"]) for u in d["users"]]' < "$W/out")" \
-  "[('admin', 'cluster-admin', True, False), ('stor', 'storage-admin', True, False), ('view', 'storage-viewer', True, False)]" "the list: admin first, default not a user"
+  "[('admin', 'cluster-admin', True, False), ('stor', 'storage-admin', True, False), ('stormcentral', 'view', True, False), ('view', 'storage-viewer', True, False)]" "the list: admin first, default not a user"
 check "$(j '"storage-admin" in d["roles"] and "cluster-admin" in d["roles"]' < "$W/out")" True "the roles on offer are the cluster's"
 grep -q '"users"' "$W/c/audit.jsonl" 2>/dev/null || grep -rq '"capability":"users"' "$W/d$P" && echo "  ok   the audit records it as Users" || { echo "  FAIL no users audit line"; FAILED=$((FAILED+1)); }
 
@@ -294,6 +331,28 @@ kill "$CP"; wait "$CP" 2>/dev/null || true
 start_console
 sleep 3
 check "$(login ja admin chosen-by-admin)" 200 "a later install does not replace an admin's password"
+
+say "10b. reseeding an install-config user"
+check "$(kcode DELETE "$RBAC/clusterrolebindings/storm-user:stormcentral:view")" 200 "stormcentral's binding deleted by hand"
+SCPW2=sc-pw2-$RANDOM
+userfile stormcentral "$SCPW2" viewer
+kill "$CP"; wait "$CP" 2>/dev/null || true
+start_console
+for _ in $(seq 20); do [ "$(hashof stormcentral)" = "$(cat "$UD/stormcentral.hash")" ] && break; sleep 1; done
+check "$(hashof stormcentral)" "$(cat "$UD/stormcentral.hash")" "a new install's hash replaces it (unchanged since n1 seeded it)"
+check "$(kcode GET "$RBAC/clusterrolebindings/storm-user:stormcentral:view")" 200 "and its binding is back"
+check "$(login jsc stormcentral "$SCPW2")" 200 "the new password signs in"
+check "$(login jsc stormcentral "$SCPW")" 401 "the old one is refused"
+check "$(login ja admin chosen-by-admin)" 200 "admin signs in again"
+check "$(as ja PUT /api/v1/users/stormcentral/password '{"password":"chosen-here"}')" 200 "an admin sets stormcentral's password in the console"
+check "$(ann stormcentral storm.io/seeded-by)" None "the seeding mark is gone with it"
+userfile stormcentral "sc-pw3-$RANDOM" viewer
+kill "$CP"; wait "$CP" 2>/dev/null || true
+start_console
+sleep 3
+check "$(login jsc stormcentral chosen-here)" 200 "a reboot with another install's hash does not overwrite it"
+check "$(kcode GET "$SECRETS/admin-password")" 200 "(admin-password untouched by users/)"
+check "$(login ja admin chosen-by-admin)" 200 "admin signs in again"
 
 say "11. the apiserver down"
 kill "$KAP"; wait "$KAP" 2>/dev/null || true

@@ -147,6 +147,11 @@ pub struct Api {
     /// node seeded it and nobody has changed it since. Needs
     /// `user_namespace`.
     pub admin_password_file: Option<String>,
+    /// The install-config's other users (#372, stormpump#242): a directory
+    /// of `<name>.hash` (argon2id PHC) and `<name>.role` pairs, each made a
+    /// user in `user_namespace` by the same seeding rule as admin's. Default:
+    /// `users/` beside `admin_password_file`. Needs `user_namespace`.
+    pub install_users_dir: Option<String>,
     /// This node's name, which marks the Secret it seeded. Default: the
     /// host name.
     pub node_name: Option<String>,
@@ -178,6 +183,7 @@ impl Default for Api {
             client_roles: Vec::new(),
             user_namespace: None,
             admin_password_file: None,
+            install_users_dir: None,
             node_name: None,
         }
     }
@@ -761,6 +767,9 @@ impl Config {
         if a.admin_password_file.is_some() && a.user_namespace.is_none() {
             return Err("[api] admin_password_file needs user_namespace: the password is seeded into a Secret there".into());
         }
+        if a.install_users_dir.is_some() && a.user_namespace.is_none() {
+            return Err("[api] install_users_dir needs user_namespace: its users are made there".into());
+        }
         if let Some(ns) = &a.user_namespace {
             if !crate::users::is_name(ns) {
                 return Err(format!("[api] user_namespace {ns:?} is not a namespace name"));
@@ -835,6 +844,16 @@ impl Config {
     }
 
     /// The address the console serves on.
+    /// Where the install-config's users are (#372): `install_users_dir`, or
+    /// `users/` beside `admin_password_file`.
+    pub fn install_users_dir(&self) -> Option<String> {
+        if let Some(d) = &self.api.install_users_dir {
+            return Some(d.clone());
+        }
+        let f = std::path::Path::new(self.api.admin_password_file.as_ref()?);
+        Some(f.parent()?.join("users").to_string_lossy().into_owned())
+    }
+
     pub fn bind(&self) -> &str {
         self.listen_addr.as_deref().unwrap_or(&self.api.bind)
     }
@@ -1113,6 +1132,18 @@ mod tests {
 listen_addr = \"0.0.0.0:9094\"
 data_dir    = \"/var/lib/stormconsole\"
 ";
+
+    #[test]
+    fn install_users_sit_beside_the_admin_hash_unless_named() {
+        let base = "[api]\nuser_namespace = \"storm-users\"\n";
+        let c = Config::parse(&format!("{base}admin_password_file = \"/etc/stormconsole/install/admin-password.hash\"\n")).unwrap();
+        assert_eq!(c.install_users_dir().as_deref(), Some("/etc/stormconsole/install/users"));
+        let c = Config::parse(&format!("{base}install_users_dir = \"/x/u\"\n")).unwrap();
+        assert_eq!(c.install_users_dir().as_deref(), Some("/x/u"));
+        assert_eq!(Config::parse(base).unwrap().install_users_dir(), None);
+        let e = Config::parse("[api]\ninstall_users_dir = \"/x/u\"\n").unwrap_err();
+        assert!(e.contains("install_users_dir needs user_namespace"), "{e}");
+    }
 
     #[test]
     fn stormpump_flat_shape_is_accepted() {

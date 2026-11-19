@@ -382,13 +382,14 @@ async fn run() {
     });
 
     // Users kept on the apiserver (#266), and the install's admin password
-    // seeded into them: tried now and every minute, since the apiserver or
+    // and install-config users (#372) seeded into them: tried now and every minute, since the apiserver or
     // the hash file may come later than the console.
     let users = match (&config.api.user_namespace, &kube) {
         (Some(ns), Some(conn)) => Some(Arc::new(users::Users::new(
             conn.clone(),
             ns.clone(),
             config.api.admin_password_file.clone(),
+            config.install_users_dir(),
             config.api.node_name.clone(),
         ))),
         _ => None,
@@ -410,6 +411,8 @@ async fn run() {
                     }
                     Err(_) => {}
                 }
+                // The install-config's other users (#372), the same way.
+                u.seed_users().await;
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             }
         });

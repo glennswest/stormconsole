@@ -2680,7 +2680,17 @@ resets and the reload/restart survival were already built (#165, #308, #356).
 - web/dist's build warns that stormview 0.4.0 has a `svelte` field without an exports condition. stormview#14 fixed
   it upstream; this console still pins 0.4.0 (pre-existing, not from #335).
 
-### Phase 4 — fleet/nodes plugin
+### Install-config users seeded (#372) — 2026-11-19
+stormpump#242 writes `/state/config/console/users/<name>.{hash,role}` (the console sees `/etc/stormconsole/install/users/`),
+so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stormcos#200 closes :9094.
+- [x] `[api] install_users_dir` (default `users/` beside `admin_password_file`, so no registry change)
+- [x] `Users::seed_users`, every minute with admin's seeding: account, Secret (owned, seeding-marked), role binding,
+      written **as admin** (a minted token); same `seed_rule`; a missing account or binding is put back
+- [x] Role words: `admin` → cluster-admin, `viewer` → view, `operator` → edit, else the ClusterRole of that name
+- [x] Unit tests; `verify-users.sh` §2b/§10b on a real rustkube
+- [ ] sc-build; image
+
+
 - [x] Node discovery from multicast presence — and the piece that was
       actually missing: the **address**. The collector had the datagram's
       source and used it only as a fallback name for unparseable lines, so

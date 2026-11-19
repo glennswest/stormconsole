@@ -164,9 +164,13 @@ pub struct Users {
     kube: Client,
     pub ns: String,
     admin_file: Option<PathBuf>,
+    /// The install-config's other users (#372): `<name>.hash` + `<name>.role`.
+    users_dir: Option<PathBuf>,
     node: String,
     /// What the last seeding pass said, so it is logged once per change.
     said: std::sync::Mutex<Option<String>>,
+    /// The same for each install-config user, by name (or file).
+    said_users: std::sync::Mutex<std::collections::HashMap<String, String>>,
 }
 
 fn status_of(e: &RkError) -> Option<u16> {
@@ -258,10 +262,91 @@ pub fn seed_rule(secret: Option<&Value>, file_hash: &str, node: &str) -> Seed {
     Seed::Replace
 }
 
+/// The ClusterRole an install-config role word binds (#372). The words are
+/// the console's own (what [`console_roles`] makes of ClusterRoles), so
+/// `admin` is `cluster-admin`, `viewer` is `view` and `operator` is `edit`;
+/// any other word is the ClusterRole of that name (`storage-admin`,
+/// `storage-viewer`, …).
+pub fn cluster_role_for(word: &str) -> &str {
+    match word {
+        "admin" => "cluster-admin",
+        "viewer" => "view",
+        "operator" => "edit",
+        other => other,
+    }
+}
+
+/// One install-config user, as stormpump#242 writes it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct InstallUser {
+    pub name: String,
+    pub hash: String,
+    /// The role word, as written.
+    pub role: String,
+}
+
+/// The install-config users in `dir`: each `<name>.hash` with its
+/// `<name>.role`, sorted by name. What cannot be one is a problem, keyed by
+/// its file name; a hash is never quoted. A missing directory is no users.
+pub fn read_install_users(dir: &std::path::Path) -> (Vec<InstallUser>, Vec<(String, String)>) {
+    let mut users = vec![];
+    let mut problems = vec![];
+    let Ok(entries) = std::fs::read_dir(dir) else { return (users, problems) };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| e.file_name().to_str().and_then(|f| f.strip_suffix(".hash")).map(str::to_string))
+        .collect();
+    names.sort();
+    for name in names {
+        let file = format!("{name}.hash");
+        if !is_name(&name) {
+            problems.push((file, "is not named for a user (a DNS label): not seeded".into()));
+            continue;
+        }
+        if name == ADMIN {
+            problems.push((file, "admin's password is admin-password.hash's, not this file's: not seeded".into()));
+            continue;
+        }
+        let hash = std::fs::read_to_string(dir.join(&file)).map(|s| s.trim().to_string()).unwrap_or_default();
+        if hash.is_empty() {
+            continue;
+        }
+        if !well_formed(&hash) {
+            problems.push((file, "is not an argon2 hash: not seeded".into()));
+            continue;
+        }
+        let role = std::fs::read_to_string(dir.join(format!("{name}.role"))).map(|s| s.trim().to_string()).unwrap_or_default();
+        if role.is_empty() {
+            problems.push((file, format!("has no {name}.role beside it: not seeded")));
+            continue;
+        }
+        if !is_name(&role) {
+            problems.push((file, format!("{name}.role is not a role name: not seeded")));
+            continue;
+        }
+        users.push(InstallUser { name, hash, role });
+    }
+    (users, problems)
+}
+
 impl Users {
-    pub fn new(conn: Arc<console_core::apiserver::Conn>, ns: String, admin_file: Option<String>, node: Option<String>) -> Self {
+    pub fn new(
+        conn: Arc<console_core::apiserver::Conn>,
+        ns: String,
+        admin_file: Option<String>,
+        users_dir: Option<String>,
+        node: Option<String>,
+    ) -> Self {
         let node = node.filter(|n| !n.trim().is_empty()).unwrap_or_else(host_name);
-        Self { kube: Client::new(conn), ns, admin_file: admin_file.map(Into::into), node, said: Default::default() }
+        Self {
+            kube: Client::new(conn),
+            ns,
+            admin_file: admin_file.map(Into::into),
+            users_dir: users_dir.map(Into::into),
+            node,
+            said: Default::default(),
+            said_users: Default::default(),
+        }
     }
 
     fn account(&self, name: &str) -> String {
@@ -420,6 +505,152 @@ impl Users {
             tracing::info!(namespace = %self.ns, "admin-password left as it is: {why}");
             *s = Some(why.to_string());
         }
+    }
+
+    /// Seed the install-config's users (#372, stormpump#242) by
+    /// [`seed_rule`], each made as the Users page makes one: ServiceAccount
+    /// `<name>` labelled for it, Secret `<name>-password` owned by it and
+    /// marked as this node's seeding, and its role's binding. Every write is
+    /// done **as admin**, whose token the console mints; the console's own
+    /// role may not make users or bind roles (stormcos#802). A user whose
+    /// password an administrator changed, or another node seeded, is left
+    /// alone; one already seeded has a missing account or binding put back.
+    /// Each change, and each problem, is logged once.
+    pub async fn seed_users(&self) {
+        let Some(dir) = &self.users_dir else { return };
+        let (users, problems) = read_install_users(dir);
+        for (file, why) in problems {
+            self.say_user(&file, false, &format!("{}/{file} {why}", dir.display()));
+        }
+        let mut admin: Option<String> = None;
+        for u in users {
+            match self.seed_user(&u, &mut admin).await {
+                Ok(what) => self.say_user(&u.name, true, &what),
+                Err(e) => self.say_user(&u.name, false, &format!("install-config user {}: {e}", u.name)),
+            }
+        }
+    }
+
+    fn say_user(&self, key: &str, ok: bool, what: &str) {
+        let mut s = self.said_users.lock().unwrap_or_else(|e| e.into_inner());
+        if s.get(key).map(String::as_str) != Some(what) {
+            if ok {
+                tracing::info!(namespace = %self.ns, user = key, "install-config user {what}");
+            } else {
+                tracing::warn!(namespace = %self.ns, "{what}");
+            }
+            s.insert(key.to_string(), what.to_string());
+        }
+    }
+
+    async fn admin_token(&self, held: &mut Option<String>) -> Result<String, String> {
+        if let Some(t) = held {
+            return Ok(t.clone());
+        }
+        match self.mint(ADMIN).await {
+            Ok(t) => {
+                *held = Some(t.clone());
+                Ok(t)
+            }
+            Err(Refused::Unreachable(e)) => Err(format!("no token for admin to make it with: {e}")),
+            Err(Refused::Invalid) => Err("no token for admin to make it with".into()),
+        }
+    }
+
+    /// One install-config user. Returns what it did, or why it did nothing.
+    async fn seed_user(&self, u: &InstallUser, admin: &mut Option<String>) -> Result<String, String> {
+        let name = u.name.as_str();
+        let role = cluster_role_for(&u.role);
+        let secret = match self.kube.get(&self.secret(name)).await {
+            Ok(s) => Some(s),
+            Err(RkError::Status(s)) if s.as_u16() == 404 => None,
+            Err(e) => return Err(format!("reading {}/{name}-password: {e}", self.ns)),
+        };
+        let account = match self.kube.get(&self.account(name)).await {
+            Ok(a) => Some(a),
+            Err(RkError::Status(s)) if s.as_u16() == 404 => None,
+            Err(e) => return Err(format!("reading {}/{name}: {e}", self.ns)),
+        };
+        if let Some(a) = &account {
+            if label(a, USER_LABEL) != Some(name) {
+                return Err(format!("{}/{name} is a ServiceAccount, not a user: not seeded", self.ns));
+            }
+        }
+        let fail = |what: &str, e: Fail| format!("{what}: {}", e.message());
+        match seed_rule(secret.as_ref(), &u.hash, &self.node) {
+            Seed::Keep(why) if secret.as_ref().and_then(secret_hash).as_deref() == Some(u.hash.as_str()) => {
+                // The install's password is there: put back what a failed
+                // pass may have left out, and nothing else.
+                let bound = self.roles(name).await.map_err(|e| format!("reading {name}'s roles: {e}"))?;
+                let has_role = bound.iter().any(|r| r == role);
+                if account.is_some() && has_role {
+                    return Ok(format!("{name}: {why} ({})", u.role));
+                }
+                let t = self.admin_token(admin).await?;
+                if account.is_none() {
+                    self.make_account(&t, name).await.map_err(|e| fail("making its account", e))?;
+                }
+                if !has_role {
+                    self.known_roles(&t, &[role.to_string()]).await.map_err(|e| fail("its role", e))?;
+                    self.bind(&t, name, role).await.map_err(|e| fail("binding its role", e))?;
+                }
+                Ok(format!("{name}: completed ({})", u.role))
+            }
+            Seed::Keep(why) => Ok(format!("{name}: left as it is: {why}")),
+            Seed::Create => {
+                let t = self.admin_token(admin).await?;
+                self.known_roles(&t, &[role.to_string()]).await.map_err(|e| fail("its role", e))?;
+                let uid = match account {
+                    Some(a) => a.pointer("/metadata/uid").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    None => self.make_account(&t, name).await.map_err(|e| fail("making its account", e))?,
+                };
+                let mut body = json!({
+                    "apiVersion": "v1",
+                    "kind": "Secret",
+                    "type": SECRET_TYPE,
+                    "metadata": {
+                        "name": format!("{name}-password"),
+                        "namespace": self.ns,
+                        "labels": {USER_LABEL: name},
+                        "annotations": {SEEDED_BY: self.node, SEEDED_HASH: digest(&u.hash)},
+                    },
+                    "data": {"hash": b64(&u.hash)},
+                });
+                if !uid.is_empty() {
+                    body["metadata"]["ownerReferences"] =
+                        json!([{"apiVersion": "v1", "kind": "ServiceAccount", "name": name, "uid": uid}]);
+                }
+                self.write(false, &format!("/api/v1/namespaces/{}/secrets", self.ns), &body, &t)
+                    .await
+                    .map_err(|e| fail("creating its password", e))?;
+                self.set_roles(&t, name, &[role.to_string()]).await.map_err(|e| fail("binding its role", e))?;
+                Ok(format!("{name}: created ({})", u.role))
+            }
+            Seed::Replace => {
+                let t = self.admin_token(admin).await?;
+                self.known_roles(&t, &[role.to_string()]).await.map_err(|e| fail("its role", e))?;
+                if account.is_none() {
+                    self.make_account(&t, name).await.map_err(|e| fail("making its account", e))?;
+                }
+                let mut s = secret.unwrap_or_default();
+                s["data"] = json!({"hash": b64(&u.hash)});
+                s["metadata"]["annotations"][SEEDED_HASH] = json!(digest(&u.hash));
+                self.write(true, &self.secret(name), &s, &t).await.map_err(|e| fail("replacing its password", e))?;
+                self.set_roles(&t, name, &[role.to_string()]).await.map_err(|e| fail("binding its role", e))?;
+                Ok(format!("{name}: replaced ({})", u.role))
+            }
+        }
+    }
+
+    /// A user's ServiceAccount, made as `as_`; its uid.
+    async fn make_account(&self, as_: &str, name: &str) -> Result<String, Fail> {
+        let account = json!({
+            "apiVersion": "v1",
+            "kind": "ServiceAccount",
+            "metadata": {"name": name, "namespace": self.ns, "labels": {USER_LABEL: name}},
+        });
+        let made = self.write(false, &format!("/api/v1/namespaces/{}/serviceaccounts", self.ns), &account, as_).await?;
+        Ok(made.pointer("/metadata/uid").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     // --- The Users page: everything below is done as the administrator.
@@ -754,6 +985,53 @@ fn host_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn role_words_are_the_consoles_own() {
+        assert_eq!(cluster_role_for("admin"), "cluster-admin");
+        assert_eq!(cluster_role_for("viewer"), "view");
+        assert_eq!(cluster_role_for("operator"), "edit");
+        assert_eq!(cluster_role_for("storage-admin"), "storage-admin");
+        // The inverse of console_roles for each word.
+        for w in ["admin", "viewer", "operator", "storage-admin"] {
+            assert_eq!(console_roles(&[cluster_role_for(w).to_string()]), vec![w.to_string()]);
+        }
+    }
+
+    #[test]
+    fn install_users_are_read_as_stormpump_writes_them() {
+        let d = std::env::temp_dir().join(format!("sc-instusers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let h = hash("pw").unwrap();
+        let w = |f: &str, s: &str| std::fs::write(d.join(f), s).unwrap();
+        w("stormcentral.hash", &h);
+        w("stormcentral.role", "viewer");
+        w("stor.hash", &format!("{h}\n"));
+        w("stor.role", "storage-admin\n");
+        w("admin.hash", &h);
+        w("admin.role", "admin");
+        w("norole.hash", &h);
+        w("junk.hash", "plaintext-password");
+        w("junk.role", "viewer");
+        w("Bad.hash", &h);
+        w("odd.hash", &h);
+        w("odd.role", "a b");
+        w("stray.txt", "x");
+        let (users, problems) = read_install_users(&d);
+        assert_eq!(
+            users,
+            vec![
+                InstallUser { name: "stor".into(), hash: h.clone(), role: "storage-admin".into() },
+                InstallUser { name: "stormcentral".into(), hash: h.clone(), role: "viewer".into() },
+            ]
+        );
+        let files: Vec<&str> = problems.iter().map(|(f, _)| f.as_str()).collect();
+        assert_eq!(files, vec!["Bad.hash", "admin.hash", "junk.hash", "norole.hash", "odd.hash"]);
+        assert!(problems.iter().all(|(_, why)| !why.contains("plaintext") && !why.contains(&h)), "{problems:?}");
+        assert_eq!(read_install_users(&d.join("absent")), (vec![], vec![]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn names_are_dns_labels() {
