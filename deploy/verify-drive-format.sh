@@ -211,6 +211,7 @@ kill "$CPID"; wait "$CPID" 2>/dev/null || true
 start_console
 sleep 3
 curl -sf -c "$W/jar.alice" -H 'content-type: application/json' -d '{"username":"alice","password":"pw"}' "$C/api/v1/auth/login" >/dev/null
+curl -sf -c "$W/jar.bob" -H 'content-type: application/json' -d '{"username":"bob","password":"pw"}' "$C/api/v1/auth/login" >/dev/null
 after=$(fmt 'r["d2"]["format"]["progressPct"]')
 state=$(fmt 'r["d2"]["format"]["state"]')
 check "$state" "running" "still running after the restart"
