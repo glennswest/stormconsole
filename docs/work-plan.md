@@ -2693,7 +2693,7 @@ so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stor
 - Not seen: files written by stormpump on a real node, nor a sign-in through :9094 (that waits on stormcos#200).
 - The repair path (binding put back while the Secret already holds the install's hash) has no live check; §10b's
   binding came back by the replace path
-- Held after stormpump#242 (2026-11-19): image 8aa9e0b45642 @34b7005 built; the issue was reopened because it closed
+- Held after stormpump#242, then (stormpump#242 in_release, code 8e20682, not on a node) after install:stormpump>=8e20682 (2026-11-19): image 8aa9e0b45642 @34b7005 built; the issue was reopened because it closed
   before a live proof. When stormpump#242 lands: `shipped --proof 'api:/api/v1/namespaces/storm-users/serviceaccounts/stormcentral ~ "name":"stormcentral"'`
 
 
