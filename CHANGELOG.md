@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19 — Third-party chunks under assets/vendor/ (#366)
+- **fix:** the web build puts a chunk made only of third-party code (xterm, its fit addon, noVNC, IronRDP) under `web/dist/assets/vendor/`. stormcentral's stub sweep read xterm's own upstream marker (a method of its `JoinedCellData` the terminal never calls) as a stub of the console's; vendored code is outside what it reads.
+- **build:** `deploy/check-stubs.sh` (stormcentral#1455) runs in `cargo test` (`tests/no_stubs.rs`): a stub marker in a tracked file fails the build, and a negative control shows the check finds one.
+
 ### 2026-11-19 — A node's Network page (#336, stormcos#959)
 - **feat:** `#/node/<host>/network` (a **Network** button on the node page): every host port from stormpump's `NetworkPort` objects (stormpump#236) in a grid — link, speed, FEC in use and what holds it, module, whether its spec is applied, MAC — and a port's page with its state, driver and firmware, module (kind, vendor, part, compliance, length, temperature, rx/tx power in mW and dBm), the last change and who asked, every counter with its rate, and its charts. Read again every 3 s.
 - **feat:** a port's settings are changed from the page as a merge patch of its `spec`, **as the signed-in admin** (`PATCH /api/plugins/k8s/ports/{name}`), never on the console's credential; checked against the CRD's schema first, the apiserver's refusal said in its words. The node's answer comes back on the page (waiting, applying, applied, refused, partly applied). FEC is what the node applies today; MTU, speed, autoneg, pause and rings are offered with the warning that the node does not apply them yet (stormpump#246).

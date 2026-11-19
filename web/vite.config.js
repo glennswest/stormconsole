@@ -22,7 +22,15 @@ export default defineConfig({
     rollupOptions: {
       output: {
         entryFileNames: 'assets/app.js',
-        chunkFileNames: 'assets/[name].js',
+        // A chunk made only of third-party code (xterm, noVNC, IronRDP) is
+        // vendored, and lands under assets/vendor/: the stub check
+        // (deploy/check-stubs.sh, stormcentral#1455) reads our code, not
+        // upstream's internals (xterm's JoinedCellData throws its own
+        // marker for a method the terminal never calls), #366.
+        chunkFileNames: (chunk) =>
+          chunk.moduleIds.length && chunk.moduleIds.every((id) => id.includes('/node_modules/'))
+            ? 'assets/vendor/[name].js'
+            : 'assets/[name].js',
         assetFileNames: 'assets/app[extname]',
       },
     },

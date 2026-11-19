@@ -85,7 +85,10 @@ The SPA is built with Vite (`web/`, `npm ci && npx vite build`) into
 `web/dist/`, which is **committed** and embedded by `rust-embed`
 (`crates/stormconsole/src/server.rs`). A release build embeds it; a debug
 build reads `web/dist/` from disk. Rebuild and commit `web/dist/` with any
-change under `web/src/`. The live checks run the same way, each standing up
+change under `web/src/`. Chunks made only of third-party code (xterm, noVNC,
+IronRDP) land in `web/dist/assets/vendor/`. `cargo test` runs
+`deploy/check-stubs.sh` (stormcentral#1455), which fails on a stub marker in any
+tracked file outside tests and `vendor/`. The live checks run the same way, each standing up
 the real upstreams it needs on dev and deleting them after:
 
 | `sc-build deploy/…` | Checks |
