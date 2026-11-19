@@ -243,6 +243,15 @@ pub fn components(of_np: &HashMap<String, Value>, of_node: &HashMap<String, Valu
     out
 }
 
+/// One setting of a change, in words: `fec rs`, `mtu left to the node`.
+fn said(k: &str, v: &Value) -> String {
+    match v {
+        Value::Null => format!("{k} left to the node"),
+        Value::String(s) => format!("{k} {s}"),
+        v => format!("{k} {v}"),
+    }
+}
+
 fn answer(code: StatusCode, why: impl Into<String>) -> Response {
     (code, Json(json!({"error": why.into()}))).into_response()
 }
@@ -305,7 +314,7 @@ pub async fn change(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name):
             inner.store.observe(KIND, saved.clone()).await;
             let said: Vec<String> = patch["spec"]
                 .as_object()
-                .map(|m| m.iter().map(|(k, v)| if v.is_null() { format!("{k} left to the node") } else { format!("{k} {v}") }).collect())
+                .map(|m| m.iter().map(|(k, v)| said(k, v)).collect())
                 .unwrap_or_default();
             Json(json!({"message": format!("{name}: {}", said.join(", ")), "port": row(&saved)})).into_response()
         }
@@ -432,6 +441,13 @@ mod tests {
             let e = spec_patch(&bad).unwrap_err();
             assert!(e.contains(says), "{bad}: {e}");
         }
+    }
+
+    #[test]
+    fn a_change_in_words() {
+        assert_eq!(said("fec", &json!("rs")), "fec rs");
+        assert_eq!(said("mtu", &json!(null)), "mtu left to the node");
+        assert_eq!(said("mtu", &json!(9000)), "mtu 9000");
     }
 
     #[test]

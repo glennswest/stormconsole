@@ -27,7 +27,7 @@ pub mod logruns;
 pub mod objevents;
 pub mod pod;
 mod podpage;
-pub mod ports;
+mod ports;
 pub mod projects;
 pub mod stats;
 
