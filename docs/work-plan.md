@@ -2695,6 +2695,11 @@ so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stor
   binding came back by the replace path
 - Held after stormpump#242, then (stormpump#242 in_release, code 8e20682, not on a node) after install:stormpump>=8e20682 (2026-11-19): image 8aa9e0b45642 @34b7005 built; the issue was reopened because it closed
   before a live proof. When stormpump#242 lands: `shipped --proof 'api:/api/v1/namespaces/storm-users/serviceaccounts/stormcentral ~ "name":"stormcentral"'`
+- 2026-11-19 pvetest2 (12.96-flowsdn: console 34b7005, stormpump 178b6c4): `storm-users/stormcentral` 404, only
+  `admin`/`default`. The console logs "no users … configured": the registry config has no `[api]`
+  (`user_namespace`, `admin_password_file`), which stormcos#200 brings, so nothing is seeded. stormcos#200 is held
+  after #372, so `--after stormcos#200` was refused as a cycle. Shipped with the proof above, and the master was told. If the proof
+  fails before #200's lines land, re-hold it and re-ship with `--commit` once the registry carries `[api]`
 
 
 - [x] Node discovery from multicast presence — and the piece that was

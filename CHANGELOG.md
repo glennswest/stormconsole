@@ -3,6 +3,9 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19
+- **docs:** #372 checked on pvetest2 (12.96-flowsdn). The registry's stormconsole config has no `[api]` yet, so no users are seeded there; `install_users_dir` defaults only when `admin_password_file` is set. Seeding turns on with stormcos#200's registry lines. The README says so; v0.39.0's "no registry change" covered only the users directory.
+
 ## [v0.39.0] — 2026-11-19
 
 ### 2026-11-19 — Install-config users seeded (#372)
