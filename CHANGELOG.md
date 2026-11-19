@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.38.0] — 2026-11-19
+
 ### 2026-11-19 — A format's method and error log, live (#335)
 - **feat:** each format row (the Format page's running and ended runs, the Drives page's progress) says how stormdrive formats the drive (stormdrive#140, v0.47.0): the fast format, a full one after the drive refused the fast one (with its sense), a blocking full format, or already at the format. Its log's error lines (senses, refusals, retries, the fallback, resets, a failure) are always shown with their times; the whole log folds open under them.
 - **feat:** `GET /api/plugins/drive/formats/log?node=&id=`: a drive's whole format log from stormdrive's `/api/v1/drives/{id}/format/log` (the newest 500 lines, each with `atUnix`). The row reads it again each time the Drive object's 20-line `logTail` gains a line, so a refusal at the start of a 19 h format stays on the page.
