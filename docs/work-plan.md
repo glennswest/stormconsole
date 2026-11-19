@@ -2633,13 +2633,14 @@ module/driver/pause/lastChange/counters/Applied; stormport serves `storm_port_*`
 - Not seen: forge1's real ConnectX-4 Lx. The proof there is the issue's done-when, on a release carrying this console and stormport.
 - The rig's rustkube v0.15.3 sets no `metadata.generation` on CRs (every spec is `generation 0`); fixed in rustkube#198, so a newer apiserver says the generation.
 
-### The stub sweep reads our code, not xterm's (#366)
+### The stub sweep reads our code, not xterm's (#366) ✅ 2026-11-19
 The nightly sweep found `throw new Error("not implemented")` <!-- stub-sweep: allow -->
 in `web/dist/assets/xterm.js`: xterm 5.5.0's own `JoinedCellData.setFromCharData`, a method the
 terminal never calls. Upstream code, not a surface of ours; `check-stubs.sh` skips `vendor/`.
 - [x] vite: a chunk of only `node_modules` code goes to `assets/vendor/` (xterm, addon-fit, rfb, IronRDP)
 - [x] `deploy/check-stubs.sh` (stormcentral's) + `tests/no_stubs.rs`: `cargo test` refuses a marker, and a control proves it finds one
-- [ ] sc-build; web/dist rebuilt; check-stubs passes on the checkout; image
+- [x] sc-build 42e1bdc pass (no_stubs: 3 ok); web/dist rebuilt (7e30b49); check-stubs passes on the checkout; image requested
+- Filed stormcentral#1488: check-stubs.sh's grep drops the file name for a one-file batch (`-H`)
 
 ### Phase 4 — fleet/nodes plugin
 - [x] Node discovery from multicast presence — and the piece that was
