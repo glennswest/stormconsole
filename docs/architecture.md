@@ -2120,6 +2120,32 @@ The rack is the Node label `topology.storm.io/rack` (#43), and stormipmi sets it
 So the node page asks: where stormipmi answers and has a machine for this node, the rack is stormipmi's and the way to change it is Machines. Otherwise an admin sets the label, `PUT /api/plugins/k8s/nodes/{name}/rack`, a merge patch as the viewer and never the console's credential. The page offers that only
 where stormipmi has no machine for the node, so the two do not fight. If a location is recorded later it wins: stormipmi sets the label to it (`location::plan`), and only clearing a location leaves a label it did not set.
 
+### A node's host ports (#336, stormcos#959)
+
+`#/node/<host>/network` (the node page's **Network** button) is every physical port on the node, from stormpump's
+`NetworkPort` objects (`network.storm.io/v1alpha1`, cluster-scoped, `<node>-<ifname>`, stormpump#236). The node's
+`stormport` keeps them: it reads what PID 1 publishes (`ports.json`), writes `status`, and hands `spec` to PID 1, the
+port's one writer (stormcos#958), which applies it live. The console invents none of it.
+
+- **Read on the console's own credential**: `np` is a watched, optional kind (`networkports` get/list/watch in
+  `deploy/rbac/stormconsole.yaml`, the rule stormcos copies). `GET /api/plugins/k8s/nodes/{node}/ports` is that
+  node's objects (`spec.node`) as rows: link, speed, FEC (active, configured, wanted and from where), pause, the
+  module (SFF kind, vendor, part, compliance, length, temperature, rx/tx power per lane), driver/firmware/bus, the
+  last change and who asked, the counters, and the `Applied` condition. A port is also a feed row `k8s:np:<name>`:
+  warn when down (an unused port is down on purpose), error when its spec is refused or it is gone.
+- **A change is a merge patch of `spec`, as the signed-in admin** (`PATCH /api/plugins/k8s/ports/{name}`): admin on
+  this console, a kubernetes identity (never the console's credential, whose role has no patch), and `patch
+  networkports` at the apiserver, whose refusal is said in its words. The values are checked against the CRD's
+  schema first; `null` hands a setting back to the node. The page reads again every 3 s, so the node's answer
+  (Pending, Applying, Applied, Refused, NotSupported) comes back by itself. **Only `fec` is applied by the node
+  today**; the form says so of the rest before it is sent, and the condition says `not applied yet`
+  (stormpump#246).
+- **Charts** are the metrics plugin's `?entity=port&node=&ifname=` over stormport's `storm_port_*` (ironprom job
+  `stormport`): link, FEC mode, FEC corrected and uncorrectable blocks, errors, drops, traffic, packets, pause, speed,
+  module temperature and optical power; each counter a line by `label_replace`. The Network level has every port's
+  link, FEC uncorrectable blocks, errors and traffic. A port's history is in its own node's ironprom, so the charts
+  are on that node's console.
+
 ### The engine over TLS (#160)
 
 `console_core::engine::Engine` is the one way to `:9090`, for the stormblock plugin and its proxy, the Registry page's holdings and the Update page's generations. The URL's scheme decides: `http://` as
@@ -2142,8 +2168,8 @@ a node moves: stormcos changes the engine's URL and CA together when its pair is
 
 The node's ironprom (#46, stormcos#64, `[ironprom]`, :9091): `/api/v1/targets` every 15 s, `/api/v1/query_range` when a page asks.
 `#/metrics` has **Targets** (every job with `up` and its last error, down first) and a tab of **charts per level**: drives, volumes,
-containers, API server, datastore, VMs, network. `?entity=drive|pod|vm` is one object's series, linked from the Drives page, the pod
-page's Stats tab and the VM page.
+containers, API server, datastore, VMs, network (with the node's host ports, #336). `?entity=drive|pod|vm|port` is one object's series,
+linked from the Drives page, the pod page's Stats tab, the VM page and a node's Network page.
 
 - **Disk I/O, reads and writes apart (#265).** Bytes/s and operations/s, four charts each, never a total. A node's disks come from cadvisor (`job="cadvisor"`, `id="/"`), the root cgroup's `io.stat`, whole devices it can name; a row it cannot name is left out rather than read as a total. A container's and a pod's come from the kubelet in cAdvisor's names, which it does not export yet (rustkube-node#323); the standalone cadvisor has them only by cgroup path, which can't be limited to a project. A drive's bytes are SMART's for NVMe only, and every kind's bytes and operations wait on stormdrive#120. A VM's come from stormvm. A volume's are by operation across the engine (stormblock#536). A chart with nothing names what it waits on; the pod page's Stats tab has these four charts too.
 - **No free query.** The queries are held in `plugins/metrics/src/panels.rs` and the page names a level or an object. ironprom answers

@@ -2619,15 +2619,15 @@ stormpump#236 (main 43b3e23) + stormcos#960: `network.storm.io/v1alpha1` `Networ
 `<node>-<ifname>`, `spec.{node,ifname,mac,fec,autoneg,speed,mtu,pause,rings,offloads}`, status link/speed/fec/
 module/driver/pause/lastChange/counters/Applied; stormport serves `storm_port_*` on 127.0.0.1:9112, ironprom job
 `stormport`. Only `fec` is applied today; the rest is reported `not applied yet` (stormpump#246).
-- [ ] k8s plugin: `np` in the watch cache (console credential: get/list/watch networkports, the rule
+- [x] k8s plugin: `np` in the watch cache (console credential: get/list/watch networkports, the rule
       stormcos#959 copies); `GET /nodes/{name}/ports` (rows, what this viewer may change);
       `PATCH /ports/{name}` = merge patch of `spec` **as the signed-in user** (admin, own identity), values
       checked against the CRD's schema, the apiserver's refusal said
-- [ ] metrics: `Entity::Port {node, ifname}` (link, speed, FEC mode, FEC blocks, errors, drops, traffic,
+- [x] metrics: `Entity::Port {node, ifname}` (link, speed, FEC mode, FEC blocks, errors, drops, traffic,
       pause, module temperature and power) and port panels on the Network level
-- [ ] web: `#/node/<host>/network` — DataGrid of ports, a port's settings/state/module/counters, an edit form
+- [x] web: `#/node/<host>/network` — DataGrid of ports, a port's settings/state/module/counters, an edit form
       (FEC applied; the rest says not applied yet), Applied condition coming back live, the port's charts
-- [ ] RBAC yaml + rbac.rs + docs/rbac.md; README, architecture, CHANGELOG; verify script with a stand-in
+- [x] RBAC yaml + rbac.rs + docs/rbac.md; README, architecture, CHANGELOG; `verify-node-network.sh` (real stormport + ironprom, PID 1 stand-in) + `node-network.cjs`
 - [ ] sc-build; web/dist; image; close with the RBAC answer for stormcos#959
 
 ### Phase 4 — fleet/nodes plugin

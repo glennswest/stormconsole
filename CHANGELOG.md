@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-19 — A node's Network page (#336, stormcos#959)
+- **feat:** `#/node/<host>/network` (a **Network** button on the node page): every host port from stormpump's `NetworkPort` objects (stormpump#236) in a grid — link, speed, FEC in use and what holds it, module, whether its spec is applied, MAC — and a port's page with its state, driver and firmware, module (kind, vendor, part, compliance, length, temperature, rx/tx power in mW and dBm), the last change and who asked, every counter with its rate, and its charts. Read again every 3 s.
+- **feat:** a port's settings are changed from the page as a merge patch of its `spec`, **as the signed-in admin** (`PATCH /api/plugins/k8s/ports/{name}`), never on the console's credential; checked against the CRD's schema first, the apiserver's refusal said in its words. The node's answer comes back on the page (waiting, applying, applied, refused, partly applied). FEC is what the node applies today; MTU, speed, autoneg, pause and rings are offered with the warning that the node does not apply them yet (stormpump#246).
+- **feat:** metrics: `?entity=port&node=&ifname=` charts a port from stormport's `storm_port_*` (link, FEC mode, FEC corrected/uncorrectable blocks, errors, drops, traffic, packets, pause, speed, module temperature and optical power); the Network level gains every host port's link, FEC uncorrectable blocks, errors and traffic; the `stormport` target is on the Network level.
+- **feat:** each port is a feed row (`k8s:np:<name>`): warn when down, error when its spec is refused or the port is gone, linking to its page.
+- **feat:** the console's role reads `networkports` (`network.storm.io`, get/list/watch) — the rule stormcos copies (stormcos#959). It has no patch: a change is the signed-in user's.
+- **test:** `deploy/verify-node-network.sh` — the real stormport and ironprom, the CRD as stormcos copies it, a PID 1 stand-in, and a browser walk (`node-network.cjs`).
+
 ## [v0.37.0] — 2026-11-18
 
 ### 2026-11-18 — Traceability both ways (#347)
