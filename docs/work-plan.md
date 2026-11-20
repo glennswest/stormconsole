@@ -2816,6 +2816,16 @@ query leaves the console, and a project the viewer may not see is still `no proj
   about the pinned stormview@0.4.0, fixed upstream in stormview#14
 - Not seen: two real nodes. A pvetest node alone has no other node to chart; the proof on ship is the answer's `node`
 
+### Drive and set Integrity panel, BitRot alarm (#368) — held 2026-11-20
+Read, not built: no part's data reaches the console on a node yet (a panel with nothing to show is a stub).
+stormraid v0.27.0 writes `status.integrity`, `members[].integrity` and condition `BitRot`, but the node's RaidSet
+CRD prunes all three (stormcos#1017). No node scrapes stormraid's 127.0.0.1:9470 `/metrics` (filed stormcos#1466);
+retention and rules are ironprom#53. The drive's own PI counters (stormblock#648) are only in this node's engine,
+not on the Drive object (stormdrive#149's addendum). Proposed `--after stormcos#1017, stormcos#1466`.
+- [ ] when it comes back: the drive page's Integrity panel (member counters from its RaidSet, lifetime and per
+      day, beside the drive's own errors), a RaidSet page (totals, last/next scrub, members), `BitRot` on the
+      alarm bar like `LinkFailing`, the trend charts (stormraid job)
+
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
       (v0.22.0, #29)
