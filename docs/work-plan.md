@@ -2741,6 +2741,8 @@ console that made it; another node's sweep asked only "deleted or disabled?".
       password signs in there; a hash written by hand (as `sc` does) too
 - [x] sc-build 0b28bcc: build + every test pass, no warnings; `sc-build
       deploy/verify-users.sh` 0b28bcc: 0 failed (§9a, §9b, browser walk). v0.39.1; image requested
+- Held after stormcos#200 (2026-11-19): image build 42f2b1fd9d60 carries it;
+  the two-pvetest-node check comes back once sign-in is on there.
 - Not seen: two real pvetest nodes. The two consoles in verify-users.sh share one
   real rustkube, which is what two nodes share; a pvetest two-node run waits on
   sign-in being on there (stormcos#200) and a test identity able to reset a password.
