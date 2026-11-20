@@ -2727,6 +2727,19 @@ so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stor
       Cluster page (#63, #84, #88), written as `cluster.storm.io` objects.
       A member changing a real node waits on stormcos#38
 
+### A password reset ends the user's sessions on every node (#374) — 2026-11-19
+Review finding 51c1602a85c5: a reset ended the user's sessions only on the
+console that made it; another node's sweep asked only "deleted or disabled?".
+- [ ] Each apiserver session carries the SHA-256 of the hash it signed in
+      against; `Users::still` also reads `<name>-password`, and the 30 s
+      sweep on every node ends a session whose stamp is not the Secret's
+      (a reset here, on another node, or by `sc user`), or whose Secret is gone
+- [ ] The administrator's own session, kept on a reset of their own
+      password, takes the new stamp so the sweep keeps it
+- [ ] Unit tests: two nodes' session stores, one reset; `verify-users.sh` §9:
+      a reset on n1 ends dave's session on n2 within the sweep, the new
+      password signs in there; a hash written by hand (as `sc` does) too
+
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
       (v0.22.0, #29)
