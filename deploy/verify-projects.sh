@@ -325,6 +325,28 @@ printf 'alice, a project named storm-mine: '; c POST /api/plugins/k8s/projects '
 printf 'alice, a project she does not see, its secrets: '; c GET /api/plugins/k8s/projects/storm-assets/secrets
 printf 'bob, secrets of alice-work: '; WHO=bob; c GET /api/plugins/k8s/projects/alice-work/secrets; WHO=alice
 
+say "7c. a node service's own project (stormcos#1020): storm-block, as 08-projects.yaml makes it"
+# stormcos#1020: one project per node service, storm-<component>, labelled
+# storm.io/system; the kubelet mirrors the service's pod into it
+# (rustkube-node#418). An admin sees it among the system projects with its
+# pod and events; a user's list stays theirs alone.
+k POST /api/v1/namespaces '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"storm-block","labels":{"addonmanager.kubernetes.io/mode":"Reconcile","storm.io/system":"true"}}}'
+k POST /api/v1/namespaces/storm-block/pods '{"apiVersion":"v1","kind":"Pod","metadata":{"name":"stormblock-n1","annotations":{"kubernetes.io/config.mirror":"stormd"}},
+  "spec":{"nodeName":"n1","containers":[{"name":"stormblock","image":"stormblock"}]}}'
+k POST /api/v1/namespaces/storm-block/events '{"apiVersion":"v1","kind":"Event","metadata":{"name":"stormblock-n1.started"},
+  "involvedObject":{"kind":"Pod","name":"stormblock-n1","namespace":"storm-block"},"reason":"Started","message":"stormblock started","type":"Normal"}'
+sleep 6
+as root
+want "an admin sees storm-block, marked system" 'any(p["name"]=="storm-block" and p["system"] for p in d["system"]) and not any(p["name"]=="storm-block" for p in d["projects"])' /api/plugins/k8s/projects
+want "its page says system and counts its pod" 'd["system"] is True and any(i["kind"]=="pod" and i["count"]==1 for i in d["inventory"])' /api/plugins/k8s/namespaces/storm-block
+want "and has its events" 'any(e["reason"]=="Started" and e["object"]=="Pod/stormblock-n1" for e in d["events"])' /api/plugins/k8s/namespaces/storm-block
+want "the feed has the service's pod, in its project" 'any(c["id"]=="k8s:pod:storm-block/stormblock-n1" and any(r["name"]=="namespace" and r["targets"]==["k8s:ns:storm-block"] for r in c["relations"]) for c in d)' /api/v1/components
+as alice
+want "alice's list has none of it" 'not any(p["name"]=="storm-block" for p in d["system"] + d["projects"])' /api/plugins/k8s/projects
+code=$(curl -s -o /dev/null -w '%{http_code}' -b "$W/jar.alice" "http://127.0.0.1:$P/api/plugins/k8s/projects/storm-block")
+case "$code" in 403|404) echo "  ok   nor its page ($code)";; *) echo "  FAIL alice opened storm-block's page ($code)"; RC=1;; esac
+want "nor its pod in her feed" 'not any(c["id"].startswith("k8s:pod:storm-block/") for c in d)' /api/v1/components
+
 say "7b. the pages in a browser (#58)"
 deploy/browser/run.sh "$W" projects.cjs "http://127.0.0.1:$P" ROUTE_SERVED=$ROUTE_SERVED || RC=1
 

@@ -102,6 +102,9 @@ walk('projects', async (t) => {
   }
   t.check(!/system/i.test(await row('alice-work').innerText()), 'alice-work is not', await row('alice-work').innerText())
   t.check(/\d+ pods?/.test(await row('alice-work').innerText()), 'a row says what the project holds', await row('alice-work').innerText())
+  // A node service's own project (stormcos#1020): marked system, holding its pod.
+  t.check(await t.until(async () => /system/i.test(await row('storm-block').innerText()) && /1 pod\b/.test(await row('storm-block').innerText())),
+    "storm-block, a node service's project, is marked system and holds its pod", await row('storm-block').innerText())
   await t.shot(root, 'projects-all')
   const which = root.locator('select[aria-label="Which projects"]')
   await which.selectOption('system')
@@ -156,4 +159,9 @@ walk('projects', async (t) => {
   // A system project takes no Create from its page.
   await t.open(root, '#/k8s/ns/kube-system', /Inventory/)
   t.check(/system project/i.test(await t.text(root)), 'a system project says so on its page')
+  await t.open(root, '#/k8s/ns/storm-block', /Inventory/)
+  t.check(/system project/i.test(await t.text(root)), "storm-block's page says system project")
+  await root.locator('nav.tabs button', { hasText: 'Events' }).click()
+  t.check(await t.until(async () => /stormblock started/.test(await t.text(root))), "its Events tab has the service's event")
+  await t.shot(root, 'project-storm-block')
 })
