@@ -2816,7 +2816,7 @@ query leaves the console, and a project the viewer may not see is still `no proj
   about the pinned stormview@0.4.0, fixed upstream in stormview#14
 - Not seen: two real nodes. A pvetest node alone has no other node to chart; the proof on ship is the answer's `node`
 
-### Drive and set Integrity panel, BitRot alarm (#368) — held 2026-11-20
+### Drive and set Integrity panel, BitRot alarm (#368) — shipped 2026-11-20 (v0.40.0)
 Read, not built: no part's data reaches the console on a node yet (a panel with nothing to show is a stub).
 stormraid v0.27.0 writes `status.integrity`, `members[].integrity` and condition `BitRot`, but the node's RaidSet
 CRD prunes all three (stormcos#1017). No node scrapes stormraid's 127.0.0.1:9470 `/metrics` (filed stormcos#1466);
@@ -2830,7 +2830,7 @@ the drive's own PI/defect counters (waits on the Drive object's `status.health`,
 charts (stormcos#1466).
 - [x] `integrity.rs`: rows, per-day, alarm; `GET /api/plugins/drive/integrity`; raidsets read in the role (68c7c1c; sc-build pass)
 - [x] drive page Integrity panel; `#/drives/integrity` (every set, `?set=` one); alarm bar (68c7c1c)
-- [ ] `deploy/verify-drive-integrity.sh` (stand-in apiserver + stormdrive, Chromium), sc-build
+- [x] `deploy/verify-drive-integrity.sh` (real rustkube + stormraid's CRD, the role, Chromium): 0 failed (sc-build-b685827593); clippy -D warnings, vite clean; v0.40.0 (3f728ce), image 45c3d14fdc72, shipped (proof: the node's SPA has `drives/integrity`)
 - [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466`
 
 ### Phase 5 — storage & images plugins ✅
