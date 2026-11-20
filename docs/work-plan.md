@@ -2745,15 +2745,17 @@ console that made it; another node's sweep asked only "deleted or disabled?".
   real rustkube, which is what two nodes share; a pvetest two-node run waits on
   sign-in being on there (stormcos#200) and a test identity able to reset a password.
 
-### Node services' own projects (#375, stormcos#1020) — 2026-11-19
+### Node services' own projects (#375, stormcos#1020) ✅ 2026-11-19
 Already the console's behaviour (#162): `/api/plugins/k8s/projects` returns the
 `system` projects the apiserver lists for the viewer (rustkube: every
 namespace to one who may list them all, a user only their own), marked, with
 the all/mine/system filter, and each one's page has its inventory, events and
 YAML. `storm-*` is a system prefix already, and every 08-projects.yaml name is `storm-*`.
-- [ ] `verify-projects.sh` §7c + browser: storm-block (labelled), a mirror pod,
+- [x] `verify-projects.sh` §7c + browser: storm-block (labelled), a mirror pod,
       an event — admin sees it all, alice none
-- [ ] sc-build verify-projects.sh; close with what was seen
+- [x] `sc-build deploy/verify-projects.sh` f19b627: exit 0, browser 0 failed
+- Found: a namespace made outside the console stays hidden for up to the authz
+  cache's 30 s (17 s here), admins included: filed #378
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive

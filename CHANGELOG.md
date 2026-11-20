@@ -6,6 +6,7 @@
 ### 2026-11-19 — Node services' own projects (#375, stormcos#1020)
 - **test:** `verify-projects.sh` §7c and its browser walk check stormcos#1020's shape on a real rustkube: `storm-block`, labelled `storm.io/system` as `08-projects.yaml` makes it, holding a mirrored service pod and its event. An admin sees it among the system projects with its pod, events and feed entry, and the Projects page shows it marked system with "1 pod"; a user (alice) sees none of it, and her request for its page is refused. No code change: the console has listed system projects to whoever the apiserver lets list them, marked and filterable, since #162, and `storm-*` is already a system prefix.
 - **docs:** the README's Projects line names the node services' `storm-<component>` projects.
+- **test:** §7c waits for the console's cache to hold the new project rather than sleeping 6 s. It took 17 s: the access answer is cached for 30 s over the old namespace list, filed as #378.
 
 ## [v0.39.1] — 2026-11-19
 
