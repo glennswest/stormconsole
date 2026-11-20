@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.39.1] — 2026-11-19
+
 ### 2026-11-19 — A password reset ends the user's sessions on every node (#374)
 - **fix:** a password reset on one console left that user's sessions on the other consoles valid (review finding 51c1602a85c5): their sweep asked only whether the user was deleted or disabled. Each apiserver session now carries the SHA-256 of the hash it signed in against; every console's 30 s sweep also reads `<name>-password` and ends a session whose stamp is no longer the Secret's (a reset on any node's Users page, or a hash written by `sc user`), or whose Secret is gone. The administrator's own session, kept on a reset of their own password, takes the new stamp. Logged as `password changed on the apiserver: signed out`.
 - **test:** unit tests for two nodes' session stores and for the sweep's verdict on the account and Secret; `verify-users.sh` §9a/§9b on a real rustkube with two consoles: a reset on n1 ends dave's session on n2 within the sweep and the new password signs in there, sessions on the new password outlive the next sweep, and a hash written straight to the Secret ends them on both.
