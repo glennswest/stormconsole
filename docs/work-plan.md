@@ -2822,9 +2822,16 @@ stormraid v0.27.0 writes `status.integrity`, `members[].integrity` and condition
 CRD prunes all three (stormcos#1017). No node scrapes stormraid's 127.0.0.1:9470 `/metrics` (filed stormcos#1466);
 retention and rules are ironprom#53. The drive's own PI counters (stormblock#648) are only in this node's engine,
 not on the Drive object (stormdrive#149's addendum). Proposed `--after stormcos#1017, stormcos#1466`.
-- [ ] when it comes back: the drive page's Integrity panel (member counters from its RaidSet, lifetime and per
-      day, beside the drive's own errors), a RaidSet page (totals, last/next scrub, members), `BitRot` on the
-      alarm bar like `LinkFailing`, the trend charts (stormraid job)
+Back 2026-11-20: stormcos#1017 shipped (e03afd4, stage f616befed570), so a node's RaidSet keeps `integrity`,
+`members[].integrity` and `conditions`. Building now, in the drive plugin (`integrity.rs`): RaidSets read on the
+console's credential once a minute from the apiserver, members matched to drives by WWN on the set's node, per-day
+deltas from samples the console keeps (25 h), `BitRot` as an alarm row like the link's. Split off, each held:
+the drive's own PI/defect counters (waits on the Drive object's `status.health`, stormdrive#149) and the trend
+charts (stormcos#1466).
+- [ ] `integrity.rs`: rows, per-day, alarm; `GET /api/plugins/drive/integrity`; raidsets read in the role
+- [ ] drive page Integrity panel; `#/drives/integrity` (every set, `?set=` one); alarm bar
+- [ ] `deploy/verify-drive-integrity.sh` (stand-in apiserver + stormdrive, Chromium), sc-build
+- [ ] two follow-up issues filed and held
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
