@@ -102,3 +102,5 @@ assert.equal(actions({ desiredRelease: '12.61' }, { phase: 'Failed', currentRele
 assert.equal(actions({ desiredRelease: '12.61' }, { phase: 'Completed', currentRelease: '12.61' }).cancel, false, 'done: nothing to cancel')
 assert.deepEqual(nodeSteps({ phase: 'Cancelled' }), [{ step: 'Cancelled', word: 'Cancelled', state: 'warn' }])
 assert.equal(historyRows({ history: [{ result: 'Cancelled', started: 1, finished: 2 }] })[0].tone, 'warn')
+assert.equal(actions({ desiredRelease: '12.61' }, { phase: 'RolledBack', currentRelease: '12.60', previousRelease: '12.58' }).cancel, false, 'rolled back: nothing to cancel')
+assert.equal(actions({ desiredRelease: '12.61', rollback: true }, { phase: 'Failed', currentRelease: '12.60' }).cancel, false, 'nor once a rollback is asked')

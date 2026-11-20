@@ -116,6 +116,7 @@ walk(`update (${PHASE})`, async (t) => {
     const h = page.locator('section[aria-label="History"]')
     t.check(/12\.60[\s\S]*12\.61[\s\S]*RolledBack[\s\S]*workloads did not come back/.test(await h.innerText()), 'history: the result and why', await h.innerText())
     t.check(/Completed/.test(await h.innerText()) && /1m 40s/.test(await h.innerText()), 'and the run before it, with how long it took', await h.innerText())
+    t.check((await page.getByRole('button', { name: /Cancel this update/ }).count()) === 0, 'rolled back: no Cancel')
     await t.shot(page, 'update-back')
     await page.getByRole('button', { name: /Roll back to/ }).click()
     t.check(await has(/Asked on this console[\s\S]*rollback/i), 'rollback asks first, and is recorded')

@@ -79,7 +79,8 @@ export function actions(spec, st) {
     // A pull that stopped the run moved nothing, so there is nothing to roll back.
     rollback: !!st?.previousRelease && phase !== 'RollingBack' && phase !== 'Cancelling' && !st?.rollbackRun && prePull(st)?.state !== 'stopped',
     // Before any node is told to reboot; after, the way back is a rollback (#196).
-    cancel: !spec?.cancel && !st?.rollbackRun && (((phase === 'Progressing' || phase === 'Paused') && !pastReboot(st)) || waitingToStart(spec, st)),
+    // Not after a rollback: that run is over, and the spec's release is the one left.
+    cancel: !spec?.cancel && !spec?.rollback && !st?.rollbackRun && phase !== 'RolledBack' && (((phase === 'Progressing' || phase === 'Paused') && !pastReboot(st)) || waitingToStart(spec, st)),
   }
 }
 

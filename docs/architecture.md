@@ -1537,7 +1537,7 @@ stormupdate` (name `update`) and `#/update` (Compute → Update), over stormupda
   node is past the reboot by stormupdate's own rule (`cancel_check`: `Verifying`, `Done`
   after a request, off the walk, or `Upgrading` with the agent `rebooting`/`restarting`/
   `done` or the run in place), and on a request not yet started (`desiredRelease` not
-  what runs). Never on a rollback, or once asked (`spec.cancel`). It asks first, with
+  what runs). Never on a rollback or after one (`RolledBack`, `spec.rollback`), or once asked (`spec.cancel`). It asks first, with
   an optional reason. stormupdate's history names only the token, so the console sends
   `by <user> on the console: <reason>`. stormupdate decides: a 409 is shown as
   `cannot cancel: <node> …: roll back instead`, with Roll back beside it. `Cancelling`
