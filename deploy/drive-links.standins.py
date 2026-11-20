@@ -78,7 +78,7 @@ def conditions(d, l):
 def obj(d):
     l = link(d)
     return {"apiVersion": "storage.storm.io/v1", "kind": "Drive", "metadata": {"name": d["id"]},
-            "status": {"name": d["name"], "serial": d["serial"], "bay": d["bay"], "enclosure": "shelf0", "link": l,
+            "status": {"name": d["name"], "serial": d["serial"], "bay": d["bay"], "enclosure": "shelf0", "wwid": f"naa.{d['id']}", "link": l,
                        "conditions": conditions(d, l)}}
 
 

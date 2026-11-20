@@ -1,0 +1,855 @@
+# stormraid's RaidSet CRD, verbatim from glennswest/stormraid@83b7e19 deploy/crds.yaml (v0.27.0, stormraid#80),
+# the one stormcos#1017 ships as 94-stormraid-crds.yaml. For deploy/verify-drive-integrity.sh (#368).
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: raidsets.storage.storm.io
+spec:
+  group: storage.storm.io
+  names:
+    categories: []
+    kind: RaidSet
+    plural: raidsets
+    shortNames:
+    - raid
+    singular: raidset
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.node
+      name: Node
+      type: string
+    - jsonPath: .spec.parity
+      name: Parity
+      type: integer
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.device
+      name: Device
+      type: string
+    - jsonPath: .status.message
+      name: Message
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for RaidSetSpec via `CustomResource`
+        properties:
+          spec:
+            description: A RAID set on one node's drives. Its name is the set's name.
+            properties:
+              autoReplace:
+                default: false
+                description: 'A new blank drive put in the bay of a failed member (same enclosure and slot, another WWN) is taken as the set''s spare and rebuilt onto (#28). Off: it is reported in the status message instead.'
+                type: boolean
+              chunkKiB:
+                default: 64
+                format: uint64
+                minimum: 0.0
+                type: integer
+              drives:
+                description: The member drives, in slot order. More drives grow the set; a drive put in another's place replaces it, by copying.
+                items:
+                  description: 'A drive, the way an operator names it: by WWN (best), by enclosure and bay, or by device path.'
+                  properties:
+                    bay:
+                      nullable: true
+                      type: string
+                    enclosure:
+                      nullable: true
+                      type: string
+                    path:
+                      nullable: true
+                      type: string
+                    wwn:
+                      nullable: true
+                      type: string
+                  type: object
+                type: array
+              force:
+                default: false
+                description: Take drives that hold another set or a partition table.
+                type: boolean
+              journal:
+                default: []
+                description: The journal on its own devices (an NVMe partition, or two).
+                items:
+                  description: 'A drive, the way an operator names it: by WWN (best), by enclosure and bay, or by device path.'
+                  properties:
+                    bay:
+                      nullable: true
+                      type: string
+                    enclosure:
+                      nullable: true
+                      type: string
+                    path:
+                      nullable: true
+                      type: string
+                    wwn:
+                      nullable: true
+                      type: string
+                  type: object
+                type: array
+              journalMiB:
+                default: 64
+                description: Journal per drive.
+                format: uint64
+                minimum: 0.0
+                type: integer
+              node:
+                description: The node whose drives hold the set (the controller there acts on it).
+                type: string
+              parity:
+                default: 1
+                description: 1 (like RAID5) or 2 (like RAID6).
+                format: uint8
+                minimum: 0.0
+                type: integer
+              pi:
+                default: 'off'
+                description: 'T10 PI (#54): `off` (the default) or `type1`. With `type1` every member, spare and later drive must be formatted with T10 PI type 1 (the same integrity profile and sector size); the kernel writes and checks the protection field on every block. Fixed at creation.'
+                type: string
+              scrubEvery:
+                description: 'A background scrub pass at most this often (#80): `7d`, `24h`, `30m`, `90s`, or `off` for passes back to back. Unset: the daemon''s `--scrub-every` (7d by default). A pass runs at the set''s scrub rate and share, so the integrity counters move without anyone asking.'
+                nullable: true
+                type: string
+              scrubRequest:
+                description: 'A full L3 scrub on request (#71): set it to a new value (any token, a date say) and the node''s daemon scrubs every stripe once, online, and puts the result in `status.lastScrub` under the same token. The same token again does nothing; a new one scrubs again.'
+                nullable: true
+                type: string
+              spares:
+                default: []
+                items:
+                  description: 'A drive, the way an operator names it: by WWN (best), by enclosure and bay, or by device path.'
+                  properties:
+                    bay:
+                      nullable: true
+                      type: string
+                    enclosure:
+                      nullable: true
+                      type: string
+                    path:
+                      nullable: true
+                      type: string
+                    wwn:
+                      nullable: true
+                      type: string
+                  type: object
+                type: array
+              wipeOnDelete:
+                default: false
+                description: 'Deleting the object destroys the set (#33): its drives'' superblocks, checkpoints and journal heads are erased, so they read as blank. Off (the default): the set is only stopped, the data stays. Who may set it is RBAC''s to decide (stormcos#250: `storage-admin`).'
+                type: boolean
+              writeCache:
+                description: 'A volatile write cache (#37). `false` (and unset, with the daemon''s default): every write is durable when it completes. `true`: a full-stripe write completes once its journal intent is durable and its data has been sent to the drives, before they flush it; it is durable after the next FLUSH (or a FUA write) from above, which filesystems and stormblock send, or within a second on its own. A power cut can lose such a write as a disk with a write cache can, never tear a stripe: its intent replays it whole or not at all. Small writes (the journal) stay durable on completion either way. Takes effect live; turning it off flushes what it holds.'
+                nullable: true
+                type: boolean
+            required:
+            - drives
+            - node
+            type: object
+          status:
+            nullable: true
+            properties:
+              capacityBytes:
+                default: 0
+                format: uint64
+                minimum: 0.0
+                type: integer
+              conditions:
+                description: '`Ready` (the set is served: True with the phase as reason, or False and why) and `Reconciled` (the spec is carried out: False with the reason a step is waiting or refused, e.g. `DeviceInUse`). A refusal in `message` goes away with the condition that raised it (#78).'
+                items:
+                  description: A status condition, as Kubernetes objects carry them (#78).
+                  properties:
+                    lastTransitionTime:
+                      description: When `status` last changed (RFC 3339).
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    reason:
+                      type: string
+                    status:
+                      description: '`True` or `False`.'
+                      type: string
+                    type:
+                      description: '`Ready`, `Reconciled` or `BitRot` (#80: True while a member''s mismatches or repairs rose in the last scrub pass or the last 24 h).'
+                      type: string
+                  required:
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              device:
+                nullable: true
+                type: string
+              integrity:
+                description: Lifetime integrity counters and the background scrub (#80).
+                nullable: true
+                properties:
+                  lastScrubPass:
+                    description: A background scrub pass (#80).
+                    nullable: true
+                    properties:
+                      completedAt:
+                        nullable: true
+                        type: string
+                      mismatches:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      repaired:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      startedAt:
+                        type: string
+                      stripes:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      unrecoverableRows:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                    required:
+                    - mismatches
+                    - repaired
+                    - startedAt
+                    - stripes
+                    - unrecoverableRows
+                    type: object
+                  members:
+                    default: []
+                    items:
+                      description: One member drive's share, by slot and WWN (#80).
+                      properties:
+                        counts:
+                          description: Lifetime integrity counters of a set or a member drive (#80). The `last…` times are when each last rose (RFC 3339).
+                          properties:
+                            blocksRepaired:
+                              description: Blocks rewritten on the drive with what parity gave back.
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            checksumMismatches:
+                              description: 'Blocks that did not match their checksum (or that parity or the chunk hash showed wrong): bit rot found.'
+                              properties:
+                                l1:
+                                  description: On the read path.
+                                  format: uint64
+                                  minimum: 0.0
+                                  type: integer
+                                l2:
+                                  description: Verifying a freshly written stripe.
+                                  format: uint64
+                                  minimum: 0.0
+                                  type: integer
+                                l3:
+                                  description: The scrub.
+                                  format: uint64
+                                  minimum: 0.0
+                                  type: integer
+                              required:
+                              - l1
+                              - l2
+                              - l3
+                              type: object
+                            lastMismatch:
+                              nullable: true
+                              type: string
+                            lastPiError:
+                              nullable: true
+                              type: string
+                            lastReadError:
+                              nullable: true
+                              type: string
+                            lastRepair:
+                              nullable: true
+                              type: string
+                            lastUnrecoverable:
+                              nullable: true
+                              type: string
+                            lastWriteError:
+                              nullable: true
+                              type: string
+                            piErrors:
+                              description: I/O that failed its T10 PI check (the kernel reports guard, application and reference tag failures alike, as EILSEQ).
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            readErrors:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            unrecoverableRows:
+                              description: Rows with more bad blocks than parity (the set's only).
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            writeErrors:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                          required:
+                          - blocksRepaired
+                          - checksumMismatches
+                          - piErrors
+                          - readErrors
+                          - writeErrors
+                          type: object
+                        path:
+                          type: string
+                        slot:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        wwn:
+                          nullable: true
+                          type: string
+                      required:
+                      - counts
+                      - path
+                      type: object
+                    type: array
+                  nextScrub:
+                    description: When the next pass begins (none while one runs).
+                    nullable: true
+                    type: string
+                  scrubEvery:
+                    description: The pass interval in effect (`7d`, `off`).
+                    type: string
+                  scrubPasses:
+                    description: 'Passes completed. (Progress within a pass is in `/metrics`, as `stormraid_scrub_stripes_scanned_total`: here it would rewrite the object every few seconds of a pass that takes days.)'
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  scrubbing:
+                    description: A background pass is running now.
+                    type: boolean
+                  totals:
+                    description: Lifetime integrity counters of a set or a member drive (#80). The `last…` times are when each last rose (RFC 3339).
+                    properties:
+                      blocksRepaired:
+                        description: Blocks rewritten on the drive with what parity gave back.
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      checksumMismatches:
+                        description: 'Blocks that did not match their checksum (or that parity or the chunk hash showed wrong): bit rot found.'
+                        properties:
+                          l1:
+                            description: On the read path.
+                            format: uint64
+                            minimum: 0.0
+                            type: integer
+                          l2:
+                            description: Verifying a freshly written stripe.
+                            format: uint64
+                            minimum: 0.0
+                            type: integer
+                          l3:
+                            description: The scrub.
+                            format: uint64
+                            minimum: 0.0
+                            type: integer
+                        required:
+                        - l1
+                        - l2
+                        - l3
+                        type: object
+                      lastMismatch:
+                        nullable: true
+                        type: string
+                      lastPiError:
+                        nullable: true
+                        type: string
+                      lastReadError:
+                        nullable: true
+                        type: string
+                      lastRepair:
+                        nullable: true
+                        type: string
+                      lastUnrecoverable:
+                        nullable: true
+                        type: string
+                      lastWriteError:
+                        nullable: true
+                        type: string
+                      piErrors:
+                        description: I/O that failed its T10 PI check (the kernel reports guard, application and reference tag failures alike, as EILSEQ).
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      readErrors:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      unrecoverableRows:
+                        description: Rows with more bad blocks than parity (the set's only).
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      writeErrors:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                    required:
+                    - blocksRepaired
+                    - checksumMismatches
+                    - piErrors
+                    - readErrors
+                    - writeErrors
+                    type: object
+                required:
+                - scrubEvery
+                - scrubPasses
+                - scrubbing
+                - totals
+                type: object
+              lastScrub:
+                description: The last scrub asked for with `spec.scrubRequest` (#71).
+                nullable: true
+                properties:
+                  blocksRepaired:
+                    default: 0
+                    description: Blocks rewritten from parity in this pass.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  finishedAt:
+                    nullable: true
+                    type: string
+                  hashMismatches:
+                    default: 0
+                    description: Chunk-hash mismatches found in this pass.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  message:
+                    nullable: true
+                    type: string
+                  readErrors:
+                    default: 0
+                    description: Read errors the drives returned during this pass.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  request:
+                    description: The `spec.scrubRequest` it answers.
+                    type: string
+                  startedAt:
+                    type: string
+                  state:
+                    description: '`Running`, `Done` or `Failed`.'
+                    type: string
+                  stripesScanned:
+                    default: 0
+                    description: Stripes read and checked in this pass.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  unrecoverableRows:
+                    default: 0
+                    description: Rows with more bad blocks than parity (data lost) found in this pass.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                required:
+                - request
+                - startedAt
+                - state
+                type: object
+              members:
+                default: []
+                items:
+                  properties:
+                    bay:
+                      nullable: true
+                      type: string
+                    enclosure:
+                      description: 'Where it sits (SES enclosure and slot), kept for a member that has failed or been pulled: its bay is how a replacement is recognised (#28).'
+                      nullable: true
+                      type: string
+                    integrity:
+                      description: This drive's integrity counters, kept across restarts (#80).
+                      nullable: true
+                      properties:
+                        blocksRepaired:
+                          description: Blocks rewritten on the drive with what parity gave back.
+                          format: uint64
+                          minimum: 0.0
+                          type: integer
+                        checksumMismatches:
+                          description: 'Blocks that did not match their checksum (or that parity or the chunk hash showed wrong): bit rot found.'
+                          properties:
+                            l1:
+                              description: On the read path.
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            l2:
+                              description: Verifying a freshly written stripe.
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            l3:
+                              description: The scrub.
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                          required:
+                          - l1
+                          - l2
+                          - l3
+                          type: object
+                        lastMismatch:
+                          nullable: true
+                          type: string
+                        lastPiError:
+                          nullable: true
+                          type: string
+                        lastReadError:
+                          nullable: true
+                          type: string
+                        lastRepair:
+                          nullable: true
+                          type: string
+                        lastUnrecoverable:
+                          nullable: true
+                          type: string
+                        lastWriteError:
+                          nullable: true
+                          type: string
+                        piErrors:
+                          description: I/O that failed its T10 PI check (the kernel reports guard, application and reference tag failures alike, as EILSEQ).
+                          format: uint64
+                          minimum: 0.0
+                          type: integer
+                        readErrors:
+                          format: uint64
+                          minimum: 0.0
+                          type: integer
+                        unrecoverableRows:
+                          description: Rows with more bad blocks than parity (the set's only).
+                          format: uint64
+                          minimum: 0.0
+                          type: integer
+                        writeErrors:
+                          format: uint64
+                          minimum: 0.0
+                          type: integer
+                      required:
+                      - blocksRepaired
+                      - checksumMismatches
+                      - piErrors
+                      - readErrors
+                      - writeErrors
+                      type: object
+                    path:
+                      type: string
+                    role:
+                      description: '`data`, `spare`, `journal` or `replacement`.'
+                      type: string
+                    slot:
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                    state:
+                      type: string
+                    wwn:
+                      nullable: true
+                      type: string
+                  required:
+                  - path
+                  - role
+                  - state
+                  type: object
+                type: array
+              message:
+                nullable: true
+                type: string
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+              performance:
+                description: 'The set''s performance in service (#81): what its users and each member drive did over the last window (a minute), sampled on the set''s own I/O. Absent until the daemon has served a full window.'
+                nullable: true
+                properties:
+                  busyPercent:
+                    format: double
+                    type: number
+                  members:
+                    default: []
+                    items:
+                      description: 'A member drive''s I/O over the window (#81): what the set''s reads, writes and its background (destage, verify, scrub, rebuild) cost it.'
+                      properties:
+                        busyPercent:
+                          description: Share of the window the drive had I/O in flight (0–100).
+                          format: double
+                          type: number
+                        path:
+                          type: string
+                        queueDepth:
+                          description: Average I/O in flight over the window.
+                          format: double
+                          type: number
+                        read:
+                          description: One direction's I/O over a window, and its lifetime totals (#81).
+                          properties:
+                            avgUs:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            bytesTotal:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            iops:
+                              format: double
+                              type: number
+                            mibS:
+                              format: double
+                              type: number
+                            opsTotal:
+                              description: Since the daemon opened the set (or the drive).
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            p50Us:
+                              description: Latency percentiles and mean over the window (µs; from a histogram, so to its bucket's precision).
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            p99Us:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                          required:
+                          - avgUs
+                          - bytesTotal
+                          - iops
+                          - mibS
+                          - opsTotal
+                          - p50Us
+                          - p99Us
+                          type: object
+                        role:
+                          description: '`data`, `replacement`, `spare` or `journal`.'
+                          type: string
+                        slot:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        write:
+                          description: One direction's I/O over a window, and its lifetime totals (#81).
+                          properties:
+                            avgUs:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            bytesTotal:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            iops:
+                              format: double
+                              type: number
+                            mibS:
+                              format: double
+                              type: number
+                            opsTotal:
+                              description: Since the daemon opened the set (or the drive).
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            p50Us:
+                              description: Latency percentiles and mean over the window (µs; from a histogram, so to its bucket's precision).
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                            p99Us:
+                              format: uint64
+                              minimum: 0.0
+                              type: integer
+                          required:
+                          - avgUs
+                          - bytesTotal
+                          - iops
+                          - mibS
+                          - opsTotal
+                          - p50Us
+                          - p99Us
+                          type: object
+                        wwn:
+                          nullable: true
+                          type: string
+                      required:
+                      - busyPercent
+                      - path
+                      - queueDepth
+                      - read
+                      - role
+                      - write
+                      type: object
+                    type: array
+                  queueDepth:
+                    format: double
+                    type: number
+                  read:
+                    description: 'The set''s users: reads and writes on its device.'
+                    properties:
+                      avgUs:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      bytesTotal:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      iops:
+                        format: double
+                        type: number
+                      mibS:
+                        format: double
+                        type: number
+                      opsTotal:
+                        description: Since the daemon opened the set (or the drive).
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      p50Us:
+                        description: Latency percentiles and mean over the window (µs; from a histogram, so to its bucket's precision).
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      p99Us:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                    required:
+                    - avgUs
+                    - bytesTotal
+                    - iops
+                    - mibS
+                    - opsTotal
+                    - p50Us
+                    - p99Us
+                    type: object
+                  sampledAt:
+                    description: When the window ended (RFC 3339), and how long it was.
+                    type: string
+                  windowSeconds:
+                    format: double
+                    type: number
+                  write:
+                    description: One direction's I/O over a window, and its lifetime totals (#81).
+                    properties:
+                      avgUs:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      bytesTotal:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      iops:
+                        format: double
+                        type: number
+                      mibS:
+                        format: double
+                        type: number
+                      opsTotal:
+                        description: Since the daemon opened the set (or the drive).
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      p50Us:
+                        description: Latency percentiles and mean over the window (µs; from a histogram, so to its bucket's precision).
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                      p99Us:
+                        format: uint64
+                        minimum: 0.0
+                        type: integer
+                    required:
+                    - avgUs
+                    - bytesTotal
+                    - iops
+                    - mibS
+                    - opsTotal
+                    - p50Us
+                    - p99Us
+                    type: object
+                required:
+                - busyPercent
+                - queueDepth
+                - read
+                - sampledAt
+                - windowSeconds
+                - write
+                type: object
+              phase:
+                description: Pending, Creating, Optimal, Degraded, Rebuilding, Replacing, Reshaping, Failed, Missing (no drive of it on the node).
+                type: string
+              progress:
+                nullable: true
+                properties:
+                  done:
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  kind:
+                    description: '`rebuild`, `replace` or `reshape`.'
+                    type: string
+                  total:
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                required:
+                - done
+                - kind
+                - total
+                type: object
+              setUuid:
+                nullable: true
+                type: string
+              writeCache:
+                description: The volatile write cache (#37).
+                nullable: true
+                properties:
+                  active:
+                    description: 'Holding writes: on, and the set''s device passes flushes down. False while on only for a device an older stormraid created (it sends no FLUSH); it holds once the set is served anew.'
+                    type: boolean
+                  heldStripes:
+                    description: Full stripes acknowledged and not yet flushed, when last seen.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  on:
+                    description: Asked for (`spec.writeCache`, else the daemon's `--write-cache`).
+                    type: boolean
+                required:
+                - active
+                - heldStripes
+                - 'on'
+                type: object
+            required:
+            - phase
+            type: object
+        required:
+        - spec
+        title: RaidSet
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
