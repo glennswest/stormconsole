@@ -2664,7 +2664,7 @@ registry is the owner's setting: this session's token is refused, both for `comp
 - [x] Master ran `component edit stormconsole --set apis=…` (2026-11-20; `component export` shows both
       `[[component.apis]]`, console and logs, as asked)
 - [ ] `component build stormconsole` carries it as `[[process.api]]` (the master forced one, 515d25c2f23d; requested
-      again on this commit). Shipped with the proof `get:http://{node}:9094/api/plugins/health/snapshot ~
+      again at b61d0ae, build 29775a649150; sc-build passed). Shipped 2026-11-20 with the proof `get:http://{node}:9094/api/plugins/health/snapshot ~
       "api":"logs"[^}]*"state":"healthy"[^}]*9094/api/plugins/logs/events` (an Api serializes with sorted keys:
       api … state … url)
 
