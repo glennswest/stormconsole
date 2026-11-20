@@ -29,7 +29,7 @@ j() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1
 HERE=$(pwd)
 HOST=$(cat /proc/sys/kernel/hostname)
 AP=26569; KAPI=https://127.0.0.1:$AP
-IP=19391; XP=19381
+IP=19391; XP=19381; XPS=19381,19382,19383,19384
 P=19394; C=http://127.0.0.1:$P
 
 node web/src/lib/charts.test.mjs
@@ -91,17 +91,18 @@ k PATCH /apis/kubevirt.io/v1/namespaces/shop/virtualmachineinstances/vm-b/status
 check "$(k GET /apis/kubevirt.io/v1/namespaces/shop/virtualmachineinstances/vm-b | j 'd["status"]["nodeName"]')" storm-b "vm-b runs on storm-b"
 
 say "each node's exporters and its own ironprom, on one port"
-python3 "$HERE/deploy/remote-charts.standin.py" 127.0.0.1 $XP "$HOST" A100 eth0 shop/vm-a > "$W/x-a.log" 2>&1 &
-python3 "$HERE/deploy/remote-charts.standin.py" 127.0.0.3 $XP storm-b B200 ens1f0 shop/vm-b secret/vm-s > "$W/x-b.log" 2>&1 &
+python3 "$HERE/deploy/remote-charts.standin.py" 127.0.0.1 $XPS "$HOST" A100 eth0 shop/vm-a > "$W/x-a.log" 2>&1 &
+python3 "$HERE/deploy/remote-charts.standin.py" 127.0.0.3 $XPS storm-b B200 ens1f0 shop/vm-b secret/vm-s > "$W/x-b.log" 2>&1 &
 prom() { # address
   { printf 'global:\n  scrape_interval: 2s\n  scrape_timeout: 1s\nscrape_configs:\n'
-    for job in stormdrive stormport stormvm kubelet-cadvisor; do printf '  - job_name: %s\n    static_configs:\n      - targets: ["%s:%s"]\n' "$job" "$1" "$XP"; done
+    n=0; for job in stormdrive stormport stormvm kubelet-cadvisor; do printf '  - job_name: %s\n    static_configs:\n      - targets: ["%s:%s"]\n' "$job" "$1" $((XP + n)); n=$((n + 1)); done
   } > "$W/prom-$1.yml"
   "$W/bin/ironprom" --config.file="$W/prom-$1.yml" --web.listen-address="$1:$IP" --storage.tsdb.path="$W/prom-$1" > "$W/prom-$1.log" 2>&1 &
   for _ in $(seq 40); do curl -sf -o /dev/null "http://$1:$IP/-/ready" && break; sleep 0.5; done
 }
 prom 127.0.0.1; prom 127.0.0.3
-check "$(curl -s "http://127.0.0.3:$IP/api/v1/targets" | j 'len(d["data"]["activeTargets"])')" 4 "storm-b's ironprom scrapes storm-b"
+for _ in $(seq 20); do [ "$(curl -s "http://127.0.0.3:$IP/api/v1/targets" | j 'sum(t["health"]=="up" for t in d["data"]["activeTargets"])' 2>/dev/null)" = 4 ] && break; sleep 0.5; done
+check "$(curl -s "http://127.0.0.3:$IP/api/v1/targets" | j 'sorted(t["scrapePool"] for t in d["data"]["activeTargets"] if t["health"]=="up")')" "['kubelet-cadvisor', 'stormdrive', 'stormport', 'stormvm']" "storm-b's ironprom scrapes storm-b, every job up"
 
 say "the console on this node"
 H=$(printf pw | "$BIN" --hash-password)
@@ -128,6 +129,7 @@ say "storm-b's objects, from storm-b's ironprom"
 check "$(until_lines 'entity=port&node=storm-b&ifname=ens1f0' link)" "['ens1f0']" "a port on storm-b: its own node named, no on= needed"
 check "$(g 'entity=port&node=storm-b&ifname=ens1f0' | j 'd["node"]')" storm-b "and the answer says whose ironprom"
 check "$(until_lines 'entity=drive&serial=B200&on=storm-b' temperature)" "['sdb']" "storm-b's drive"
+holds "$(g 'entity=drive&serial=B200&on=storm-b' | j '[c.get("note") for c in d["charts"] if c["id"]=="link_sync"][0]')" "stormdrive is up, and served none" "an empty chart's note is read from storm-b's targets"
 check "$(until_lines 'entity=vm&ns=shop&name=vm-b&on=storm-b' cpu)" "['0']" "storm-b's VM"
 check "$(until_lines 'entity=pod&ns=shop&name=web-vm-b&on=storm-b' cpu)" "['app']" "storm-b's pod"
 check "$(until_lines 'level=vms&on=storm-b' cpu)" "['secret / vm-s', 'shop / vm-b']" "storm-b's VM level"

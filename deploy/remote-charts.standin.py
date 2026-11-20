@@ -3,13 +3,17 @@
 panels read (crates/plugins/metrics/src/panels.rs): a drive (stormdrive's SMART), a host port (stormport),
 machines (stormvm, KubeVirt's names) and a pod (the kubelet's cAdvisor). Counters move.
 
-    remote-charts.standin.py <addr> <port> <node> <serial> <ifname> [<ns>/<vm> ...]
+    remote-charts.standin.py <addr> <port>[,<port>...] <node> <serial> <ifname> [<ns>/<vm> ...]
+
+Each port serves the same series, so each job has its own target, as on a node (one URL in several jobs is
+one target in ironprom's /api/v1/targets, ironprom#70).
 """
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ADDR, PORT, NODE, SERIAL, IFNAME = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]
+ADDR, PORTS, NODE, SERIAL, IFNAME = sys.argv[1], [int(p) for p in sys.argv[2].split(",")], sys.argv[3], sys.argv[4], sys.argv[5]
 VMS = [a.split("/", 1) for a in sys.argv[6:]]
 START = time.time()
 
@@ -39,4 +43,6 @@ class H(BaseHTTPRequestHandler):
         pass
 
 
-ThreadingHTTPServer((ADDR, PORT), H).serve_forever()
+for port in PORTS[1:]:
+    threading.Thread(target=ThreadingHTTPServer((ADDR, port), H).serve_forever, daemon=True).start()
+ThreadingHTTPServer((ADDR, PORTS[0]), H).serve_forever()
