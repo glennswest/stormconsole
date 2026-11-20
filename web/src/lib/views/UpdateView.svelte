@@ -127,7 +127,7 @@
           <div class="row">
             {#if may.pause}<button disabled={!!acting} onclick={pause}>Pause at the next node</button>{/if}
             {#if may.resume}<button disabled={!!acting} onclick={resume}>Resume</button>{/if}
-            {#if may.cancel}<button disabled={!!acting} onclick={cancel}>Cancel the update to {cancelling}</button>{/if}
+            {#if may.cancel}<button disabled={!!acting} onclick={cancel}>Cancel this update</button>{/if}
             {#if may.rollback && running(st?.phase)}<button class="danger" disabled={!!acting} onclick={rollback}>Roll back to {rel.previous}</button>{/if}
           </div>
         {/if}

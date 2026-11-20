@@ -27,11 +27,11 @@ walk(`update (${PHASE})`, async (t) => {
     const asked = page.locator('section[aria-label="Asked here"] tbody tr')
     const before = await asked.count()
     page.refuseNext = true
-    await page.getByRole('button', { name: 'Update to 12.61' }).click()
+    await page.getByRole('button', { name: 'Update to 12.61', exact: true }).click()
     await t.pause(1500)
     t.check((await asked.count()) === before, 'dismissed, nothing is asked of stormupdate', `${before} then ${await asked.count()}`)
     // Accepting does.
-    await page.getByRole('button', { name: 'Update to 12.61' }).click()
+    await page.getByRole('button', { name: 'Update to 12.61', exact: true }).click()
     t.check(await t.until(async () => (await asked.count()) === before + 1), 'accepted, one more act', `${before} then ${await asked.count()}`)
     t.check(/root\s+start 12\.61\s+done/.test(await asked.first().innerText()), 'done and recorded, with who', await asked.first().innerText())
     await t.shot(page, 'update-asked')
@@ -47,8 +47,8 @@ walk(`update (${PHASE})`, async (t) => {
     t.check((await nodes.locator('li[aria-current="step"]').first().innerText()) === 'Staging and rebooting', 'the step it is on is marked')
     t.check(/waiting on workloads, fastetcd/.test(await nodes.innerText()), 'a second node, on its gates')
     t.check(/Images of 12\.61/i.test(await t.text(page)) && /1 Pulled, 1 Pulling/.test(await t.text(page)), 'the images, per state')
-    t.check((await page.getByRole('button', { name: 'Update to 12.61' }).isDisabled().catch(() => true)), 'no second update while one runs')
-    t.check((await page.getByRole('button', { name: /Cancel the update/ }).count()) === 0, 'a node has rebooted: no Cancel')
+    t.check((await page.getByRole('button', { name: 'Update to 12.61', exact: true }).isDisabled().catch(() => true)), 'no second update while one runs')
+    t.check((await page.getByRole('button', { name: /Cancel this update/ }).count()) === 0, 'a node has rebooted: no Cancel')
     t.check((await page.getByRole('button', { name: /Roll back to 12\.58/ }).count()) === 1, 'Roll back is the way back')
     await t.shot(page, 'update-progress')
     await page.getByRole('button', { name: 'Pause at the next node' }).click()
@@ -80,11 +80,11 @@ walk(`update (${PHASE})`, async (t) => {
   }
 
   if (PHASE === 'cancel') {
-    const b = page.getByRole('button', { name: 'Cancel the update to 12.61' })
+    const b = page.getByRole('button', { name: 'Cancel this update', exact: true })
     t.check(await t.until(async () => (await b.count()) === 1), 'before any node reboots, Cancel is offered', (await t.text(page)).slice(0, 400))
     const ro = await t.page('ops')
     await t.open(ro, '#/update', /12\.61/)
-    t.check((await ro.getByRole('button', { name: /Cancel the update/ }).count()) === 0, 'an operator is offered no Cancel')
+    t.check((await ro.getByRole('button', { name: /Cancel this update/ }).count()) === 0, 'an operator is offered no Cancel')
     const asked = page.locator('section[aria-label="Asked here"] tbody tr')
     const before = await asked.count()
     page.answer = undefined
@@ -106,7 +106,7 @@ walk(`update (${PHASE})`, async (t) => {
     const im = page.locator('section[aria-label="Images"]')
     t.check(await im.isVisible() && /n2: forge: 404/.test(await im.innerText()), 'the images stay shown, the failed node named')
     t.check((await page.getByRole('button', { name: /Roll back/ }).count()) === 0, 'nothing moved, so nothing to roll back')
-    t.check(!(await page.getByRole('button', { name: 'Update to 12.61' }).isDisabled()), 'and it can be started again')
+    t.check(!(await page.getByRole('button', { name: 'Update to 12.61', exact: true }).isDisabled()), 'and it can be started again')
     t.check(!/Waiting its turn/.test(await page.locator('section[aria-label="Nodes"]').innerText()), 'the other node is stopped, not waiting')
     await t.shot(page, 'update-pull-failed')
   }

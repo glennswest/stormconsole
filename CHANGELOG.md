@@ -4,7 +4,7 @@
 <!-- New unreleased changes go here -->
 
 ### 2026-11-20 — Update page: Cancel before any node reboots (#196, stormupdate#36)
-- **feat:** the Update page's **Cancel the update to <release>**, under Now: an admin ends a run before any node has been told to reboot, through stormupdate's `POST /api/v1/cancel`. It is offered on a `Progressing` or `Paused` run while no node is past the reboot (by stormupdate's own rule), and on a request held up before it starts. It is not offered on a rollback, or once a cancel is asked. It asks first, with an optional reason, and dismissing sends nothing.
+- **feat:** the Update page's **Cancel this update**, under Now (its question names the release): an admin ends a run before any node has been told to reboot, through stormupdate's `POST /api/v1/cancel`. It is offered on a `Progressing` or `Paused` run while no node is past the reboot (by stormupdate's own rule), and on a request held up before it starts. It is not offered on a rollback, or once a cancel is asked. It asks first, with an optional reason, and dismissing sends nothing.
 - **feat:** `POST /api/plugins/update/cancel {reason?}`: admin only, the update token added here, recorded like the other acts. The reason stormupdate keeps in its history says `by <user> on the console: <reason>`, because stormupdate itself knows only the token.
 - **feat:** a late cancel is stormupdate's 409, shown as `cannot cancel: n2 has rebooted onto 12.61: roll back instead`, with Roll back beside it.
 - **feat:** `Cancelling` is a warning, not a fault (feed row `cancelling the update to …`), and the page polls fast while it runs. A node `Cancelled` and a history `Cancelled` are amber.
