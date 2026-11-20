@@ -2784,6 +2784,11 @@ creates the op **as the viewer**.
   flash verb). SSC: stormdrive#164 found no SSC control in the public pages, so there is no field to show
 - sc-build 9e4dcba: build, every test, clippy -D warnings, vite build, hba.test.mjs pass. #380 filed (gap: the
   golden-registry picker), proposed after stormdrive#80
+- `sc-build deploy/verify-hba.sh` 51f5139: 70 ok, 0 failed (API checks and the Chromium walk). Default sc-build 03f3093
+  passed. web/dist rebuilt (03f3093). Image requested: build bcbc5f0b971c (stormconsole@03f3093). Shipped with the
+  proof `on forge1 get:http://{node}:9094/api/plugins/k8s/hbas ~ HBA330`; it needs stormdrive v0.56.0 and the CRDs
+  (stormcos#1242) in the same release. Not yet seen: a real HostBusAdapter, a real flash. Version: #376 sits under
+  [Unreleased]; the next release cut is v0.40.0
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
