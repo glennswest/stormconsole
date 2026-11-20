@@ -1366,6 +1366,38 @@ and, where perccli is on the node, its personality; HBA mode is mandatory.
   - The feed's `controller-good`, `controller-jbod` and `personality-hba` sit in a
     **Controller** group, first in a drive's Actions menu, not in Destructive.
 
+### SAS cards and their flash (#376, stormdrive#166)
+
+stormdrive v0.56.0 reads each SAS card (mpt2sas/mpt3sas) through its own interface and writes
+one `storage.storm.io/v1 HostBusAdapter` per card into the **apiserver** (not its own
+`/apis`), named `<node>-<pci>`. A `CardOperation` is sas3flash's flash: the node that has the
+card runs it once the apiserver has stamped who asked (rustkube#210) and that person still
+holds `cardoperations` create.
+
+- **Read** (`hba.rs` in the k8s plugin): `GET /api/plugins/k8s/hbas` lists both kinds **as
+  the viewer** and joins each operation to its card (by the object's name, or the PCI
+  address on the card's node), newest first. Operations naming no card the viewer can see
+  are listed apart. A refused list is said in the apiserver's words; operations refused
+  while cards are not are said as unread.
+- **Page** (`#/drives/hbas`, `hba.js`): per node, each card's identity, phys (rate against
+  the card's max/min, the attached device, a drive's link level from `/api/plugins/drive/links`
+  joined by drive id), enclosures, regions with sha256, last flash, problems, and its
+  operations (phase in words, step and bytes, before → after, requester, message). It
+  reads again every 3 s while an operation is going, else every 10 s. A drive's detail
+  names its card and phy (`drivesOnCards`), from the phys and, behind an expander, the
+  device list.
+- **Flash**: `POST /api/plugins/k8s/hbas/{name}/flash {region, image {name, sha256, source},
+  dryRun}`. The storage guard classifies it as `cardoperations create`, confirmed by the
+  card's name and keeping data; the host's gate reviews it as the viewer and puts the
+  viewer's bearer on the request (`ActAs`). The handler checks the request as stormdrive
+  does (`deny_unknown_fields`, region firmware|bios, a store name, 64 hex, an http(s)
+  source), reads the card as the same bearer (404 when it is not there, 409 when it is not
+  present), and creates `<card>-<region>-<unix secs>` with stormdrive's spec. The image
+  list in the dialog is the card's node's firmware store from the drive plugin's
+  `/firmware`; there is no golden registry yet (#380).
+- Not here: `sc get/describe hba` (sc's generic get) and the flash verb (sc#156). SSC has no
+  control in the public pages (stormdrive#164), so there is nothing to show for it.
+
 ### Enclosures and shelves (#166)
 
 An **enclosure** is the box: a node's chassis, or an external JBOD. A **shelf**

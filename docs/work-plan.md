@@ -2766,22 +2766,24 @@ YAML. `storm-*` is a system prefix already, and every 08-projects.yaml name is `
 stormdrive v0.56.0 writes one `HostBusAdapter` per SAS card into the apiserver (not its own `/apis`), and runs a
 `CardOperation` flash whose requester rustkube stamps (rustkube#210). The console reads both **as the viewer** and
 creates the op **as the viewer**.
-- [ ] k8s plugin `hba.rs`: `GET /hbas` (cards + their CardOperations, as the viewer; a refused list said in the
+- [x] k8s plugin `hba.rs`: `GET /hbas` (cards + their CardOperations, as the viewer; a refused list said in the
       apiserver's words), `POST /hbas/{name}/flash` {region, image {name, sha256, source}, dryRun} → a CardOperation
       created with the viewer's bearer (ActAs). Checked before it goes: region firmware|bios, a store name, 64 hex, an
       http(s) source, the card readable by this viewer
-- [ ] `storage::classify`: `POST /api/plugins/k8s/hbas/{name}/flash` is `cardoperations create` (storage-admin, the
+- [x] `storage::classify`: `POST /api/plugins/k8s/hbas/{name}/flash` is `cardoperations create` (storage-admin, the
       card's name typed), keeps data
-- [ ] Page `#/drives/hbas` (Hardware → SAS cards): identity (board, chip, SAS address, firmware/BIOS/NVDATA, driver,
+- [x] Page `#/drives/hbas` (Hardware → SAS cards): identity (board, chip, SAS address, firmware/BIOS/NVDATA, driver,
       IOC Facts), phys (rate, max/min, disabled, the drive attached → its row, its link level), firmware regions
       with sha256, last flash, problems; operations with phase, step, bytes, before → after, the refusal's words
-- [ ] Flash dialog: region, an image from the card's node's firmware store (name, size, sha256), the URL it was
+- [x] Flash dialog: region, an image from the card's node's firmware store (name, size, sha256), the URL it was
       recorded from (no golden registry yet: compliance-ops#23 / stormdrive#80; gap filed), dry run, the card typed
-- [ ] Drive detail: "SAS card … phy N" → the card
-- [ ] Tests: unit (reduce, request check, classify), `hba.test.mjs`, `verify-hba.sh` on a real rustkube
+- [x] Drive detail: "SAS card … phy N" → the card
+- [x] Tests: unit (reduce, request check, classify), `hba.test.mjs`, `verify-hba.sh` on a real rustkube
       (stormdrive's CRDs as shipped; a storage-admin flashes, a viewer is refused; the page in Chromium)
 - Not in the console: `sc get/describe hba` (sc's generic get, stormdrive#166 says nothing new) and sc#156 (the
   flash verb). SSC: stormdrive#164 found no SSC control in the public pages, so there is no field to show
+- sc-build 9e4dcba: build, every test, clippy -D warnings, vite build, hba.test.mjs pass. #380 filed (gap: the
+  golden-registry picker), proposed after stormdrive#80
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
