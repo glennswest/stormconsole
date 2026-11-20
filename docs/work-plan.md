@@ -2794,17 +2794,27 @@ creates the op **as the viewer**.
   (stormcos#1242) in the same release. Not yet seen: a real HostBusAdapter, a real flash. Version: #376 sits under
   [Unreleased]; the next release cut is v0.40.0
 
-### Graphs for a port, VM, drive or pod on another node (#369) — 2026-11-20
+### Graphs for a port, VM, drive or pod on another node (#369) ✅ 2026-11-20
 Each node's ironprom holds only that node's series, so a chart for another node's object was empty (or not
 offered). ironprom's :9091 is open off the node (stormcos `check-metrics.sh`), so the console asks the owning node's
 ironprom itself, with the same named panels and the same project filter **of the viewer** it uses here: no free
 query leaves the console, and a project the viewer may not see is still `no project x`.
-- [ ] metrics: `GET /charts?…&on=<node>` (a port's own `node` is its owner): another node's address from the fleet
-      (the log collector's hosts), its ironprom at the configured port; an unknown node, one with no address and one
-      whose ironprom does not answer are each a sentence (404/503/502), never an empty chart; `node` in the answer
-- [ ] web: VM Metrics tab (`vm.node`), a drive's Metrics link and its link trend (`pick.node`), a pod's disk charts
-      and its Metrics link (`pod.metadata.node`) name the node; the Metrics page says which node
-- [ ] tests: unit (owner, address), a two-ironprom check; docs (architecture, README), CHANGELOG
+- [x] metrics: `GET /charts?…&on=<node>` (a port's own `node` is its owner): another node's address from the fleet
+      (the log collector's hosts: each Node's InternalIP), its ironprom at the configured port, no credential; an
+      unknown node (404), one with no address (503) and one whose ironprom does not answer (502, node and address)
+      are each a sentence, never an empty chart; the empty charts' notes from that node's targets; `node` in the answer
+- [x] web: VM Metrics tab (`vm.node`), a drive's Metrics link (now on every node's drive) and its link trend
+      (`pick.node`), a pod's disk charts and its Metrics link (`pod.metadata.node`); every chart set says whose
+      ironprom it read; the Metrics page's scope names the node (`charts.js`)
+- [x] tests: unit (owner, address), `charts.test.mjs`, `deploy/verify-remote-charts.sh` (two real ironproms on one
+      port, a real rustkube with three Nodes and a VM on storm-b, alice in one project, Chromium `remote-charts.cjs`);
+      architecture, README, CHANGELOG
+- [x] sc-build 75fe0e0 (build, every test) pass; `sc-build deploy/verify-remote-charts.sh` 3365b7d: 0 failed (API and
+      the Chromium walk); web/dist rebuilt (7557861)
+- Filed ironprom#70: `/api/v1/targets` collapses one URL scraped by several jobs (the registry key has no job). The
+  rig gives each job its own port, as a node does. Filed #383 (proposed): the web build's vite-plugin-svelte warning
+  about the pinned stormview@0.4.0, fixed upstream in stormview#14
+- Not seen: two real nodes. A pvetest node alone has no other node to chart; the proof on ship is the answer's `node`
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
