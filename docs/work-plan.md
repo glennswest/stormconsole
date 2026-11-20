@@ -2704,6 +2704,9 @@ so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stor
   (`user_namespace`, `admin_password_file`), which stormcos#200 brings, so nothing is seeded. stormcos#200 is held
   after #372, so `--after stormcos#200` was refused as a cycle. Shipped with the proof above, and the master was told. If the proof
   fails before #200's lines land, re-hold it and re-ship with `--commit` once the registry carries `[api]`
+- 2026-11-19 12.97-flowsdn (pvetest2-1795151612, console 3f5f110): proof 404 again, same cause (registry config
+  still has no `[api]`, checked with `component export`). Held `--after stormcos#200` (accepted this time); the master was told.
+  Re-ship with the same proof once #200's registry edit lands
 
 
 - [x] Node discovery from multicast presence — and the piece that was
