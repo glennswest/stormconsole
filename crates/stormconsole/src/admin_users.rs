@@ -139,10 +139,16 @@ async fn password(
         Err(r) => return r,
     };
     match users.set_password(&token, &name, &b.password).await {
-        Ok(()) => {
+        Ok(stamp) => {
             // Their other sessions end here: a reset is usually because
-            // the old password got out. The administrator's own stays.
+            // the old password got out. The administrator's own stays, with
+            // the new password's stamp. Every other node's sweep ends theirs
+            // there, the Secret's hash being no longer the one they signed
+            // in with (#374).
             let n = state.sessions.end_user(&name, keep.as_deref());
+            if let Some(id) = &keep {
+                state.sessions.restamp(id, &name, &stamp);
+            }
             tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), user = %name, sessions = n, "users: password set");
             Json(json!({"password": "set"})).into_response()
         }

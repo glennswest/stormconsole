@@ -22,7 +22,9 @@
 #   disable        ends the session at once, refuses the sign-in; enable again
 #   password       the old one refused, the new one works
 #   roles          storage-viewer now: the guard refuses
-#   other node     a sweep on another console ends a deleted user's session there
+#   other node     a sweep on another console ends a reset user's session there
+#                  (a reset here, or a hash written by hand as sc does), and a
+#                  deleted user's
 #   delete         gone, and admin can be neither deleted nor disabled
 #   install users  stormpump#242's users/<name>.{hash,role}: stormcentral
 #                  (viewer) is made as admin, signs in, reads logs, and is
@@ -306,6 +308,27 @@ conf "$W/c2.toml" "$P2" n2
 "$BIN" --config "$W/c2.toml" > "$W/c2.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null "$C2/healthz" && break; sleep 0.5; done
 check "$(login j2 dave d-pw "$C2")" 200 "dave signs in on the other console"
+say "9a. a password reset here ends dave's sessions on both consoles (#374)"
+check "$(sess jdv)" "True dave storage-admin" "dave is signed in here too"
+check "$(as ja PUT /api/v1/users/dave/password '{"password":"d-pw2"}')" 200 "admin resets dave's password here"
+check "$(sess jdv)" "False None " "dave's session here ended at once"
+for _ in $(seq 40); do [ "$(sess j2 "$C2")" = "False None " ] && break; sleep 1; done
+check "$(sess j2 "$C2")" "False None " "dave's session on the other console ended within its sweep"
+grep -q 'password changed on the apiserver: signed out' "$W/c2.log" && echo "  ok   and the other console says why" || { echo "  FAIL n2 did not log the reset"; FAILED=$((FAILED+1)); }
+check "$(login j2 dave d-pw "$C2")" 401 "the old password is refused there"
+check "$(login j2 dave d-pw2 "$C2")" 200 "the new one signs in there"
+check "$(login jdv dave d-pw2)" 200 "and here"
+sleep 35
+check "$(sess j2 "$C2")" "True dave storage-admin" "a session on the new password outlives the next sweep there"
+check "$(sess jdv)" "True dave storage-admin" "and here"
+say "9b. a hash written straight to the Secret (as sc user passwd does) ends them on both"
+k GET "$SECRETS/dave-password" | python3 -c "import json,sys,base64; d=json.load(sys.stdin); d['data']['hash']=base64.b64encode(sys.argv[1].encode()).decode(); print(json.dumps(d))" \
+  "$(printf d-pw3 | "$BIN" --hash-password)" > "$W/dave-pw.json"
+check "$(kcode PUT "$SECRETS/dave-password" "$(cat "$W/dave-pw.json")")" 200 "dave-password rewritten on the apiserver"
+for _ in $(seq 40); do [ "$(sess j2 "$C2")$(sess jdv)" = "False None False None " ] && break; sleep 1; done
+check "$(sess j2 "$C2")" "False None " "dave's session on the other console ended within its sweep"
+check "$(sess jdv)" "False None " "and here"
+check "$(login j2 dave d-pw3 "$C2")" 200 "the new password signs in"
 check "$(as ja DELETE /api/v1/users/dave)" 200 "admin deletes dave here"
 for _ in $(seq 40); do [ "$(sess j2 "$C2")" = "False None " ] && break; sleep 1; done
 check "$(sess j2 "$C2")" "False None " "dave's session there ended within the sweep"

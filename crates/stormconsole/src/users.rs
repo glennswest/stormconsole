@@ -130,19 +130,32 @@ pub enum Refused {
     Unreachable(String),
 }
 
-/// A signed-in user: the token they act as, and their roles.
+/// A signed-in user: the token they act as, their roles, and the stamp of
+/// the password they signed in with.
 #[derive(Clone, Debug)]
 pub struct SignedIn {
     pub token: String,
     pub cluster_roles: Vec<String>,
+    /// [`stamp`] of the hash the password verified against (#374).
+    pub stamp: String,
+}
+
+/// What a session remembers of the password it was opened with: the
+/// SHA-256 of the Secret's hash, never the hash. The Secret is cluster
+/// state, so a reset made anywhere — any node's Users page, `sc user` —
+/// changes what every node's sweep reads, and each ends the sessions
+/// whose stamp it no longer is (#374).
+pub fn stamp(phc: &str) -> String {
+    digest(phc)
 }
 
 /// What a sweep found of a signed-in user.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Still {
-    /// Signed in, with these ClusterRoles now.
-    Is(Vec<String>),
-    /// Deleted or disabled: their sessions end.
+    /// Signed in, with these ClusterRoles now, and this password's
+    /// [`stamp`]: a session with another one ends.
+    Is { roles: Vec<String>, stamp: String },
+    /// Deleted, disabled, or no password: their sessions end.
     Gone,
     /// The apiserver did not answer: nothing changes.
     Unknown,
@@ -228,6 +241,38 @@ pub fn roles_in(bindings: &Value, ns: &str, name: &str) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+/// What the account and its password Secret say of a signed-in user.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Seen {
+    /// Still one, with this password's [`stamp`].
+    Stamp(String),
+    /// Deleted, disabled, or no password.
+    Gone,
+    /// The apiserver did not answer: nothing changes.
+    Unknown,
+}
+
+/// [`Seen`] from the account and, for an account that may sign in, its
+/// password Secret.
+pub fn judge(name: &str, account: &Result<Value, RkError>, secret: Option<&Result<Value, RkError>>) -> Seen {
+    let gone = |e: &RkError| status_of(e) == Some(404);
+    match account {
+        Ok(a) if may_sign_in(name, a) => {}
+        Ok(_) => return Seen::Gone,
+        Err(e) if gone(e) => return Seen::Gone,
+        Err(_) => return Seen::Unknown,
+    }
+    match secret {
+        None => Seen::Unknown,
+        Some(Ok(s)) => match secret_hash(s).filter(|h| !h.is_empty()) {
+            Some(h) => Seen::Stamp(stamp(&h)),
+            None => Seen::Gone,
+        },
+        Some(Err(e)) if gone(e) => Seen::Gone,
+        Some(Err(_)) => Seen::Unknown,
+    }
 }
 
 /// What seeding does with what it finds.
@@ -372,6 +417,7 @@ impl Users {
         // Verify whether or not there was a hash, so an unknown name costs
         // what a wrong password does.
         let pw = password.to_string();
+        let phc_seen = phc.clone();
         let ok = tokio::task::spawn_blocking(move || {
             if phc.is_empty() {
                 let _ = verify(decoy(), &pw);
@@ -393,9 +439,10 @@ impl Users {
         if !may_sign_in(name, &account) {
             return Err(Refused::Invalid);
         }
+        let stamp = stamp(&phc_seen);
         let token = self.mint(name).await?;
         let cluster_roles = self.roles(name).await.unwrap_or_default();
-        Ok(SignedIn { token, cluster_roles })
+        Ok(SignedIn { token, cluster_roles, stamp })
     }
 
     async fn mint(&self, name: &str) -> Result<String, Refused> {
@@ -426,16 +473,21 @@ impl Users {
         Ok(roles_in(&b, &self.ns, name))
     }
 
-    /// Is a signed-in user still one, and with which roles?
+    /// Is a signed-in user still one, with which roles, and which
+    /// password?
     pub async fn still(&self, name: &str) -> Still {
-        match self.kube.get(&self.account(name)).await {
-            Ok(a) if may_sign_in(name, &a) => match self.roles(name).await {
-                Ok(r) => Still::Is(r),
+        let account = self.kube.get(&self.account(name)).await;
+        let secret = match &account {
+            Ok(a) if may_sign_in(name, a) => Some(self.kube.get(&self.secret(name)).await),
+            _ => None,
+        };
+        match judge(name, &account, secret.as_ref()) {
+            Seen::Stamp(stamp) => match self.roles(name).await {
+                Ok(roles) => Still::Is { roles, stamp },
                 Err(_) => Still::Unknown,
             },
-            Ok(_) => Still::Gone,
-            Err(RkError::Status(s)) if s.as_u16() == 404 => Still::Gone,
-            Err(_) => Still::Unknown,
+            Seen::Gone => Still::Gone,
+            Seen::Unknown => Still::Unknown,
         }
     }
 
@@ -748,7 +800,9 @@ impl Users {
 
     /// A new password. For admin the seeding marker goes with it: a
     /// password set here is an administrator's, and no install replaces it.
-    pub async fn set_password(&self, as_: &str, name: &str, password: &str) -> Result<(), Fail> {
+    /// Returns the new password's [`stamp`], for the session that made the
+    /// change and is kept.
+    pub async fn set_password(&self, as_: &str, name: &str, password: &str) -> Result<String, Fail> {
         check_name(name)?;
         if password.is_empty() {
             return Err(Fail::Bad("a password is required".into()));
@@ -782,7 +836,7 @@ impl Users {
             }
             Err(e) => return Err(e),
         }
-        Ok(())
+        Ok(stamp(&phc))
     }
 
     /// Disable or enable: the annotation on the account.
@@ -1125,5 +1179,31 @@ mod tests {
     fn a_secret_hash_is_decoded() {
         assert_eq!(secret_hash(&secret("$argon2id$x", None, None)).as_deref(), Some("$argon2id$x"));
         assert_eq!(secret_hash(&json!({})), None);
+    }
+
+    fn st(code: u16) -> RkError {
+        RkError::Status(axum::http::StatusCode::from_u16(code).unwrap())
+    }
+
+    /// #374: what the sweep makes of the account and the password Secret.
+    #[test]
+    fn a_signed_in_user_is_judged_by_the_account_and_the_password_secret() {
+        let acct = Ok(json!({"metadata": {"labels": {USER_LABEL: "stor"}}}));
+        let off = Ok(json!({"metadata": {"labels": {USER_LABEL: "stor"}, "annotations": {DISABLED: "true"}}}));
+        let pw = Ok(secret("$argon2id$one", None, None));
+        // Still one, stamped with the SHA-256 of the hash, never the hash.
+        assert_eq!(judge("stor", &acct, Some(&pw)), Seen::Stamp(digest("$argon2id$one")));
+        assert_ne!(stamp("$argon2id$one"), "$argon2id$one");
+        // A new password is a new stamp.
+        let pw2 = Ok(secret("$argon2id$two", None, None));
+        assert_ne!(judge("stor", &acct, Some(&pw)), judge("stor", &acct, Some(&pw2)));
+        // Gone: deleted, disabled, no password Secret, a Secret with no hash.
+        assert_eq!(judge("stor", &Err(st(404)), None), Seen::Gone);
+        assert_eq!(judge("stor", &off, None), Seen::Gone);
+        assert_eq!(judge("stor", &acct, Some(&Err(st(404)))), Seen::Gone);
+        assert_eq!(judge("stor", &acct, Some(&Ok(json!({"data": {}})))), Seen::Gone);
+        // Unknown: the apiserver did not answer either read.
+        assert_eq!(judge("stor", &Err(st(503)), None), Seen::Unknown);
+        assert_eq!(judge("stor", &acct, Some(&Err(st(500)))), Seen::Unknown);
     }
 }

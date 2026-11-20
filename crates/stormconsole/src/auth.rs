@@ -215,9 +215,11 @@ enum Via {
     /// it is the bearer the session acts as upstream.
     Install(String),
     /// A user kept on the apiserver (#266): the token minted for their
-    /// account at sign-in, and the ClusterRoles bound to it (refreshed by
-    /// [`sweep`]).
-    Cluster { token: String, roles: Vec<String> },
+    /// account at sign-in, the ClusterRoles bound to it (refreshed by
+    /// [`sweep`]), and the [`crate::users::stamp`] of the password it was
+    /// opened with: a reset anywhere changes the Secret, and the sweep ends
+    /// it on every node (#374).
+    Cluster { token: String, roles: Vec<String>, stamp: String },
 }
 
 /// Who a session is.
@@ -269,6 +271,26 @@ impl Sessions {
         before - map.len()
     }
 
+    /// End this user's apiserver sessions opened with another password
+    /// than the one whose stamp is `now` (#374).
+    pub fn end_stale(&self, user: &str, now: &str) -> usize {
+        let mut map = self.inner.lock().unwrap();
+        let before = map.len();
+        map.retain(|_, s| !(s.user == user && matches!(&s.via, Via::Cluster { stamp, .. } if stamp != now)));
+        before - map.len()
+    }
+
+    /// The session kept on a reset of its own user's password takes the new
+    /// password's stamp, so the sweep keeps it too.
+    pub fn restamp(&self, id: &str, user: &str, now: &str) {
+        let mut map = self.inner.lock().unwrap();
+        if let Some(s) = map.get_mut(id).filter(|s| s.user == user) {
+            if let Via::Cluster { stamp, .. } = &mut s.via {
+                *stamp = now.to_string();
+            }
+        }
+    }
+
     /// Their ClusterRoles, as now bound.
     pub(crate) fn set_roles(&self, user: &str, now: &[String]) {
         let mut map = self.inner.lock().unwrap();
@@ -281,17 +303,23 @@ impl Sessions {
 }
 
 /// Every 30 s, ask the apiserver whether each user signed in here still is
-/// one (#266): a user deleted or disabled — on any node's Users page, or by
-/// `sc` — loses their sessions here too, and a role given or taken is in
-/// effect without signing in again. An apiserver that does not answer
-/// changes nothing.
+/// one (#266): a user deleted or disabled, or given a new password (#374) —
+/// on any node's Users page, or by `sc` — loses their sessions here too, and
+/// a role given or taken is in effect without signing in again. An
+/// apiserver that does not answer changes nothing.
 pub async fn sweep(state: AppState, every: Duration) {
     let Some(users) = state.users.clone() else { return };
     loop {
         tokio::time::sleep(every).await;
         for name in state.sessions.cluster_users() {
             match users.still(&name).await {
-                crate::users::Still::Is(roles) => state.sessions.set_roles(&name, &roles),
+                crate::users::Still::Is { roles, stamp } => {
+                    let n = state.sessions.end_stale(&name, &stamp);
+                    if n > 0 {
+                        tracing::info!(user = %name, sessions = n, "users: password changed on the apiserver: signed out");
+                    }
+                    state.sessions.set_roles(&name, &roles);
+                }
                 crate::users::Still::Gone => {
                     let n = state.sessions.end_user(&name, None);
                     tracing::info!(user = %name, sessions = n, "users: deleted or disabled on the apiserver: signed out");
@@ -326,7 +354,7 @@ pub fn viewer(state: &AppState, req: &Request) -> Viewer {
     if let Some(Signed { user, via }) = signed(state, req) {
         match via {
             Via::Install(t) => return install_viewer(user, t),
-            Via::Cluster { token, roles } => {
+            Via::Cluster { token, roles, .. } => {
                 let roles = crate::users::console_roles(&roles);
                 return Viewer { user: Some(user), token: Some(token), roles, ssh_keys: vec![], root: false };
             }
@@ -692,7 +720,7 @@ pub async fn login(
         }
         (None, Some(c)) => {
             tracing::info!(user = %body.username, roles = %c.cluster_roles.join(","), "signed in as a user of the apiserver");
-            (body.username.clone(), Via::Cluster { token: c.token, roles: c.cluster_roles })
+            (body.username.clone(), Via::Cluster { token: c.token, roles: c.cluster_roles, stamp: c.stamp })
         }
         (None, None) if as_user => (body.username.clone(), Via::Config),
         (None, None) => (TOKEN_USER.into(), Via::Config),
@@ -745,6 +773,53 @@ pub async fn session(State(state): State<AppState>, req: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cluster(stamp: &str) -> Via {
+        Via::Cluster { token: "t".into(), roles: vec!["view".into()], stamp: stamp.into() }
+    }
+
+    /// #374: a reset on node 1 ends the user's session on node 2 at its
+    /// next sweep, which reads the new stamp from the Secret; a session
+    /// opened with the new password, and other users', stay.
+    #[test]
+    fn a_reset_on_one_node_ends_the_sessions_on_another() {
+        let (n1, n2) = (Sessions::new(), Sessions::new());
+        let old = crate::users::stamp("$argon2id$old");
+        let new = crate::users::stamp("$argon2id$new");
+        let a1 = n1.create("admin", cluster(&crate::users::stamp("$argon2id$admin")));
+        let s1 = n1.create("stor", cluster(&old));
+        let s2 = n2.create("stor", cluster(&old));
+        let v2 = n2.create("view", cluster(&old));
+        // The reset on node 1: its sessions of stor end there and then.
+        assert_eq!(n1.end_user("stor", Some(&a1)), 1);
+        assert!(n1.get(&s1).is_none() && n1.get(&a1).is_some());
+        // Node 2 knew nothing of it until its sweep reads the Secret.
+        assert!(n2.get(&s2).is_some());
+        let fresh = n2.create("stor", cluster(&new));
+        assert_eq!(n2.end_stale("stor", &new), 1);
+        assert!(n2.get(&s2).is_none(), "the old password's session ended on node 2");
+        assert!(n2.get(&fresh).is_some(), "the new password's stays");
+        assert!(n2.get(&v2).is_some(), "another user's stays");
+        assert_eq!(n2.end_stale("stor", &new), 0);
+    }
+
+    /// An administrator resetting their own password keeps the session they
+    /// did it from, and the sweep keeps it too.
+    #[test]
+    fn the_session_that_reset_its_own_password_keeps_it() {
+        let n = Sessions::new();
+        let (old, new) = (crate::users::stamp("$argon2id$old"), crate::users::stamp("$argon2id$new"));
+        let mine = n.create("admin", cluster(&old));
+        let other = n.create("admin", cluster(&old));
+        assert_eq!(n.end_user("admin", Some(&mine)), 1);
+        n.restamp(&mine, "admin", &new);
+        assert_eq!(n.end_stale("admin", &new), 0);
+        assert!(n.get(&mine).is_some() && n.get(&other).is_none());
+        // Restamping someone else's session is not something a reset does.
+        let theirs = n.create("stor", cluster(&old));
+        n.restamp(&theirs, "admin", &new);
+        assert_eq!(n.end_stale("stor", &new), 1);
+    }
 
     fn tokdir(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("sc-authtok-{}-{name}", std::process::id()));

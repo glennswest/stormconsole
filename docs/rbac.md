@@ -120,7 +120,7 @@ With `[api] user_namespace = "storm-users"`, people sign in as users kept on the
 
 | Where | Resource | Verbs | Why |
 |---|---|---|---|
-| `storm-users` | secrets | get | the password hash, checked at sign-in (role `stormconsole-keys`) |
+| `storm-users` | secrets | get | the password hash, checked at sign-in and every 30 s after, so a password changed anywhere ends the sessions opened with the old one (role `stormconsole-keys`, #374) |
 | `storm-users` | secrets | create, update | seeding `admin-password` from the install's hash (role `stormconsole-keys`) |
 | `storm-users` | serviceaccounts | get | the account exists and is not disabled, at sign-in and every 30 s after |
 | `storm-users` | serviceaccounts/token | create | the TokenRequest whose token is the session's identity (role `stormconsole-users`) |
