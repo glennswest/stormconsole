@@ -2828,10 +2828,10 @@ console's credential once a minute from the apiserver, members matched to drives
 deltas from samples the console keeps (25 h), `BitRot` as an alarm row like the link's. Split off, each held:
 the drive's own PI/defect counters (waits on the Drive object's `status.health`, stormdrive#149) and the trend
 charts (stormcos#1466).
-- [ ] `integrity.rs`: rows, per-day, alarm; `GET /api/plugins/drive/integrity`; raidsets read in the role
-- [ ] drive page Integrity panel; `#/drives/integrity` (every set, `?set=` one); alarm bar
+- [x] `integrity.rs`: rows, per-day, alarm; `GET /api/plugins/drive/integrity`; raidsets read in the role (68c7c1c; sc-build pass)
+- [x] drive page Integrity panel; `#/drives/integrity` (every set, `?set=` one); alarm bar (68c7c1c)
 - [ ] `deploy/verify-drive-integrity.sh` (stand-in apiserver + stormdrive, Chromium), sc-build
-- [ ] two follow-up issues filed and held
+- [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466`
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive
