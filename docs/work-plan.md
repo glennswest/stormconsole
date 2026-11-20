@@ -2661,8 +2661,12 @@ registry is the owner's setting: this session's token is refused, both for `comp
 - No `token_file`: the node's config has no `[api]` section, so authentication is off. If it is turned on, `logs`
   needs one (a 401 shows as `down`)
 - [x] Probes chosen from the code; README "Ports, health, metrics" names them
-- [ ] Master runs `component edit stormconsole --set apis=…` (note sent; owner action card)
-- [ ] `component build stormconsole` carries it as `[[process.api]]`; shipped once a node's summary shows both APIs
+- [x] Master ran `component edit stormconsole --set apis=…` (2026-11-20; `component export` shows both
+      `[[component.apis]]`, console and logs, as asked)
+- [ ] `component build stormconsole` carries it as `[[process.api]]` (the master forced one, 515d25c2f23d; requested
+      again on this commit). Shipped with the proof `get:http://{node}:9094/api/plugins/health/snapshot ~
+      "api":"logs"[^}]*"state":"healthy"[^}]*9094/api/plugins/logs/events` (an Api serializes with sorted keys:
+      api … state … url)
 
 ### A format's method and error log, live (#335) — 2026-11-19
 stormdrive#140 (v0.47.0) is closed: `status.format` carries `method`, `methodUsed`, `fastSkipped`, `already` and the
