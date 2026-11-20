@@ -1834,8 +1834,28 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
   the API. It is also the console's alarm list for drives (#339): the drive
   plugin adds an `alarm` row per drive whose `LinkFailing` (red) or
   `LinkDegraded` (amber) condition is on, and keeps it an hour after the
-  link is ok again, linking to `#/drives?drive=<id>`. Red sorts first; the
-  bar is amber when nothing is red.
+  link is ok again, linking to `#/drives?drive=<id>`. A RAID set's
+  `BitRot` (#368) is one too: amber while on, red with rows past parity in
+  the last day, kept an hour after it goes off, linking to
+  `#/drives/integrity?set=<name>`. Red sorts first; the bar is amber when
+  nothing is red.
+- **RAID set integrity (#368, stormraid#80).** The drive plugin's
+  `integrity.rs` reads `storage.storm.io/v1alpha1` RaidSets from the
+  apiserver once a minute on the console's own credential (the alarm is the
+  console's; the role has `get, list` on `raidsets`). From each set it takes
+  `status.integrity` (totals, scrub, last pass), `status.members[].integrity`
+  and the `BitRot` condition. It matches each member to a drive from that
+  minute's Drive objects (the same read as the links): by WWN normalised as
+  stormraid's `ident::norm_wwn` (and without `-partN`), else by kernel name
+  on the set's node (`/dev/sdq3` is `sdq`). Counters are lifetime, so the
+  day is a difference: one sample per counter every 10 min, kept 25 h, the
+  first the base. A counter that goes back (a set made anew) starts over.
+  `GET /api/plugins/drive/integrity` answers each set with `day: {since,
+  full, counts}` on the set and each member. Pages: `#/drives/integrity`
+  and the drive page's Integrity panel (`DriveIntegrity.svelte`), modelled
+  in `integrity.js`. Not here yet: the drive's own PI/error/defect
+  counters (#384, the Drive object's `status.health`) and trend charts
+  (#385, stormcos#1466).
 - **History** is read on demand: `GET /api/plugins/health/history?process=&
   api=&limit=` tails each `<history_dir>/<process>.jsonl` (256 KiB), the
   line format stormd and PID 1 share (`ts, process, api, url, from, to,
