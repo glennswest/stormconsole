@@ -335,8 +335,16 @@ k POST /api/v1/namespaces/storm-block/pods '{"apiVersion":"v1","kind":"Pod","met
   "spec":{"nodeName":"n1","containers":[{"name":"stormblock","image":"stormblock"}]}}'
 k POST /api/v1/namespaces/storm-block/events '{"apiVersion":"v1","kind":"Event","metadata":{"name":"stormblock-n1.started"},
   "involvedObject":{"kind":"Pod","name":"stormblock-n1","namespace":"storm-block"},"reason":"Started","message":"stormblock started","type":"Normal"}'
-sleep 6
 as root
+# The page and the feed are the console's watch cache: wait for it to hold
+# the new project (said how long), not a fixed sleep.
+t0=$(date +%s)
+for _ in $(seq 60); do
+  curl -sf -b "$W/jar.root" "http://127.0.0.1:$P/api/plugins/k8s/namespaces/storm-block" 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(i["kind"]=="pod" and i["count"]==1 for i in d["inventory"]) else 1)' 2>/dev/null && break
+  sleep 1
+done
+echo "  the console's cache held storm-block and its pod after $(( $(date +%s) - t0 )) s"
 want "an admin sees storm-block, marked system" 'any(p["name"]=="storm-block" and p["system"] for p in d["system"]) and not any(p["name"]=="storm-block" for p in d["projects"])' /api/plugins/k8s/projects
 want "its page says system and counts its pod" 'd["system"] is True and any(i["kind"]=="pod" and i["count"]==1 for i in d["inventory"])' /api/plugins/k8s/namespaces/storm-block
 want "and has its events" 'any(e["reason"]=="Started" and e["object"]=="Pod/stormblock-n1" for e in d["events"])' /api/plugins/k8s/namespaces/storm-block
