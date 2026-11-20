@@ -234,6 +234,8 @@ async fn run() {
         )
         .with_dial(node_dial.clone())
         .with_access(namespace_access.clone())
+        // The RaidSets' integrity and BitRot (#368).
+        .with_kube(kube.clone())
         // Its RAID sets, which a firmware update must not take two members of (#317).
         .with_engine(config.stormblock.enabled.then(|| engine.clone()))));
     }

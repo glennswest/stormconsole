@@ -16,6 +16,7 @@
   import DriveFormat from './lib/views/DriveFormat.svelte'
   import DriveControllers from './lib/views/DriveControllers.svelte'
   import DriveHbas from './lib/views/DriveHbas.svelte'
+  import IntegrityView from './lib/views/IntegrityView.svelte'
   import NodeDetail from './lib/views/NodeDetail.svelte'
   import NodeNetwork from './lib/views/NodeNetwork.svelte'
   import NodesView from './lib/views/NodesView.svelte'
@@ -62,6 +63,7 @@
     driveformat: DriveFormat,
     drivecontrollers: DriveControllers,
     drivehbas: DriveHbas,
+    driveintegrity: IntegrityView,
     nodes: NodesView,
     nodedetail: NodeDetail,
     nodenetwork: NodeNetwork,

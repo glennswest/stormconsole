@@ -1393,6 +1393,7 @@ version = "0.39.1"
 dependencies = [
  "async-trait",
  "axum",
+ "chrono",
  "console-core",
  "futures-util",
  "plugin-kubernetes",

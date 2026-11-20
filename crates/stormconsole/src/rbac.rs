@@ -80,6 +80,8 @@ fn what_the_console_reads_on_demand_on_its_own_credential() {
     assert!(allows(&role, "", "endpoints", "get"));
     assert!(allows(&role, "apps", "replicasets", "get"));
     assert!(allows(&role, "project.openshift.io", "projects", "list"));
+    // Every RAID set, for its integrity and the bit-rot alarm (#368).
+    assert!(allows(&role, "storage.storm.io", plugin_stormdrive::integrity::RAIDSETS.rsplit('/').next().unwrap_or_default(), "list"));
 }
 
 #[test]

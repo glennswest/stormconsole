@@ -18,6 +18,8 @@ const routes = [
   { pattern: '#/drives/controllers', name: 'drivecontrollers' },
   // SAS cards from their HostBusAdapter objects, and their flash (#376); one card is `?card=`.
   { pattern: '#/drives/hbas', name: 'drivehbas' },
+  // Every RAID set's integrity: bit rot found and rewritten from parity (#368); one set is `?set=`.
+  { pattern: '#/drives/integrity', name: 'driveintegrity' },
   { pattern: '#/vms', name: 'vmlist' },
   { pattern: '#/nodes', name: 'nodes' },
   // Every API on this node, its state and latency (#123).

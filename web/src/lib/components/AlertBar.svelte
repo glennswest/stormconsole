@@ -12,8 +12,13 @@
   // LinkDegraded / LinkFailing condition, before a write fails, and kept for
   // an hour after the link is ok again. The drive plugin puts it in the feed
   // as an `alarm` row whose link opens the drive.
+  //
+  // A RAID set's `BitRot` (#368, stormraid#80) the same way: amber while a
+  // member's mismatches or repairs rose in the last scrub pass or day, red
+  // with rows past parity (data lost) in the last day, kept an hour after.
   import { feed } from '../stores.svelte.js'
   import { linkAlarms } from '../drivelink.js'
+  import { bitrotAlarms } from '../integrity.js'
 
   const apis = $derived(
     feed.components.filter((c) => c.kind === 'api' && c.id.startsWith('health:api:') && c.health === 'error'),
@@ -29,8 +34,9 @@
         : [],
   )
   const drives = $derived(linkAlarms(feed.components))
+  const rot = $derived(bitrotAlarms(feed.components))
   // Red first: a stalled API or a failing link before a degraded one.
-  const alerts = $derived([...apiAlerts, ...drives].sort((a, b) => (a.tone === 'error' ? 0 : 1) - (b.tone === 'error' ? 0 : 1)))
+  const alerts = $derived([...apiAlerts, ...drives, ...rot].sort((a, b) => (a.tone === 'error' ? 0 : 1) - (b.tone === 'error' ? 0 : 1)))
   const tone = $derived(alerts.some((a) => a.tone === 'error') ? 'error' : 'warn')
   let open = $state(false)
 </script>
@@ -53,6 +59,7 @@
     </div>
     {#if apiAlerts.length}<a class="all" href="#/health">API health</a>{/if}
     {#if drives.length}<a class="all" href="#/drives?filter=link">Drive links</a>{/if}
+    {#if rot.length}<a class="all" href="#/drives/integrity">Integrity</a>{/if}
   </div>
 {/if}
 

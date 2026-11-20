@@ -34,6 +34,7 @@
   import MaintainProgress from '../components/MaintainProgress.svelte'
   import ControllerBanner from '../components/ControllerBanner.svelte'
   import DriveLink from '../components/DriveLink.svelte'
+  import DriveIntegrity from '../components/DriveIntegrity.svelte'
   import { driveIdOf, drivesOnCards, gbit } from '../hba.js'
   import { listMetric } from '../drivelink.js'
   import { replaceWhy, rows as replaceRows } from '../drivereplace.js'
@@ -56,6 +57,8 @@
   let usageError = $state('')
   // Every drive's SAS link (#339): read by the drive plugin once a minute.
   let links = $state(null)
+  // Every RAID set's integrity (#368): read by the drive plugin once a minute, a day kept.
+  let integrity = $state(null)
   // Which SAS card and phy each drive hangs off (#376), from the HostBusAdapter objects you may read.
   let cards = $state(null)
   // The format records (#308): who may be formatted, and each run's progress.
@@ -67,16 +70,18 @@
   let fwGuard = $state(null)
   let now = $state(Math.floor(Date.now() / 1000))
   async function refresh() {
-    const [u, p, pool, f, l, h] = await Promise.allSettled([
+    const [u, p, pool, f, l, h, ig] = await Promise.allSettled([
       get('/api/plugins/drive/usage'),
       get('/api/plugins/sb/placement'),
       get('/api/plugins/sb/proxy/api/v1/slabs/pool'),
       get('/api/plugins/drive/formats'),
       get('/api/plugins/drive/links'),
       get('/api/plugins/k8s/hbas'),
+      get('/api/plugins/drive/integrity'),
     ])
     if (f.status === 'fulfilled') formats = f.value
     if (l.status === 'fulfilled') links = l.value
+    if (ig.status === 'fulfilled') integrity = ig.value
     if (h.status === 'fulfilled') cards = drivesOnCards(h.value.items)
     await refreshMaintain()
     if (u.status === 'fulfilled') {
@@ -294,6 +299,7 @@
   >
     {#snippet actions()}
       {#if !asShelves && !asPools}
+        <a class="pagebtn plain" href="#/drives/integrity" data-testid="integrity-page">Integrity</a>
         <a class="pagebtn plain" href="#/drives/controllers" data-testid="controllers-page">Controllers</a>
         <a class="pagebtn" href="#/drives/format" data-testid="format-page">Format drives…</a>
       {/if}
@@ -573,6 +579,7 @@
           </p>
         {/if}
         <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} node={pick.local ? '' : pick.node} read={!!links?.read} />
+        <DriveIntegrity answer={integrity} component={pick.id} />
         {#if pick.usage}
           {@const u = pick.usage}
           {@const cap = pick.capacity || u.slab + u.unslabbed}

@@ -42,6 +42,7 @@ All are cluster-wide.
 | flowsdn.io | flowsdnendpoints, flowsdnidentities, flowsdnnetworkpolicies, flowsdnclusterwidenetworkpolicies | get, list, watch | the network pages on a flowsdn node (optional kinds, #168) |
 | network.storm.io | networkports | get, list, watch | a node's Network page: every host port's settings, state, module and counters, from stormpump (optional kind, #336) |
 | core | events | get, list | cluster-wide events, filtered to what the viewer may see; object event boxes |
+| storage.storm.io | raidsets | get, list | every RAID set's integrity counters, scrub and `BitRot`, once a minute: the Integrity page and the bit-rot alarm (#368) |
 | core | pods/log | get | the last 5 runs per container, kept in the background (#69) |
 | core | endpoints | get | a pod page's Services, for someone with no identity |
 | apps | replicasets | get | a pod page's owner chain, for someone with no identity |

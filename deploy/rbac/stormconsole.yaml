@@ -65,6 +65,11 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [get, list]
+  # Every RAID set's integrity counters and BitRot condition, once a minute, for the alarm (#368,
+  # stormraid#80). Read only: a scrub request is a spec change made as the signed-in user.
+  - apiGroups: [storage.storm.io]
+    resources: [raidsets]
+    verbs: [get, list]
   - apiGroups: [""]
     resources: [pods/log]
     verbs: [get]

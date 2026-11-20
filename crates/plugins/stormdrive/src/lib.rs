@@ -28,6 +28,7 @@
 pub mod controllers;
 pub mod firmware;
 pub mod format;
+pub mod integrity;
 pub mod inuse;
 pub mod links;
 mod resources;
@@ -80,6 +81,10 @@ struct Inner {
     engine: Option<Arc<console_core::engine::Engine>>,
     /// Every drive's SAS link, read once a minute (#339).
     links: RwLock<links::Seen>,
+    /// The apiserver, for the RaidSets (#368). `None` with no `[kubernetes]`.
+    kube: Option<plugin_kubernetes::Client>,
+    /// Every RAID set's integrity, read once a minute (#368).
+    integrity: RwLock<integrity::Seen>,
 }
 
 pub struct DrivesPlugin {
@@ -158,6 +163,14 @@ impl DrivesPlugin {
         self
     }
 
+    /// The apiserver, whose RaidSets carry their integrity (#368). Right after construction.
+    pub fn with_kube(mut self, conn: Option<Arc<console_core::apiserver::Conn>>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.kube = conn.map(plugin_kubernetes::Client::new);
+        }
+        self
+    }
+
     pub fn with_dial(mut self, dial: Arc<console_core::dial::Dial>) -> Self {
         self.inner.local.set_dial(dial.clone());
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -183,6 +196,8 @@ impl DrivesPlugin {
                 controllers: tokio::sync::Mutex::new(None),
                 engine: None,
                 links: RwLock::new(links::Seen::default()),
+                kube: None,
+                integrity: RwLock::new(integrity::Seen::default()),
             }),
         }
     }
@@ -221,6 +236,8 @@ impl ConsolePlugin for DrivesPlugin {
             .item_at("Controllers", "#/drives/controllers", 17)
             // SAS cards from their HostBusAdapter objects, and their flash (#376, stormdrive#166).
             .item_at("SAS cards", "#/drives/hbas", 18)
+            // Bit rot found and repaired, per RAID set and member drive (#368, stormraid#80).
+            .item_at("Integrity", "#/drives/integrity", 19)
             .item_at("Shelves", "#/drives?group=shelf", 20)
             .item_at("Pools", "#/drives?group=pool", 30)
             // Every object of the kind, in the generic grid with its printer columns (#348).
@@ -247,6 +264,7 @@ impl ConsolePlugin for DrivesPlugin {
             .route("/replace", post(replace_free))
             .route("/controllers", get(controllers_route))
             .route("/links", get(links_route))
+            .route("/integrity", get(integrity_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -264,6 +282,9 @@ impl ConsolePlugin for DrivesPlugin {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let seen = self.inner.links.read().await;
         out.extend(seen.rows.iter().filter_map(|r| links::alarm(r, now)).map(|a| links::component(&a, NAME)));
+        // A set's BitRot (#368), the same way.
+        let sets = self.inner.integrity.read().await;
+        out.extend(sets.rows.iter().filter_map(|r| integrity::alarm(r, now)).map(|a| integrity::component(&a, NAME)));
         out
     }
 
@@ -307,7 +328,8 @@ impl ConsolePlugin for DrivesPlugin {
             self.refresh_nodes().await;
             if links_at.is_none_or(|t| t.elapsed() >= links::EVERY) {
                 links_at = Some(std::time::Instant::now());
-                read_links(&self.inner).await;
+                let drives = read_links(&self.inner).await;
+                read_integrity(&self.inner, &drives).await;
             }
             let mut polls = vec![self.inner.local.clone()];
             polls.extend(self.inner.remotes.read().await.values().cloned());
@@ -438,7 +460,8 @@ async fn read_formats(inner: &Inner) -> serde_json::Value {
 }
 
 /// Every node's Drive objects, reduced to their links (#339), into the plugin's state.
-async fn read_links(inner: &Inner) {
+/// Returns the drives, indexed for the RAID sets' members (#368).
+async fn read_links(inner: &Inner) -> integrity::Index {
     let targets = targets(inner).await;
     let answers = futures_util::future::join_all(
         targets.iter().map(|(_, base, _)| read_json(&inner.dial, base, "/apis/storage.storm.io/v1/drives")),
@@ -446,11 +469,14 @@ async fn read_links(inner: &Inner) {
     .await;
     let mut rows = Vec::new();
     let mut nodes = Vec::new();
+    let mut index = integrity::Index::default();
     for ((node, _, pre), answer) in targets.iter().zip(answers) {
         match answer {
             Ok(v) => {
                 let before = rows.len();
-                for o in v.get("items").and_then(serde_json::Value::as_array).into_iter().flatten() {
+                let items = v.get("items").and_then(serde_json::Value::as_array).map_or(&[][..], Vec::as_slice);
+                index.add(node, pre, items);
+                for o in items {
                     rows.extend(links::row(o, node, pre));
                 }
                 nodes.push(json!({"node": node, "ok": true, "links": rows.len() - before}));
@@ -459,6 +485,32 @@ async fn read_links(inner: &Inner) {
         }
     }
     inner.links.write().await.take(rows, nodes);
+    index
+}
+
+/// Every RaidSet, from the apiserver on the console's own credential (#368):
+/// the alarm is the console's, raised whoever is looking.
+async fn read_integrity(inner: &Inner, drives: &integrity::Index) {
+    let Some(kube) = &inner.kube else { return };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    match kube.get(integrity::RAIDSETS).await {
+        Ok(v) => {
+            let rows = v["items"].as_array().into_iter().flatten().filter_map(|o| integrity::set_row(o, drives)).collect();
+            inner.integrity.write().await.take(rows, now);
+        }
+        Err(plugin_kubernetes::RkError::Status(s)) if s == StatusCode::NOT_FOUND => {
+            inner.integrity.write().await.failed("the apiserver serves no RaidSet kind (stormraid's CRD is not installed)".into(), true);
+        }
+        Err(e) => inner.integrity.write().await.failed(format!("RaidSets could not be read: {e}"), false),
+    }
+}
+
+/// `GET /integrity` (#368): every RAID set's integrity counters, lifetime and
+/// for the last day, its scrub and its members, as last read (once a minute).
+async fn integrity_route(State(inner): State<Arc<Inner>>) -> Response {
+    let mut v = inner.integrity.read().await.answer();
+    v["kube"] = json!(inner.kube.is_some());
+    Json(v).into_response()
 }
 
 /// `GET /links` (#339): every drive's SAS link, both sides, with its trend of
