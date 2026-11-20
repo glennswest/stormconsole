@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.40.0] — 2026-11-20
+
 ### 2026-11-20 — RAID set integrity: bit rot, rewrites from parity, the BitRot alarm (#368, stormraid#80)
 - **feat:** Hardware → **Integrity** (`#/drives/integrity`, `?set=` for one): every RaidSet's integrity as stormraid v0.27.0 keeps it (stormcos#1017 ships the CRD that keeps it). For the set: checksum mismatches (and where found: L1 read path, L2 write verify, L3 scrub), blocks rewritten from parity, rows past parity, PI, read and write errors, each for its lifetime and for the last day, with when each last rose. Also its scrub (running, the interval, passes done, the next, the last pass) and `BitRot` with the members it names. Each member's counters are listed with the day's rise and a link to its drive.
 - **feat:** the drive page's **Integrity** panel: the member's counters from its set (slot, set, role, state, lifetime, last day, last rose, where the mismatches were found), and `BitRot` marked. A drive in no set says so.
