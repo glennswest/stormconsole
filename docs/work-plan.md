@@ -1999,6 +1999,20 @@ stormcentral-compliance-operations#219 (missing provenance).
   node. Left: the row "Digest: not reported" is the node's imageID and can read beside a recorded digest; "clones" on
   the Registry page is the owner's word on #163, not changed
 
+### The Update page: Cancel (#196)
+stormupdate#36 (closed 2026-11-20) serves `POST /api/v1/cancel {"reason"?}`, read from stormupdate dde4d73 (`api.rs`
+`cancel`, `rollout.rs` `cancel_check`, README "Cancel before the reboot"): update token; 202 `{spec}`; 409 with the
+reason (nothing to cancel, a rollback running, a node told to reboot / rebooted / on the target, naming it, "the way
+back is POST /api/v1/rollback"); 503 when the nodes kept changing. Phase `Cancelling`, then `Idle`; node phase
+`Cancelled`, agent state `cancelled`, history result `Cancelled`. A request not yet started is cancelled at once.
+- [ ] plugin: `POST /cancel {reason?}`, admin, recorded like the others; the reason carries who asked; a 409's
+      "the way back is POST /api/v1/rollback" said as "roll back instead"; `Cancelling` a run (warn), not a fault
+- [ ] `update.js` `actions().cancel` (a run with no node past the reboot, or a request not yet started; not a
+      rollback, not while cancelling); `Cancelling`/`Cancelled` words and tones; test
+- [ ] page: Cancel under Now, asking first (with an optional reason); a refusal shown with Roll back beside it
+- [ ] `verify-update.sh`: cancel through the console against a real stormupdate (a request not started: 202, spec
+      cleared; nothing to cancel: 409 in words); Chromium; docs, changelog, dist; release; image
+
 ### The Update page's pre-pull and images (#62)
 #164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
 offered a rollback of nothing; digest, reference, data volume, hooks and each node's state were not shown; a
