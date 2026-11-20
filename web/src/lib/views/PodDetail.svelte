@@ -27,6 +27,7 @@
   import PodEnv from './PodEnv.svelte'
   import FlowTable from '../components/FlowTable.svelte'
   import PodTerminal from './PodTerminal.svelte'
+  import { chartQuery } from '../charts.js'
 
   const ns = $derived(route.current.params.ns)
   const name = $derived(route.current.params.name)
@@ -724,8 +725,8 @@
         </section>
       {/if}
     {:else if tab === 'Stats'}
-      <p class="dim"><a href={`#/metrics?entity=pod&ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`}>Its series in ironprom, over longer windows</a></p>
-      <PodStats {base} {ns} {name} containers={pod.containers} />
+      <p class="dim"><a href={`#/metrics?${chartQuery({ entity: 'pod', ns, name }, pod.metadata.node)}`}>Its series in ironprom, over longer windows</a></p>
+      <PodStats {base} {ns} {name} containers={pod.containers} node={pod.metadata.node || ''} />
     {:else if tab === 'Environment'}
       <PodEnv {base} containers={pod.containers} />
     {:else if tab === 'Terminal'}

@@ -1,11 +1,13 @@
 <script>
   // Charts from ironprom for one object or level (#46, #14). `query` is what the server is asked for, by name:
-  // never a PromQL query, which could read any project's series.
+  // never a PromQL query, which could read any project's series. `node`: the node that holds the object, whose
+  // ironprom the console asks (#369); unset, this node's.
   import { onDestroy } from 'svelte'
   import { formatBytes } from '../api.js'
   import LineChart from './LineChart.svelte'
+  import { chartQuery, fromWords } from '../charts.js'
 
-  let { query, ontitle } = $props()
+  let { query, node = '', ontitle } = $props()
 
   const WINDOWS = [[900, '15 min'], [3600, '1 hour'], [21600, '6 hours'], [86400, '1 day'], [604800, '1 week']]
   let charts = $state(null)
@@ -15,7 +17,7 @@
 
   async function load(asked, secs) {
     try {
-      const p = new URLSearchParams(asked)
+      const p = chartQuery(asked, node)
       p.set('window', secs)
       const r = await fetch(`/api/plugins/metrics/charts?${p}`)
       const body = await r.json().catch(() => null)
@@ -58,7 +60,7 @@
 
 {#if error}<p class="bad">{error}</p>{/if}
 <div class="row">
-  {#if charts?.note}<p class="dim note">{charts.note}</p>{/if}
+  {#if charts}<p class="dim note" data-testid="charts-from">{fromWords(charts.node)}.{charts.note ? ` ${charts.note}` : ''}</p>{/if}
   <label class="window">Window
     <select bind:value={windowSecs} aria-label="Window">
       {#each WINDOWS as [s, word] (s)}<option value={s}>{word}</option>{/each}

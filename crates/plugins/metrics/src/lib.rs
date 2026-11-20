@@ -7,7 +7,11 @@
 //! - **A down target is not this node being unhealthy.** stormcos's config lists targets that do not serve
 //!   yet, on purpose, so the gap shows. The card counts them; the Targets view is where they are red.
 //!
-//! ironprom holds this node's own series, so another node's drive has none here.
+//! - **Another node's object is charted from that node's ironprom** (#369). Each ironprom holds only its own
+//!   node's series, so a port, VM, drive or pod on another node is asked of the ironprom on that node (its
+//!   address from the fleet, ironprom's port as configured here), with the same named panels and the same
+//!   project filter of the viewer. No free query leaves the console. A node that is not known, has no address
+//!   yet or does not answer is said, never an empty chart.
 
 pub mod panels;
 
@@ -22,6 +26,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use console_core::build::{Build, Network};
 use console_core::dial::Reach;
+use plugin_logs::LogHosts;
 use console_core::{ComponentSummary, ConsolePlugin, Health, Metric, NavSection, Viewer};
 use panels::{Entity, Panel};
 use plugin_kubernetes::NamespaceAccess;
@@ -63,6 +68,10 @@ struct Inner {
     access: Option<Arc<NamespaceAccess>>,
     seen: RwLock<Seen>,
     build: Option<Arc<Build>>,
+    /// The cluster's nodes and the addresses they are heard from (#369).
+    nodes: Option<LogHosts>,
+    /// This node's name, as the fleet calls it.
+    local: String,
 }
 
 /// Whether this network has this job. ironprom's config lists the cilium jobs on every build
@@ -88,7 +97,18 @@ pub struct MetricsPlugin {
 
 impl MetricsPlugin {
     pub fn new(reach: Arc<Reach>, access: Option<Arc<NamespaceAccess>>) -> Self {
-        Self { inner: Arc::new(Inner { reach, access, seen: RwLock::new(Seen::default()), build: None }) }
+        Self {
+            inner: Arc::new(Inner { reach, access, seen: RwLock::new(Seen::default()), build: None, nodes: None, local: String::new() }),
+        }
+    }
+
+    /// The fleet's nodes, so another node's object is charted from its own ironprom (#369). Right after construction.
+    pub fn with_nodes(mut self, nodes: Option<LogHosts>, local: String) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.nodes = nodes;
+            inner.local = local;
+        }
+        self
     }
 
     /// What this node's build carries (#285). Right after construction.
@@ -154,7 +174,11 @@ async fn poll(inner: &Inner) {
 }
 
 async fn read_targets(inner: &Inner) -> Result<Vec<Target>, String> {
-    let req = inner.reach.request(reqwest::Method::GET, "/api/v1/targets").await?;
+    targets_at(&inner.reach).await
+}
+
+async fn targets_at(reach: &Reach) -> Result<Vec<Target>, String> {
+    let req = reach.request(reqwest::Method::GET, "/api/v1/targets").await?;
     let r = req.timeout(ASK).send().await.map_err(|e| console_core::dial::chain(&e))?;
     let code = r.status();
     if !code.is_success() {
@@ -250,6 +274,8 @@ struct ChartsQuery {
     node: Option<String>,
     ifname: Option<String>,
     window: Option<i64>,
+    /// The node that holds the object (#369); a port's own `node` when unset.
+    on: Option<String>,
     /// `disk`: only an object's disk charts, for the pod page's Stats tab; `link`: a drive's link charts (#339).
     only: Option<String>,
 }
@@ -267,6 +293,40 @@ fn entity_of(q: &ChartsQuery) -> Result<Option<Entity>, String> {
     }
 }
 
+/// The node whose ironprom holds this object's series: the one named, or a port's own node. `None`: this node's.
+fn owner_of(q: &ChartsQuery, entity: Option<&Entity>, local: &str) -> Option<String> {
+    let named = q.on.clone().filter(|n| !n.is_empty()).or_else(|| match entity {
+        Some(Entity::Port { node, .. }) => Some(node.clone()),
+        _ => None,
+    });
+    named.filter(|n| n != local)
+}
+
+/// Another node's ironprom: its address, at the port this node's is configured on (9091 by default).
+fn ironprom_at(local_base: &str, addr: &str) -> String {
+    let port = local_base
+        .rsplit_once(':')
+        .and_then(|(_, p)| p.trim_end_matches('/').parse::<u16>().ok())
+        .unwrap_or(9091);
+    let host = if addr.contains(':') && !addr.starts_with('[') { format!("[{addr}]") } else { addr.to_string() };
+    format!("http://{host}:{port}")
+}
+
+/// Where another node's ironprom is, or why it cannot be asked: `Err((status, sentence))`.
+async fn remote(inner: &Inner, node: &str) -> Result<(Reach, String), (StatusCode, String)> {
+    let Some(nodes) = &inner.nodes else {
+        return Err((StatusCode::SERVICE_UNAVAILABLE, format!("{node}'s series are on {node}, and this console does not hear the fleet (the log collector is off)")));
+    };
+    let Some(h) = nodes.hosts().await.into_iter().find(|h| h.host == node) else {
+        return Err((StatusCode::NOT_FOUND, format!("no node {node} in this cluster: the fleet has not heard from it")));
+    };
+    if h.addr.is_empty() {
+        return Err((StatusCode::SERVICE_UNAVAILABLE, format!("{node} has not said where it is yet, so its ironprom cannot be asked")));
+    }
+    let base = ironprom_at(inner.reach.base(), &h.addr);
+    Ok((inner.reach.at(&base), base))
+}
+
 /// Why a chart has nothing on it. The answer is usually the target.
 fn empty_note(job: &str, list: Option<&[Target]>) -> String {
     let Some(list) = list else { return "ironprom's targets could not be read".to_string() };
@@ -281,7 +341,7 @@ fn empty_note(job: &str, list: Option<&[Target]>) -> String {
     }
 }
 
-async fn chart(inner: &Inner, p: &Panel, q: Result<String, String>, range: (i64, i64, i64), list: Option<&[Target]>) -> Value {
+async fn chart(reach: &Reach, p: &Panel, q: Result<String, String>, range: (i64, i64, i64), list: Option<&[Target]>) -> Value {
     let (start, end, step) = range;
     let base = json!({"id": p.id, "title": p.title, "unit": p.unit, "job": p.job});
     let with = |mut v: Value, k: &str, x: Value| {
@@ -293,7 +353,7 @@ async fn chart(inner: &Inner, p: &Panel, q: Result<String, String>, range: (i64,
         Err(why) => return with(with(base, "series", json!([])), "note", json!(why)),
     };
     let asked = async {
-        let req = inner.reach.request(reqwest::Method::GET, "/api/v1/query_range").await?;
+        let req = reach.request(reqwest::Method::GET, "/api/v1/query_range").await?;
         let params = [("query", query), ("start", start.to_string()), ("end", end.to_string()), ("step", step.to_string())];
         let r = req.query(&params).timeout(ASK).send().await.map_err(|e| console_core::dial::chain(&e))?;
         r.json::<Value>().await.map_err(|e| e.to_string())
@@ -318,7 +378,7 @@ async fn chart(inner: &Inner, p: &Panel, q: Result<String, String>, range: (i64,
 }
 
 /// `GET /charts?level=` or `?entity=drive&serial=`, `?entity=pod|vm&ns=&name=`, `?entity=port&node=&ifname=`,
-/// with `window` in seconds.
+/// with `window` in seconds; `on=<node>` for an object on another node (#369).
 async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query<ChartsQuery>) -> Response {
     let refuse = |code: StatusCode, why: String| (code, Json(json!({"error": why}))).into_response();
     let entity = match entity_of(&q) {
@@ -347,12 +407,34 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
             (l.title.to_string(), l.note, l.panels)
         }
     };
-    let targets = inner.seen.read().await.targets.clone();
-    if targets.is_none() {
-        let s = inner.seen.read().await;
-        let why = if s.not_started { NOT_STARTED.to_string() } else { format!("ironprom did not answer: {}", s.error) };
-        return refuse(StatusCode::SERVICE_UNAVAILABLE, why);
-    }
+    // Another node's object: its own ironprom, asked now. Its targets are read with it, for the empty charts' notes.
+    let owner = owner_of(&q, entity.as_ref(), &inner.local);
+    let mut far: Option<Reach> = None;
+    let targets: Option<Vec<Target>> = match &owner {
+        None => {
+            let targets = inner.seen.read().await.targets.clone();
+            if targets.is_none() {
+                let s = inner.seen.read().await;
+                let why = if s.not_started { NOT_STARTED.to_string() } else { format!("ironprom did not answer: {}", s.error) };
+                return refuse(StatusCode::SERVICE_UNAVAILABLE, why);
+            }
+            targets
+        }
+        Some(node) => {
+            let (reach, base) = match remote(&inner, node).await {
+                Ok(r) => r,
+                Err((code, why)) => return refuse(code, why),
+            };
+            match targets_at(&reach).await {
+                Ok(t) => {
+                    far = Some(reach);
+                    Some(t)
+                }
+                Err(e) => return refuse(StatusCode::BAD_GATEWAY, format!("{node} did not answer: its ironprom at {base}: {e}")),
+            }
+        }
+    };
+    let reach = far.as_ref().unwrap_or(&inner.reach);
     let window = panels::clamp_window(q.window);
     let step = panels::step_for(window);
     let end = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
@@ -369,9 +451,10 @@ async fn charts(State(inner): State<Arc<Inner>>, viewer: Viewer, Query(q): Query
     let network = inner.network();
     for p in list.iter().filter(|p| only(p) && carried(&network, p.job)) {
         let query = panels::query(p, entity.as_ref(), visible.as_deref());
-        out.push(chart(&inner, p, query, (start, end, step), targets.as_deref()).await);
+        out.push(chart(reach, p, query, (start, end, step), targets.as_deref()).await);
     }
-    Json(json!({"title": title, "note": note, "from": start * 1000, "to": end * 1000, "step": step, "charts": out})).into_response()
+    let node = owner.unwrap_or_else(|| inner.local.clone());
+    Json(json!({"title": title, "note": note, "node": node, "from": start * 1000, "to": end * 1000, "step": step, "charts": out})).into_response()
 }
 
 #[async_trait]
@@ -467,6 +550,28 @@ mod tests {
         assert!(empty_note("gone", Some(&list)).contains("connection refused"));
         assert!(empty_note("up", Some(&list)).contains("served none"));
         assert!(empty_note("never", Some(&list)).contains("no job never"));
+    }
+
+    #[test]
+    fn an_object_is_charted_from_the_node_that_holds_it() {
+        let port = Entity::Port { node: "storm-b".into(), ifname: "eth0".into() };
+        let vm = Entity::Vm { ns: "a".into(), name: "b".into() };
+        let on = |n: &str| ChartsQuery { on: Some(n.into()), ..Default::default() };
+        assert_eq!(owner_of(&ChartsQuery::default(), Some(&port), "storm-a").as_deref(), Some("storm-b"), "a port says its node");
+        assert_eq!(owner_of(&ChartsQuery::default(), Some(&port), "storm-b"), None, "this node's port is asked here");
+        assert_eq!(owner_of(&ChartsQuery::default(), Some(&vm), "storm-a"), None, "unnamed: this node");
+        assert_eq!(owner_of(&on("storm-c"), Some(&vm), "storm-a").as_deref(), Some("storm-c"));
+        assert_eq!(owner_of(&on("storm-a"), Some(&vm), "storm-a"), None, "named, and it is this one");
+        assert_eq!(owner_of(&on(""), None, "storm-a"), None, "an empty name is no name");
+        assert_eq!(owner_of(&on("storm-c"), Some(&port), "storm-a").as_deref(), Some("storm-c"), "the name given wins");
+    }
+
+    #[test]
+    fn another_nodes_ironprom_is_at_its_address_on_this_ones_port() {
+        assert_eq!(ironprom_at("http://127.0.0.1:9091", "192.168.30.2"), "http://192.168.30.2:9091");
+        assert_eq!(ironprom_at("http://127.0.0.1:19091/", "10.0.0.7"), "http://10.0.0.7:19091");
+        assert_eq!(ironprom_at("http://localhost", "10.0.0.7"), "http://10.0.0.7:9091", "no port: ironprom's on a node");
+        assert_eq!(ironprom_at("http://127.0.0.1:9091", "fd00::7"), "http://[fd00::7]:9091");
     }
 
     #[test]

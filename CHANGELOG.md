@@ -3,6 +3,12 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-20 — Another node's charts, from its own ironprom (#369)
+- **feat:** a port, VM, drive or pod on another node is charted from **that node's ironprom**, through this console. `GET /api/plugins/metrics/charts?…&on=<node>` (a port's own `node` when unset): the node's address from the fleet (its Node's InternalIP), ironprom's port as `[ironprom] url` names it (9091), dialled as `[node_tls]` says. The queries are the same named panels with the same project filter of the viewer, so no free query leaves the console and another project's object is still a 404. The answer carries `node`.
+- **feat:** a node the fleet has not heard of is a 404 (`no node x in this cluster`), one with no address yet a 503, and one whose ironprom does not answer a 502 naming the node and the address it was asked at. The page says so instead of drawing an empty chart.
+- **feat:** the VM page's Metrics tab, a drive's Metrics link and its SAS link trend, and a pod's disk charts and Metrics link pass the object's node. Every chart set says whose ironprom it read (`From storm-b's ironprom`), and the Metrics page's scope names the node. A drive on another node now has a Metrics link, and its 24 h loss-of-sync trend comes from its own node's ironprom instead of the kept samples.
+- **test:** `deploy/verify-remote-charts.sh`: two real ironproms on one port (this node's and storm-b's), a real rustkube holding three Nodes and a VM on storm-b, alice in one project; `charts.test.mjs`; Chromium `remote-charts.cjs`.
+
 ### 2026-11-20 — API health probes declared (#150, stormcentral#596)
 - **chore:** the registry entry declares the console's APIs for stormd to probe (set by the master, not in this repo): `console` → `/api/summary` (50/500 ms, 10 s) and `logs` → `/api/plugins/logs/events?last=1` (100/1000 ms, 10 s), no token, no restart. The image built from it carries them as `[[process.api]]`, so the node's API health (Health page, `/api/plugins/health/snapshot`) lists both.
 

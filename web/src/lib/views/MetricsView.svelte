@@ -8,10 +8,13 @@
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import EntityCharts from '../components/EntityCharts.svelte'
+  import { chartNode } from '../charts.js'
 
   const q = route.current.query
   const entity = q.get('entity') || ''
   const level = q.get('level') || ''
+  // An object on another node is charted from that node's ironprom (#369).
+  const on = chartNode(q.toString())
 
   let targets = $state(null)
   let chartTitle = $state('')
@@ -48,7 +51,7 @@
 </script>
 
 <div class="sc-page">
-  <PageHeader crumbs={[{ label: 'Observe' }, { label: 'Metrics' }]} title={chartTitle || 'Metrics'} scope="this node" />
+  <PageHeader crumbs={[{ label: 'Observe' }, { label: 'Metrics' }]} title={chartTitle || 'Metrics'} scope={on ? `node ${on}` : 'this node'} />
 
   <nav class="tabs" aria-label="Metrics sections">
     <button class:active={!entity && !level} onclick={() => navigate('#/metrics')}>Targets</button>

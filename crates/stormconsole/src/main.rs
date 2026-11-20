@@ -347,7 +347,12 @@ async fn run() {
     if config.ironprom.enabled {
         let none = Arc::new(console_core::token::FileToken::fixed(None));
         let reach = Arc::new(console_core::dial::Reach::new(&config.ironprom_url(), node_dial.clone(), none));
-        plugins.push(Arc::new(plugin_metrics::MetricsPlugin::new(reach, namespace_access.clone()).with_build(build.clone())));
+        // Another node's object is charted from its own ironprom, found through the fleet (#369).
+        plugins.push(Arc::new(
+            plugin_metrics::MetricsPlugin::new(reach, namespace_access.clone())
+                .with_build(build.clone())
+                .with_nodes(log_hosts.clone(), plugin_stormdrive::local_hostname()),
+        ));
     }
     // What the cluster runs and an update's steps, with an admin's acts (#164).
     if config.stormupdate.enabled {

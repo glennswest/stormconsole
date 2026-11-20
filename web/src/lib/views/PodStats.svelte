@@ -10,7 +10,7 @@
   import LineChart from '../components/LineChart.svelte'
   import EntityCharts from '../components/EntityCharts.svelte'
 
-  let { base, ns, name, containers = [] } = $props()
+  let { base, ns, name, containers = [], node = '' } = $props()
 
   let windowSecs = $state(900)
   let data = $state(null)
@@ -184,7 +184,7 @@
   <!-- From ironprom, not the kubelet's samples, so it stands whether or not those can be read. -->
   <section class="card" data-testid="disk-io">
     <h2>Disk I/O, reads and writes apart</h2>
-    <EntityCharts query={{ entity: 'pod', ns, name, only: 'disk' }} />
+    <EntityCharts query={{ entity: 'pod', ns, name, only: 'disk' }} {node} />
   </section>
 </div>
 

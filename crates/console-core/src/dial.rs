@@ -191,6 +191,12 @@ impl Reach {
         &self.base
     }
 
+    /// The same daemon on another node (#369): the same dial, so the same TLS, and no credential, since
+    /// this one's token is this node's.
+    pub fn at(&self, base: &str) -> Reach {
+        Reach::new(base, self.dial.clone(), Arc::new(crate::token::FileToken::fixed(None)))
+    }
+
     /// `Err` says why it must not be read at all.
     pub async fn reach(&self) -> Result<Reached, String> {
         let route = self.dial.route(&self.base).await?;

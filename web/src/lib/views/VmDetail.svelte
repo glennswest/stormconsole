@@ -757,7 +757,8 @@
         <EventBox id={`vm:instance:${ns}/${name}`} refresh={eventTick} />
       </section>
     {:else if tab === 'Metrics'}
-      <EntityCharts query={new URLSearchParams({ entity: 'vm', ns, name }).toString()} />
+      <!-- The machine's series are in the ironprom of the node it runs on (#369). -->
+      <EntityCharts query={new URLSearchParams({ entity: 'vm', ns, name }).toString()} node={vm.node || ''} />
     {:else if tab === 'Settings'}
       {#if settings?.pending?.length}
         <!-- Written, and not yet in force. Left unsaid, this is the gap

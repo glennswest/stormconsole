@@ -2,22 +2,24 @@
   // A drive's SAS link (#339, stormdrive#149): the negotiated rate against the
   // maximum, the four counters for the drive's side and the host's (or the
   // expander's), each with its rate per minute, what stormdrive recommends,
-  // and the loss-of-sync trend: the last 24 h from ironprom, else the last
-  // hour's samples this console kept from the Drive object.
+  // and the loss-of-sync trend: the last 24 h from the ironprom of the drive's
+  // node (#369), else the last hour's samples this console kept from the Drive object.
   import { onDestroy } from 'svelte'
   import LineChart from './LineChart.svelte'
   import { ago } from '../ui/time.js'
   import { COUNTERS, rateLine, counterRows, total, perMin, levelWords, levelTone, trendFromHistory } from '../drivelink.js'
+  import { chartQuery } from '../charts.js'
 
   // `read`: whether the page has the links answer yet; until then nothing is claimed of the drive.
-  let { row = null, level = null, serial = '', local = true, read = true } = $props()
+  // `node`: the drive's node when it is another one, whose ironprom holds its series.
+  let { row = null, level = null, serial = '', node = '', read = true } = $props()
 
   const link = $derived(row?.link || null)
   const rows = $derived(counterRows(row))
   const tone = $derived(levelTone(level))
 
-  // The trend: ironprom holds this node's own series only, so another
-  // node's drive goes straight to the kept samples.
+  // The trend: each ironprom holds its own node's series, so another node's
+  // drive is read from the ironprom there, through this console (#369).
   let trend = $state(null)
   let source = $state('')
   let timer = null
@@ -25,10 +27,12 @@
     let series = []
     let from = 0
     let to = 0
-    if (local && serial) {
+    let why = 'ironprom has none'
+    if (serial) {
       try {
-        const p = new URLSearchParams({ entity: 'drive', serial, only: 'link', window: '86400' })
+        const p = chartQuery({ entity: 'drive', serial, only: 'link', window: '86400' }, node)
         const r = await fetch(`/api/plugins/metrics/charts?${p}`)
+        if (!r.ok) why = (await r.json().catch(() => null))?.error || `ironprom answered ${r.status}`
         if (r.ok) {
           const body = await r.json()
           const c = (body.charts || []).find((x) => x.id === 'link_sync')
@@ -36,7 +40,7 @@
             series = c.series
             from = body.from
             to = body.to
-            source = 'the last 24 hours, from this node’s ironprom'
+            source = `the last 24 hours, from ${node ? `${node}’s` : 'this node’s'} ironprom`
           }
         }
       } catch {}
@@ -47,9 +51,7 @@
       if (pts.length) {
         from = pts[0].at * 1000
         to = pts[pts.length - 1].at * 1000
-        source = local
-          ? `the last ${pts.length} samples this console kept from the Drive object (ironprom has none)`
-          : `the last ${pts.length} samples this console kept from the Drive object (ironprom holds only this node’s series)`
+        source = `the last ${pts.length} samples this console kept from the Drive object (${why})`
       } else source = ''
     }
     trend = series.length ? { series, from, to } : null

@@ -41,6 +41,7 @@
   import { commonActions } from '../driveactions.js'
   import { progressRows, selectable as formatable } from '../driveformat.js'
   import { ago } from '../ui/time.js'
+  import { chartQuery } from '../charts.js'
   import { build, groups as groupBy, totals, heat, cells, columns, formatBytes, FILTERS, MODES, pools as poolsOf, noUsage, setName, shelfKey, enclosures, unreadShelves, unreadShelf } from '../drivemap.js'
 
   const asShelves = $derived(route.current.query.get('group') === 'shelf')
@@ -526,7 +527,7 @@
           {#if pick.use?.in_use}<span class="badge" class:system={pick.use.use === 'system'} data-testid="picked-use">{pick.use.badge || 'In use'}</span>{/if}
           {#if pick.controllerFailed}<span class="badge system" data-testid="picked-controller">Failed by the controller</span>{/if}
           <span class="tools">
-            {#if pick.serial && !pick.c.id.startsWith('drive:@')}<a class="metrics" href={`#/metrics?entity=drive&serial=${encodeURIComponent(pick.serial)}`}>Metrics</a>{/if}
+            {#if pick.serial}<a class="metrics" href={`#/metrics?${chartQuery({ entity: 'drive', serial: pick.serial }, pick.local ? '' : pick.node)}`} data-testid="picked-metrics">Metrics</a>{/if}
             {#if !formatWhy(pick)}<button class="danger" onclick={() => openFormat([pick.id])} data-testid="picked-format">Format…</button>{/if}
             <DriveActions
               actions={pick.c.actions || []}
@@ -571,7 +572,7 @@
             SAS card <a href="#/drives/hbas?card={encodeURIComponent(pickCard.card)}">{pickCard.board || pickCard.card}</a>{pickCard.phy !== null ? `, phy ${pickCard.phy}` : pickCard.slot !== null && pickCard.slot !== undefined ? `, slot ${pickCard.slot} behind an expander` : ''}{pickCard.rateMbps ? ` at ${gbit(pickCard.rateMbps)}` : ''}{pickCard.maxRateMbps && pickCard.rateMbps && pickCard.rateMbps < pickCard.maxRateMbps ? ` (the card allows ${gbit(pickCard.maxRateMbps)})` : ''}
           </p>
         {/if}
-        <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} local={pick.local} read={!!links?.read} />
+        <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} node={pick.local ? '' : pick.node} read={!!links?.read} />
         {#if pick.usage}
           {@const u = pick.usage}
           {@const cap = pick.capacity || u.slab + u.unslabbed}

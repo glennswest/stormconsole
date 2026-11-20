@@ -893,7 +893,7 @@ both sides.
 
 ### A VM's metrics (#14)
 
-A machine's Metrics tab is ironprom's series from stormvm (`/metrics` on :9095, stormvm#48, in KubeVirt's names), over a window: CPU and time waiting for the host, memory allocated against in use on the node with what the balloon leaves, each disk's bytes and operations, each interface's bytes and packets. Neither cadvisor nor the container-to-VM key the issue first waited on is needed: stormvm labels every series with the machine's namespace and name, and a VM's cgroup has no `memory.max`, so cadvisor could not have said what was allocated. A NIC on qemu's userspace network or passt has no kernel interface and so no network series, which the tab says. It reads this node's ironprom, so a machine on another node has its series on that node's console.
+A machine's Metrics tab is ironprom's series from stormvm (`/metrics` on :9095, stormvm#48, in KubeVirt's names), over a window: CPU and time waiting for the host, memory allocated against in use on the node with what the balloon leaves, each disk's bytes and operations, each interface's bytes and packets. Neither cadvisor nor the container-to-VM key the issue first waited on is needed: stormvm labels every series with the machine's namespace and name, and a VM's cgroup has no `memory.max`, so cadvisor could not have said what was allocated. A NIC on qemu's userspace network or passt has no kernel interface and so no network series, which the tab says. A machine on another node is charted from that node's ironprom, through this console (#369).
 
 ### The image operator over TLS (#55)
 
@@ -2193,8 +2193,8 @@ port's one writer (stormcos#958), which applies it live. The console invents non
 - **Charts** are the metrics plugin's `?entity=port&node=&ifname=` over stormport's `storm_port_*` (ironprom job
   `stormport`): link, FEC mode, FEC corrected and uncorrectable blocks, errors, drops, traffic, packets, pause, speed,
   module temperature and optical power; each counter a line by `label_replace`. The Network level has every port's
-  link, FEC uncorrectable blocks, errors and traffic. A port's history is in its own node's ironprom, so the charts
-  are on that node's console.
+  link, FEC uncorrectable blocks, errors and traffic. A port's history is in its own node's ironprom, which the console
+  asks for another node's port (#369), so the charts read the same from any node's console.
 
 ### The engine over TLS (#160)
 
@@ -2229,7 +2229,15 @@ linked from the Drives page, the pod page's Stats tab, the VM page and a node's 
   them; a healthy node must not read as broken because of it (#161). Not started is idle, its stormd (:9191) up and ironprom silent
   an error (#60).
 - **An empty chart says why**: the target's last error, no such job, or a target up with no such series.
-- **This node's series only**, as each node scrapes itself: the link is offered on this node's drives alone.
+- **Another node's object, from that node's ironprom (#369).** Each node scrapes itself, so a port, VM, drive or pod on
+  another node has its series there. `?on=<node>` (a port's own `node` when unset) makes the console ask the ironprom on
+  that node: its address from the fleet (the log collector's hosts, which carry each Node's InternalIP), at the port this
+  node's `[ironprom] url` names (9091), dialled as `[node_tls]` says, with no credential. The queries are the same
+  named panels with the same project filter **of the viewer**, so no free query leaves the console and a project they
+  may not see is still a 404. ironprom's :9091 is open off the node (stormcos `check-metrics.sh`). A node the fleet has
+  not heard of is a 404, one with no address yet a 503, and one whose ironprom does not answer a 502 naming the node and
+  the address: said on the page, never an empty chart. The answer carries `node`, and the page says whose ironprom it
+  read. The VM page passes the node it runs on, a drive its node, a pod its node; the Targets tab is this node's.
 - **Not per volume.** The engine's IO series carry only `op` (stormblock#536), so the Volumes level is engine-wide and a volume has no link.
 
 ### Creating things — the `Creator` contract
