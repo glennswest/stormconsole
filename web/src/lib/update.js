@@ -14,6 +14,7 @@ export const STEP_WORDS = {
   RollingBack: 'Rolling back',
   RolledBack: 'Rolled back',
   Failed: 'Failed',
+  Cancelled: 'Cancelled',
 }
 
 /// A node's steps, each done, here or still to come. Off the walk (a failure, a
@@ -24,7 +25,7 @@ export function nodeSteps(n) {
   const at = STEPS.indexOf(n.phase)
   if (at < 0) {
     if (!n.phase) return []
-    return [{ step: n.phase, word: STEP_WORDS[n.phase] || n.phase, state: n.phase === 'RolledBack' ? 'warn' : n.phase === 'Failed' ? 'bad' : 'now' }]
+    return [{ step: n.phase, word: STEP_WORDS[n.phase] || n.phase, state: n.phase === 'RolledBack' || n.phase === 'Cancelled' ? 'warn' : n.phase === 'Failed' ? 'bad' : 'now' }]
   }
   return STEPS.map((s, i) => ({ step: s, word: STEP_WORDS[s], state: i < at ? 'done' : i === at ? (s === 'Done' ? 'done' : 'now') : 'todo' }))
 }
@@ -47,7 +48,25 @@ export function duration(s) {
   return `${Math.floor(h / 24)}d ${h % 24}h`
 }
 
-export const running = (phase) => ['Progressing', 'Paused', 'RollingBack'].includes(phase)
+export const running = (phase) => ['Progressing', 'Paused', 'RollingBack', 'Cancelling'].includes(phase)
+
+/// The node a cancel can no longer undo, in stormupdate's terms (rollout.rs
+/// cancel_check): it rebooted, is on the target, restarts in place, or its agent was
+/// told to reboot. '' when there is none. stormupdate decides; this only says whether
+/// to offer the button, and its 409 names the node if this is behind.
+export function pastReboot(st) {
+  for (const n of st?.nodes || []) {
+    if (n.phase === 'Verifying') return `${n.name} has rebooted`
+    if (n.phase === 'Done' && n.requestedAt) return `${n.name} is on the new release`
+    if (['RollingBack', 'RolledBack', 'Failed'].includes(n.phase)) return `${n.name} is ${n.phase}`
+    if (n.phase === 'Upgrading' && (st.updatePath === 'inPlace' || ['rebooting', 'restarting', 'done'].includes(n.agentState))) return `${n.name} has been told to reboot`
+  }
+  return ''
+}
+
+/// A request asked for and not started (waiting on quorum, on Ready nodes, or refused):
+/// stormupdate cancels it at once.
+export const waitingToStart = (spec, st) => !running(st?.phase) && !!spec?.desiredRelease && spec.desiredRelease !== st?.currentRelease
 
 /// What is on offer to do, with why not where it is not.
 export function actions(spec, st) {
@@ -55,10 +74,12 @@ export function actions(spec, st) {
   const moving = running(phase)
   return {
     start: !moving,
-    pause: phase === 'Progressing' && !spec?.paused,
+    pause: phase === 'Progressing' && !spec?.paused && !spec?.cancel,
     resume: !!spec?.paused || phase === 'Paused',
     // A pull that stopped the run moved nothing, so there is nothing to roll back.
-    rollback: !!st?.previousRelease && phase !== 'RollingBack' && !st?.rollbackRun && prePull(st)?.state !== 'stopped',
+    rollback: !!st?.previousRelease && phase !== 'RollingBack' && phase !== 'Cancelling' && !st?.rollbackRun && prePull(st)?.state !== 'stopped',
+    // Before any node is told to reboot; after, the way back is a rollback (#196).
+    cancel: !spec?.cancel && !st?.rollbackRun && (((phase === 'Progressing' || phase === 'Paused') && !pastReboot(st)) || waitingToStart(spec, st)),
   }
 }
 
@@ -85,7 +106,7 @@ export function historyRows(st) {
   return [...(st?.history || [])].reverse().map((h) => ({
     ...h,
     took: h.finished ? h.finished - h.started : null,
-    tone: h.result === 'Completed' ? 'ok' : h.result === 'Progressing' ? 'idle' : h.result === 'RolledBack' ? 'warn' : 'error',
+    tone: h.result === 'Completed' ? 'ok' : h.result === 'Progressing' ? 'idle' : h.result === 'RolledBack' || h.result === 'Cancelled' ? 'warn' : 'error',
   }))
 }
 

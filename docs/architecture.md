@@ -1521,17 +1521,28 @@ stormupdate` (name `update`) and `#/update` (Compute → Update), over stormupda
 - **Reads** are open there, and polled every 5 s for the feed row. `GET /api/plugins/
   update/snapshot` adds this node's engine's `GET /api/v1/releases/generations` for what
   is staged here, which is per node, and the record below.
-- **Writes** are four named routes, `admin` only, with stormupdate's update token added on
+- **Writes** are five named routes, `admin` only, with stormupdate's update token added on
   the server (`[stormupdate] token_file`, stormcos#789): `upgrade {release}` (nothing
   else is carried, so `allow_unpublished`, stormcentral's candidate path, cannot be asked
-  for from here), `pause`, `resume`, `rollback`. With no token the console says so and
+  for from here), `pause`, `resume`, `rollback`, and `cancel {reason?}` (#196,
+  stormupdate#36). With no token the console says so and
   does not call. The page asks before each, in a sentence saying what will happen.
 - **Recorded**: a log line, and `<data_dir>/update-actions.jsonl`, shown on the page,
   because the `ClusterUpdate` says what happened and not who asked.
 - **The steps** are each node's `phase` (`PrePulling`, `Pending`, `Draining`, `Upgrading`,
   `Verifying`, `Done`, or off the walk `RollingBack`, `RolledBack`, `Failed`) with `since`,
-  the agent's own message and the gates waited on.
-- **Gaps upstream:** no cancel (stormupdate#36; Pause is what there is, #196). A refused run
+  the agent's own message and the gates waited on. A cancelled node is `Cancelled`.
+- **Cancel** (#196) ends a run before any node has been told to reboot: stormupdate's
+  `POST /api/v1/cancel`. The page offers it on a `Progressing` or `Paused` run while no
+  node is past the reboot by stormupdate's own rule (`cancel_check`: `Verifying`, `Done`
+  after a request, off the walk, or `Upgrading` with the agent `rebooting`/`restarting`/
+  `done` or the run in place), and on a request not yet started (`desiredRelease` not
+  what runs). Never on a rollback, or once asked (`spec.cancel`). It asks first, with
+  an optional reason. stormupdate's history names only the token, so the console sends
+  `by <user> on the console: <reason>`. stormupdate decides: a 409 is shown as
+  `cannot cancel: <node> …: roll back instead`, with Roll back beside it. `Cancelling`
+  is a warning, not a fault, and polls fast like a run; history `Cancelled` is amber.
+- **Gaps upstream:** A refused run
   is not in `history`, and the cluster's `message` has no clock (stormupdate#37): the page
   says the first and times the message itself from when the console first saw it, a clock
   that restarts with the console.

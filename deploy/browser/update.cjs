@@ -1,5 +1,5 @@
 // The Update page in a browser (#164), over deploy/verify-update.sh's real stormupdate
-// and apiserver. PHASE: offered, progress, failed, pulling, pullfailed, back.
+// and apiserver. PHASE: offered, progress, failed, pulling, cancel, pullfailed, back.
 const { walk } = require('./lib.cjs')
 const PHASE = process.env.PHASE
 
@@ -48,6 +48,8 @@ walk(`update (${PHASE})`, async (t) => {
     t.check(/waiting on workloads, fastetcd/.test(await nodes.innerText()), 'a second node, on its gates')
     t.check(/Images of 12\.61/i.test(await t.text(page)) && /1 Pulled, 1 Pulling/.test(await t.text(page)), 'the images, per state')
     t.check((await page.getByRole('button', { name: 'Update to 12.61' }).isDisabled().catch(() => true)), 'no second update while one runs')
+    t.check((await page.getByRole('button', { name: /Cancel the update/ }).count()) === 0, 'a node has rebooted: no Cancel')
+    t.check((await page.getByRole('button', { name: /Roll back to 12\.58/ }).count()) === 1, 'Roll back is the way back')
     await t.shot(page, 'update-progress')
     await page.getByRole('button', { name: 'Pause at the next node' }).click()
     t.check(await has(/Asked on this console[\s\S]*pause/i), 'pause asks first, and is recorded')
@@ -75,6 +77,27 @@ walk(`update (${PHASE})`, async (t) => {
     t.check(await has(/no node moves until all of them hold them/), 'the pre-pull: nothing moves yet')
     t.check(await has(/stays on\s*12\.58/), 'and which release it stays on')
     await t.shot(page, 'update-pulling')
+  }
+
+  if (PHASE === 'cancel') {
+    const b = page.getByRole('button', { name: 'Cancel the update to 12.61' })
+    t.check(await t.until(async () => (await b.count()) === 1), 'before any node reboots, Cancel is offered', (await t.text(page)).slice(0, 400))
+    const ro = await t.page('ops')
+    await t.open(ro, '#/update', /12\.61/)
+    t.check((await ro.getByRole('button', { name: /Cancel the update/ }).count()) === 0, 'an operator is offered no Cancel')
+    const asked = page.locator('section[aria-label="Asked here"] tbody tr')
+    const before = await asked.count()
+    page.answer = undefined
+    await b.click()
+    await t.pause(1500)
+    t.check((await asked.count()) === before, 'dismissed, nothing is asked of stormupdate', `${before} then ${await asked.count()}`)
+    page.answer = 'wrong release'
+    await b.click()
+    t.check(await t.until(async () => (await asked.count()) === before + 1), 'answered, one more act', `${before} then ${await asked.count()}`)
+    t.check(/root\s+cancel\s+done/.test(await asked.first().innerText()), 'done and recorded, with who', await asked.first().innerText())
+    t.check(await has(/Cancel asked; stormupdate is ending the run/), 'the page says the cancel is in hand')
+    t.check((await b.count()) === 0, 'and offers it no more')
+    await t.shot(page, 'update-cancel')
   }
 
   if (PHASE === 'pullfailed') {

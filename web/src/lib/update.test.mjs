@@ -1,6 +1,6 @@
 // The Update page's model (#164), with plain node: `node web/src/lib/update.test.mjs`.
 import assert from 'node:assert/strict'
-import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running, prePull } from './update.js'
+import { nodeSteps, nodeLine, duration, actions, releases, historyRows, imageRows, changeLine, running, prePull, pastReboot, waitingToStart } from './update.js'
 
 const states = (n) => nodeSteps(n).map((s) => s.state).join(' ')
 assert.equal(states({ phase: 'PrePulling' }), 'now todo todo todo todo todo')
@@ -24,10 +24,10 @@ assert.equal(duration(3700), '1h 1m')
 assert.equal(duration(90000), '1d 1h')
 assert.equal(duration(null), '—')
 
-assert.deepEqual(actions({}, { phase: 'Idle', previousRelease: '' }), { start: true, pause: false, resume: false, rollback: false })
-assert.deepEqual(actions({}, { phase: 'Progressing', previousRelease: '12.58' }), { start: false, pause: true, resume: false, rollback: true })
-assert.deepEqual(actions({ paused: true }, { phase: 'Paused', previousRelease: '12.58' }), { start: false, pause: false, resume: true, rollback: true })
-assert.deepEqual(actions({}, { phase: 'RollingBack', previousRelease: '12.58', rollbackRun: true }), { start: false, pause: false, resume: false, rollback: false })
+assert.deepEqual(actions({}, { phase: 'Idle', previousRelease: '' }), { start: true, pause: false, resume: false, rollback: false, cancel: false })
+assert.deepEqual(actions({}, { phase: 'Progressing', previousRelease: '12.58' }), { start: false, pause: true, resume: false, rollback: true, cancel: true })
+assert.deepEqual(actions({ paused: true }, { phase: 'Paused', previousRelease: '12.58' }), { start: false, pause: false, resume: true, rollback: true, cancel: true })
+assert.deepEqual(actions({}, { phase: 'RollingBack', previousRelease: '12.58', rollbackRun: true }), { start: false, pause: false, resume: false, rollback: false, cancel: false })
 assert.equal(actions({}, { phase: 'Completed', previousRelease: '12.58' }).rollback, true)
 assert.equal(actions({}, undefined).start, true)
 assert.ok(running('RollingBack') && !running('Failed'))
@@ -79,3 +79,26 @@ assert.equal(prePull({ phase: 'Failed', message: 'refused: no quorum' }), null, 
 assert.equal(prePull({ phase: 'Progressing', rollbackRun: true, nodes: [{ phase: 'PrePulling' }] }), null, 'nor is a rollback')
 assert.equal(prePull({ phase: 'Progressing', prePulled: true, nodes: [{ phase: 'Upgrading' }] }), null)
 console.log('update.test.mjs PASS')
+
+// Cancel (#196), as stormupdate's cancel_check decides it.
+const walk = (nodes, extra = {}) => ({ phase: 'Progressing', targetRelease: '12.61', previousRelease: '12.58', nodes, ...extra })
+assert.equal(actions({}, walk([{ name: 'a', phase: 'PrePulling' }])).cancel, true, 'pulling: nothing moved')
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Draining' }, { name: 'b', phase: 'Pending' }])).cancel, true)
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Upgrading', agentState: 'staging' }])).cancel, true, 'staging is put back')
+assert.equal(pastReboot(walk([{ name: 'a', phase: 'Upgrading', agentState: 'rebooting' }])), 'a has been told to reboot')
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Upgrading', agentState: 'rebooting' }])).cancel, false)
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Upgrading', agentState: 'staging' }], { updatePath: 'inPlace' })).cancel, false, 'in place restarts')
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Verifying' }])).cancel, false, 'rebooted')
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Done', requestedAt: 5 }, { name: 'b', phase: 'Pending' }])).cancel, false, 'one on the target')
+assert.equal(actions({}, walk([{ name: 'a', phase: 'Done' }])).cancel, true, 'Done with nothing asked of it is a node already there')
+assert.equal(actions({ cancel: true }, walk([])).cancel, false, 'asked already')
+assert.equal(actions({ cancel: true }, walk([])).pause, false)
+assert.equal(actions({}, { phase: 'Cancelling', previousRelease: '12.58' }).cancel, false)
+assert.equal(actions({}, { phase: 'Cancelling', previousRelease: '12.58' }).rollback, false, 'not while it is put back')
+assert.ok(running('Cancelling'))
+// A request held up before it starts (quorum, refused) is cancelled at once.
+assert.ok(waitingToStart({ desiredRelease: '12.61' }, { phase: 'Idle', currentRelease: '12.58', message: 'waiting for fastetcd quorum' }))
+assert.equal(actions({ desiredRelease: '12.61' }, { phase: 'Failed', currentRelease: '12.58', message: 'refused: quorum' }).cancel, true)
+assert.equal(actions({ desiredRelease: '12.61' }, { phase: 'Completed', currentRelease: '12.61' }).cancel, false, 'done: nothing to cancel')
+assert.deepEqual(nodeSteps({ phase: 'Cancelled' }), [{ step: 'Cancelled', word: 'Cancelled', state: 'warn' }])
+assert.equal(historyRows({ history: [{ result: 'Cancelled', started: 1, finished: 2 }] })[0].tone, 'warn')

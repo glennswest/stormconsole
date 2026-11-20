@@ -167,6 +167,20 @@ check "$(code a root "$API/resume")" 200 "resume"
 check "$(spec 'd["spec"]["paused"]')" False "  cleared"
 check "$(as a root "$API/snapshot" | j '[(r["user"], r["action"], r.get("release",""), r["ok"]) for r in d["record"]][:4]')" "[('root', 'resume', '', True), ('root', 'pause', '', True), ('root', 'start', '12.61', True), ('root', 'start', '13.99', False)]" "each act recorded, with who and the answer"
 check "$(grep -c 'update: acted through stormupdate' "$W/a.log")" 4 "and in the log"
+
+say "cancel (#196), through stormupdate's real API and controller"
+sleep 3
+echo "  before: $(curl -s "$SU/api/v1/status" | j 'd["status"].get("phase"), d["status"].get("message")' | cut -c1-200)"
+check "$(code a ops -d '{}' "$API/cancel")" 403 "an operator may not cancel"
+check "$(code a root -d '{"reason":"wrong release"}' "$API/cancel")" 202 "an admin cancels before any node reboots: stormupdate's 202"
+ended=no
+for _ in $(seq 30); do [ "$(spec 'd["spec"].get("desiredRelease")')" = None ] && { ended=yes; break; }; sleep 1; done
+check "$ended" yes "the real controller ended it: the spec asks for nothing"
+echo "  after: $(curl -s "$SU/api/v1/status" | j 'd["status"].get("phase"), d["status"].get("message"), (d["status"].get("history") or [{}])[-1]')" | cut -c1-300
+check "$(curl -s "$SU/api/v1/status" | j '"by root on the console: wrong release" in (d["status"].get("message") or "") + str((d["status"].get("history") or [{}])[-1].get("message"))')" True "stormupdate keeps who asked and why"
+check "$(code a root -d '{}' "$API/cancel")" 409 "nothing left to cancel: stormupdate's 409"
+check "$(as a root -X POST -H 'content-type: application/json' -d '{}' "$API/cancel" | j 'd["error"]')" "cannot cancel: no update in progress" "in words"
+check "$(as a root "$API/snapshot" | j '[(r["user"], r["action"], r["ok"], r["code"]) for r in d["record"]][:3]')" "[('root', 'cancel', False, 409), ('root', 'cancel', False, 409), ('root', 'cancel', True, 202)]" "each cancel recorded, with who and the answer"
 sleep 5
 echo "  what the real controller made of it: $(curl -s "$SU/api/v1/status" | j 'd["status"].get("phase"), d["status"].get("message")' | cut -c1-200)"
 # The console polls every 5 s and the controller moves on: agreed within a few polls.
@@ -200,6 +214,9 @@ check "$(setstatus "{'phase':'Progressing','message':'waiting for fastetcd quoru
 sleep 6
 walk progress
 check "$(spec 'd["spec"]["paused"]')" True "the walk's pause reached the spec"
+check "$(code a root -d '{}' "$API/cancel")" 409 "a cancel once a node has rebooted: stormupdate's 409"
+check "$(as a root -X POST -H 'content-type: application/json' -d '{}' "$API/cancel" | j 'd["error"]')" "cannot cancel: n2 has rebooted onto 12.61: roll back instead" "named, and the way back said"
+check "$(spec 'd["spec"].get("cancel", False)')" False "nothing reached the spec"
 
 say "C: refused"
 check "$(setstatus "{'phase':'Failed','message':'refused: cannot read fastetcd quorum, no node has moved: connection refused','currentRelease':'12.58','available':$AVAIL}")" 200 "status: refused"
@@ -211,6 +228,10 @@ say "E: a pull stops the run before any node moves, in the words stormupdate's o
 check "$(setstatus "{'phase':'Progressing','message':'pre-pulling the images of 12.61: 1 of 2 nodes hold them','targetRelease':'12.61','previousRelease':'12.58','available':$AVAIL,'prePulled':False,'nodes':[{'name':'n1','release':'12.58','phase':'Pending','since':now-20},{'name':'n2','release':'12.58','phase':'PrePulling','since':now-20}],'images':[{'name':'stormlb','digest':'sha256:ab','dataPolicy':'reuse','nodes':[{'node':'n1','state':'Pulled'},{'node':'n2','state':'Pulling'}]}]}")" 200 "status: pulling"
 sleep 6
 walk pulling
+say "F: Cancel on the page, before any node reboots"
+walk cancel
+check "$(spec 'd["spec"].get("cancel"), "by root on the console: wrong release" in (d["spec"].get("cancelReason") or "")')" "(True, True)" "the walk's cancel reached the spec, with who and why"
+kc PATCH /apis/stormupdate.storm.io/v1alpha1/clusterupdates/cluster '{"spec":{"cancel":false,"cancelReason":null}}' >/dev/null
 check "$(setstatus "{'phase':'Failed','message':'stopped: n2: pre-pull: stormlb: forge: 404','targetRelease':'12.61','previousRelease':'12.58','available':$AVAIL,'prePulled':False,'nodes':[{'name':'n1','release':'12.58','phase':'Pending','since':now-20,'message':'pre-pull stopped'},{'name':'n2','release':'12.58','phase':'Failed','since':now-20,'message':'pre-pull: stormlb: forge: 404'}],'images':[{'name':'stormlb','digest':'sha256:ab','reference':'forge.g8.lo/stormlb@sha256:ab','dataPolicy':'reuse','nodes':[{'node':'n1','state':'Pulled'},{'node':'n2','state':'Failed','message':'forge: 404'}]}]}")" 200 "status: a pull failed"
 sleep 6
 walk pullfailed

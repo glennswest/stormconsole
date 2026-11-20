@@ -3,6 +3,13 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-20 — Update page: Cancel before any node reboots (#196, stormupdate#36)
+- **feat:** the Update page's **Cancel the update to <release>**, under Now: an admin ends a run before any node has been told to reboot, through stormupdate's `POST /api/v1/cancel`. It is offered on a `Progressing` or `Paused` run while no node is past the reboot (by stormupdate's own rule), and on a request held up before it starts. It is not offered on a rollback, or once a cancel is asked. It asks first, with an optional reason, and dismissing sends nothing.
+- **feat:** `POST /api/plugins/update/cancel {reason?}`: admin only, the update token added here, recorded like the other acts. The reason stormupdate keeps in its history says `by <user> on the console: <reason>`, because stormupdate itself knows only the token.
+- **feat:** a late cancel is stormupdate's 409, shown as `cannot cancel: n2 has rebooted onto 12.61: roll back instead`, with Roll back beside it.
+- **feat:** `Cancelling` is a warning, not a fault (feed row `cancelling the update to …`), and the page polls fast while it runs. A node `Cancelled` and a history `Cancelled` are amber.
+- **test:** unit tests (the reason, the 409's words, the row), `update.test.mjs` (when Cancel is offered, node by node). `deploy/verify-update.sh` now cancels through a real stormupdate API and controller: an operator gets 403, an admin 202, the controller clears the spec and keeps who and why, a second cancel is 409 in words, and every cancel is recorded. Also a late cancel's 409 against a node that has rebooted, and Chromium walks: Cancel offered and dismissed, then answered and recorded; no Cancel for an operator or once a node has rebooted.
+
 ## [v0.40.0] — 2026-11-20
 
 ### 2026-11-20 — RAID set integrity: bit rot, rewrites from parity, the BitRot alarm (#368, stormraid#80)

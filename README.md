@@ -35,7 +35,7 @@ create forms and a slice of the component feed every page is drawn from.
 | flowsdn (`flowsdn`) | this node's flowsdn agent, its read-only loopback listener (`http-listen`, :9878, flowsdn#297); the release manifest says if this node runs it (#285), else this node's beacon's release flavour. **On a flowsdn node only:** a cilium node has no plugin card, row, health or navigator item (#161) | Networking → Pod network (flowsdn): endpoints led by pod, with node and project filters, addresses, identity, interface, owner, one opened live with its link health; IPAM pools (exact past 2^53); the agent's health and modules; its config; the Services it programs; direct node routes; the health table; a cilium node says "not this edition" and has no page | — (the listener is read-only) |
 | health (`health`) | PID 1's node-wide API health summary `/run/stormpump/health.json` (stormpump#127: its own probes and every container's stormd, stormd#52); when that is not readable, each local stormd's `GET /api/v1/health/apis` (stormd#49) on the fleet ports; the kept changes in `/system-data/history/api/*.jsonl` | Compute → API health: every declared API's state (healthy, slow, stalled, down), for how long, last/p50/p99 latency against its budget, its error, who probes it; a picked API's probe and kept changes. **An alert bar on every page** for each stalled or down API, naming the service, the probe and how long; the node row and the local node's page carry the worst | — |
 | history (`history`) | system-data (`/run/stormblock/system-data`, stormcos#456): stormblock's boot and install records, PID 1's timelines, kernel logs and crash records, stormdrive's drive history and hardware. The node API `/api/v1/history` and the History page |
-| update (`update`) | stormupdate's API (:9088), any node's answer for its cluster. Compute → Update: what runs, what is staged and offered, an update's steps, history; an admin's start, pause, resume and rollback, with its update token held here. `[stormupdate] token_file` is stormcos's to set (stormcos#789) |
+| update (`update`) | stormupdate's API (:9088), any node's answer for its cluster. Compute → Update: what runs, what is staged and offered, an update's steps, history; an admin's start, pause, resume, cancel (before any node reboots) and rollback, with its update token held here. `[stormupdate] token_file` is stormcos's to set (stormcos#789) |
 
 **This node and its cluster, nobody else (#161).** The stormcast group is a
 segment's, so every node on it is heard, whichever cluster it belongs to.
@@ -443,8 +443,6 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   is loopback only, so each node's console shows its own. Endpoint and
   Service scoping by namespace is unit-tested and not yet run live against
   RBAC (the rig has no apiserver).
-- **Cancel an update** — stormupdate serves no such call (stormupdate#36, #196). Pause
-  stops at the next node, and the page calls it that.
 - **History of another node** — system-data is on the node, and the console
   holds no credential for another node's :9094, so each node's console shows its
   own (the node page says so); stormcentral pulls each node's API itself.

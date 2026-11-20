@@ -46,7 +46,7 @@
   const canAct = $derived(data?.admin && data?.can_write)
   const when = (unix) => (unix ? `${ago(new Date(unix * 1000).toISOString())} ago` : '—')
   const stamp = (unix) => (unix ? new Date(unix * 1000).toISOString() : '')
-  const phaseHealth = (p) => ({ Failed: 'error', RolledBack: 'warn', RollingBack: 'warn', Paused: 'warn', Completed: 'ok', Progressing: 'ok' })[p] || 'idle'
+  const phaseHealth = (p) => ({ Failed: 'error', RolledBack: 'warn', RollingBack: 'warn', Paused: 'warn', Cancelling: 'warn', Completed: 'ok', Progressing: 'ok' })[p] || 'idle'
 
   // Every act asks first, in a sentence that says what will happen.
   async function act(what, path, body, question) {
@@ -66,6 +66,23 @@
   const start = (v) => act(`start ${v}`, '/upgrade', { release: v }, `Update this cluster to ${v}?\n\nEvery node moves to it in turn, and each reboots. A node that fails its checks is rolled back and the run stops.`)
   const pause = () => act('pause', '/pause', null, 'Pause this update?\n\nIt stops at the next node. A node already moving finishes.')
   const resume = () => act('resume', '/resume', null, 'Resume this update?')
+  // Cancel (#196): before any node is told to reboot. The reason goes in stormupdate's
+  // history, with who asked. Dismissing the question sends nothing.
+  const cancelling = $derived(st?.targetRelease && running(st?.phase) ? st.targetRelease : spec?.desiredRelease || st?.targetRelease || '')
+  async function cancel() {
+    const why = window.prompt(`Cancel the update to ${cancelling}?\n\nNo node has been told to reboot yet. Nodes still waiting are left as they are, and a node part way through puts back what it did. Then the cluster stays on ${st?.currentRelease || rel.previous || 'what it runs'}.\n\nWhy (optional, kept in the history):`, '')
+    if (why === null) return
+    acting = 'cancel'
+    actError = ''
+    try {
+      await postJson(`${API}/cancel`, { reason: why })
+    } catch (e) {
+      actError = e.message
+    } finally {
+      await load()
+      acting = ''
+    }
+  }
   const rollback = () => act('rollback', '/rollback', null, `Roll this cluster back to ${rel.previous}?\n\nEvery node on ${st?.targetRelease || 'the new release'} moves back to it and reboots.`)
 </script>
 
@@ -89,12 +106,12 @@
 
     {#if actError}<p class="bad" role="alert">{actError}</p>{/if}
     {#if !data.admin}
-      <p class="dim small">Starting, pausing and rolling back are an administrator's.</p>
+      <p class="dim small">Starting, pausing, cancelling and rolling back are an administrator's.</p>
     {:else if !data.can_write}
       <p class="warn small">Update actions are not set up on this node: the console holds no update token (stormcos#789). What it is doing still shows here.</p>
     {/if}
 
-    {#if st?.message || running(st?.phase)}
+    {#if st?.message || running(st?.phase) || may.cancel}
       <section class="card now" aria-label="Now">
         <div class="head"><h2>Now</h2>
           {#if data.message_since}<span class="dim small" title="since this console first saw the message; stormupdate keeps no clock on it (stormupdate#37)">this message for {duration(Math.round(now - data.message_since))}</span>{/if}
@@ -105,10 +122,12 @@
         {:else if pull?.state === 'pulling'}
           <p class="small dim">Every node pulls the images first, and no node moves until all of them hold them{#if pull.stillOn && !pull.mixed}. The cluster stays on <span class="mono">{pull.stillOn}</span> until then{/if}.</p>
         {/if}
-        {#if canAct && (may.pause || may.resume || (may.rollback && running(st?.phase)))}
+        {#if spec?.cancel && st?.phase !== 'Cancelling'}<p class="small warn">Cancel asked; stormupdate is ending the run.</p>{/if}
+        {#if canAct && (may.pause || may.resume || may.cancel || (may.rollback && running(st?.phase)))}
           <div class="row">
             {#if may.pause}<button disabled={!!acting} onclick={pause}>Pause at the next node</button>{/if}
             {#if may.resume}<button disabled={!!acting} onclick={resume}>Resume</button>{/if}
+            {#if may.cancel}<button disabled={!!acting} onclick={cancel}>Cancel the update to {cancelling}</button>{/if}
             {#if may.rollback && running(st?.phase)}<button class="danger" disabled={!!acting} onclick={rollback}>Roll back to {rel.previous}</button>{/if}
           </div>
         {/if}

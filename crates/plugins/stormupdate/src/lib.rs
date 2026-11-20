@@ -7,13 +7,16 @@
 //! - **Reads are open**, there and here.
 //! - **Every write is `admin` only**, and stormupdate's update token is held here
 //!   and added server-side (the stormipmi plugin's pattern). A write goes through
-//!   one of four named routes, never a proxy: `allow_unpublished` is stormcentral's
+//!   one of five named routes, never a proxy: `allow_unpublished` is stormcentral's
 //!   candidate path, and nothing here can reach it.
 //! - **Every act is recorded**: a line in the log, which goes out over stormcast,
 //!   and `<data_dir>/update-actions.jsonl`, shown on the page. The `ClusterUpdate`
 //!   says what happened and not who asked.
-//! - **Cancel is not here**: stormupdate has no such call (stormupdate#36, #196).
-//!   Pause stops at the next node and is called what it is.
+//! - **Cancel** (#196, stormupdate#36) ends a run before any node has been told to
+//!   reboot. The reason stormupdate keeps in the history says who asked here, since
+//!   it only knows the token. Once a node is past that, stormupdate's 409 names it and
+//!   says to roll back, and so does the page. Pause stops at the next node and is
+//!   called what it is.
 //! - **The cluster's message has no clock** until stormupdate#37, and "waiting for
 //!   fastetcd quorum" for how long is the question. So the poller times it from when
 //!   it first saw the message, and the page says whose clock that is.
@@ -139,7 +142,7 @@ async fn poll(inner: &Inner) {
 fn health(phase: &str) -> Health {
     match phase {
         "Failed" => Health::Error,
-        "RolledBack" | "RollingBack" | "Paused" => Health::Warn,
+        "RolledBack" | "RollingBack" | "Paused" | "Cancelling" => Health::Warn,
         _ => Health::Ok,
     }
 }
@@ -154,7 +157,9 @@ fn row(s: &Seen) -> ComponentSummary {
             let current = st["currentRelease"].as_str().unwrap_or("nodes differ");
             let offered = st["available"].as_array().map_or(0, Vec::len);
             let mut d = format!("running {current}");
-            if matches!(phase, "Progressing" | "Paused" | "RollingBack") {
+            if phase == "Cancelling" {
+                d = format!("cancelling the update to {}", st["targetRelease"].as_str().unwrap_or("?"));
+            } else if matches!(phase, "Progressing" | "Paused" | "RollingBack") {
                 d = format!("{phase} to {}", st["targetRelease"].as_str().unwrap_or("?"));
             } else if phase == "Failed" {
                 d = format!("failed: {}", st["message"].as_str().unwrap_or(""));
@@ -205,6 +210,7 @@ impl ConsolePlugin for StormupdatePlugin {
             .route("/pause", post(|s, v| act(s, v, "pause", "/api/v1/pause", None)))
             .route("/resume", post(|s, v| act(s, v, "resume", "/api/v1/resume", None)))
             .route("/rollback", post(|s, v| act(s, v, "rollback", "/api/v1/rollback", None)))
+            .route("/cancel", post(cancel))
             .with_state(self.inner.clone())
     }
 
@@ -292,6 +298,42 @@ async fn upgrade(s: State<Arc<Inner>>, v: Viewer, Json(b): Json<UpgradeBody>) ->
     act(s, v, "start", "/api/v1/upgrade", Some(body)).await
 }
 
+#[derive(Deserialize)]
+struct CancelBody {
+    #[serde(default)]
+    reason: String,
+}
+
+/// Cancel before any node reboots. stormupdate records only which token asked, so the
+/// reason it keeps names the person.
+async fn cancel(s: State<Arc<Inner>>, v: Viewer, Json(b): Json<CancelBody>) -> Response {
+    let reason = cancel_reason(v.user.as_deref(), &b.reason);
+    act(s, v, "cancel", "/api/v1/cancel", Some(json!({ "reason": reason }))).await
+}
+
+fn cancel_reason(user: Option<&str>, why: &str) -> String {
+    let who = format!("by {} on the console", user.unwrap_or("admin"));
+    match why.trim() {
+        "" => who,
+        w => format!("{who}: {w}"),
+    }
+}
+
+/// stormupdate's words are for its API's callers; on the page the way back is a button.
+fn in_words(what: &str, code: u16, error: String) -> String {
+    match code {
+        // In words: nothing here is the person's fault, and it says what to do.
+        501 => format!("stormupdate has no update token set up on this node: {error}"),
+        401 => format!("stormupdate refused the console's update token: {error}"),
+        409 if what == "cancel" => {
+            let e = error.replace("the way back is POST /api/v1/rollback", "roll back instead");
+            format!("cannot cancel: {e}")
+        }
+        503 if what == "cancel" => format!("cannot cancel yet: {error}"),
+        _ => error,
+    }
+}
+
 async fn act(State(inner): State<Arc<Inner>>, viewer: Viewer, what: &'static str, path: &'static str, body: Option<Value>) -> Response {
     let who = viewer.user.clone().unwrap_or_else(|| "admin".into());
     if !viewer.has_role("admin") {
@@ -317,12 +359,7 @@ async fn act(State(inner): State<Arc<Inner>>, viewer: Viewer, what: &'static str
         Err(e) => (StatusCode::BAD_GATEWAY, json!({"error": format!("stormupdate did not answer: {e}")})),
     };
     let error = answer.get("error").and_then(Value::as_str).unwrap_or("").to_string();
-    let error = match code.as_u16() {
-        // In words: nothing here is the person's fault, and it says what to do.
-        501 => format!("stormupdate has no update token set up on this node: {error}"),
-        401 => format!("stormupdate refused the console's update token: {error}"),
-        _ => error,
-    };
+    let error = in_words(what, code.as_u16(), error);
     let line = json!({
         "at": Utc::now().to_rfc3339(), "user": who, "action": what, "release": release,
         "ok": code.is_success(), "code": code.as_u16(), "error": error,
@@ -377,6 +414,18 @@ mod tests {
         let r = row(&Seen { error: "connection refused".into(), ..Default::default() });
         assert_eq!(r.health, Health::Error);
         assert!(r.detail.contains("connection refused"));
+    }
+
+    #[test]
+    fn a_cancel_names_who_and_a_late_one_says_roll_back() {
+        assert_eq!(cancel_reason(Some("alice"), " wrong release "), "by alice on the console: wrong release");
+        assert_eq!(cancel_reason(None, ""), "by admin on the console");
+        let e = in_words("cancel", 409, "storm-a has been told to reboot into 12.61: the way back is POST /api/v1/rollback".into());
+        assert_eq!(e, "cannot cancel: storm-a has been told to reboot into 12.61: roll back instead");
+        assert_eq!(in_words("cancel", 409, "no update in progress".into()), "cannot cancel: no update in progress");
+        assert_eq!(in_words("pause", 409, "x".into()), "x", "only a cancel's refusal is reworded");
+        let r = row(&seen(json!({"phase": "Cancelling", "targetRelease": "12.61"})));
+        assert_eq!((r.health, r.detail.as_str()), (Health::Warn, "cancelling the update to 12.61"));
     }
 
     #[test]
