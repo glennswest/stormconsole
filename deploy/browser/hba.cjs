@@ -72,7 +72,7 @@ walk('hba', async (t) => {
   t.check(await t.until(async () => !(await flash.isDisabled())), 'Flash offered again once it ended')
 
   // A drive's row leads to its card, and the card's phy back to the drive.
-  t.check(await t.open(page, '#/drives', /sdc/), 'Drives')
+  t.check(await t.open(page, '#/drives', /drives/i), 'Drives')
   const bay = page.locator('button.bay[data-drive^="sdc "]').first()
   await bay.click()
   const line = page.locator('[data-testid=picked-hba]')

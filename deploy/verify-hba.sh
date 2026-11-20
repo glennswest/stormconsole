@@ -205,7 +205,8 @@ check "$(req alice "$FP" "$CARD" "$FW,\"dryRun\":true}")" "201" "alice: 201"
 DRY=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["operation"]["name"])' "$W/out")
 check "$(ops "[(o['spec']['node'], o['spec']['card'], o['spec']['op'], o['spec']['region'], o['spec']['image']['name'], o['spec']['image']['sha256']=='$SHA', o['spec'].get('dryRun')) for o in d if o['metadata']['name']=='$DRY']")" \
   "[('forge1', '$CARD', 'flash', 'firmware', 'hba330-16.17.01.00.bin', True, True)]" "the CardOperation: stormdrive's spec, the store image and its sha256, a dry run"
-check "$(grep -c "hba: CardOperation created.*user=\"\?alice" "$W/c.log" || true)" "1" "logged as alice's"
+# The fields carry ANSI colour codes between name and value: the line, then who.
+check "$(grep 'hba: CardOperation created' "$W/c.log" | grep -c alice || true)" "1" "logged as alice's"
 "$W/status.sh" "$DRY" '{"phase":"Refused","message":"sdb on this card hold(s) the node'"'"'s system slab: cordon the Node forge1 (maintenance) first","requester":"alice"}'
 check "$(hbas alice '[(o["phase"], o["message"]) for o in ops if o["name"]=="'"$DRY"'"]')" "[('Refused', \"sdb on this card hold(s) the node's system slab: cordon the Node forge1 (maintenance) first\")]" "the node's refusal comes back on it, in its words"
 
