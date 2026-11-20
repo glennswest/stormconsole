@@ -1308,7 +1308,7 @@ only, so each node's console shows its own agent. No Hubble (flowsdn#293).
 - [x] Since the plan: flowsdn#379's `GET /v1/policy/verdicts`, the decisions the endpoint programs counted, on the Flows tab until there are flows; a viewer in one project checked live
 - Verified with `sc-build deploy/verify-flowsdn.sh` (0 failed): a stand-in agent in flowsdn's shapes and transport, real consoles, Chromium; real fastetcd and apiserver for the viewer
 - Not seen: a real agent. It needs a BPF object and the rights to load it, tried on a build VM ("error parsing BPF object" with an empty one), and sessions have no root. The shapes are from flowsdn `docs/agent-api.md` and `api.rs` at 0fbbb1c
-- Left: flows, which wait on flowsdn's observer (flowsdn#293): filed as #235, proposed after it
+- Left: flows, which wait on flowsdn serving them: filed as #235; flowsdn has no flows route yet (checked 4fa00b0, 2026-11-20), JSON `GET /v1/flows` on the loopback listener asked in flowsdn#485, #235 proposed after it
 
 ### Node health: each API's state and latency, alert on a stall (#123) ✅ 2026-10-10
 stormcos#458: stormd (#49) probes each process's declared APIs; PID 1
