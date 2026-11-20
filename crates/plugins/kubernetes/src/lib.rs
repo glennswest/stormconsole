@@ -18,6 +18,7 @@ mod components;
 mod crs;
 mod dayto;
 mod flows;
+mod hba;
 mod rack;
 mod env;
 mod exec;
@@ -285,6 +286,9 @@ impl ConsolePlugin for KubernetesPlugin {
             .route("/cr/{crd}", get(crs::instances))
             .route("/cr/{crd}/watch", get(crs::watch))
             .route("/cr/{crd}/object/{ns}/{name}", get(crs::object).put(crs::save).delete(crs::remove))
+            // SAS cards and their flash (#376, stormdrive#166).
+            .route("/hbas", get(hba::list))
+            .route("/hbas/{name}/flash", post(hba::flash))
             .route("/network/policies", get(network_policies))
             .route("/flows", get(flows::list))
             .route("/flows/stream", get(flows::stream))

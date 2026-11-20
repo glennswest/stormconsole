@@ -34,6 +34,7 @@
   import MaintainProgress from '../components/MaintainProgress.svelte'
   import ControllerBanner from '../components/ControllerBanner.svelte'
   import DriveLink from '../components/DriveLink.svelte'
+  import { driveIdOf, drivesOnCards, gbit } from '../hba.js'
   import { listMetric } from '../drivelink.js'
   import { replaceWhy, rows as replaceRows } from '../drivereplace.js'
   import { rows as firmwareRows } from '../drivefirmware.js'
@@ -54,6 +55,8 @@
   let usageError = $state('')
   // Every drive's SAS link (#339): read by the drive plugin once a minute.
   let links = $state(null)
+  // Which SAS card and phy each drive hangs off (#376), from the HostBusAdapter objects you may read.
+  let cards = $state(null)
   // The format records (#308): who may be formatted, and each run's progress.
   let formats = $state(null)
   let guard = $state(null)
@@ -63,15 +66,17 @@
   let fwGuard = $state(null)
   let now = $state(Math.floor(Date.now() / 1000))
   async function refresh() {
-    const [u, p, pool, f, l] = await Promise.allSettled([
+    const [u, p, pool, f, l, h] = await Promise.allSettled([
       get('/api/plugins/drive/usage'),
       get('/api/plugins/sb/placement'),
       get('/api/plugins/sb/proxy/api/v1/slabs/pool'),
       get('/api/plugins/drive/formats'),
       get('/api/plugins/drive/links'),
+      get('/api/plugins/k8s/hbas'),
     ])
     if (f.status === 'fulfilled') formats = f.value
     if (l.status === 'fulfilled') links = l.value
+    if (h.status === 'fulfilled') cards = drivesOnCards(h.value.items)
     await refreshMaintain()
     if (u.status === 'fulfilled') {
       usage = u.value
@@ -243,6 +248,7 @@
   const boxCount = $derived(enclosures(records))
   const unread = $derived(unreadShelves(records))
   const pick = $derived(selected ? records.find((d) => d.id === selected) : null)
+  const pickCard = $derived(pick && cards ? cards.get(driveIdOf(pick.id)) || null : null)
   const recById = $derived(new Map(records.map((r) => [r.id, r])))
   const picks = $derived(records.filter((d) => chosen[d.id]))
   const pickActions = $derived(commonActions(picks.map((d) => d.c)))
@@ -558,6 +564,11 @@
             {:else}
               <span class="dim">{pick.offer.sentence}.</span>
             {/if}
+          </p>
+        {/if}
+        {#if pickCard}
+          <p class="dim" data-testid="picked-hba">
+            SAS card <a href="#/drives/hbas?card={encodeURIComponent(pickCard.card)}">{pickCard.board || pickCard.card}</a>{pickCard.phy !== null ? `, phy ${pickCard.phy}` : pickCard.slot !== null && pickCard.slot !== undefined ? `, slot ${pickCard.slot} behind an expander` : ''}{pickCard.rateMbps ? ` at ${gbit(pickCard.rateMbps)}` : ''}{pickCard.maxRateMbps && pickCard.rateMbps && pickCard.rateMbps < pickCard.maxRateMbps ? ` (the card allows ${gbit(pickCard.maxRateMbps)})` : ''}
           </p>
         {/if}
         <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} local={pick.local} read={!!links?.read} />

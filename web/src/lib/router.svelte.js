@@ -16,6 +16,8 @@ const routes = [
   { pattern: '#/drives/format', name: 'driveformat' },
   // RAID controllers: mode, Switch to HBA, each disk's state, Set good (#325).
   { pattern: '#/drives/controllers', name: 'drivecontrollers' },
+  // SAS cards from their HostBusAdapter objects, and their flash (#376); one card is `?card=`.
+  { pattern: '#/drives/hbas', name: 'drivehbas' },
   { pattern: '#/vms', name: 'vmlist' },
   { pattern: '#/nodes', name: 'nodes' },
   // Every API on this node, its state and latency (#123).

@@ -148,6 +148,15 @@ pub fn classify(method: &Method, path: &str, query: Option<&str>) -> Option<Guar
             drive(method, inner)
         }
         "sb" => engine(method, rest.strip_prefix("proxy/")?, query),
+        // A SAS card's flash (#376, stormdrive#166): a CardOperation, created as
+        // the viewer. It rewrites the card's firmware and resets the card, which
+        // holds its drives' I/O while it runs; no drive's data is touched.
+        "k8s" => match segments(rest).as_slice() {
+            ["hbas", card, "flash"] if *method == Method::POST => Some(
+                Guarded::new("cardoperations", "create", "flash a SAS card's firmware (the card is reset)", *card).keeps_data(),
+            ),
+            _ => None,
+        },
         // stormstorage is a layer over the engines: removing one of its
         // pools or volumes removes data the same way.
         "storage" => {
@@ -545,6 +554,16 @@ mod tests {
         assert_eq!(c(Method::POST, "/api/plugins/sb/proxy/api/v1/exports"), None);
         assert_eq!(c(Method::POST, "/api/plugins/sb/proxy/api/v1/arrays/a1/scrub"), None);
         assert_eq!(c(Method::GET, "/api/plugins/sb/proxy/api/v1/forge"), None);
+    }
+
+    #[test]
+    fn a_sas_cards_flash_is_a_cardoperation_named_by_the_card() {
+        let g = c(Method::POST, "/api/plugins/k8s/hbas/forge1-0000-01-00-0/flash").unwrap();
+        assert_eq!((g.resource.as_str(), g.verb.as_str(), g.target.as_str()), ("cardoperations", "create", "forge1-0000-01-00-0"));
+        assert!(!g.destroys, "the card is reset; no drive's data is touched");
+        assert_eq!(c(Method::GET, "/api/plugins/k8s/hbas"), None);
+        assert_eq!(c(Method::PUT, "/api/plugins/k8s/hbas/x/flash"), None);
+        assert_eq!(c(Method::POST, "/api/plugins/k8s/projects"), None, "the k8s plugin's other writes are not storage");
     }
 
     #[test]

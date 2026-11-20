@@ -219,12 +219,15 @@ impl ConsolePlugin for DrivesPlugin {
             .item_at("Drives", "#/drives", 10)
             .item_at("Format", "#/drives/format", 15)
             .item_at("Controllers", "#/drives/controllers", 17)
+            // SAS cards from their HostBusAdapter objects, and their flash (#376, stormdrive#166).
+            .item_at("SAS cards", "#/drives/hbas", 18)
             .item_at("Shelves", "#/drives?group=shelf", 20)
             .item_at("Pools", "#/drives?group=pool", 30)
             // Every object of the kind, in the generic grid with its printer columns (#348).
             .item_at("All drives", "#/cr/drives.storage.storm.io", 90)
             .item_at("All drive operations", "#/cr/driveoperations.storage.storm.io", 91)
-            .item_at("All shelves", "#/cr/shelves.storage.storm.io", 92)]
+            .item_at("All shelves", "#/cr/shelves.storage.storm.io", 92)
+            .item_at("All card operations", "#/cr/cardoperations.storage.storm.io", 93)]
     }
 
     fn routes(&self) -> Router {
