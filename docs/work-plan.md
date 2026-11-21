@@ -2906,3 +2906,12 @@ charts (stormcos#1466).
       `GET|PUT /api/plugins/k8s/object/{kind}/{key}` on every watched kind)
 - [x] RBAC-aware UI (#45: rows, project page, YAML Edit; the rest is #259)
 
+
+### Writes by someone with no kubernetes identity (#387, finding 39f446993b07) — 2026-11-21, needs the owner
+`client.rs` `auth()` sends a viewer with no token upstream on the console's own credential. `rbac.md` §Two credentials
+documents that as the design (the role bounds them), and the finding wants every such write refused unless root.
+- Found: the role does not bound them in projects the console made: `self-provisioner` makes its ServiceAccount
+  `admin` there, so `/apply`, YAML, pod delete and members work there with no identity. The Terminal, node verbs,
+  rack and host ports already refuse with no identity (`may_act_upstream`)
+- Asked on the issue (refuse all / split workload+project writes from component settings / keep it), recommending the
+  split; `wait-owner`. Also asked: does New project stay possible with no identity. No code until answered
