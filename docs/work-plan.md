@@ -2761,6 +2761,11 @@ so stormcentral's node-log reader (`stormcentral`, viewer) can sign in once stor
 - 2026-11-19 12.97-flowsdn (pvetest2-1795151612, console 3f5f110): proof 404 again, same cause (registry config
   still has no `[api]`, checked with `component export`). Held `--after stormcos#200` (accepted this time); the master was told.
   Re-ship with the same proof once #200's registry edit lands
+- 2026-11-21: #200's registry edit landed (`component export`: `[kubernetes]` plus `[api]` user_namespace,
+  admin_password_file, auth_token_file and the `stormconsole-serving` pair). The first image built after it is
+  `6a826c80c4c0` (0.41.0, da14aa8); head dc98c8b has `0157e0cd14f2`. No release carries either yet (newest 12.97,
+  console 3f5f110), and pvetest2/pvetest3 answer nothing on :9094. No console change. Re-shipped `--commit da14aa8`
+  with the same proof, so it is checked only on an install whose console has sign-in on
 
 
 - [x] Node discovery from multicast presence — and the piece that was
