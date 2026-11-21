@@ -100,6 +100,26 @@ pub fn why_not(d: &Value) -> Option<String> {
     None
 }
 
+/// Why a drive on another node is not updated from this console (#389,
+/// finding cd245e800f52): its RAID sets are on its own node's engine, which
+/// only that node's console reads (the engine's token is the node's own and
+/// is sent to no peer). Without them a remote drive would pass as in no set,
+/// so two members of one remote set, or a member of a set rebuilding, could
+/// reset together. Failing closed until its node's sets reach this console.
+pub fn remote_why(node: &str) -> String {
+    format!("its RAID sets are on {node}'s engine, which this console cannot read: update it from {node}'s console")
+}
+
+/// Every drive of another node's answer, held back by [`remote_why`] unless
+/// something already holds it back.
+pub fn hold_remote(drives: &mut [Value], node: &str) {
+    for d in drives {
+        if d["whyNot"].is_null() {
+            d["whyNot"] = json!(remote_why(node));
+        }
+    }
+}
+
 /// A run in a person's terms: stormdrive's `FwRun` (live) or `FirmwareRecord`
 /// (kept), the same either way.
 fn run_view(run: &Value) -> Value {
@@ -286,6 +306,17 @@ pub fn batches(wanted: &[Wanted]) -> Vec<(String, Vec<String>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #389: another node's drives are held back, since their sets are not
+    /// read here; a reason they already had is kept.
+    #[test]
+    fn another_nodes_drives_are_held_back() {
+        let mut ds = vec![json!({"name": "sdb", "whyNot": null}), json!({"name": "sdc", "whyNot": "a firmware update is already running"})];
+        hold_remote(&mut ds, "storm-b");
+        assert_eq!(ds[0]["whyNot"], json!(remote_why("storm-b")));
+        assert!(ds[0]["whyNot"].as_str().unwrap().contains("update it from storm-b's console"));
+        assert_eq!(ds[1]["whyNot"], "a firmware update is already running");
+    }
 
     #[test]
     fn a_model_stands_in_a_name_and_an_upload_is_named_for_it() {

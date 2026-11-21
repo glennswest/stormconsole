@@ -1312,6 +1312,13 @@ image store (`/api/v1/firmware/images`). This node's drives also get their RAID
 set and the set's state from the engine. The page always says what it will
 refuse; the server checks again:
 
+- **Only this node's drives.** Another node's RAID sets are on its own engine,
+  which only its own console reads (the engine's token is the node's and is sent
+  to no peer). Read from here, a remote drive would pass as in no set, so each is
+  held back with "update it from <node>'s console" (#389, finding cd245e800f52).
+  Lifted when stormdrive says each drive's set (stormdrive#183) or waits for the
+  set itself (stormdrive#126).
+
 - **One model at a time.**
 - **The image must be named for that model.** stormdrive keeps no model on an
   image, so an upload from the dialog goes to each node of the selection as

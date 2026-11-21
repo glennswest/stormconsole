@@ -744,7 +744,8 @@ async fn raid_members(inner: &Inner) -> Option<Result<Vec<(String, String, firmw
 }
 
 /// Every node's drives, versions, runs and image store, read now; this node's
-/// drives say their RAID set.
+/// drives say their RAID set, and every other node's are held back, their
+/// sets being unread here (#389).
 async fn read_firmware(inner: &Inner) -> serde_json::Value {
     let targets = targets(inner).await;
     let answers = futures_util::future::join_all(targets.iter().map(|(_, base, _)| async move {
@@ -759,6 +760,9 @@ async fn read_firmware(inner: &Inner) -> serde_json::Value {
         match rest {
             Ok(body) => {
                 let (mut d, imgs) = firmware::reduce(&body, store.as_ref().ok(), node, pre);
+                if i != 0 {
+                    firmware::hold_remote(&mut d, node);
+                }
                 if i == 0 {
                     if let Some(Ok(ms)) = &sets {
                         let list = body.get("drives").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
@@ -895,8 +899,13 @@ async fn firmware_start(
             return refuse(StatusCode::CONFLICT, format!("{} is not in {node}'s image store: upload it there first", req.image));
         }
     }
-    // A set is on its node's engine, which only this node's console reads.
+    // A set is on its node's engine, which only this node's console reads:
+    // a drive anywhere else is refused whatever the read said of it (#389).
     let local = known["nodes"].as_array().and_then(|n| n.iter().find(|n| n["local"] == true)).and_then(|n| n["node"].as_str()).unwrap_or("").to_string();
+    if let Some(d) = chosen.iter().find(|d| d["node"] != local.as_str()) {
+        let node = d["node"].as_str().unwrap_or("");
+        return refuse(StatusCode::CONFLICT, format!("{} ({node}): {}", d["name"].as_str().unwrap_or(""), firmware::remote_why(node)));
+    }
     if chosen.iter().any(|d| d["node"] == local.as_str()) {
         if let Some(e) = known["raid"].as_str().filter(|e| *e != "no engine on this node") {
             return refuse(StatusCode::SERVICE_UNAVAILABLE, format!("this node's RAID sets cannot be read ({e}), so an update could take two members of one set"));

@@ -2949,3 +2949,14 @@ uid changes, so:
       dave-sessions on delete, admin's own session acting upstream after its own reset, the browser walk. Closed
 - Not seen: real nodes. A node's apiserver binds tokens only once its rustkube carries #182; before that the console
   logs "did not bind the token" and a reset ends the sessions but not the token
+
+### Firmware updates only on this node's drives (#389, finding cd245e800f52) — 2026-11-21
+`read_firmware` attached sets only to the first target, the local one (`raid_members` asks this node's engine), so
+`check_sets` saw every remote drive as in no set. No route reaches another node's sets: the engine's token is
+node-local and never sent to a peer (`engine::find_token`), consoles do not call each other, and stormdrive reads
+its engine's arrays (fault LEDs) but does not publish them. So: the finding's fail-closed alternative.
+- [x] `firmware::remote_why`/`hold_remote`: every other node's drive carries a `whyNot` naming its own console;
+      `firmware_start` refuses any drive not on this node whatever the read said
+- [x] Filed stormdrive#183 (each drive's set and set state on `/api/v1/drives`, a failed engine read said) to lift it
+- [x] Unit test `another_nodes_drives_are_held_back`; `verify-drive-replace.sh`: the read, a mixed start, a remote start
+- [ ] sc-build: build + every test; `sc-build deploy/verify-drive-replace.sh`; close
