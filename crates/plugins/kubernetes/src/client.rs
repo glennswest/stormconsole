@@ -178,6 +178,20 @@ impl RkClient {
         Ok((status, body))
     }
 
+    /// Delete with `DeleteOptions` — `preconditions.uid`, so what is deleted
+    /// is the object that was read, not one made since under its name.
+    pub async fn delete_body(
+        &self,
+        path: &str,
+        options: &Value,
+        as_viewer: Option<&str>,
+    ) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.request(reqwest::Method::DELETE, path, as_viewer).json(options).send().await?;
+        let status = resp.status();
+        let body = resp.json().await.unwrap_or(Value::Null);
+        Ok((status, body))
+    }
+
     /// Open a watch stream and send each event's `{type, object}` down the
     /// channel, preserving apiserver order. Returns when the connection
     /// ends (the caller re-lists and redials).

@@ -280,13 +280,20 @@ impl Sessions {
         before - map.len()
     }
 
-    /// The session kept on a reset of its own user's password takes the new
-    /// password's stamp, so the sweep keeps it too.
-    pub fn restamp(&self, id: &str, user: &str, now: &str) {
+    /// Whose session this is.
+    pub(crate) fn user_of(&self, id: &str) -> Option<String> {
+        self.get(id).map(|s| s.user)
+    }
+
+    /// The session kept on a reset of its own user's password: the new
+    /// password's stamp, so the sweep keeps it too, and a token bound to the
+    /// new key, the old one having just stopped working upstream (#390).
+    pub fn renew(&self, id: &str, user: &str, now: &str, fresh: &str) {
         let mut map = self.inner.lock().unwrap();
         if let Some(s) = map.get_mut(id).filter(|s| s.user == user) {
-            if let Via::Cluster { stamp, .. } = &mut s.via {
+            if let Via::Cluster { stamp, token, .. } = &mut s.via {
                 *stamp = now.to_string();
+                *token = fresh.to_string();
             }
         }
     }
@@ -855,12 +862,16 @@ mod tests {
         let mine = n.create("admin", cluster(&old));
         let other = n.create("admin", cluster(&old));
         assert_eq!(n.end_user("admin", Some(&mine)), 1);
-        n.restamp(&mine, "admin", &new);
+        n.renew(&mine, "admin", &new, "t2");
         assert_eq!(n.end_stale("admin", &new), 0);
         assert!(n.get(&mine).is_some() && n.get(&other).is_none());
-        // Restamping someone else's session is not something a reset does.
+        // It acts with the token bound to the new key (#390).
+        assert!(matches!(n.get(&mine).unwrap().via, Via::Cluster { ref token, .. } if token == "t2"));
+        assert_eq!(n.user_of(&mine).as_deref(), Some("admin"));
+        // Renewing someone else's session is not something a reset does.
         let theirs = n.create("stor", cluster(&old));
-        n.restamp(&theirs, "admin", &new);
+        n.renew(&theirs, "admin", &new, "t2");
+        assert!(matches!(n.get(&theirs).unwrap().via, Via::Cluster { ref token, .. } if token == "t"));
         assert_eq!(n.end_stale("stor", &new), 1);
     }
 

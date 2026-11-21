@@ -3,8 +3,9 @@
 #
 #   sc-build deploy/verify-users.sh
 #
-# A real fastetcd and rustkube apiserver (the release sc#27 was checked
-# against), given what stormcos gives a node: `storm-users`, ServiceAccount
+# A real fastetcd and rustkube's apiserver from main (Secret-bound tokens,
+# rustkube#182, are in no release yet; RUSTKUBE_VER=v0.15.3 takes the
+# release sc#27 was checked against instead), given what stormcos gives a node: `storm-users`, ServiceAccount
 # `admin` bound to `cluster-admin` (89-storm-users.yaml), and the storage
 # roles (47-storage-rbac.yaml's shape). The console runs as ServiceAccount
 # kube-system/stormconsole with deploy/rbac/stormconsole.yaml applied, so its
@@ -25,6 +26,9 @@
 #   other node     a sweep on another console ends a reset user's session there
 #                  (a reset here, or a hash written by hand as sc does), and a
 #                  deleted user's
+#   tokens         every token is bound to <name>-sessions; a reset makes it
+#                  anew, so a token minted under the old password is refused
+#                  upstream at once, not only the sessions holding it (#390)
 #   delete         gone, and admin can be neither deleted nor disabled
 #   install users  stormpump#242's users/<name>.{hash,role}: stormcentral
 #                  (viewer) is made as admin, signs in, reads logs, and is
@@ -36,7 +40,7 @@
 #   Chromium       the login page and Admin → Users (deploy/browser/users.cjs)
 set -euo pipefail
 
-RUSTKUBE_VER=${RUSTKUBE_VER:-v0.15.3}
+RUSTKUBE_VER=${RUSTKUBE_VER:-}
 FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-users.XXXXXX")
 cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "${W:?}"; }
@@ -58,11 +62,18 @@ cargo build -q --locked -p stormconsole
 BIN=$(realpath "${CARGO_TARGET_DIR:-target}/debug/stormconsole")
 python3 -c 'import yaml' 2>/dev/null || python3 -m pip install -q --user pyyaml
 
-say "fastetcd $FASTETCD_VER and rustkube's kube-apiserver $RUSTKUBE_VER"
+say "fastetcd $FASTETCD_VER and rustkube's kube-apiserver ${RUSTKUBE_VER:-from main}"
 curl -sfL "https://github.com/glennswest/fastetcd/releases/download/$FASTETCD_VER/fastetcd-$FASTETCD_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
-curl -sfL "https://github.com/glennswest/rustkube/releases/download/$RUSTKUBE_VER/rustkube-apiserver-$RUSTKUBE_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+if [ -n "$RUSTKUBE_VER" ]; then
+  curl -sfL "https://github.com/glennswest/rustkube/releases/download/$RUSTKUBE_VER/rustkube-apiserver-$RUSTKUBE_VER-x86_64-linux-musl.tar.gz" | tar xz -C "$W"
+  KA=$(find "$W" -maxdepth 3 -type f -name kube-apiserver -perm -u+x | head -1)
+else
+  git clone -q --depth 1 https://github.com/glennswest/rustkube "$W/rustkube"
+  echo "  rustkube $(git -C "$W/rustkube" rev-parse --short HEAD)"
+  (cd "$W/rustkube" && CARGO_TARGET_DIR="$W/k-target" cargo build -q --bin kube-apiserver)
+  KA="$W/k-target/debug/kube-apiserver"
+fi
 FE=$(find "$W" -maxdepth 3 -type f -name fastetcd -perm -u+x | head -1)
-KA=$(find "$W" -maxdepth 3 -type f -name kube-apiserver -perm -u+x | head -1)
 [ -n "$FE" ] && [ -n "$KA" ] || { echo "release binaries not found"; exit 2; }
 (cd "$W"
  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=node-ca" -keyout ca.key -out ca.crt 2>/dev/null
@@ -204,6 +215,10 @@ check "$(login jx nobody "$APW")" 401 "an unknown user is refused alike"
 check "$(login jd default "$APW")" 401 "an account that is no user is refused"
 check "$(login ja admin "$APW")" 200 "admin signs in"
 check "$(sess ja)" "True admin admin" "as admin, an administrator"
+stamp_of() { printf %s "$(hashof "$1")" | sha256sum | cut -d' ' -f1; }
+key() { k GET "$SECRETS/$1-sessions"; }
+check "$(key admin | j 'd["type"]')" storm.io/user-sessions "admin-sessions made at sign-in, for its tokens to be bound to (#390)"
+check "$(key admin | j 'd["metadata"]["annotations"]["storm.io/password-stamp"]')" "$(stamp_of admin)" "stamped with the password's"
 check "$(as ja GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format')" 200 "the storage guard answers"
 check "$(j 'd["guard"]["allowed"]' < "$W/out")" True "admin passes the storage guard, asked as storm-users/admin"
 check "$(as ja POST /api/plugins/k8s/projects '{"name":"by-admin"}')" 200 "admin makes a project"
@@ -286,6 +301,7 @@ check "$(as ja PUT /api/v1/users/stor/disabled '{"disabled":true}')" 200 "disabl
 check "$(k GET "$SAS/stor" | j 'd["metadata"]["annotations"]["storm.io/disabled"]')" true "the annotation is on the account"
 check "$(as js GET /api/v1/components)" 401 "stor's session ended at once"
 check "$(login js stor s-pw)" 401 "stor cannot sign in"
+check "$(kcode GET "$SECRETS/stor-sessions")" 404 "stor-sessions is gone, so their tokens are too (#390)"
 check "$(as ja PUT /api/v1/users/stor/disabled '{"disabled":false}')" 200 "enable stor"
 check "$(login js stor s-pw)" 200 "stor signs in again"
 
@@ -384,10 +400,40 @@ for _ in $(seq 40); do [ "$(sess j2 "$C2")$(sess jdv)" = "False None False None 
 check "$(sess j2 "$C2")" "False None " "dave's session on the other console ended within its sweep"
 check "$(sess jdv)" "False None " "and here"
 check "$(login j2 dave d-pw3 "$C2")" 200 "the new password signs in"
+say "9c. the tokens themselves end with the password (#390)"
+K1=$(key dave | j 'd["metadata"]["uid"]')
+check "$(key dave | j 'd["metadata"]["annotations"]["storm.io/password-stamp"]')" "$(stamp_of dave)" "dave-sessions is stamped with d-pw3's hash"
+check "$(key dave | j 'd["metadata"]["ownerReferences"][0]["uid"]')" "$(k GET "$SAS/dave" | j 'd["metadata"]["uid"]')" "and owned by dave's account"
+# A token as the console mints one, by the console's own credential: what a
+# session holds, and what would leak if the old password had.
+TR="{\"apiVersion\":\"authentication.k8s.io/v1\",\"kind\":\"TokenRequest\",\"spec\":{\"expirationSeconds\":86400,
+  \"boundObjectRef\":{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"name\":\"dave-sessions\",\"uid\":\"$K1\"}}}"
+OLD=$(k POST "$SAS/dave/token" "$TR" "$SA" | j 'd["status"]["token"]')
+check "$(kcode GET "$SECRETS/dave-password" '' "$OLD" | sed 's/^40[3]$/ok/;s/^200$/ok/')" ok "a token bound to it authenticates upstream (200 or 403, not 401)"
+check "$(as ja PUT /api/v1/users/dave/password '{"password":"d-pw4"}')" 200 "admin resets dave's password on this console"
+check "$(kcode GET "$SECRETS/dave-password" '' "$OLD")" 401 "the token minted under d-pw3 is refused by the apiserver at once"
+check "$( [ "$(key dave | j 'd["metadata"]["uid"]')" != "$K1" ] && echo anew)" anew "dave-sessions was made anew"
+check "$(key dave | j 'd["metadata"]["annotations"]["storm.io/password-stamp"]')" "$(stamp_of dave)" "stamped with d-pw4's"
+for _ in $(seq 40); do [ "$(sess j2 "$C2")" = "False None " ] && break; sleep 1; done
+check "$(sess j2 "$C2")" "False None " "and dave's session on the other console ended within its sweep"
+check "$(login j2 dave d-pw4 "$C2")" 200 "d-pw4 signs in there, on the new key"
+check "$(curl -s -b "$W/j2" "$C2/api/v1/console/guard?method=POST&path=/api/plugins/drive/format" | j 'd["guard"]["allowed"]')" True "and acts upstream: the storage guard, asked as dave"
+# By hand, as sc user passwd does: the sweep of a node holding a session makes it anew.
+K2=$(key dave | j 'd["metadata"]["uid"]')
+OLD=$(k POST "$SAS/dave/token" "$(printf %s "$TR" | sed "s/$K1/$K2/")" "$SA" | j 'd["status"]["token"]')
+k GET "$SECRETS/dave-password" | python3 -c "import json,sys,base64; d=json.load(sys.stdin); d['data']['hash']=base64.b64encode(sys.argv[1].encode()).decode(); print(json.dumps(d))" \
+  "$(printf d-pw5 | "$BIN" --hash-password)" > "$W/dave-pw.json"
+check "$(kcode PUT "$SECRETS/dave-password" "$(cat "$W/dave-pw.json")")" 200 "dave-password rewritten by hand"
+for _ in $(seq 40); do [ "$(kcode GET "$SECRETS/dave-password" '' "$OLD")" = 401 ] && break; sleep 1; done
+check "$(kcode GET "$SECRETS/dave-password" '' "$OLD")" 401 "the token minted under d-pw4 is refused within a sweep"
+check "$(sess j2 "$C2")" "False None " "and the session holding one like it ended"
+grep -q 'did not bind the token' "$W/c.log" "$W/c2.log" && { echo "  FAIL a console minted an unbound token"; FAILED=$((FAILED+1)); } || echo "  ok   every token the consoles minted was bound"
+check "$(login j2 dave d-pw5 "$C2")" 200 "d-pw5 signs in there"
 check "$(as ja DELETE /api/v1/users/dave)" 200 "admin deletes dave here"
 for _ in $(seq 40); do [ "$(sess j2 "$C2")" = "False None " ] && break; sleep 1; done
 check "$(sess j2 "$C2")" "False None " "dave's session there ended within the sweep"
 check "$(kcode GET "$SAS/dave")$(kcode GET "$SECRETS/dave-password")$(kcode GET "$RBAC/clusterrolebindings/storm-user:dave:storage-admin")" 404404404 "the account, Secret and binding are gone"
+check "$(kcode GET "$SECRETS/dave-sessions")" 404 "and dave-sessions"
 check "$(as ja DELETE /api/v1/users/admin)" 400 "admin cannot be deleted"
 check "$(as ja PUT /api/v1/users/admin/disabled '{"disabled":true}')" 400 "nor disabled"
 check "$(as ja DELETE /api/v1/users/default)" 400 "an account that is no user is not deleted ($(cat "$W/out"))"
@@ -404,6 +450,8 @@ check "$(login ja admin "$APW2")" 200 "the reinstall's printed password works"
 check "$(login jo admin "$APW")" 401 "the old one does not"
 check "$(as ja PUT /api/v1/users/admin/password '{"password":"chosen-by-admin"}')" 200 "admin chooses a password"
 check "$(ann admin storm.io/seeded-by)" None "the seeding mark is gone with it"
+check "$(sess ja)" "True admin admin" "the session that reset its own password is kept"
+check "$(as ja POST /api/plugins/k8s/projects '{"name":"after-own-reset"}')" 200 "and acts upstream as admin, on a token bound to the new key (#390)"
 writehash "another-$RANDOM"
 kill "$CP"; wait "$CP" 2>/dev/null || true
 start_console

@@ -2925,3 +2925,18 @@ reaches the session), so the fix is the attribute.
 - [x] Unit test `a_session_cookie_made_over_tls_is_secure`; `verify-client-cert.sh` §6b (real TLS listener)
 - [x] sc-build 439ad56: build + every test pass (41 suites, 0 failed); `sc-build deploy/verify-client-cert.sh` 439ad56:
       0 failed, §6b's 7 checks ok. Closed; image requested
+
+### A password reset ends the user's tokens, not only their sessions (#390, finding 51c1602a85c5) — 2026-11-21
+The same finding id as #374, re-filed against f987cce. #374 fixed its first half (every node's sweep ends a session
+whose password stamp is not the Secret's). Its second half was open: the minted ServiceAccount token stayed valid
+upstream for its 24 h. rustkube#182 (main, no release yet) binds a token to a Secret and refuses it once that Secret's
+uid changes, so:
+- [x] `users.rs`: `<name>-sessions` (type `storm.io/user-sessions`, `storm.io/password-stamp`, owned by the account
+      except admin's); every token is minted bound to its uid. `key()`: use it if made for this password, else delete
+      on its uid (preconditions) and make anew. Called at sign-in, on every sweep (a change by `sc` or another node),
+      and by `set_password`; `revoke()` on disable, delete and a sweep's Gone
+- [x] The reset's own session: re-minted on the new key (`Sessions::renew`); a key not made anew is a 502 that says so
+- [x] An apiserver that does not bind: plain token, a warning logged; seeding's own admin token asks for 600 s
+- [x] Unit tests `a_new_password_makes_the_key_anew`, `the_key_is_owned_by_the_account_except_admins`, the kept
+      session acting with the new token; `verify-users.sh` on rustkube main, §9c + checks in §2, §6, §9, §10
+- [ ] sc-build: build + every test; `sc-build deploy/verify-users.sh`; close

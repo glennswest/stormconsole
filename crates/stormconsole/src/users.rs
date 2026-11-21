@@ -47,6 +47,16 @@ pub const ADMIN: &str = "admin";
 pub(crate) const RBAC: &str = "/apis/rbac.authorization.k8s.io/v1";
 /// A minted token lives as long as a session.
 pub const TOKEN_SECONDS: u64 = 24 * 3600;
+/// `<name>-sessions`: the Secret every token minted for a user is bound to
+/// (#390). It holds nothing but the [`stamp`] of the password its tokens
+/// were minted under, in [`KEY_STAMP`]; making it anew changes its uid, and
+/// the apiserver stops honouring every token bound to the old one. So a
+/// reset, a disable or a delete ends the tokens themselves, not only the
+/// console's sessions holding them.
+/// The token seeding acts as admin with: the shortest an apiserver gives.
+pub const SEED_TOKEN_SECONDS: u64 = 600;
+pub const KEY_TYPE: &str = "storm.io/user-sessions";
+pub const KEY_STAMP: &str = "storm.io/password-stamp";
 
 /// A DNS-1123 label: what a ServiceAccount, and so a user, may be called.
 pub fn is_name(s: &str) -> bool {
@@ -283,6 +293,36 @@ pub fn judge(name: &str, account: &Result<Value, RkError>, secret: Option<&Resul
     }
 }
 
+/// What to do with a user's `<name>-sessions` for the password stamped `now`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Key {
+    /// Made for this password: bind to this uid.
+    Use(String),
+    /// Made for another password (or for none we can read): delete the
+    /// one of this uid, then make it anew.
+    Replace(String),
+    /// None there: make it.
+    Make,
+}
+
+pub fn key_rule(found: Option<&Value>, now: &str) -> Key {
+    let Some(s) = found else { return Key::Make };
+    let uid = s.pointer("/metadata/uid").and_then(Value::as_str).unwrap_or_default().to_string();
+    let deleting = s.pointer("/metadata/deletionTimestamp").is_some();
+    if !uid.is_empty() && !deleting && annotation(s, KEY_STAMP) == Some(now) {
+        Key::Use(uid)
+    } else {
+        Key::Replace(uid)
+    }
+}
+
+/// The account that owns a user's key, so deleting the user takes it too.
+/// Admin's account is stormcos's, as is its password Secret: no owner.
+fn owner_of(name: &str, account: &Value) -> Option<(String, String)> {
+    let uid = account.pointer("/metadata/uid").and_then(Value::as_str).filter(|u| !u.is_empty())?;
+    (name != ADMIN).then(|| (name.to_string(), uid.to_string()))
+}
+
 /// What seeding does with what it finds.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Seed {
@@ -410,6 +450,10 @@ impl Users {
         format!("/api/v1/namespaces/{}/secrets/{name}-password", self.ns)
     }
 
+    fn key_path(&self, name: &str) -> String {
+        format!("/api/v1/namespaces/{}/secrets/{name}-sessions", self.ns)
+    }
+
     /// Sign in: the password against the Secret, the account enabled, then a
     /// token for it. One refusal for every way it can be wrong.
     pub async fn sign_in(&self, name: &str, password: &str) -> Result<SignedIn, Refused> {
@@ -448,24 +492,41 @@ impl Users {
             return Err(Refused::Invalid);
         }
         let stamp = stamp(&phc_seen);
-        let token = self.mint(name).await?;
+        let key = self.key(name, &stamp, owner_of(name, &account)).await.map_err(Refused::Unreachable)?;
+        let token = self.mint(name, &key).await?;
         let cluster_roles = self.roles(name).await.unwrap_or_default();
         Ok(SignedIn { token, cluster_roles, stamp })
     }
 
-    async fn mint(&self, name: &str) -> Result<String, Refused> {
-        let body = json!({
-            "apiVersion": "authentication.k8s.io/v1",
-            "kind": "TokenRequest",
-            "spec": {"expirationSeconds": TOKEN_SECONDS},
-        });
+    /// A token for `name`, bound to their `<name>-sessions` Secret of uid
+    /// `key` (#390). An apiserver that does not bind tokens (rustkube before
+    /// #182) answers with a plain one: still a token, but one only its
+    /// expiry ends, which is said.
+    pub async fn mint(&self, name: &str, key: &str) -> Result<String, Refused> {
+        self.mint_spec(name, Some(key)).await
+    }
+
+    async fn mint_spec(&self, name: &str, key: Option<&str>) -> Result<String, Refused> {
+        let spec = match key {
+            Some(uid) => json!({
+                "expirationSeconds": TOKEN_SECONDS,
+                "boundObjectRef": {"apiVersion": "v1", "kind": "Secret", "name": format!("{name}-sessions"), "uid": uid},
+            }),
+            // The console's own use, while seeding: no session holds it.
+            None => json!({"expirationSeconds": SEED_TOKEN_SECONDS}),
+        };
+        let body = json!({"apiVersion": "authentication.k8s.io/v1", "kind": "TokenRequest", "spec": spec});
         let path = format!("{}/token", self.account(name));
         match self.kube.post_json(&path, &body).await {
-            Ok((s, b)) if s.is_success() => b
-                .pointer("/status/token")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .ok_or_else(|| Refused::Unreachable("the apiserver minted no token".into())),
+            Ok((s, b)) if s.is_success() => {
+                if key.is_some() && b.pointer("/spec/boundObjectRef/uid").and_then(Value::as_str) != key {
+                    tracing::warn!(user = name, "users: the apiserver did not bind the token to {name}-sessions: a reset ends its sessions, but the token only at its expiry");
+                }
+                b.pointer("/status/token")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .ok_or_else(|| Refused::Unreachable("the apiserver minted no token".into()))
+            }
             Ok((s, b)) => {
                 let why = b.get("message").and_then(Value::as_str).unwrap_or_default();
                 tracing::warn!(user = name, status = s.as_u16(), "users: no token for the account: {why}");
@@ -490,12 +551,89 @@ impl Users {
             _ => None,
         };
         match judge(name, &account, secret.as_ref()) {
-            Seen::Stamp(stamp) => match self.roles(name).await {
-                Ok(roles) => Still::Is { roles, stamp },
-                Err(_) => Still::Unknown,
-            },
-            Seen::Gone => Still::Gone,
+            Seen::Stamp(stamp) => {
+                // A password changed by any means — here, on another node,
+                // by `sc user passwd` — makes the key anew, so the tokens
+                // minted under the old one stop working upstream (#390).
+                let owner = account.as_ref().ok().and_then(|a| owner_of(name, a));
+                if let Err(e) = self.key(name, &stamp, owner).await {
+                    tracing::warn!(user = name, "users: {name}-sessions not checked: {e}");
+                }
+                match self.roles(name).await {
+                    Ok(roles) => Still::Is { roles, stamp },
+                    Err(_) => Still::Unknown,
+                }
+            }
+            Seen::Gone => {
+                if let Err(e) = self.revoke(name).await {
+                    tracing::warn!(user = name, "users: {name}-sessions not removed: {e}");
+                }
+                Still::Gone
+            }
             Seen::Unknown => Still::Unknown,
+        }
+    }
+
+    /// The uid of `<name>-sessions` for the password whose stamp is `now`:
+    /// the one there if it was made for it, otherwise made anew — the old
+    /// one deleted on its uid, so two nodes doing this at once cannot delete
+    /// each other's new one. Done as the console (`stormconsole-keys`).
+    pub async fn key(&self, name: &str, now: &str, owner: Option<(String, String)>) -> Result<String, String> {
+        let path = self.key_path(name);
+        for _ in 0..3 {
+            let found = match self.kube.get(&path).await {
+                Ok(s) => Some(s),
+                Err(e) if status_of(&e) == Some(404) => None,
+                Err(e) => return Err(format!("reading {name}-sessions: {e}")),
+            };
+            match key_rule(found.as_ref(), now) {
+                Key::Use(uid) => return Ok(uid),
+                Key::Replace(old) => {
+                    let pre = json!({"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": {"uid": old}});
+                    match self.kube.delete_body(&path, &pre, None).await {
+                        Ok((s, _)) if s.is_success() || s.as_u16() == 404 => {
+                            tracing::info!(user = name, "users: {name}-sessions made anew: the tokens of the old password end");
+                        }
+                        // Another node replaced it first: read it again.
+                        Ok((s, _)) if s.as_u16() == 409 => continue,
+                        Ok((s, b)) => return Err(format!("deleting {name}-sessions: {s} {}", message(&b))),
+                        Err(e) => return Err(format!("deleting {name}-sessions: {e}")),
+                    }
+                }
+                Key::Make => {}
+            }
+            let mut body = json!({
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "type": KEY_TYPE,
+                "metadata": {"name": format!("{name}-sessions"), "namespace": self.ns, "annotations": {KEY_STAMP: now}},
+            });
+            if let Some((owner, uid)) = &owner {
+                body["metadata"]["ownerReferences"] =
+                    json!([{"apiVersion": "v1", "kind": "ServiceAccount", "name": owner, "uid": uid}]);
+            }
+            match self.kube.post_json(&format!("/api/v1/namespaces/{}/secrets", self.ns), &body).await {
+                Ok((s, b)) if s.is_success() => {
+                    if let Some(uid) = b.pointer("/metadata/uid").and_then(Value::as_str).filter(|u| !u.is_empty()) {
+                        return Ok(uid.to_string());
+                    }
+                }
+                // Another node made it first: read it again.
+                Ok((s, _)) if s.as_u16() == 409 => {}
+                Ok((s, b)) => return Err(format!("making {name}-sessions: {s} {}", message(&b))),
+                Err(e) => return Err(format!("making {name}-sessions: {e}")),
+            }
+        }
+        Err(format!("{name}-sessions kept changing under us"))
+    }
+
+    /// Delete `<name>-sessions`: every token minted for the user stops
+    /// working upstream (#390). A sign-in makes it again.
+    pub async fn revoke(&self, name: &str) -> Result<(), String> {
+        match self.kube.delete(&self.key_path(name), None).await {
+            Ok(s) if s.is_success() || s.as_u16() == 404 => Ok(()),
+            Ok(s) => Err(format!("deleting {name}-sessions: {s}")),
+            Err(e) => Err(format!("deleting {name}-sessions: {e}")),
         }
     }
 
@@ -607,7 +745,7 @@ impl Users {
         if let Some(t) = held {
             return Ok(t.clone());
         }
-        match self.mint(ADMIN).await {
+        match self.mint_spec(ADMIN, None).await {
             Ok(t) => {
                 *held = Some(t.clone());
                 Ok(t)
@@ -818,14 +956,23 @@ impl Users {
         }
         self.remove(&self.secret(name), as_).await?;
         self.remove(&self.account(name), as_).await?;
+        // The account's uid is in its tokens, so they ended with it; the
+        // key is owned by it too. Removed here as well, for an apiserver
+        // with no collector.
+        if let Err(e) = self.revoke(name).await {
+            tracing::warn!(user = name, "users: {e}");
+        }
         Ok(())
     }
 
     /// A new password. For admin the seeding marker goes with it: a
     /// password set here is an administrator's, and no install replaces it.
-    /// Returns the new password's [`stamp`], for the session that made the
-    /// change and is kept.
-    pub async fn set_password(&self, as_: &str, name: &str, password: &str) -> Result<String, Fail> {
+    /// `<name>-sessions` is made anew with it, so every token minted under
+    /// the old password stops working upstream, on every node (#390).
+    /// Returns the new password's [`stamp`] and the new key's uid, for the
+    /// session that made the change and is kept — or, the password being
+    /// set either way, why the key was not made anew.
+    pub async fn set_password(&self, as_: &str, name: &str, password: &str) -> Result<(String, Result<String, String>), Fail> {
         check_name(name)?;
         if password.is_empty() {
             return Err(Fail::Bad("a password is required".into()));
@@ -859,7 +1006,9 @@ impl Users {
             }
             Err(e) => return Err(e),
         }
-        Ok(stamp(&phc))
+        let now = stamp(&phc);
+        let key = self.key(name, &now, owner_of(name, &account)).await;
+        Ok((now, key))
     }
 
     /// Disable or enable: the annotation on the account.
@@ -870,10 +1019,15 @@ impl Users {
         let patch = json!({"metadata": {"annotations": {DISABLED: if disabled { json!("true") } else { Value::Null }}}});
         let path = self.account(name);
         match self.kube.patch_merge(&path, &patch, Some(as_)).await {
-            Ok((s, _)) if s.is_success() => Ok(()),
-            Ok((s, b)) => Err(Fail::from_status(s.as_u16(), &b)),
-            Err(e) => Err(Fail::Upstream(e.to_string())),
+            Ok((s, _)) if s.is_success() => {}
+            Ok((s, b)) => return Err(Fail::from_status(s.as_u16(), &b)),
+            Err(e) => return Err(Fail::Upstream(e.to_string())),
         }
+        // A disabled account still exists, so its tokens would too (#390).
+        if disabled {
+            self.revoke(name).await.map_err(|e| Fail::Upstream(format!("disabled, but their tokens still work: {e}")))?;
+        }
+        Ok(())
     }
 
     /// Make a user's labelled bindings exactly these roles. None is right
@@ -1063,6 +1217,31 @@ fn host_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #390: a key made under another password is replaced on its own uid;
+    /// one made under this one is bound to; none is made.
+    #[test]
+    fn a_new_password_makes_the_key_anew() {
+        let (old, new) = (stamp("$argon2id$old"), stamp("$argon2id$new"));
+        let key = |uid: &str, st: &str| json!({"metadata": {"uid": uid, "annotations": {KEY_STAMP: st}}});
+        assert_eq!(key_rule(None, &new), Key::Make);
+        assert_eq!(key_rule(Some(&key("u1", &new)), &new), Key::Use("u1".into()));
+        assert_eq!(key_rule(Some(&key("u1", &old)), &new), Key::Replace("u1".into()));
+        // Made by hand, or by an older console: no stamp, so not trusted.
+        assert_eq!(key_rule(Some(&json!({"metadata": {"uid": "u2"}})), &new), Key::Replace("u2".into()));
+        // Being deleted: its tokens are ending, so do not bind new ones to it.
+        let mut going = key("u3", &new);
+        going["metadata"]["deletionTimestamp"] = json!("2026-11-21T00:00:00Z");
+        assert_eq!(key_rule(Some(&going), &new), Key::Replace("u3".into()));
+    }
+
+    #[test]
+    fn the_key_is_owned_by_the_account_except_admins() {
+        let a = json!({"metadata": {"uid": "sa-1"}});
+        assert_eq!(owner_of("dave", &a), Some(("dave".into(), "sa-1".into())));
+        assert_eq!(owner_of(ADMIN, &a), None);
+        assert_eq!(owner_of("dave", &json!({"metadata": {}})), None);
+    }
 
     #[test]
     fn role_words_are_the_consoles_own() {

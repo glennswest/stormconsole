@@ -123,8 +123,9 @@ With `[api] user_namespace = "storm-users"`, people sign in as users kept on the
 |---|---|---|---|
 | `storm-users` | secrets | get | the password hash, checked at sign-in and every 30 s after, so a password changed anywhere ends the sessions opened with the old one (role `stormconsole-keys`, #374) |
 | `storm-users` | secrets | create, update | seeding `admin-password` from the install's hash (role `stormconsole-keys`) |
+| `storm-users` | secrets | get, create, delete | `<name>-sessions`, the Secret each user's tokens are bound to: made at sign-in, made anew when the password changes, deleted on a disable or delete, so a token minted under an old password stops authenticating (role `stormconsole-keys`, #390) |
 | `storm-users` | serviceaccounts | get | the account exists and is not disabled, at sign-in and every 30 s after |
-| `storm-users` | serviceaccounts/token | create | the TokenRequest whose token is the session's identity (role `stormconsole-users`) |
+| `storm-users` | serviceaccounts/token | create | the TokenRequest whose token is the session's identity, bound to `<name>-sessions` (role `stormconsole-users`) |
 | cluster | clusterrolebindings | get, list | which ClusterRoles the account holds |
 
 **The Users page needs nothing more.** Creating, deleting, disabling a user, setting a password and binding

@@ -150,18 +150,38 @@ async fn password(
         Err(r) => return r,
     };
     match users.set_password(&token, &name, &b.password).await {
-        Ok(stamp) => {
+        Ok((stamp, key)) => {
             // Their other sessions end here: a reset is usually because
-            // the old password got out. The administrator's own stays, with
-            // the new password's stamp. Every other node's sweep ends theirs
+            // the old password got out. Every other node's sweep ends theirs
             // there, the Secret's hash being no longer the one they signed
-            // in with (#374).
-            let n = state.sessions.end_user(&name, keep.as_deref());
-            if let Some(id) = &keep {
-                state.sessions.restamp(id, &name, &stamp);
+            // in with (#374), and the tokens those sessions held already
+            // stopped working upstream with the old key (#390). The
+            // administrator's own session stays, on the new password's
+            // stamp and a token bound to the new key.
+            let mut keep = keep.filter(|id| state.sessions.user_of(id).as_deref() == Some(name.as_str()));
+            if let (Some(id), Ok(key)) = (keep.clone(), &key) {
+                match users.mint(&name, key).await {
+                    Ok(t) => state.sessions.renew(&id, &name, &stamp, &t),
+                    Err(e) => {
+                        tracing::warn!(user = %name, "users: no new token for the session that reset its own password: {e:?}");
+                        keep = None;
+                    }
+                }
             }
+            let n = state.sessions.end_user(&name, keep.as_deref());
             tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), user = %name, sessions = n, "users: password set");
-            Json(json!({"password": "set"})).into_response()
+            match key {
+                Ok(_) => Json(json!({"password": "set"})).into_response(),
+                // Said, not hidden: the sweep on each node holding one of
+                // their sessions tries again every 30 s.
+                Err(e) => {
+                    tracing::warn!(user = %name, "users: password set, old tokens not revoked: {e}");
+                    refuse(
+                        StatusCode::BAD_GATEWAY,
+                        format!("the password is set and their sessions here ended, but the tokens minted under the old one still work upstream: {e}"),
+                    )
+                }
+            }
         }
         Err(f) => failed(f),
     }
