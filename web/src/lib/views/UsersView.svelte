@@ -193,7 +193,7 @@
     </table>
 
     <h2>New user</h2>
-    <form onsubmit={create}>
+    <form onsubmit={create} aria-label="New user">
       <label>Name <input bind:value={fresh.name} autocomplete="off" spellcheck="false" placeholder="e.g. storage1" /></label>
       <label>Password <input type="password" bind:value={fresh.password} autocomplete="new-password" /></label>
       <label>Again <input type="password" bind:value={fresh.again} autocomplete="new-password" /></label>

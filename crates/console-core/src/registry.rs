@@ -99,6 +99,11 @@ impl Registry {
         serde_json::json!({"network": network, "plugins": plugins})
     }
 
+    /// Somebody's roles changed here: storage answers kept from before are dropped.
+    pub async fn forget_reviews(&self) {
+        self.reviewer.forget().await;
+    }
+
     /// Is this request destructive storage, may this viewer, and what must
     /// they type? `None` for everything that is not destructive storage.
     pub async fn guard(&self, viewer: &Viewer, method: &axum::http::Method, path: &str, query: Option<&str>) -> Option<Guard> {

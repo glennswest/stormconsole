@@ -211,6 +211,7 @@ async fn roles(State(state): State<AppState>, viewer: Viewer, Path(name): Path<S
             if let Ok(r) = users.roles(&name).await {
                 state.sessions.set_roles(&name, &r);
             }
+            state.registry.forget_reviews().await;
             tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), user = %name, roles = %b.roles.join(","), "users: roles set");
             Json(json!({"roles": b.roles})).into_response()
         }
@@ -226,6 +227,7 @@ async fn refresh(state: &AppState, users: &Users, who: &[String]) {
             state.sessions.set_roles(u, &r);
         }
     }
+    state.registry.forget_reviews().await;
 }
 
 async fn groups(State(state): State<AppState>, viewer: Viewer) -> Response {

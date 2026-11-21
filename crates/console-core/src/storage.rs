@@ -383,6 +383,13 @@ impl Reviewer {
         d
     }
 
+    /// Drops every answer kept. The console calls it when it changes
+    /// somebody's roles or groups itself (#334), so the next question goes to
+    /// the apiserver instead of being answered from before the change.
+    pub async fn forget(&self) {
+        self.cache.write().await.clear();
+    }
+
     async fn ask(&self, base: &str, token: &str, resource: &str, verb: &str) -> Decision {
         let body = serde_json::json!({
             "apiVersion": "authorization.k8s.io/v1",
@@ -602,5 +609,14 @@ mod tests {
         let r = Reviewer::new(None);
         let d = r.review(&Viewer { user: Some("a".into()), token: Some("t".into()), ..Default::default() }, "volumes", "delete").await;
         assert!(!d.allowed && d.reason.contains("no apiserver"));
+    }
+
+    #[tokio::test]
+    async fn forget_drops_the_kept_answers() {
+        let r = Reviewer::new(None);
+        let key = ("t".to_string(), "drives".to_string(), "format".to_string());
+        r.cache.write().await.insert(key.clone(), (Instant::now(), Decision::no("before the change")));
+        r.forget().await;
+        assert!(r.cache.read().await.get(&key).is_none());
     }
 }

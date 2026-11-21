@@ -10,6 +10,8 @@
 - **feat:** `GET|POST /api/v1/groups`, `DELETE /api/v1/groups/{name}`, `PUT /api/v1/groups/{name}/members|roles`, and `groups` on `POST /api/v1/users`, all admin only and done as the signed-in administrator. User rows carry `own` and `groups`. A change is in effect for the members' sessions here at once, and elsewhere within the sweep. Audited as **Users**.
 - **feat:** members are users, never `admin`. A user deleted leaves every group first, so a user made again under the name inherits nothing. Deleting a group leaves its users. A member, role or group that is not there is a 400, and nothing is written.
 - **test:** `groups.rs` unit tests, `users.test.mjs`, and `deploy/verify-users.sh` §8b against a real rustkube: the guard is allowed for a member and refused once they leave, a user is made in a group and deleted out of it, a new user under the old name inherits nothing, and the refusals. Chromium `users.cjs`: a group made from the form, shown on the member's row, a wrong name deleting nothing, then deleted.
+- **fix:** the storage guard kept each apiserver answer for 30 s, so a user just given `storage-admin` (in their own right or through a group) was still refused for up to 30 s. A role or group change made here now drops the kept answers (`Reviewer::forget`). Found by `verify-users.sh` §8b.
+- **test:** the Chromium walk clicks Create inside the New user form (now `aria-label="New user"`): the top bar's Create menu has the same name.
 
 ## [v0.41.0] — 2026-11-20
 
