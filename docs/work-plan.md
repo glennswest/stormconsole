@@ -2574,6 +2574,26 @@ admin's Secret is `admin-password`, its binding stormcos's.
 - Left: the registry's `[api] user_namespace` / `admin_password_file` lines, applied by the master with
   stormcos#200 (sign-in closes :9094 to stormcentral's anonymous reads, stormcentral#807). Groups: #334.
 
+### Groups (#334)
+Owner, 2026-11-20 (on #334): "Make groups now. We need that for drive and hardware management." Read from rustkube
+main (`auth.rs`, `rbac_engine.rs`): a ServiceAccount's token carries only `system:serviceaccounts` and
+`system:serviceaccounts:<ns>`, so a `Group` subject (option b as written) would grant a signed-in person nothing. The
+shape, beside sc#27's users in `storm-users`:
+- a group: ConfigMap `<name>-group`, label `storm.io/group: <name>`, `data.description`, `data.members` (user names,
+  one a line, sorted)
+- a group's role: ClusterRoleBinding `storm-group:<group>:<role>`, label `storm.io/group`, subjects the members'
+  ServiceAccounts, rewritten on every change of members. So RBAC decides as for a user's own binding, and sign-in's
+  roles (any binding naming the account) carry group roles unchanged
+- a user deleted leaves every group (no name reuse inherits); admin is in no group; a group's member is a user
+- [ ] users.rs: groups (list, create, delete, members, roles), user rows say their groups and own roles; tests
+- [ ] `/api/v1/groups` (admin, as the admin's token), sessions' roles refreshed for the members touched; audit
+- [ ] Users page: Groups (create with description, members and roles; edit members and roles; delete); a user's
+      groups and what comes from them
+- [ ] `verify-users.sh`: real rustkube: a group with storage-admin, a member's SSAR allowed, removed → refused;
+      Chromium; docs (README, rbac.md, architecture), changelog; release; image
+- [ ] file: stormcentral (`sc user`/`sc group` on this shape); a hardware role (stormipmi is `admin` only, so a
+      group gets hardware management only through cluster-admin)
+
 ### Drive link health (#339) ✅ 2026-11-17 (v0.34.0)
 From stormdrive v0.49.0's Drive `status.link` + `LinkDegraded`/`LinkFailing` (stormdrive#149, stormblock#642).
 - [x] drive plugin: every node's Drive objects once a minute → `GET /api/plugins/drive/links` (rows +
