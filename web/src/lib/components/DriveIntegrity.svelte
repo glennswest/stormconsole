@@ -5,7 +5,8 @@
   // PI, read and write errors, each for life and for the last day, and when
   // each last rose. From the member's row of its RaidSet, which the drive
   // plugin reads once a minute and keeps a day of. A drive in no set says so.
-  import { counterRows, whereLine, dayWords, memberOf, rotting, at } from '../integrity.js'
+  import { counterRows, whereLine, dayWords, memberOf, rotting, at, memberTrend, TREND_WINDOW } from '../integrity.js'
+  import EntityCharts from './EntityCharts.svelte'
 
   // `answer`: GET /api/plugins/drive/integrity; `component`: the drive's feed id.
   let { answer = null, component = '' } = $props()
@@ -14,6 +15,8 @@
   const m = $derived(found?.member || null)
   const set = $derived(found?.set || null)
   const rows = $derived(counterRows(m?.counts, m?.day, m?.last, { member: true }))
+  // The same counters over days, from the set's node's ironprom (#385).
+  const trend = $derived(found ? memberTrend(set, m) : null)
 </script>
 
 {#if answer?.kube && (found || (answer?.sets || []).length)}
@@ -46,12 +49,21 @@
         </table>
         {#if m.counts.mismatches}<p class="dim small" data-testid="drive-integrity-where">Mismatches found: {whereLine(m.counts)}.</p>{/if}
       {/if}
+      <div class="trend" data-testid="drive-integrity-trend">
+        <h4>Over time</h4>
+        {#if trend?.query}
+          <EntityCharts query={new URLSearchParams(trend.query).toString()} node={trend.node} window={TREND_WINDOW} longer />
+        {:else}
+          <p class="dim small">{trend?.why}</p>
+        {/if}
+      </div>
     {/if}
   </section>
 {/if}
 
 <style>
   .integ { margin: 10px 0; }
+  .trend h4 { margin: 10px 0 6px; font-size: var(--sc-t-body); font-weight: 600; }
   h3 { display: flex; gap: 8px; align-items: baseline; }
   .level { font-size: var(--sc-t-meta); padding: 0 6px; border-radius: 3px; border: 1px solid var(--border); font-weight: 600; }
   .level.warn { color: var(--warn-strong); border-color: var(--warn-strong); }

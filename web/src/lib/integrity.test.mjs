@@ -64,3 +64,16 @@ const feed = [
 assert.deepEqual(bitrotAlarms(feed).map((a) => [a.tone, a.href]), [['error', '#/drives/integrity?set=md0'], ['warn', '#/drives/integrity?set=md1']])
 
 console.log('integrity: ok')
+
+// The trend (#385): asked of the set's node's ironprom by set, and by set and slot for one member.
+{
+  const { setTrend, memberTrend, TREND_WINDOW } = await import('./integrity.js')
+  assert.deepEqual(setTrend(md0), { query: { entity: 'raidset', node: 'forge1', set: 'md0' }, node: 'forge1', why: '' })
+  assert.deepEqual(memberTrend(md0, md0.members[1]), { query: { entity: 'member', set: 'md0', slot: '2' }, node: 'forge1', why: '' })
+  assert.deepEqual(memberTrend(md0, md0.members[0]).query, { entity: 'member', set: 'md0', slot: '0' }, 'slot 0 is a slot')
+  assert.equal(memberTrend(md0, { path: '/dev/sdx' }).query, null)
+  assert.match(memberTrend(md0, { path: '/dev/sdx' }).why, /no slot/)
+  assert.match(setTrend({ name: 'md1' }).why, /no node/)
+  assert.match(memberTrend({ name: 'md1' }, md0.members[0]).why, /no node/)
+  assert.equal(TREND_WINDOW, 604800)
+}

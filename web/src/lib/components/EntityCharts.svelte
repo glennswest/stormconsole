@@ -2,17 +2,20 @@
   // Charts from ironprom for one object or level (#46, #14). `query` is what the server is asked for, by name:
   // never a PromQL query, which could read any project's series. `node`: the node that holds the object, whose
   // ironprom the console asks (#369); unset, this node's.
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import { formatBytes } from '../api.js'
   import LineChart from './LineChart.svelte'
   import { chartQuery, fromWords } from '../charts.js'
 
-  let { query, node = '', ontitle } = $props()
+  // `window`: the window it opens on, in seconds. `longer`: offer 30 and 90 days, for a counter of rare events
+  // that ironprom keeps 90 days (#385, ironprom#53).
+  let { query, node = '', ontitle, window: opening = 3600, longer = false } = $props()
 
-  const WINDOWS = [[900, '15 min'], [3600, '1 hour'], [21600, '6 hours'], [86400, '1 day'], [604800, '1 week']]
+  const SHORT = [[900, '15 min'], [3600, '1 hour'], [21600, '6 hours'], [86400, '1 day'], [604800, '1 week']]
+  const WINDOWS = $derived(longer ? [...SHORT, [2592000, '30 days'], [7776000, '90 days']] : SHORT)
   let charts = $state(null)
   let error = $state('')
-  let windowSecs = $state(3600)
+  let windowSecs = $state(untrack(() => opening))
   let timer = null
 
   async function load(asked, secs) {
@@ -54,6 +57,8 @@
     flag: (v) => (v >= 0.5 ? 'in use' : 'not'),
     mbps: (v) => (v >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)} Gb/s` : `${Math.round(v)} Mb/s`),
     mw: (v) => `${v.toFixed(3)} mW`,
+    // A count of events (#385): stormraid's integrity counters, charted as the count itself.
+    count: (v) => String(Math.round(v)),
   }
   const hasPoints = (c) => c.series.some((s) => s.points.some((p) => p.v !== null))
 </script>

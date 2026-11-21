@@ -123,3 +123,21 @@ export function bitrotAlarms(components) {
     .sort((a, b) => (rank[a.health] ?? 2) - (rank[b.health] ?? 2) || a.detail.localeCompare(b.detail))
     .map((c) => ({ id: c.id, text: c.detail, href: c.link || '#/drives/integrity', tone: c.health === 'error' ? 'error' : 'warn' }))
 }
+
+// The trend (#385): stormraid's counters over days, from the ironprom of the set's node, asked by name of the
+// metrics plugin (`entity=raidset` for the set, `entity=member` for one slot of it). `null` with the reason
+// when it cannot be asked: the series are labelled by set and slot, and kept on the set's node.
+export function setTrend(set) {
+  if (!set?.name) return { query: null, why: 'The set has no name.' }
+  if (!set.node) return { query: null, why: 'The set names no node, so there is no ironprom to ask for its trend.' }
+  return { query: { entity: 'raidset', node: set.node, set: set.name }, node: set.node, why: '' }
+}
+
+export function memberTrend(set, member) {
+  if (!set?.name || !set.node) return setTrend(set)
+  if (member?.slot === null || member?.slot === undefined) return { query: null, why: 'The member has no slot, and stormraid labels its series by slot.' }
+  return { query: { entity: 'member', set: set.name, slot: String(member.slot) }, node: set.node, why: '' }
+}
+
+// The window an integrity trend opens on: a week, since a mismatch is rare.
+export const TREND_WINDOW = 604800

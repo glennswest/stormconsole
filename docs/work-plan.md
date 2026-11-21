@@ -2896,7 +2896,20 @@ charts (stormcos#1466).
 - [x] `integrity.rs`: rows, per-day, alarm; `GET /api/plugins/drive/integrity`; raidsets read in the role (68c7c1c; sc-build pass)
 - [x] drive page Integrity panel; `#/drives/integrity` (every set, `?set=` one); alarm bar (68c7c1c)
 - [x] `deploy/verify-drive-integrity.sh` (real rustkube + stormraid's CRD, the role, Chromium): 0 failed (sc-build-b685827593); clippy -D warnings, vite clean; v0.40.0 (3f728ce), image 45c3d14fdc72, shipped (proof: the node's SPA has `drives/integrity`)
-- [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466`
+- [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466` (#385 built 2026-11-21, below)
+
+### Integrity trend charts from ironprom (#385, stormcos#1466) — 2026-11-21
+Unblocked: stormcos#1466 shipped (6c01569), so a node's ironprom scrapes stormraid's 127.0.0.1:9470 as job
+`stormraid` (proof on pvetest3: `up{job="stormraid"}` 1). stormraid labels a member's series `node, set, drive,
+bay, slot, member` with `drive` its ident WWN; the RaidSet's member row spells the WWN its own way, so a member is
+selected by set and slot. ironprom keeps `stormraid_.*` 90 days (ironprom#53).
+- [x] metrics: `entity=raidset&node=&set=` (owner its node) and `entity=member&set=&slot=`; panels as counts
+      (mismatches by level and per member, rewritten, PI/read/write, rows past parity, scrub passes); window to 90 d;
+      the no-job note names stormcos#1466
+- [x] web: Over time on a set's page and the drive's Integrity panel (a week, 30 and 90 days offered); the list links
+- [x] tests: unit, `integrity.test.mjs`, `charts.test.mjs`, `deploy/verify-integrity-trend.sh` + `integrity-trend.cjs`;
+      architecture, README, CHANGELOG
+- [ ] sc-build (build, every test) and `sc-build deploy/verify-integrity-trend.sh`; web/dist rebuilt
 
 ### Phase 5 — storage & images plugins ✅
 - [x] stormdrive plugin: every node's :9092 (v0.20.0, #32), usage per drive

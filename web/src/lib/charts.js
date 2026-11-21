@@ -8,10 +8,10 @@ export function chartQuery(asked, node) {
   return p
 }
 
-/** Which node a Metrics page's charts are from: the one named, or a port's own node. '' is this node. */
+/** Which node a Metrics page's charts are from: the one named, or a port's or RAID set's own node (#385). '' is this node. */
 export function chartNode(query) {
   const p = new URLSearchParams(query)
-  return p.get('on') || (p.get('entity') === 'port' ? p.get('node') || '' : '')
+  return p.get('on') || (['port', 'raidset'].includes(p.get('entity')) ? p.get('node') || '' : '')
 }
 
 /** Where a chart's series came from, in the page's words. */

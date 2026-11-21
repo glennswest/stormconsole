@@ -124,6 +124,7 @@ impl MetricsPlugin {
 fn level_of(job: &str) -> &'static str {
     match job {
         "stormdrive" => "Drives",
+        "stormraid" => "RAID sets",
         "stormblock" => "Volumes",
         "cadvisor" | "kubelet" | "kubelet-cadvisor" => "Containers",
         "apiserver" | "controller-manager" | "scheduler" => "Control plane",
@@ -272,6 +273,9 @@ struct ChartsQuery {
     name: Option<String>,
     serial: Option<String>,
     node: Option<String>,
+    /// A RAID set's name, and a member's slot in it (#385).
+    set: Option<String>,
+    slot: Option<String>,
     ifname: Option<String>,
     window: Option<i64>,
     /// The node that holds the object (#369); a port's own `node` when unset.
@@ -289,14 +293,21 @@ fn entity_of(q: &ChartsQuery) -> Result<Option<Entity>, String> {
         Some("vm") => Ok(Some(Entity::Vm { ns: need(&q.ns, "project")?, name: need(&q.name, "name")? })),
         // A host port (#336): stormport labels its series with the node and the interface.
         Some("port") => Ok(Some(Entity::Port { node: need(&q.node, "node")?, ifname: need(&q.ifname, "interface")? })),
-        Some(other) => Err(format!("{other:?} has no series here: a drive, a pod, a virtual machine or a port")),
+        // A RAID set's integrity (#385): stormraid's series are on the set's node, whose ironprom is asked.
+        Some("raidset") => Ok(Some(Entity::Raidset { node: need(&q.node, "node")?, set: need(&q.set, "set")? })),
+        Some("member") => {
+            let slot = need(&q.slot, "slot")?;
+            let slot = slot.parse::<u32>().map_err(|_| format!("{slot:?} is not a slot: a member's slot is a number"))?;
+            Ok(Some(Entity::Member { set: need(&q.set, "set")?, slot }))
+        }
+        Some(other) => Err(format!("{other:?} has no series here: a drive, a pod, a virtual machine, a port, a RAID set or a member")),
     }
 }
 
 /// The node whose ironprom holds this object's series: the one named, or a port's own node. `None`: this node's.
 fn owner_of(q: &ChartsQuery, entity: Option<&Entity>, local: &str) -> Option<String> {
     let named = q.on.clone().filter(|n| !n.is_empty()).or_else(|| match entity {
-        Some(Entity::Port { node, .. }) => Some(node.clone()),
+        Some(Entity::Port { node, .. }) | Some(Entity::Raidset { node, .. }) => Some(node.clone()),
         _ => None,
     });
     named.filter(|n| n != local)
@@ -332,6 +343,10 @@ fn empty_note(job: &str, list: Option<&[Target]>) -> String {
     let Some(list) = list else { return "ironprom's targets could not be read".to_string() };
     let of: Vec<&Target> = list.iter().filter(|t| t.job == job).collect();
     if of.is_empty() {
+        // A node's ironprom scrapes stormraid from the image that has stormcos#1466's job (#385).
+        if job == "stormraid" {
+            return "ironprom has no job stormraid: this node's ironprom predates stormraid's scrape (stormcos#1466)".to_string();
+        }
         return format!("ironprom has no job {job}: nothing scrapes this");
     }
     match of.iter().find(|t| t.health != "up") {
@@ -550,6 +565,7 @@ mod tests {
         assert!(empty_note("gone", Some(&list)).contains("connection refused"));
         assert!(empty_note("up", Some(&list)).contains("served none"));
         assert!(empty_note("never", Some(&list)).contains("no job never"));
+        assert!(empty_note("stormraid", Some(&list)).contains("stormcos#1466"));
     }
 
     #[test]
@@ -564,6 +580,8 @@ mod tests {
         assert_eq!(owner_of(&on("storm-a"), Some(&vm), "storm-a"), None, "named, and it is this one");
         assert_eq!(owner_of(&on(""), None, "storm-a"), None, "an empty name is no name");
         assert_eq!(owner_of(&on("storm-c"), Some(&port), "storm-a").as_deref(), Some("storm-c"), "the name given wins");
+        let set = Entity::Raidset { node: "storm-b".into(), set: "node-data".into() };
+        assert_eq!(owner_of(&ChartsQuery::default(), Some(&set), "storm-a").as_deref(), Some("storm-b"), "a set says its node");
     }
 
     #[test]
@@ -591,5 +609,12 @@ mod tests {
         assert_eq!(entity_of(&port).unwrap(), Some(Entity::Port { node: "forge1".into(), ifname: "ens1f0np0".into() }));
         assert!(entity_of(&ChartsQuery { ifname: None, ..port }).unwrap_err().contains("interface"));
         assert_eq!(entity_of(&ChartsQuery::default()).unwrap(), None);
+        let set = ChartsQuery { entity: Some("raidset".into()), node: Some("forge1".into()), set: Some("node-data".into()), ..Default::default() };
+        assert_eq!(entity_of(&set).unwrap(), Some(Entity::Raidset { node: "forge1".into(), set: "node-data".into() }));
+        assert!(entity_of(&ChartsQuery { node: None, ..set }).unwrap_err().contains("node"));
+        let member = |slot: &str| ChartsQuery { entity: Some("member".into()), set: Some("node-data".into()), slot: Some(slot.into()), ..Default::default() };
+        assert_eq!(entity_of(&member("3")).unwrap(), Some(Entity::Member { set: "node-data".into(), slot: 3 }));
+        assert!(entity_of(&member("3\"} or up")).unwrap_err().contains("not a slot"));
+        assert!(entity_of(&member("")).unwrap_err().contains("slot"));
     }
 }

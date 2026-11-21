@@ -17,7 +17,7 @@ pub const MAX_SERIES: usize = 12;
 pub struct Panel {
     pub id: &'static str,
     pub title: &'static str,
-    /// celsius, percent, bytes, bytes_per_sec, per_sec, per_min, seconds, cores, updown, flag, mbps, mw.
+    /// celsius, percent, bytes, bytes_per_sec, per_sec, per_min, seconds, cores, updown, flag, mbps, mw, count.
     pub unit: &'static str,
     /// The job that scrapes it, which is what explains an empty chart.
     pub job: &'static str,
@@ -285,6 +285,39 @@ const PORT: &[Panel] = &[
         legend: &["dir", "lane"] },
 ];
 
+// A RAID set's integrity (#385, stormraid#80): stormraid's `stormraid_member_*` and `stormraid_set_*` on
+// 127.0.0.1:9470, scraped as job `stormraid` (stormcos#1466). Labelled `node, set, drive, bay, slot, member`;
+// `drive` is the member's WWN, else its path. Counters of rare events, so a chart is the count itself:
+// a step is when it rose, which a per-second rate of 0.0003 does not say.
+const ERRORS: &str = r#"label_replace(sum by (slot, drive) (stormraid_member_pi_errors_total{job="stormraid",__THE__}), "counter", "PI", "", "") or label_replace(sum by (slot, drive) (stormraid_member_read_errors_total{job="stormraid",__THE__}), "counter", "read", "", "") or label_replace(sum by (slot, drive) (stormraid_member_write_errors_total{job="stormraid",__THE__}), "counter", "write", "", "")"#;
+
+const RAIDSET: &[Panel] = &[
+    Panel { id: "integrity_mismatches", title: "Checksum mismatches, by where found", unit: "count", job: "stormraid",
+        query: r#"sum by (level) (stormraid_member_checksum_mismatches_total{job="stormraid",__THE__})"#, legend: &["level"] },
+    Panel { id: "integrity_member_mismatches", title: "Checksum mismatches, per member", unit: "count", job: "stormraid",
+        query: r#"sum by (slot, drive) (stormraid_member_checksum_mismatches_total{job="stormraid",__THE__})"#, legend: &["slot", "drive"] },
+    Panel { id: "integrity_repaired", title: "Blocks rewritten from parity, per member", unit: "count", job: "stormraid",
+        query: r#"sum by (slot, drive) (stormraid_member_blocks_repaired_total{job="stormraid",__THE__})"#, legend: &["slot", "drive"] },
+    Panel { id: "integrity_errors", title: "PI, read and write errors, per member", unit: "count", job: "stormraid",
+        query: ERRORS, legend: &["slot", "counter"] },
+    Panel { id: "integrity_unrecoverable", title: "Rows past parity", unit: "count", job: "stormraid",
+        query: r#"stormraid_set_unrecoverable_rows_total{job="stormraid",__THE__}"#, legend: &["set"] },
+    Panel { id: "integrity_scrubs", title: "Scrub passes done", unit: "count", job: "stormraid",
+        query: r#"stormraid_scrub_passes_total{job="stormraid",__THE__}"#, legend: &["set"] },
+];
+
+// One member of a set, the drive page's Integrity trend: by set and slot, which the RaidSet's member row and
+// stormraid's series both carry. The WWN does not do: the object and the label spell it each their own way.
+// A slot's drive is named on its line, so a replaced drive's history and its replacement's are two lines.
+const MEMBER: &[Panel] = &[
+    Panel { id: "integrity_mismatches", title: "Checksum mismatches, by where found", unit: "count", job: "stormraid",
+        query: r#"sum by (level, drive) (stormraid_member_checksum_mismatches_total{job="stormraid",__THE__})"#, legend: &["level", "drive"] },
+    Panel { id: "integrity_repaired", title: "Blocks rewritten from parity", unit: "count", job: "stormraid",
+        query: r#"sum by (drive) (stormraid_member_blocks_repaired_total{job="stormraid",__THE__})"#, legend: &["drive"] },
+    Panel { id: "integrity_errors", title: "PI, read and write errors", unit: "count", job: "stormraid",
+        query: ERRORS, legend: &["counter", "drive"] },
+];
+
 /// Why a disk chart is empty when its source has yet to report it: the series is not
 /// there at all, which reads as a fault without this. `None` for every other chart.
 pub fn unreported(p: &Panel) -> Option<String> {
@@ -307,6 +340,10 @@ pub enum Entity {
     Vm { ns: String, name: String },
     /// A node's host port (#336).
     Port { node: String, ifname: String },
+    /// A RAID set on its node (#385).
+    Raidset { node: String, set: String },
+    /// One member of a set, by its slot (#385).
+    Member { set: String, slot: u32 },
 }
 
 impl Entity {
@@ -316,13 +353,15 @@ impl Entity {
             Entity::Pod { .. } => POD,
             Entity::Vm { .. } => VM,
             Entity::Port { .. } => PORT,
+            Entity::Raidset { .. } => RAIDSET,
+            Entity::Member { .. } => MEMBER,
         }
     }
 
     /// The project it is in, which decides whether this viewer may see it.
     pub fn namespace(&self) -> Option<&str> {
         match self {
-            Entity::Drive { .. } | Entity::Port { .. } => None,
+            Entity::Drive { .. } | Entity::Port { .. } | Entity::Raidset { .. } | Entity::Member { .. } => None,
             Entity::Pod { ns, .. } | Entity::Vm { ns, .. } => Some(ns),
         }
     }
@@ -333,6 +372,9 @@ impl Entity {
             Entity::Pod { ns, name } => format!("namespace={},pod={}", quote(ns), quote(name)),
             Entity::Vm { ns, name } => format!("namespace={},name={}", quote(ns), quote(name)),
             Entity::Port { node, ifname } => format!("node={},ifname={}", quote(node), quote(ifname)),
+            // ironprom keeps a target's own `node` (stormcos `ironprom-node.yml`), and a set's name is the cluster's.
+            Entity::Raidset { set, .. } => format!("set={}", quote(set)),
+            Entity::Member { set, slot } => format!("set={},slot={}", quote(set), quote(&slot.to_string())),
         }
     }
 
@@ -343,6 +385,8 @@ impl Entity {
             Entity::Vm { .. } => "An interface on qemu's userspace network or passt has no kernel interface, so it has no network series.",
             // stormpump docs/ports.md: a BASE-T port has no module and no FEC.
             Entity::Port { .. } => "A BASE-T port has no module and no FEC, so those charts stay empty for it. Per-queue counters are not served yet.",
+            // stormraid's counters are kept with the set, so each line is the count since the set was made.
+            Entity::Raidset { .. } | Entity::Member { .. } => "Each line is the count since the set was made: a step is when it rose.",
             _ => "",
         }
     }
@@ -353,6 +397,8 @@ impl Entity {
             Entity::Pod { ns, name } => format!("Pod {name} in {ns}"),
             Entity::Vm { ns, name } => format!("Virtual machine {name} in {ns}"),
             Entity::Port { node, ifname } => format!("Port {ifname} on {node}"),
+            Entity::Raidset { node, set } => format!("RAID set {set} on {node}"),
+            Entity::Member { set, slot } => format!("Slot {slot} of RAID set {set}"),
         }
     }
 }
@@ -448,9 +494,10 @@ pub fn step_for(window: i64) -> i64 {
     (window / 120).max(30)
 }
 
-/// What the page may ask for: from 15 minutes to a week.
+/// What the page may ask for: from 15 minutes to 90 days, which is how long ironprom keeps the integrity
+/// series (ironprom#53); the rest it keeps 15 or 30 days, and a longer window shows that as no line (#385).
 pub fn clamp_window(window: Option<i64>) -> i64 {
-    window.unwrap_or(3600).clamp(900, 7 * 86400)
+    window.unwrap_or(3600).clamp(900, 90 * 86400)
 }
 
 #[cfg(test)]
@@ -512,7 +559,7 @@ mod tests {
             assert!(!q.contains("__"), "{q}");
             assert!(q.contains(&format!(r#"job="{}""#, p.job)), "{q}");
         }
-        for p in [DRIVE, POD, VM, PORT].into_iter().flatten() {
+        for p in [DRIVE, POD, VM, PORT, RAIDSET, MEMBER].into_iter().flatten() {
             let q = query(p, Some(&e), None).unwrap();
             assert!(!q.contains("__THE__"), "{q}");
             assert!(q.contains(&format!(r#"job="{}""#, p.job)), "{q}");
@@ -540,6 +587,36 @@ mod tests {
         for l in LEVELS {
             for p in l.panels {
                 assert_eq!(p.query.contains("__NS__"), p.query.contains("namespace,"), "{}", p.query);
+            }
+        }
+    }
+
+    /// A set's and a member's integrity (#385): stormraid's counters, the count itself, for that set (and slot) only.
+    #[test]
+    fn a_sets_integrity_is_its_own_counters() {
+        let set = Entity::Raidset { node: "forge1".into(), set: "node-data".into() };
+        let slot = Entity::Member { set: "node-data".into(), slot: 3 };
+        assert_eq!((set.namespace(), slot.namespace()), (None, None), "a set is in no project");
+        for (e, list) in [(&set, RAIDSET), (&slot, MEMBER)] {
+            for p in list {
+                let q = query(p, Some(e), None).unwrap();
+                assert_eq!(p.unit, "count", "{}", p.id);
+                assert!(!q.contains("rate("), "a count, not a rate: {q}");
+                assert_eq!(q.matches("{job=\"stormraid\",set=\"node-data\"").count(), q.matches("stormraid_").count(), "{q}");
+            }
+        }
+        let q = query(&MEMBER[0], Some(&slot), None).unwrap();
+        assert!(q.contains(r#"set="node-data",slot="3"}"#), "{q}");
+        let errors = query(RAIDSET.iter().find(|p| p.id == "integrity_errors").unwrap(), Some(&set), None).unwrap();
+        for c in ["pi_errors_total", "read_errors_total", "write_errors_total"] {
+            assert!(errors.contains(&format!("stormraid_member_{c}")), "{errors}");
+        }
+        // Every series is one stormraid serves (stormraid `src/http.rs` `integrity_metrics`).
+        let served = ["member_checksum_mismatches_total", "member_blocks_repaired_total", "member_read_errors_total",
+            "member_write_errors_total", "member_pi_errors_total", "set_unrecoverable_rows_total", "scrub_passes_total"];
+        for p in RAIDSET.iter().chain(MEMBER) {
+            for name in p.query.split("stormraid_").skip(1).map(|r| r.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap()) {
+                assert!(served.contains(&name), "{name} in {}", p.id);
             }
         }
     }
@@ -619,7 +696,8 @@ mod tests {
     fn windows_and_steps() {
         assert_eq!(clamp_window(None), 3600);
         assert_eq!(clamp_window(Some(1)), 900);
-        assert_eq!(clamp_window(Some(i64::MAX)), 7 * 86400);
+        assert_eq!(clamp_window(Some(i64::MAX)), 90 * 86400);
+        assert_eq!(step_for(90 * 86400), 64800, "90 days is still about 120 points");
         assert_eq!(step_for(900), 30);
         assert_eq!(step_for(86400), 720);
     }

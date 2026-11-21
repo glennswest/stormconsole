@@ -1892,8 +1892,25 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
   full, counts}` on the set and each member. Pages: `#/drives/integrity`
   and the drive page's Integrity panel (`DriveIntegrity.svelte`), modelled
   in `integrity.js`. Not here yet: the drive's own PI/error/defect
-  counters (#384, the Drive object's `status.health`) and trend charts
-  (#385, stormcos#1466).
+  counters (#384, the Drive object's `status.health`).
+- **The integrity trend (#385, stormcos#1466).** The same counters over
+  time, under the counters on a set's page (`?set=`, or the list when it
+  has one set; a longer list links to each) and on the drive's Integrity
+  panel. They are the metrics plugin's named panels over stormraid's
+  `stormraid_member_*`/`stormraid_set_*` (job `stormraid`, its loopback
+  :9470): `?entity=raidset&node=&set=` (mismatches by level, and per member
+  mismatches, blocks rewritten and PI/read/write errors, rows past parity,
+  scrub passes) and `?entity=member&set=&slot=` (one member's). A member is
+  selected by set and slot, which the RaidSet's row and the series both
+  carry; the WWN is spelled differently in each. A line names the slot's
+  drive, so a replaced drive and its replacement are two lines. The counters
+  are stormraid's lifetime ones (kept in its checkpoint), charted as the
+  count: a step is when it rose. They come from the set's node's ironprom
+  (#369; a set names its node, as a port does). The charts open on a week
+  and offer 30 and 90 days, which is how long ironprom keeps `stormraid_.*`
+  (ironprom#53); the plugin's window is now 15 min to 90 days. A node whose
+  ironprom has no `stormraid` job says so on each chart, naming
+  stormcos#1466.
 - **History** is read on demand: `GET /api/plugins/health/history?process=&
   api=&limit=` tails each `<history_dir>/<process>.jsonl` (256 KiB), the
   line format stormd and PID 1 share (`ts, process, api, url, from, to,
@@ -2296,6 +2313,8 @@ linked from the Drives page, the pod page's Stats tab, the VM page and a node's 
   not heard of is a 404, one with no address yet a 503, and one whose ironprom does not answer a 502 naming the node and
   the address: said on the page, never an empty chart. The answer carries `node`, and the page says whose ironprom it
   read. The VM page passes the node it runs on, a drive its node, a pod its node; the Targets tab is this node's.
+- **A RAID set and a member (#385)**: `?entity=raidset&node=&set=`, from the set's node, and `?entity=member&set=&slot=`
+  (`on=` the set's node), over stormraid's integrity counters; see the drive plugin's integrity trend.
 - **Not per volume.** The engine's IO series carry only `op` (stormblock#536), so the Volumes level is engine-wide and a volume has no link.
 
 ### Creating things — the `Creator` contract

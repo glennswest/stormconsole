@@ -18,6 +18,8 @@ t('a node already named stays', () => {
 t('the Metrics page says whose charts they are', () => {
   assert.equal(chartNode('entity=drive&serial=S1&on=storm-b'), 'storm-b')
   assert.equal(chartNode('entity=port&node=forge1&ifname=eth0'), 'forge1')
+  assert.equal(chartNode('entity=raidset&node=forge1&set=md0'), 'forge1', 'a RAID set is on its node (#385)')
+  assert.equal(chartNode('entity=member&set=md0&slot=2&on=forge1'), 'forge1')
   assert.equal(chartNode('entity=vm&ns=a&name=b'), '')
   assert.equal(chartNode('level=drives'), '')
   assert.equal(fromWords('storm-b'), 'From storm-b’s ironprom')

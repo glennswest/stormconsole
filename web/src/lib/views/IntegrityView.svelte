@@ -8,7 +8,8 @@
   // integrity.js.
   import { get } from '../api.js'
   import { route } from '../router.svelte.js'
-  import { counterRows, whereLine, dayWords, scrubLine, passLine, setLevel, levelTone, rotting, at } from '../integrity.js'
+  import { counterRows, whereLine, dayWords, scrubLine, passLine, setLevel, levelTone, rotting, at, setTrend, TREND_WINDOW } from '../integrity.js'
+  import EntityCharts from '../components/EntityCharts.svelte'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
 
@@ -128,12 +129,26 @@
           </table>
           <p class="dim small">Each member: lifetime, and in brackets what rose {dayWords(s.members.find((m) => m.day)?.day)}.</p>
         {/if}
+        {#if list.length === 1}
+          {@const trend = setTrend(s)}
+          <div class="trend" data-testid="integrity-trend">
+            <h4>Over time</h4>
+            {#if trend.query}
+              <EntityCharts query={new URLSearchParams(trend.query).toString()} node={trend.node} window={TREND_WINDOW} longer />
+            {:else}
+              <p class="dim small">{trend.why}</p>
+            {/if}
+          </div>
+        {:else}
+          <p class="dim small">The counters over time are on <a href="#/drives/integrity?set={encodeURIComponent(s.name)}" data-testid="integrity-trend-link">the set’s page</a>.</p>
+        {/if}
       </section>
     {/each}
   {/if}
 </div>
 
 <style>
+  .trend h4 { margin: 12px 0 6px; font-size: var(--sc-t-body); font-weight: 600; }
   .set { border: 1px solid var(--border); border-radius: var(--radius-sm, 4px); padding: 10px 12px; margin: 10px 0; }
   header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
   .tools { margin-left: auto; }
