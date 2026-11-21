@@ -1891,8 +1891,22 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
   `GET /api/plugins/drive/integrity` answers each set with `day: {since,
   full, counts}` on the set and each member. Pages: `#/drives/integrity`
   and the drive page's Integrity panel (`DriveIntegrity.svelte`), modelled
-  in `integrity.js`. Not here yet: the drive's own PI/error/defect
-  counters (#384, the Drive object's `status.health`).
+  in `integrity.js`.
+- **The drive's own counters (#384).** `drivecounters.rs` takes each Drive
+  object's `status.health.smart` from the same once-a-minute read as the
+  links (every node's stormdrive). For SAS that is the error counter log
+  pages (read 0x03, write 0x02, verify 0x05: corrected and uncorrected) and
+  the grown defect list. For SATA it is the ATA attributes (reallocated,
+  pending, offline and reported uncorrectable, CRC), plus the drive's
+  predicted failure or IE warning. A counter the drive does not give is left
+  out, never a 0. NVMe drives give their health log instead, so they have no
+  row. The day is kept as the RAID sets' is (one sample per 10 min, 25 h, a
+  counter gone back starts over). `GET /api/plugins/drive/counters`; the
+  Integrity panel's "The drive" table (lifetime and the day; an uncorrected
+  rise red, a remap amber, a corrected one never coloured), for any node's
+  drive, whether or not it is in a RAID set. Not here yet: the PI/EEDP
+  checks, sense-line errors and the level from stormblock#648, which reach
+  the Drive object with stormdrive#160 (#394).
 - **The integrity trend (#385, stormcos#1466).** The same counters over
   time, under the counters on a set's page (`?set=`, or the list when it
   has one set; a longer list links to each) and on the drive's Integrity

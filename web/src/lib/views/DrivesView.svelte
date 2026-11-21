@@ -59,6 +59,8 @@
   let links = $state(null)
   // Every RAID set's integrity (#368): read by the drive plugin once a minute, a day kept.
   let integrity = $state(null)
+  // Every drive's own error and defect counters (#384), read with the links.
+  let counters = $state(null)
   // Which SAS card and phy each drive hangs off (#376), from the HostBusAdapter objects you may read.
   let cards = $state(null)
   // The format records (#308): who may be formatted, and each run's progress.
@@ -70,7 +72,7 @@
   let fwGuard = $state(null)
   let now = $state(Math.floor(Date.now() / 1000))
   async function refresh() {
-    const [u, p, pool, f, l, h, ig] = await Promise.allSettled([
+    const [u, p, pool, f, l, h, ig, dc] = await Promise.allSettled([
       get('/api/plugins/drive/usage'),
       get('/api/plugins/sb/placement'),
       get('/api/plugins/sb/proxy/api/v1/slabs/pool'),
@@ -78,10 +80,12 @@
       get('/api/plugins/drive/links'),
       get('/api/plugins/k8s/hbas'),
       get('/api/plugins/drive/integrity'),
+      get('/api/plugins/drive/counters'),
     ])
     if (f.status === 'fulfilled') formats = f.value
     if (l.status === 'fulfilled') links = l.value
     if (ig.status === 'fulfilled') integrity = ig.value
+    if (dc.status === 'fulfilled') counters = dc.value
     if (h.status === 'fulfilled') cards = drivesOnCards(h.value.items)
     await refreshMaintain()
     if (u.status === 'fulfilled') {
@@ -579,7 +583,7 @@
           </p>
         {/if}
         <DriveLink row={pick.link} level={pick.linkLevel} serial={pick.serial} node={pick.local ? '' : pick.node} read={!!links?.read} />
-        <DriveIntegrity answer={integrity} component={pick.id} />
+        <DriveIntegrity answer={integrity} {counters} component={pick.id} />
         {#if pick.usage}
           {@const u = pick.usage}
           {@const cap = pick.capacity || u.slab + u.unslabbed}

@@ -141,3 +141,48 @@ export function memberTrend(set, member) {
 
 // The window an integrity trend opens on: a week, since a mismatch is rare.
 export const TREND_WINDOW = 604800
+
+// The drive's own counters (#384): what it says of itself, from its Drive object's
+// status.health.smart, as the drive plugin reads them with the links (GET
+// /api/plugins/drive/counters) and keeps a day of. In the order a person reads them:
+// what the drive could not correct, what it remapped, then what it did correct.
+// `bad`: an error a rise of which is red (stormblock#648's rule: an uncorrected
+// error is failing); the rest amber. Corrected errors climb on a healthy drive in
+// normal running, so they are never coloured.
+export const DRIVE_COUNTERS = [
+  ['readUncorrected', 'Read errors, uncorrected', 'Reads the drive could not correct (error counter log page 0x03): media errors', 'bad'],
+  ['writeUncorrected', 'Write errors, uncorrected', 'Writes the drive could not correct (log page 0x02)', 'bad'],
+  ['verifyUncorrected', 'Verify errors, uncorrected', 'Verifies the drive could not correct (log page 0x05)', 'bad'],
+  ['reportedUncorrectable', 'Reported uncorrectable', 'Errors the drive could not correct on a host read (ATA 187)', 'bad'],
+  ['offlineUncorrectable', 'Offline uncorrectable', 'Sectors the drive’s own scan could not read (ATA 198)', 'bad'],
+  ['grownDefects', 'Grown defects', 'Blocks the drive has remapped since it left the factory (the grown defect list)', 'warn'],
+  ['reallocated', 'Reallocated sectors', 'Sectors the drive has remapped (ATA 5)', 'warn'],
+  ['pending', 'Pending sectors', 'Sectors waiting to be remapped (ATA 197)', 'warn'],
+  ['crcErrors', 'Interface CRC errors', 'Transfers the link corrupted (ATA 199): the cable or the backplane', 'warn'],
+  ['readCorrected', 'Read errors, corrected', 'Reads the drive corrected (ECC, retries): normal in running', ''],
+  ['writeCorrected', 'Write errors, corrected', 'Writes the drive corrected', ''],
+  ['verifyCorrected', 'Verify errors, corrected', 'Verifies the drive corrected', ''],
+]
+
+// The drive's row in the counters answer, by its feed id.
+export function driveCountersOf(answer, component) {
+  return (answer?.drives || []).find((d) => d.component === component) || null
+}
+
+// The rows of the drive's table: only the counters the drive gives.
+export function driveRows(row) {
+  const counts = row?.counts
+  if (!counts) return []
+  return DRIVE_COUNTERS.filter(([k]) => counts[k] !== undefined && counts[k] !== null).map(([key, word, title, bad]) => {
+    const life = counts[key]
+    const rose = row.day?.counts ? (row.day.counts[key] ?? 0) : null
+    return { key, word, title, life, day: rose, tone: rose ? (bad === 'bad' ? 'error' : bad) : '' }
+  })
+}
+
+// Where the counters come from, in a person's words.
+export function sourceWords(source) {
+  if (source === 'log_sense') return 'the drive’s own log pages (LOG SENSE) and grown defect list'
+  if (source === 'ata_smart') return 'the drive’s SMART attributes'
+  return source ? `the drive (${source})` : 'the drive'
+}

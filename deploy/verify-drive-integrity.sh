@@ -16,7 +16,11 @@
 #                  drive (by WWN, and by name on its node); the day's rise
 #   the alarm      md0's BitRot in the feed, amber, naming slot 2, linking to the set; red with rows
 #                  past parity; off for 2 min: still listed; off for over an hour: gone
+#   /counters      each drive's own counters from its Drive object's status.health.smart (#384): NET003's
+#                  LOG SENSE pages and grown defects, storm-b's BEE001's ATA SMART and predicted failure,
+#                  none for the drives that give none; one uncorrected read and two defects more: the day
 #   Chromium       the alarm bar, the Integrity page, a member's drive, the drive page's Integrity panel
+#                  with the drive's own table
 set -euo pipefail
 
 FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
@@ -193,6 +197,21 @@ for _ in $(seq 80); do F | grep -q 'past parity: data lost' && break; sleep 1; d
 check "$(rot | python3 -c 'import ast,sys; r=ast.literal_eval(sys.stdin.read()); print([(h, d.split(" — ")[-1]) for h, d, l in r])')" "[('error', '2 row(s) past parity: data lost')]" "red: data lost"
 check "$(I | j "$S0"'["integrity"]["day"]["counts"]["repaired"], '"$S0"'["integrity"]["day"]["counts"]["unrecoverableRows"], '"$S0"'["members"][1]["day"]["counts"]["repaired"]')" \
   "(3, 2, 3)" "the day: 3 rewritten, 2 rows past parity, all on slot 2"
+
+say "3b. each drive's own counters, from its Drive object (#384)"
+DC() { curl -s "$C/api/plugins/drive/counters"; }
+N3='[x for x in d["drives"] if x["serial"]=="NET003"][0]'
+for _ in $(seq 60); do [ "$(DC | j 'd["read"]' 2>/dev/null)" = True ] && break; sleep 1; done
+check "$(DC | j 'sorted(x["serial"] for x in d["drives"])')" "['BEE001', 'NET001', 'NET003']" "the drives that give counters, on both nodes; NET002 and NET004 give none"
+check "$(DC | j "$N3"'["component"], '"$N3"'["source"], '"$N3"'["counts"]["readUncorrected"], '"$N3"'["counts"]["grownDefects"], '"$N3"'["counts"]["readCorrected"]')" \
+  "('drive:drive:5000cca26a819e69', 'log_sense', 2, 5, 120)" "NET003: 2 uncorrected reads, 5 grown defects, 120 corrected, from LOG SENSE"
+check "$(DC | j "('verifyUncorrected' in $N3['counts'], 'reallocated' in $N3['counts'])")" "(True, False)" "what the drive gives, and no ATA attribute on a SAS drive"
+check "$(DC | j '[(x["component"], x["counts"]["reallocated"], x["predictedFailure"]) for x in d["drives"] if x["serial"]=="BEE001"]')" \
+  "[('drive:@storm-b:drive:5000c500aaaa0001', 8, 'reallocated sector count past its threshold')]" "storm-b's BEE001: ATA SMART, predicting its failure"
+curl -sf -o /dev/null -X POST "http://127.0.0.1:$D1/_set" -d '{"bay": 3, "smart": {"source": "log_sense", "read_errors": {"corrected": 150, "uncorrected": 3}, "write_errors": {"corrected": 4, "uncorrected": 0}, "verify_errors": {"corrected": 0, "uncorrected": 0}, "grown_defects": 7}}'
+for _ in $(seq 80); do [ "$(DC | j "$N3"'["counts"]["grownDefects"]')" = 7 ] && break; sleep 1; done
+check "$(DC | j "$N3"'["day"]["full"], '"$N3"'["day"]["counts"]["readUncorrected"], '"$N3"'["day"]["counts"]["grownDefects"], '"$N3"'["day"]["counts"]["readCorrected"]')" \
+  "(False, 1, 2, 30)" "the day: 1 uncorrected read, 2 defects grown, 30 corrected, since the console began"
 
 say "4. the browser"
 set +e

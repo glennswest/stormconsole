@@ -59,6 +59,16 @@ walk('drive integrity', async (t) => {
   t.check((await cell(dc, 'repaired', 2)) === '3', 'and 3 rewritten since the console began')
   t.check((await dc.locator('tr[data-key="unrecoverableRows"]').count()) === 0, 'no rows-past-parity row for a member')
   t.check(/L1 read path 1 · L3 scrub 7/.test(await page.getByTestId('drive-integrity-where').innerText()), 'where the mismatches were found')
+  // The drive's own counters (#384), above the set's view of it.
+  const own = page.getByTestId('drive-own-counters')
+  t.check(await t.until(async () => (await own.count()) === 1, 15000), "the panel has the drive's own table")
+  t.check(/LOG SENSE/.test(await page.getByTestId('drive-own').innerText()), 'from its log pages')
+  t.check((await cell(own, 'readUncorrected', 1)) === '3' && (await cell(own, 'grownDefects', 1)) === '7' && (await cell(own, 'readCorrected', 1)) === '150', 'lifetime: 3 uncorrected reads, 7 grown defects, 150 corrected')
+  t.check((await cell(own, 'readUncorrected', 2)) === '1' && (await cell(own, 'grownDefects', 2)) === '2', 'and what rose since the console began')
+  t.check(/error/.test(await own.locator('tr[data-key="readUncorrected"] td').nth(2).getAttribute('class')), 'an uncorrected rise in red')
+  t.check(/warn/.test(await own.locator('tr[data-key="grownDefects"] td').nth(2).getAttribute('class')), 'grown defects in amber')
+  t.check(!/warn|error/.test(await own.locator('tr[data-key="readCorrected"] td').nth(2).getAttribute('class')), 'corrected never coloured')
+  t.check((await own.locator('tr[data-key="reallocated"]').count()) === 0, 'no ATA row on a SAS drive')
   await t.shot(page, 'drive-panel')
   await panel.getByTestId('drive-integrity-set').click()
   t.check(await t.until(async () => /#\/drives\/integrity\?set=md0/.test(page.url()), 5000), 'the panel links to the set')
@@ -66,4 +76,15 @@ walk('drive integrity', async (t) => {
   // NET002 (bay 1) is in no set.
   await page.goto(`${t.BASE}/#/drives?drive=${encodeURIComponent('drive:drive:5000cca26a819e62')}`)
   t.check(await t.until(async () => /In no RAID set/.test(await page.getByTestId('drive-integrity').innerText()), 15000), 'a drive in no set says so')
+  t.check((await page.getByTestId('drive-own').count()) === 0, 'NET002 gives no counters: no table of them')
+
+  // storm-b's BEE001: ATA SMART, predicting its failure.
+  await page.goto(`${t.BASE}/#/drives?drive=${encodeURIComponent('drive:@storm-b:drive:5000c500aaaa0001')}`)
+  t.check(await t.until(async () => (await page.getByTestId('drive-own-counters').count()) === 1, 15000), "another node's drive has its own table")
+  t.check(/reallocated sector count past its threshold/.test(await page.getByTestId('drive-own-failure').innerText()), 'its predicted failure, in its words')
+  t.check((await page.getByTestId('drive-own-predicted').count()) === 1, 'marked in the heading')
+  const bee = page.getByTestId('drive-own-counters')
+  t.check((await cell(bee, 'reallocated', 1)) === '8' && (await cell(bee, 'crcErrors', 1)) === '3', 'its reallocated sectors and CRC errors')
+  t.check((await bee.locator('tr[data-key="readUncorrected"]').count()) === 0, 'no SAS log page row on a SATA drive')
+  await t.shot(page, 'drive-own-sata')
 })

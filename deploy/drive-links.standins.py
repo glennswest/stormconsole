@@ -11,6 +11,12 @@ whenever it is read, so a console reading once a minute keeps a trend.
   GET  /api/v1/drives                       the REST list
   GET  /apis/storage.storm.io/v1/drives     the Drive objects, status.link + conditions
   POST /_set {"bay": 3, "level": "ok", "okFor": 120}   bay 3 ok again, okFor seconds ago
+  POST /_set {"bay": 3, "smart": {...}}                 bay 3's own counters now (#384)
+
+Each Drive object's status.health is stormdrive's HealthReport (src/drive.rs), with `smart` its
+SmartCounters (src/smart/mod.rs): NET001 and NET003 from LOG SENSE (NET003 with 2 uncorrected
+reads and 5 grown defects), storm-b's BEE001 from ATA SMART predicting its failure; NET002 and
+NET004 give none.
 
 ironprom (third port): /api/v1/targets, and /api/v1/query_range answering the drive
 link chart for NET003 with 24 h of loss of sync, both sides."""
@@ -31,8 +37,26 @@ def rfc(t):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
 
-def new(id, name, serial, bay, level, host_phy, drive_rate=0.0, host_rate=0.0):
-    return {"id": id, "name": name, "serial": serial, "bay": bay, "level": level, "since": T0, "at": T0,
+def sas_smart(read_unc, grown, read_corr):
+    """A SAS drive's SmartCounters from LOG SENSE: the error counter pages and the grown defect list."""
+    return {"source": "log_sense",
+            "read_errors": {"corrected": read_corr, "uncorrected": read_unc, "bytes": 9000000000},
+            "write_errors": {"corrected": 4, "uncorrected": 0, "bytes": 7000000000},
+            "verify_errors": {"corrected": 0, "uncorrected": 0},
+            "grown_defects": grown}
+
+
+def health(d):
+    """status.health as stormdrive serializes HealthReport (a SystemTime is secs/nanos)."""
+    h = {"status": "good", "temperature_c": 36, "power_on_hours": 21000, "media_errors": 0, "critical_warning": 0,
+         "messages": [], "collected_at": {"secs_since_epoch": int(time.time()) - 30, "nanos_since_epoch": 0}}
+    if d["smart"] is not None:
+        h["smart"] = d["smart"]
+    return h
+
+
+def new(id, name, serial, bay, level, host_phy, drive_rate=0.0, host_rate=0.0, smart=None):
+    return {"id": id, "name": name, "serial": serial, "bay": bay, "level": level, "since": T0, "at": T0, "smart": smart,
             "hostPhy": host_phy, "driveRate": drive_rate, "hostRate": host_rate,
             # (on, when it last changed); 0 for a condition that never has (the epoch).
             "degraded": (level in ("degraded", "failing"), T0 if level != "ok" else 0),
@@ -40,11 +64,13 @@ def new(id, name, serial, bay, level, host_phy, drive_rate=0.0, host_rate=0.0):
 
 
 DRIVES = {
-    HERE: [new("5000cca26a819e61", "sda", "NET001", 0, "ok", "phy-1:0"),
+    HERE: [new("5000cca26a819e61", "sda", "NET001", 0, "ok", "phy-1:0", smart=sas_smart(0, 0, 0)),
            new("5000cca26a819e62", "sdb", "NET002", 1, "ok", "phy-1:1"),
-           new("5000cca26a819e69", "sdc", "NET003", 3, "failing", "phy-1:3", drive_rate=500.0),
+           new("5000cca26a819e69", "sdc", "NET003", 3, "failing", "phy-1:3", drive_rate=500.0, smart=sas_smart(2, 5, 120)),
            new("5000cca26a819e64", "sdd", "NET004", 4, "ok", "phy-1:4")],
-    OTHER: [new("5000c500aaaa0001", "sdx", "BEE001", 1, "degraded", "phy-2:0:1", drive_rate=3.0, host_rate=2.0)],
+    OTHER: [new("5000c500aaaa0001", "sdx", "BEE001", 1, "degraded", "phy-2:0:1", drive_rate=3.0, host_rate=2.0,
+                smart={"source": "ata_smart", "reallocated_sectors": 8, "pending_sectors": 1, "offline_uncorrectable": 0,
+                       "reported_uncorrectable": 0, "crc_errors": 3, "predicted_failure": "reallocated sector count past its threshold"})],
 }
 
 
@@ -79,7 +105,7 @@ def obj(d):
     l = link(d)
     return {"apiVersion": "storage.storm.io/v1", "kind": "Drive", "metadata": {"name": d["id"]},
             "status": {"name": d["name"], "serial": d["serial"], "bay": d["bay"], "enclosure": "shelf0", "wwid": f"naa.{d['id']}", "link": l,
-                       "conditions": conditions(d, l)}}
+                       "health": health(d), "conditions": conditions(d, l)}}
 
 
 def card(d):
@@ -127,6 +153,9 @@ def stormdrive(port):
             with LOCK:
                 d = next(x for x in DRIVES[port] if x["bay"] == body["bay"])
                 now = int(time.time())
+                if "smart" in body:
+                    d["smart"] = body["smart"]
+                    return self.send(200, {"ok": True})
                 d["level"] = body["level"]
                 if body["level"] == "ok":
                     turned = now - body.get("okFor", 0)

@@ -26,6 +26,7 @@
 //! drain — see [`usage`].
 
 pub mod controllers;
+pub mod drivecounters;
 pub mod firmware;
 pub mod format;
 pub mod integrity;
@@ -85,6 +86,8 @@ struct Inner {
     kube: Option<plugin_kubernetes::Client>,
     /// Every RAID set's integrity, read once a minute (#368).
     integrity: RwLock<integrity::Seen>,
+    /// Every drive's own error and defect counters, read with the links (#384).
+    counters: RwLock<drivecounters::Seen>,
 }
 
 pub struct DrivesPlugin {
@@ -198,6 +201,7 @@ impl DrivesPlugin {
                 links: RwLock::new(links::Seen::default()),
                 kube: None,
                 integrity: RwLock::new(integrity::Seen::default()),
+                counters: RwLock::new(drivecounters::Seen::default()),
             }),
         }
     }
@@ -265,6 +269,7 @@ impl ConsolePlugin for DrivesPlugin {
             .route("/controllers", get(controllers_route))
             .route("/links", get(links_route))
             .route("/integrity", get(integrity_route))
+            .route("/counters", get(counters_route))
             .with_state(self.inner.clone())
             .nest(
                 "/proxy",
@@ -468,6 +473,7 @@ async fn read_links(inner: &Inner) -> integrity::Index {
     )
     .await;
     let mut rows = Vec::new();
+    let mut counters = Vec::new();
     let mut nodes = Vec::new();
     let mut index = integrity::Index::default();
     for ((node, _, pre), answer) in targets.iter().zip(answers) {
@@ -478,6 +484,7 @@ async fn read_links(inner: &Inner) -> integrity::Index {
                 index.add(node, pre, items);
                 for o in items {
                     rows.extend(links::row(o, node, pre));
+                    counters.extend(drivecounters::row(o, node, pre));
                 }
                 nodes.push(json!({"node": node, "ok": true, "links": rows.len() - before}));
             }
@@ -485,6 +492,8 @@ async fn read_links(inner: &Inner) -> integrity::Index {
         }
     }
     inner.links.write().await.take(rows, nodes);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    inner.counters.write().await.take(counters, now);
     index
 }
 
@@ -511,6 +520,12 @@ async fn integrity_route(State(inner): State<Arc<Inner>>) -> Response {
     let mut v = inner.integrity.read().await.answer();
     v["kube"] = json!(inner.kube.is_some());
     Json(v).into_response()
+}
+
+/// `GET /counters` (#384): every drive's own error and defect counters, lifetime and
+/// for the last day, from its Drive object's `status.health.smart`, as last read.
+async fn counters_route(State(inner): State<Arc<Inner>>) -> Response {
+    Json(inner.counters.read().await.answer()).into_response()
 }
 
 /// `GET /links` (#339): every drive's SAS link, both sides, with its trend of

@@ -5,11 +5,18 @@
   // PI, read and write errors, each for life and for the last day, and when
   // each last rose. From the member's row of its RaidSet, which the drive
   // plugin reads once a minute and keeps a day of. A drive in no set says so.
-  import { counterRows, whereLine, dayWords, memberOf, rotting, at, memberTrend, TREND_WINDOW } from '../integrity.js'
+  // Above it, the drive's own counters (#384): what it could not correct, what
+  // it remapped and what it corrected, from its Drive object's status.health.
+  import { counterRows, whereLine, dayWords, memberOf, rotting, at, memberTrend, TREND_WINDOW, driveCountersOf, driveRows, sourceWords } from '../integrity.js'
   import EntityCharts from './EntityCharts.svelte'
 
-  // `answer`: GET /api/plugins/drive/integrity; `component`: the drive's feed id.
-  let { answer = null, component = '' } = $props()
+  // `answer`: GET /api/plugins/drive/integrity; `counters`: GET /api/plugins/drive/counters;
+  // `component`: the drive's feed id.
+  let { answer = null, counters = null, component = '' } = $props()
+
+  const own = $derived(driveCountersOf(counters, component))
+  const ownRows = $derived(driveRows(own))
+  const inSets = $derived(!!answer?.kube && !!(memberOf(answer, component) || (answer?.sets || []).length))
 
   const found = $derived(memberOf(answer, component))
   const m = $derived(found?.member || null)
@@ -19,13 +26,43 @@
   const trend = $derived(found ? memberTrend(set, m) : null)
 </script>
 
-{#if answer?.kube && (found || (answer?.sets || []).length)}
+{#if inSets || own}
   <section class="integ" data-testid="drive-integrity">
     <h3>
       Integrity
       {#if set && rotting(set)}<span class="level warn" data-testid="drive-integrity-bitrot">BitRot</span>{/if}
+      {#if own?.predictedFailure}<span class="level error" data-testid="drive-own-predicted">predicts its failure</span>{/if}
     </h3>
-    {#if !found}
+    {#if own}
+      <div class="own" data-testid="drive-own">
+        <h4>The drive</h4>
+        <p class="dim small">
+          From {sourceWords(own.source)}, as its node’s stormdrive read them{own.collectedAt ? ` ${at(new Date(own.collectedAt * 1000).toISOString())}` : ''}.
+          {#if own.notCollected}<span class="warn">Not read now: {own.notCollected}.</span>{/if}
+        </p>
+        {#if own.predictedFailure}<p class="error" data-testid="drive-own-failure">The drive predicts its own failure: {own.predictedFailure}.</p>{/if}
+        {#if own.ieWarning}<p class="warn" data-testid="drive-own-warning">The drive warns: {own.ieWarning}.</p>{/if}
+        {#if !ownRows.length}
+          <p class="dim">The drive gives no error or defect counters.</p>
+        {:else}
+          <table class="counters" data-testid="drive-own-counters">
+            <thead><tr><th></th><th class="n">Lifetime</th><th class="n">{dayWords(own.day)}</th></tr></thead>
+            <tbody>
+              {#each ownRows as r (r.key)}
+                <tr data-key={r.key}>
+                  <td title={r.title}>{r.word}</td>
+                  <td class="n mono">{r.life}</td>
+                  <td class="n mono {r.tone}">{r.day === null ? '—' : r.day}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+    {/if}
+    {#if !inSets}
+      <!-- No RaidSets to place it in: the drive's own counters alone. -->
+    {:else if !found}
       <p class="dim">In no RAID set: stormraid counts bit rot per member drive of a set.</p>
     {:else}
       <p class="dim small">
@@ -63,6 +100,9 @@
 
 <style>
   .integ { margin: 10px 0; }
+  .own h4 { margin: 6px 0 4px; font-size: var(--sc-t-body); font-weight: 600; }
+  p.error, .level.error { color: var(--error); border-color: var(--error); }
+  p.warn, span.warn { color: var(--warn-strong); }
   .trend h4 { margin: 10px 0 6px; font-size: var(--sc-t-body); font-weight: 600; }
   h3 { display: flex; gap: 8px; align-items: baseline; }
   .level { font-size: var(--sc-t-meta); padding: 0 6px; border-radius: 3px; border: 1px solid var(--border); font-weight: 600; }

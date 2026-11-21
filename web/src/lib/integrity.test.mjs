@@ -77,3 +77,26 @@ console.log('integrity: ok')
   assert.match(memberTrend({ name: 'md1' }, md0.members[0]).why, /no node/)
   assert.equal(TREND_WINDOW, 604800)
 }
+
+// The drive's own counters (#384): only what the drive gives, an uncorrected rise red, corrected never coloured.
+{
+  const { driveRows, driveCountersOf, sourceWords } = await import('./integrity.js')
+  const net003 = {
+    component: 'drive:drive:5000cca26a819e69', source: 'log_sense',
+    counts: { readUncorrected: 2, writeUncorrected: 0, grownDefects: 5, readCorrected: 120, writeCorrected: 4 },
+    day: { since: 1000, full: true, counts: { readUncorrected: 1, writeUncorrected: 0, grownDefects: 2, readCorrected: 40, writeCorrected: 0 } },
+  }
+  assert.equal(driveCountersOf({ drives: [net003] }, 'drive:drive:5000cca26a819e69'), net003)
+  assert.equal(driveCountersOf({ drives: [net003] }, 'drive:drive:x'), null)
+  const rows = driveRows(net003)
+  assert.deepEqual(rows.map((r) => r.key), ['readUncorrected', 'writeUncorrected', 'grownDefects', 'readCorrected', 'writeCorrected'], 'what the drive gives, in reading order')
+  const by = Object.fromEntries(rows.map((r) => [r.key, r]))
+  assert.deepEqual([by.readUncorrected.life, by.readUncorrected.day, by.readUncorrected.tone], [2, 1, 'error'])
+  assert.equal(by.writeUncorrected.tone, '', 'nothing new: plain')
+  assert.equal(by.grownDefects.tone, 'warn')
+  assert.equal(by.readCorrected.tone, '', 'corrected is never coloured')
+  assert.deepEqual(driveRows({ counts: { pending: 1 } }).map((r) => [r.key, r.day, r.tone]), [['pending', null, '']], 'no day kept: no rise, no colour')
+  assert.deepEqual(driveRows(null), [])
+  assert.match(sourceWords('log_sense'), /LOG SENSE/)
+  assert.match(sourceWords('ata_smart'), /SMART/)
+}
