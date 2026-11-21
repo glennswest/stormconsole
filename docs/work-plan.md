@@ -2950,7 +2950,7 @@ uid changes, so:
 - Not seen: real nodes. A node's apiserver binds tokens only once its rustkube carries #182; before that the console
   logs "did not bind the token" and a reset ends the sessions but not the token
 
-### Firmware updates only on this node's drives (#389, finding cd245e800f52) — 2026-11-21
+### Firmware updates only on this node's drives (#389, finding cd245e800f52) ✅ 2026-11-21
 `read_firmware` attached sets only to the first target, the local one (`raid_members` asks this node's engine), so
 `check_sets` saw every remote drive as in no set. No route reaches another node's sets: the engine's token is
 node-local and never sent to a peer (`engine::find_token`), consoles do not call each other, and stormdrive reads
@@ -2959,4 +2959,8 @@ its engine's arrays (fault LEDs) but does not publish them. So: the finding's fa
       `firmware_start` refuses any drive not on this node whatever the read said
 - [x] Filed stormdrive#183 (each drive's set and set state on `/api/v1/drives`, a failed engine read said) to lift it
 - [x] Unit test `another_nodes_drives_are_held_back`; `verify-drive-replace.sh`: the read, a mixed start, a remote start
-- [ ] sc-build: build + every test; `sc-build deploy/verify-drive-replace.sh`; close
+- [x] sc-build 62957c4: build + every test pass (41 suites, 0 failed, no warnings). `sc-build deploy/verify-drive-replace.sh`
+      62957c4: every check ok but the walk's "no page errors": the Link panel's chart read (#369, after this rig last
+      ran on 11-07) answered 503 with no ironprom. 3f4e476 turns `[ironprom]` off as verify-drive-volumes.sh does:
+      0 failed, browser 0 failed, the #389 section's 4 checks ok. Closed
+- Left: stormdrive#183 (or #126) lifts this; until then a remote drive is updated from its own console
