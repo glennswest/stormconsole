@@ -2574,7 +2574,7 @@ admin's Secret is `admin-password`, its binding stormcos's.
 - Left: the registry's `[api] user_namespace` / `admin_password_file` lines, applied by the master with
   stormcos#200 (sign-in closes :9094 to stormcentral's anonymous reads, stormcentral#807). Groups: #334.
 
-### Groups (#334)
+### Groups (#334) ✅ 2026-11-21 (v0.42.0)
 Owner, 2026-11-20 (on #334): "Make groups now. We need that for drive and hardware management." Read from rustkube
 main (`auth.rs`, `rbac_engine.rs`): a ServiceAccount's token carries only `system:serviceaccounts` and
 `system:serviceaccounts:<ns>`, so a `Group` subject (option b as written) would grant a signed-in person nothing. The
@@ -2585,14 +2585,18 @@ shape, beside sc#27's users in `storm-users`:
   ServiceAccounts, rewritten on every change of members. So RBAC decides as for a user's own binding, and sign-in's
   roles (any binding naming the account) carry group roles unchanged
 - a user deleted leaves every group (no name reuse inherits); admin is in no group; a group's member is a user
-- [ ] users.rs: groups (list, create, delete, members, roles), user rows say their groups and own roles; tests
-- [ ] `/api/v1/groups` (admin, as the admin's token), sessions' roles refreshed for the members touched; audit
-- [ ] Users page: Groups (create with description, members and roles; edit members and roles; delete); a user's
+- [x] users.rs: groups (list, create, delete, members, roles), user rows say their groups and own roles; tests
+- [x] `/api/v1/groups` (admin, as the admin's token), sessions' roles refreshed for the members touched; audit
+- [x] Users page: Groups (create with description, members and roles; edit members and roles; delete); a user's
       groups and what comes from them
-- [ ] `verify-users.sh`: real rustkube: a group with storage-admin, a member's SSAR allowed, removed → refused;
+- [x] `verify-users.sh`: real rustkube: a group with storage-admin, a member's SSAR allowed, removed → refused;
       Chromium; docs (README, rbac.md, architecture), changelog; release; image
-- [ ] file: stormcentral (`sc user`/`sc group` on this shape); a hardware role (stormipmi is `admin` only, so a
-      group gets hardware management only through cluster-admin)
+- [x] file: stormcentral (`sc user`/`sc group` on this shape); a hardware role (stormipmi is `admin` only, so a
+      group gets hardware management only through cluster-admin): stormcentral#1619, #391 (gap, proposed)
+- Found by the rig and fixed (b2881b4): the storage guard kept each SSAR answer 30 s, so a member just given
+  storage-admin was refused until it expired; a role or group change made here now drops them (`Reviewer::forget`)
+- Verified on b2881b4: default sc-build (build, test, clippy `-D warnings`, stub sweep, users.test.mjs, vite) and
+  `sc-build deploy/verify-users.sh` (real rustkube + Chromium), 0 failed
 
 ### Drive link health (#339) ✅ 2026-11-17 (v0.34.0)
 From stormdrive v0.49.0's Drive `status.link` + `LinkDegraded`/`LinkFailing` (stormdrive#149, stormblock#642).
