@@ -2818,6 +2818,9 @@ console that made it; another node's sweep asked only "deleted or disabled?".
   pvetest1–3 answer nothing (no ping; :9094 silent over http and https), and this stormcentral has no `[stormipmi]`
   cluster to show their power. #390 (fdc6fdb) now also ends the old password's tokens upstream, not only the sessions;
   image requested with it. The two-node check is still what closes this
+- 2026-11-21 (after #385): still held. pvetest1–3 all answer (pvetest{1,2,3}.g16.lo, 192.168.31.172–174), all on
+  release 12.97: plain HTTP on :9094, `auth/session` `required: false`, `/api/v1/users` "[api] user_namespace is not
+  set". No apiserver users to reset, so the two-node check cannot run; stormcos#200 still open. No console change
 
 ### Node services' own projects (#375, stormcos#1020) ✅ 2026-11-19
 Already the console's behaviour (#162): `/api/plugins/k8s/projects` returns the
