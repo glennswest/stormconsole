@@ -1999,19 +1999,31 @@ stormcentral-compliance-operations#219 (missing provenance).
   node. Left: the row "Digest: not reported" is the node's imageID and can read beside a recorded digest; "clones" on
   the Registry page is the owner's word on #163, not changed
 
-### The Update page: Cancel (#196)
+### The Update page: Cancel (#196) ✅ 2026-11-20
 stormupdate#36 (closed 2026-11-20) serves `POST /api/v1/cancel {"reason"?}`, read from stormupdate dde4d73 (`api.rs`
 `cancel`, `rollout.rs` `cancel_check`, README "Cancel before the reboot"): update token; 202 `{spec}`; 409 with the
 reason (nothing to cancel, a rollback running, a node told to reboot / rebooted / on the target, naming it, "the way
 back is POST /api/v1/rollback"); 503 when the nodes kept changing. Phase `Cancelling`, then `Idle`; node phase
 `Cancelled`, agent state `cancelled`, history result `Cancelled`. A request not yet started is cancelled at once.
-- [ ] plugin: `POST /cancel {reason?}`, admin, recorded like the others; the reason carries who asked; a 409's
+- [x] plugin: `POST /cancel {reason?}`, admin, recorded like the others; the reason carries who asked; a 409's
       "the way back is POST /api/v1/rollback" said as "roll back instead"; `Cancelling` a run (warn), not a fault
-- [ ] `update.js` `actions().cancel` (a run with no node past the reboot, or a request not yet started; not a
+- [x] `update.js` `actions().cancel` (a run with no node past the reboot, or a request not yet started; not a
       rollback, not while cancelling); `Cancelling`/`Cancelled` words and tones; test
-- [ ] page: Cancel under Now, asking first (with an optional reason); a refusal shown with Roll back beside it
-- [ ] `verify-update.sh`: cancel through the console against a real stormupdate (a request not started: 202, spec
+- [x] page: Cancel under Now, asking first (with an optional reason); a refusal shown with Roll back beside it
+- [x] `verify-update.sh`: cancel through the console against a real stormupdate (a request not started: 202, spec
       cleared; nothing to cancel: 409 in words); Chromium; docs, changelog, dist; release; image
+- Since the plan: no Cancel after a rollback (`RolledBack`, `spec.rollback`), found by the rig: the spec still
+  names the release rolled back from, and stormupdate would only clear it. The button is "Cancel this update" (the
+  question names the release), apart from "Update to <release>"
+- Verified with `sc-build deploy/verify-update.sh` on 21f22bd (0 failed, sc-build-2806527463): a real stormupdate
+  (main) API and controller: operator 403, admin 202 on a pre-pulling run, the controller cleared the spec and its
+  history says `cancelled with the update token: by root on the console: wrong release`, a second cancel 409
+  "cannot cancel: no update in progress", each recorded. A run with a node rebooted: 409 "cannot cancel: n2 has
+  rebooted onto 12.61: roll back instead", nothing reached the spec. Chromium: offered, dismissed sends nothing,
+  answered and recorded, the spec carries who and why; none for an operator, after a reboot or a rollback. Default
+  sc-build (build, tests, clippy -D warnings, stub check, vite) on 292742b; dist 21f22bd
+- Not seen: a cancel that a real agent puts back (staging discarded, previous generation back). It needs agents and an
+  engine, which stormupdate's own `cancel-before-the-reboot` suite covers on a node
 
 ### The Update page's pre-pull and images (#62)
 #164 built the page #62 asked for. Left from #62's addition (stormupdate#5): a failed pull hid the images and
@@ -2022,7 +2034,7 @@ change of kind `golden` showed that word.
 - Verified with `sc-build deploy/verify-update.sh` (0 failed): a real stormupdate and rustkube; the walks over status
   written in stormupdate's shape, a failed pull in the words of its own test. Default `sc-build`
 - Not seen: a real pre-pull. It needs a node's agent and a registry, so the pulling and stopped states are written
-  into the status, not produced by a run. Cancel stays #196 (stormupdate#36)
+  into the status, not produced by a run. Cancel: #196, done 2026-11-20
 
 ### An Update page (#164) ✅ 2026-11-05
 Owner 2026-11-04, on forge1's first update: "update needs a ui as well". Read from
