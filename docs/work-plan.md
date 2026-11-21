@@ -2926,7 +2926,7 @@ reaches the session), so the fix is the attribute.
 - [x] sc-build 439ad56: build + every test pass (41 suites, 0 failed); `sc-build deploy/verify-client-cert.sh` 439ad56:
       0 failed, §6b's 7 checks ok. Closed; image requested
 
-### A password reset ends the user's tokens, not only their sessions (#390, finding 51c1602a85c5) — 2026-11-21
+### A password reset ends the user's tokens, not only their sessions (#390, finding 51c1602a85c5) ✅ 2026-11-21
 The same finding id as #374, re-filed against f987cce. #374 fixed its first half (every node's sweep ends a session
 whose password stamp is not the Secret's). Its second half was open: the minted ServiceAccount token stayed valid
 upstream for its 24 h. rustkube#182 (main, no release yet) binds a token to a Secret and refuses it once that Secret's
@@ -2939,4 +2939,9 @@ uid changes, so:
 - [x] An apiserver that does not bind: plain token, a warning logged; seeding's own admin token asks for 600 s
 - [x] Unit tests `a_new_password_makes_the_key_anew`, `the_key_is_owned_by_the_account_except_admins`, the kept
       session acting with the new token; `verify-users.sh` on rustkube main, §9c + checks in §2, §6, §9, §10
-- [ ] sc-build: build + every test; `sc-build deploy/verify-users.sh`; close
+- [x] sc-build fdc6fdb: build + every test pass (41 suites, 0 failed, no warnings); `sc-build deploy/verify-users.sh`
+      fdc6fdb on rustkube main a771982: 0 failed — §9c's 20 checks (a bound token refused at once after a reset here,
+      within a sweep after a hash written by hand; every minted token bound), stor-sessions gone on disable,
+      dave-sessions on delete, admin's own session acting upstream after its own reset, the browser walk. Closed
+- Not seen: real nodes. A node's apiserver binds tokens only once its rustkube carries #182; before that the console
+  logs "did not bind the token" and a reset ends the sessions but not the token
