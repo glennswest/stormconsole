@@ -172,6 +172,18 @@ check "$(curl -s -o /dev/null -w '%{http_code}' $A/api/plugins/flowsdn/endpoint/
 check "$(curl -sf $A/api/plugins/flowsdn/state/health | py 'import json,sys; print([r["row"]["id"] for r in json.load(sys.stdin)["rows"]])')" \
   "['agent.api', 'agent.restore', 'agent.kubernetes']" "the health table, as rows"
 check "$(curl -s -o /dev/null -w '%{http_code}' $A/api/plugins/flowsdn/state/secrets)" "404" "a table off the allowlist is not asked for"
+say "A: flows (#235, flowsdn#485), read live"
+F=$(curl -sf "$A/api/plugins/flowsdn/flows")
+check "$(echo "$F" | py 'import json,sys; d=json.load(sys.stdin); print(d["served"], d["seen"], d["kept"], d["limit"], len(d["flows"]))')" "True 17 5 200 5" "every record, with what the agent judged and kept"
+check "$(echo "$F" | py 'import json,sys; f=json.load(sys.stdin)["flows"][1]; print(f["source"]["namespace"]+"/"+f["source"]["pod"], f["destination"]["namespace"]+"/"+f["destination"]["pod"], f["verdict"], f["drop_reason"], f["destination"]["port"])')" \
+  "shop/web-7d9 lab/batch-x DROPPED POLICY_DENIED 5432" "a drop, both sides by their pods"
+check "$(echo "$F" | py 'import json,sys; f=json.load(sys.stdin)["flows"]; print(f[3]["source"]["kind"], f[3]["source"]["pod"], f[4]["source"]["kind"], f[2]["source"]["kind"], f[2]["destination"]["kind"])')" \
+  "pod db-0 identity remote-node host" "a bare side named by this node's Pod at its address; one no Pod has stays a number; nodes"
+check "$(curl -sf "$A/api/plugins/flowsdn/flows?limit=2&since=2026-11-21T10:00:03Z" | py 'import json,sys; print([f["time"][-3:] for f in json.load(sys.stdin)["flows"]])')" "['05Z', '04Z']" "limit and since go to the agent"
+check "$(grep -c 'GET /v1/flows?limit=2&since=2026-11-21T10:00:03Z' "$W/agent-a.log")" "1" "as the agent was asked"
+check "$(curl -s -o /dev/null -w '%{http_code}' "$A/api/plugins/flowsdn/flows?limit=5000")" "400" "a limit past what the agent keeps is refused here"
+check "$(curl -s -o /dev/null -w '%{http_code}' "$A/api/plugins/flowsdn/flows?since=2026-11-21T10:00:00%2B01:00")" "400" "the agent's refusal of a time, passed on"
+check "$(curl -sf "$B/api/plugins/flowsdn/flows" | py 'import json,sys; d=json.load(sys.stdin); print(d["served"], "flowsdn#485" in d["why"])')" "False True" "B: an agent older than flowsdn#485 serves none, and says so"
 check "$(tail -n +$((OWN+1)) "$W/agent-a.log" | grep -vE '^(GET |POST /v1/statedb/query$)' | grep -v '^$' | head -3)" "" "the console only ever read from the agent"
 check "$(grep -c '^GET /v1/healthz' "$W/agent-a.log" | awk '{print ($1 >= 2)}')" "1" "and polls it"
 
@@ -262,6 +274,11 @@ check "$(echo "$A_" | py 'import json,sys; v=json.load(sys.stdin)["snapshot"]["v
 check "$(echo "$A_" | grep -c 'batch-x' || true)" 0 "the other project's pod is nowhere in her answer"
 check "$(curl -s -b "$W/alice.jar" "$E/api/v1/components" | grep -c 'batch-x' || true)" 0 "nor in the feed"
 check "$(curl -s -o /dev/null -w '%{http_code}' -b "$W/alice.jar" "$E/api/plugins/flowsdn/endpoint/3")" 404 "nor by asking for it"
+fl() { curl -s -b "$W/$1.jar" "$E/api/plugins/flowsdn/flows"; }
+check "$(fl root | py 'import json,sys; d=json.load(sys.stdin); print(len(d["flows"]), d["hidden"])')" "5 0" "flows: the administrator sees every one"
+check "$(fl alice | py 'import json,sys; d=json.load(sys.stdin); print([f["time"][-3:] for f in d["flows"]], d["hidden"])')" "['05Z', '03Z', '02Z'] 2" \
+  "alice: world to her pod, node to node, her db-0 by its address; not the one to lab, not the one that could be anyone's"
+check "$(fl alice | grep -c 'batch-x' || true)" 0 "the other project's pod is nowhere in her flows"
 check "$(curl -s -b "$W/root.jar" "$E/api/v1/components" | grep -c 'batch-x' | awk '{print ($1>0)}')" 1 "the administrator's feed has it"
 
 say "console logs (warnings and errors only)"

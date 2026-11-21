@@ -57,6 +57,15 @@ async fn agent(k8s: bool) -> (String, tokio::task::JoinHandle<()>) {
             "backend-addresses": [{"ip": "192.168.8.10", "port": 6443, "protocol": "TCP", "state": "active"}],
             "flags": {"type": "ClusterIP", "name": "kubernetes", "namespace": "default"}}}]))))
         .route("/v1/node/routes", get(k8s_route(json!([]))))
+        // An agent of flowsdn#485 in Kubernetes mode; the standalone one here is older.
+        .route("/v1/flows", get(move |axum::extract::RawQuery(q): axum::extract::RawQuery| async move {
+            let q = q.unwrap_or_default();
+            if q.contains("since=bad") {
+                return (StatusCode::BAD_REQUEST, Json(json!("since: not an RFC 3339 time"))).into_response();
+            }
+            assert!(q.starts_with("limit="), "{q}");
+            if k8s { Json(model::tests::flow_records()).into_response() } else { StatusCode::NOT_FOUND.into_response() }
+        }))
         .route("/v1/identity", get(k8s_route(json!([{"id": 31337, "labels": ["k8s:app=web"]}]))));
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", l.local_addr().unwrap());
@@ -213,7 +222,52 @@ async fn routes_read_one_endpoint_live_and_only_named_tables() {
     assert_eq!(st, 200);
     assert_eq!(v["node"], "node-a");
     assert_eq!(v["snapshot"]["endpoints"].as_array().unwrap().len(), 2);
-    assert!(v["flows"].as_str().unwrap().contains("flowsdn#293"));
+    assert!(v["flows"].as_str().unwrap().contains("first packet of a flow"));
+}
+
+#[tokio::test]
+async fn flows_are_read_live_named_by_pod_and_bounded() {
+    let serve = |p: FlowsdnPlugin| async move {
+        let app = Router::new().nest("/p", p.routes());
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/p", l.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        base
+    };
+    let get = |u: String| async move {
+        let r = reqwest::get(u).await.unwrap();
+        (r.status().as_u16(), r.json::<Value>().await.unwrap())
+    };
+    let (url, _h) = agent(true).await;
+    let p = FlowsdnPlugin::new(&url, Build::new("/nonexistent"), None);
+    p.poll().await;
+    let base = serve(p).await;
+    let (st, v) = get(format!("{base}/flows")).await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!((v["served"].as_bool(), v["seen"].as_u64(), v["limit"].as_u64()), (Some(true), Some(9), Some(FLOWS_DEFAULT)));
+    let f = v["flows"].as_array().unwrap();
+    assert_eq!(f.len(), 4, "an unrestricted viewer sees every record");
+    assert_eq!((f[0]["source"]["pod"].as_str(), f[0]["destination"]["pod"].as_str()), (Some("example-pod"), Some("vault-0")));
+    assert_eq!(f[0]["drop_reason"], "POLICY_DENIED");
+    assert_eq!(f[2]["destination"]["kind"], "host");
+    let (st, _) = get(format!("{base}/flows?limit=4097")).await;
+    assert_eq!(st, 400, "a limit past what the agent keeps");
+    let (st, _) = get(format!("{base}/flows?limit=x")).await;
+    assert_eq!(st, 400);
+    let (st, _) = get(format!("{base}/flows?since=2026-11-21T10:00:00%2B01:00&limit=5")).await;
+    assert_eq!(st, 200, "an offset time passes");
+    let (st, v) = get(format!("{base}/flows?since=bad")).await;
+    assert_eq!(st, 400, "the agent's refusal of a time, said: {v}");
+    let (st, _) = get(format!("{base}/flows?since=a%20b")).await;
+    assert_eq!(st, 400, "never sent on");
+
+    let (url, _h2) = agent(false).await;
+    let p = FlowsdnPlugin::new(&url, Build::new("/nonexistent"), None);
+    p.poll().await;
+    let (st, v) = get(format!("{}/flows", serve(p).await)).await;
+    assert_eq!(st, 200);
+    assert_eq!(v["served"], false);
+    assert!(v["why"].as_str().unwrap().contains("flowsdn#485"), "{v}");
 }
 
 #[test]

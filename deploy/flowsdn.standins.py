@@ -66,6 +66,48 @@ SERVICES = [
 ROUTES = [{"destination": "10.6.0.0/16", "gateway": "192.168.8.11", "node": "node-b", "state": "installed"},
           {"destination": "10.7.0.0/16", "gateway": "192.168.8.12", "node": "node-c",
            "state": "skipped: gateway not on a directly connected network"}]
+def pod(ep_id, ns, name, ip, port, kind, owner, node="node-a"):
+    side = {"identity": 31337, "namespace": ns, "pod_name": name, "node_name": node, "labels": [f"k8s:app={name}"],
+            "workloads": [{"name": owner, "kind": kind}], "ip": ip, "port": port}
+    if ep_id:
+        side["ID"] = ep_id
+    return side
+
+
+# docs/agent-api.md "Flow record shape" (flowsdn#485), newest first.
+FLOWS = [
+    {"time": "2026-11-21T10:00:05Z", "verdict": "FORWARDED", "traffic_direction": "INGRESS", "protocol": "TCP",
+     "source": {"reserved": "world", "identity": 2, "ip": "203.0.113.9", "port": 51000},
+     "destination": pod(1, "shop", "web-7d9", "10.5.0.7", 8080, "Deployment", "web")},
+    {"time": "2026-11-21T10:00:04Z", "verdict": "DROPPED", "drop_reason": "POLICY_DENIED", "traffic_direction": "EGRESS", "protocol": "TCP",
+     "source": pod(1, "shop", "web-7d9", "10.5.0.7", 40112, "Deployment", "web"),
+     "destination": pod(3, "lab", "batch-x", "10.5.0.9", 5432, "Job", "batch")},
+    {"time": "2026-11-21T10:00:03Z", "verdict": "AUDIT", "traffic_direction": "INGRESS", "protocol": "ICMPv4",
+     "source": {"reserved": "remote-node", "node_name": "node-b", "ip": "192.168.8.11"},
+     "destination": {"reserved": "host", "ip": "192.168.8.10"}},
+    # Bare sides, as an agent without its Kubernetes view names them: db-0's address, and one no Pod here has.
+    {"time": "2026-11-21T10:00:02Z", "verdict": "FORWARDED", "traffic_direction": "EGRESS", "protocol": "UDP",
+     "source": {"identity": 4242, "ip": "10.5.0.8", "port": 33000},
+     "destination": {"reserved": "world", "identity": 2, "ip": "198.51.100.1", "port": 53}},
+    {"time": "2026-11-21T10:00:01Z", "verdict": "DROPPED", "drop_reason": "POLICY_DENY", "traffic_direction": "INGRESS", "protocol": "TCP",
+     "source": {"identity": 4243, "ip": "10.6.0.4", "port": 41000},
+     "destination": {"reserved": "host", "ip": "192.168.8.10", "port": 22}},
+]
+
+
+def flows(query):
+    from urllib.parse import parse_qs
+    q = parse_qs(query)
+    limit = q.get("limit", ["100"])[0]
+    if not limit.isdigit():
+        return 400, {"code": 400, "message": "limit: not a number"}
+    since = q.get("since", [""])[0]
+    if since and not since.endswith("Z"):
+        return 400, {"code": 400, "message": "since: not an RFC 3339 time this stand-in reads"}
+    rows = [f for f in FLOWS if not since or f["time"] >= since][: min(int(limit), 4096)]
+    return 200, {"seen": 17, "kept": len(FLOWS), "flows": rows}
+
+
 IDENTITIES = [{"id": 31337, "labels": ["k8s:app=web", "k8s:io.kubernetes.pod.namespace=shop"]}]
 
 
@@ -138,6 +180,11 @@ class Agent(BaseHTTPRequestHandler):
                 {"endpoint": 99, "direction": "ingress", "verdict": "denied", "protocol": 6, "port": 22, "packets": 1, "bytes": 60},
                 {"endpoint": "host", "direction": "ingress", "verdict": "denied", "protocol": 6, "port": 23, "packets": 40, "bytes": 2400},
             ])
+        if path == "/v1/flows":
+            # An agent before flowsdn#485 answers the 404 below; this one is K8S only.
+            if not K8S:
+                return self.answer(404, {"code": 404, "message": "not found"})
+            return self.answer(*flows(self.path.partition("?")[2]))
         if path in ("/v1/ip", "/v1/identity", "/v1/service", "/v1/node/routes"):
             if not K8S:
                 return self.answer(404, {"code": 404, "message": "kubernetes node discovery is not enabled"})

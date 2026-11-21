@@ -24,8 +24,11 @@
 //!   the numeric identity is a metric, not the name (flowsdn#297).
 //! - **Scoped like pods.** An endpoint or Service in a namespace the viewer
 //!   may not see is withheld from the feed and from every route.
-//! - **No flows.** flowsdn has no Hubble observer yet (flowsdn#293); the
-//!   page says so.
+//! - **Flows, read live** (#235, flowsdn#485). `GET /v1/flows` on the same
+//!   listener: the first packet of each flow the endpoint policy judged, both
+//!   sides named. Read when the Flows tab asks, not polled: up to 4096 records
+//!   is a lot to carry every five seconds for a tab nobody has open. A flow is
+//!   shown only when the viewer may see both of its sides.
 
 pub mod model;
 
@@ -48,7 +51,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 pub use console_core::build::Network as Edition;
-pub use model::{Verdict, Endpoint, Healthz, Module, Pool, Service};
+pub use model::{Endpoint, Flow, Healthz, Module, Pool, Service, Side, Verdict};
 
 pub const NAME: &str = "flowsdn";
 
@@ -492,6 +495,7 @@ impl ConsolePlugin for FlowsdnPlugin {
             .route("/network-endpoints", get(network_endpoints))
             .route("/endpoint/{id}", get(endpoint))
             .route("/state/{table}", get(state))
+            .route("/flows", get(flows))
             .with_state(self.inner.clone())
     }
 
@@ -559,7 +563,7 @@ async fn snapshot(State(inner): State<Arc<Inner>>, viewer: Viewer) -> Response {
         "hidden": hidden_count,
         "note": note,
         "tables": STATE_TABLES,
-        "flows": "flowsdn has no Hubble observer yet, so there are no flows to show (flowsdn#293)",
+        "flows": FLOWS_NOTE,
         "verdicts_note": "Counts of what the policy decided, not flows. A packet of a flow already allowed is not counted, and the counts reset when the agent reloads its object.",
     }))
     .into_response()
@@ -650,6 +654,72 @@ async fn endpoint(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(id): Pat
         None => None,
     };
     Json(json!({"row": row, "endpoint": raw, "link": link, "identity": identity})).into_response()
+}
+
+/// What a row of the Flows tab is, and what has none.
+pub const FLOWS_NOTE: &str = "Each row is the first packet of a flow the endpoint policy judged on this node: allowed, dropped, or passed in audit mode. Packets of a flow already allowed add none, and a Pod no policy selects is not judged, so its flows are not here. flowsdn keeps the newest 4096 since its agent started.";
+
+/// How many flows a read asks for, unless the page says.
+pub const FLOWS_DEFAULT: u64 = 200;
+
+#[derive(serde::Deserialize)]
+struct FlowsQuery {
+    limit: Option<String>,
+    since: Option<String>,
+}
+
+/// `GET /flows?limit=&since=`: the agent's flow records, read live, less what this viewer
+/// may not see. `served: false` from an agent older than flowsdn#485, or on a cilium node.
+async fn flows(State(inner): State<Arc<Inner>>, viewer: Viewer, axum::extract::Query(q): axum::extract::Query<FlowsQuery>) -> Response {
+    let bad = |m: String| (StatusCode::BAD_REQUEST, Json(json!({"error": m}))).into_response();
+    let limit = match q.limit.as_deref().filter(|l| !l.is_empty()) {
+        None => FLOWS_DEFAULT,
+        Some(l) => match l.parse::<u64>() {
+            Ok(n) if (1..=4096).contains(&n) => n,
+            _ => return bad(format!("limit {l:?} is not a number from 1 to 4096")),
+        },
+    };
+    let mut path = format!("/v1/flows?limit={limit}");
+    if let Some(t) = q.since.as_deref().filter(|t| !t.is_empty()) {
+        if !t.bytes().all(|b| b.is_ascii_alphanumeric() || b"-:.+".contains(&b)) {
+            return bad(format!("since {t:?} is not an RFC 3339 time"));
+        }
+        path.push_str("&since=");
+        path.push_str(&t.replace('+', "%2B"));
+    }
+    if inner.build.network().is_cilium() {
+        return Json(json!({"served": false, "why": "a cilium node runs no flowsdn agent", "flows": []})).into_response();
+    }
+    let v = match inner.get(&path).await {
+        Ok(v) => v,
+        Err(e) if e.contains(": 404 ") => {
+            return Json(json!({"served": false, "flows": [],
+                "why": "this agent serves no flows: it is older than flowsdn#485 (GET /v1/flows)"}))
+            .into_response()
+        }
+        Err(e) if e.contains(": 400 ") => return bad(e),
+        Err(e) => return (StatusCode::BAD_GATEWAY, Json(json!({"error": e}))).into_response(),
+    };
+    let endpoints = inner.snap.read().await.endpoints.clone();
+    let mut rows: Vec<Flow> =
+        v.get("flows").and_then(Value::as_array).into_iter().flatten().map(|r| Flow::from_agent(r, &endpoints)).collect();
+    let (mut hidden_count, mut note) = (0, String::new());
+    if let Some((hidden, n)) = inner.hidden(&viewer).await {
+        let before = rows.len();
+        rows.retain(|f| f.shown_to(&hidden));
+        hidden_count = before - rows.len();
+        note = n;
+    }
+    Json(json!({
+        "served": true,
+        "seen": v.get("seen"),
+        "kept": v.get("kept"),
+        "limit": limit,
+        "flows": rows,
+        "hidden": hidden_count,
+        "note": note,
+    }))
+    .into_response()
 }
 
 /// A named StateDB table, as rows. Only the allowlist is asked for.

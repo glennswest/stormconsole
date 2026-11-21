@@ -212,3 +212,52 @@ fn a_service_frontend_reads_as_address_and_backends() {
     assert!(s.realized);
     assert!(!Service::from_agent(&json!({"spec": {"id": 0}})).realized);
 }
+
+/// Records as flowsdn `docs/agent-api.md` "Flow record shape" (#485) writes them.
+pub fn flow_records() -> Value {
+    json!({"seen": 9, "kept": 4, "flows": [
+      {"time": "2026-11-21T10:00:03Z", "verdict": "DROPPED", "drop_reason": "POLICY_DENIED", "traffic_direction": "EGRESS", "protocol": "TCP",
+       "source": {"ID": 42, "identity": 31337, "namespace": "default", "pod_name": "example-pod", "node_name": "node-a",
+                  "labels": ["k8s:app=web"], "workloads": [{"name": "web", "kind": "Deployment"}], "ip": "10.0.0.2", "port": 40112},
+       "destination": {"identity": 4100, "namespace": "secret", "pod_name": "vault-0", "node_name": "node-b",
+                       "labels": [], "workloads": [{"name": "vault", "kind": "StatefulSet"}], "ip": "10.6.0.4", "port": 8200}},
+      {"time": "2026-11-21T10:00:02Z", "verdict": "FORWARDED", "traffic_direction": "INGRESS", "protocol": "TCP",
+       "source": {"reserved": "world", "identity": 2, "ip": "203.0.113.9", "port": 51000},
+       "destination": {"ID": 42, "identity": 31337, "namespace": "default", "pod_name": "example-pod", "node_name": "node-a",
+                       "workloads": [], "ip": "10.0.0.2", "port": 8080}},
+      {"time": "2026-11-21T10:00:01Z", "verdict": "AUDIT", "traffic_direction": "INGRESS", "protocol": "ICMPv4",
+       "source": {"reserved": "remote-node", "node_name": "node-b", "ip": "192.168.8.11"},
+       "destination": {"reserved": "host", "ip": "192.168.8.10"}},
+      {"time": "2026-11-21T10:00:00Z", "verdict": "FORWARDED", "traffic_direction": "INGRESS", "protocol": "UDP",
+       "source": {"identity": 16777217, "ip": "10.0.0.2", "port": 53},
+       "destination": {"identity": 16777218, "ip": "198.51.100.1", "port": 53}}
+    ]})
+}
+
+#[test]
+fn a_flow_names_both_sides_by_pod_node_or_what_the_datapath_judged() {
+    let eps = vec![Endpoint::from_agent(&endpoint_k8s()).unwrap()];
+    let f: Vec<Flow> = flow_records()["flows"].as_array().unwrap().iter().map(|r| Flow::from_agent(r, &eps)).collect();
+    let d = &f[0];
+    assert_eq!((d.verdict.as_str(), d.drop_reason.as_str(), d.direction.as_str(), d.protocol.as_str()), ("DROPPED", "POLICY_DENIED", "EGRESS", "TCP"));
+    assert_eq!((d.source.kind.as_str(), d.source.namespace.as_str(), d.source.pod.as_str(), d.source.endpoint), ("pod", "default", "example-pod", Some(42)));
+    assert_eq!((d.source.ip.as_str(), d.source.port, d.source.workloads.clone()), ("10.0.0.2", Some(40112), vec!["Deployment web".to_string()]));
+    assert_eq!((d.destination.namespace.as_str(), d.destination.pod.as_str(), d.destination.node.as_str()), ("secret", "vault-0", "node-b"));
+    assert_eq!((f[1].source.kind.as_str(), f[1].source.reserved.as_str(), f[1].source.identity), ("reserved", "world", Some(2)));
+    assert_eq!((f[2].source.kind.as_str(), f[2].source.node.as_str(), f[2].source.port), ("remote-node", "node-b", None));
+    assert_eq!(f[2].destination.kind, "host");
+    // A bare side whose address is this node's Pod is named by it; another stays a number.
+    assert_eq!((f[3].source.kind.as_str(), f[3].source.pod.as_str()), ("pod", "example-pod"));
+    assert_eq!((f[3].destination.kind.as_str(), f[3].destination.identity), ("identity", Some(16777218)));
+}
+
+#[test]
+fn a_flow_is_withheld_when_either_side_is_a_hidden_project_or_could_be_anyones() {
+    let eps = vec![Endpoint::from_agent(&endpoint_k8s()).unwrap()];
+    let f: Vec<Flow> = flow_records()["flows"].as_array().unwrap().iter().map(|r| Flow::from_agent(r, &eps)).collect();
+    let hidden: std::collections::HashSet<String> = ["secret".to_string()].into();
+    let shown: Vec<bool> = f.iter().map(|x| x.shown_to(&hidden)).collect();
+    assert_eq!(shown, vec![false, true, true, false], "its peer is in secret; world; nodes; a bare identity");
+    let none = std::collections::HashSet::new();
+    assert!(f[0].shown_to(&none));
+}

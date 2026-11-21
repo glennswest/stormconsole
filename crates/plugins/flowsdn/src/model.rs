@@ -265,6 +265,124 @@ impl Verdict {
     }
 }
 
+/// One side of a flow record (flowsdn `docs/agent-api.md`, "Flow record shape", #485).
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Side {
+    /// `pod`; `host` (this node); `remote-node`; `reserved` (`world`, `health`, …); or `identity`,
+    /// a bare identity number: a CIDR's, or a Pod's on an agent without its Kubernetes view.
+    pub kind: String,
+    pub namespace: String,
+    pub pod: String,
+    pub node: String,
+    pub workloads: Vec<String>,
+    /// The reserved name, for `host`, `remote-node` and `reserved`.
+    pub reserved: String,
+    pub identity: Option<u64>,
+    /// This node's endpoint ID, for a Pod here.
+    pub endpoint: Option<u64>,
+    pub ip: String,
+    pub port: Option<u64>,
+}
+
+impl Side {
+    /// `endpoints` names a bare side by its address when it is a Pod on this node.
+    pub fn from_agent(v: &Value, endpoints: &[Endpoint]) -> Self {
+        let text = |k: &str| s(v, &format!("/{k}")).unwrap_or("").to_string();
+        let mut side = Side {
+            namespace: text("namespace"),
+            pod: text("pod_name"),
+            node: text("node_name"),
+            workloads: v
+                .get("workloads")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|w| Some(format!("{} {}", s(w, "/kind").unwrap_or("owner"), s(w, "/name")?)))
+                .collect(),
+            reserved: text("reserved"),
+            identity: v.get("identity").and_then(Value::as_u64),
+            endpoint: v.get("ID").and_then(Value::as_u64),
+            ip: text("ip"),
+            port: v.get("port").and_then(Value::as_u64),
+            kind: String::new(),
+        };
+        side.kind = if !side.pod.is_empty() || !side.namespace.is_empty() {
+            "pod"
+        } else if side.reserved == "host" {
+            "host"
+        } else if side.reserved == "remote-node" {
+            "remote-node"
+        } else if !side.reserved.is_empty() {
+            "reserved"
+        } else {
+            "identity"
+        }
+        .into();
+        if side.kind == "identity" && !side.ip.is_empty() {
+            let here = endpoints.iter().find(|e| {
+                (side.endpoint.is_some() && side.endpoint == Some(e.id)) || e.ipv4.iter().chain(&e.ipv6).any(|a| *a == side.ip)
+            });
+            if let Some(e) = here.filter(|e| !e.namespace.is_empty()) {
+                side.kind = "pod".into();
+                side.namespace = e.namespace.clone();
+                side.pod = e.pod.clone();
+                side.node = e.node.clone();
+                side.workloads = e.workloads.clone();
+                side.endpoint = Some(e.id);
+            }
+        }
+        side
+    }
+
+    /// May a viewer who cannot see `hidden` be shown this side? A node or a reserved
+    /// entity is no project's. A bare identity could be any Pod's, so it is withheld.
+    pub fn shown_to(&self, hidden: &std::collections::HashSet<String>) -> bool {
+        match self.kind.as_str() {
+            "pod" => !self.namespace.is_empty() && !hidden.contains(&self.namespace),
+            "identity" => false,
+            _ => true,
+        }
+    }
+}
+
+/// One record of `GET /v1/flows` (flowsdn#485): the first packet of a flow the endpoint
+/// policy judged. No bytes, packets or deciding policy: the agent does not record them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Flow {
+    pub time: String,
+    pub verdict: String,
+    pub drop_reason: String,
+    pub direction: String,
+    pub protocol: String,
+    pub source: Side,
+    pub destination: Side,
+}
+
+impl Flow {
+    pub fn from_agent(v: &Value, endpoints: &[Endpoint]) -> Self {
+        let text = |k: &str| match v.get(k) {
+            Some(Value::String(x)) => x.clone(),
+            Some(Value::Number(n)) => n.to_string(),
+            _ => String::new(),
+        };
+        let side = |k: &str| Side::from_agent(v.get(k).unwrap_or(&Value::Null), endpoints);
+        Flow {
+            time: text("time"),
+            verdict: text("verdict"),
+            drop_reason: text("drop_reason"),
+            direction: text("traffic_direction"),
+            protocol: text("protocol"),
+            source: side("source"),
+            destination: side("destination"),
+        }
+    }
+
+    /// Both sides must be shown to the viewer: a flow names its peer.
+    pub fn shown_to(&self, hidden: &std::collections::HashSet<String>) -> bool {
+        self.source.shown_to(hidden) && self.destination.shown_to(hidden)
+    }
+}
+
 /// One frontend of `/v1/service` (Kubernetes mode with `service-lb`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Service {

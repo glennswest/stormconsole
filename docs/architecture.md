@@ -1790,11 +1790,31 @@ console shows its own; the page says so.
   (live from the agent, numeric or a percent-encoded CNI attachment id,
   with `/healthz` and the identity's labels), `GET /state/{table}` (only
   `STATE_TABLES` — `health` — posted to `/v1/statedb/query`; no free-text
-  query).
+  query), `GET /flows?limit=&since=` (#235: live from the agent's
+  `/v1/flows`, flowsdn#485; `limit` 1–4096, default 200; `since` RFC 3339,
+  passed on; `served: false` with why from an older agent or a cilium node).
 - **Page** `#/flowsdn`: Endpoints (search, node and namespace filters, ✓/·
   marks, one opened live), IPAM, Health, Config, Services, Routes, State,
-  Flows — which says flowsdn has no Hubble observer yet (flowsdn#293), and shows what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile: decisions counted
-  per endpoint, not flows, joined to the endpoint's pod. A viewer with limits sees their projects' rows and the node's own, and not one whose endpoint is not known, which could be anyone's.
+  Flows (#235).
+- **Flows**: the agent's flow records (flowsdn `docs/agent-api.md`, "Flow
+  record shape"): the first packet of each flow the endpoint policy judged,
+  newest first. Each row has its time, source, destination, protocol,
+  direction, verdict and drop reason. A side is a pod (linked to its page),
+  this node, another node, a reserved entity (`world`, …) or a bare
+  identity, with its address and port. A bare side whose address or ID is
+  one of this node's endpoints is named by that endpoint's pod. They are read
+  while the tab is open, every 5 s, not with the snapshot: up to 4096 records
+  is too much to carry for a closed tab. Filters: verdict, project, search,
+  how many. A record carries no bytes, packets or deciding policy, because
+  flowsdn does not record them per flow. The counts of what the policy
+  decided (`/v1/policy/verdicts`, flowsdn#379) stay below as counts, joined
+  to the endpoint's pod.
+- **Access, flows**: a flow is shown only when the viewer may see both
+  sides, since a row names its peer. A pod side follows its namespace, a
+  node or reserved side is no project's, and a bare identity could be any
+  Pod's, so it is withheld. For verdicts, a viewer with limits sees their
+  projects' rows and the node's own, but not a row whose endpoint is not
+  known, because it could be anyone's.
 
 ### One console for every build (#285)
 
@@ -2442,7 +2462,6 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
-| flowsdn | [#293](https://github.com/glennswest/flowsdn/issues/293) a Hubble observer | the flowsdn page's Flows tab |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
 | stormconsole | #42 where SSH keys live; #266 login and users | — |
 

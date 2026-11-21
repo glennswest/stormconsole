@@ -8,8 +8,8 @@
   // that silently shows one slice reads as the whole. Booleans are marks
   // (✓ and ·) so they scan down a long list. The rest is what the agent
   // believes: its pools, its modules, its config, the Services it
-  // programs, its node routes and the health table. Flows wait on flowsdn
-  // (no Hubble observer yet, flowsdn#293), and the tab says so.
+  // programs, its node routes and the health table. Flows (#235,
+  // flowsdn#485) are read live while their tab is open, by their pods.
   import { onDestroy } from 'svelte'
   import { get, formatBytes } from '../api.js'
   import { route } from '../router.svelte.js'
@@ -104,6 +104,48 @@
     }
   })
 
+  // Flows: read while the tab is open, not with the snapshot.
+  let flows = $state(null)
+  let flowsError = $state('')
+  let flowTimer = null
+  let verdict = $state('')
+  let flowLimit = $state(200)
+  async function loadFlows() {
+    clearTimeout(flowTimer)
+    try {
+      flows = await get(`${API}/flows?limit=${flowLimit}`)
+      flowsError = ''
+    } catch (e) {
+      flowsError = `the flows could not be read: ${e.message}`
+    }
+    if (tab === 'Flows') flowTimer = setTimeout(loadFlows, 5000)
+  }
+  $effect(() => {
+    if (tab === 'Flows') {
+      void flowLimit
+      loadFlows()
+    } else clearTimeout(flowTimer)
+  })
+  onDestroy(() => clearTimeout(flowTimer))
+  const sideText = (x) => [x.namespace && x.pod ? `${x.namespace}/${x.pod}` : '', x.node, x.reserved, x.ip, String(x.identity ?? ''), ...(x.workloads || [])].join(' ')
+  const flowNamespaces = $derived(
+    [...new Set((flows?.flows || []).flatMap((f) => [f.source.namespace, f.destination.namespace]).filter(Boolean))].sort(),
+  )
+  const shownFlows = $derived(
+    (flows?.flows || []).filter(
+      (f) =>
+        (!verdict || f.verdict === verdict) &&
+        (!ns || f.source.namespace === ns || f.destination.namespace === ns) &&
+        (!search || [sideText(f.source), sideText(f.destination), f.protocol, f.verdict, f.drop_reason, f.direction].join(' ').toLowerCase().includes(search.toLowerCase())),
+    ),
+  )
+  const hostPort = (x) => (x.ip ? (x.ip.includes(':') ? `[${x.ip}]` : x.ip) + (x.port ? `:${x.port}` : '') : '')
+  const clock = (t) => {
+    const d = new Date(t)
+    return isNaN(d) ? t : d.toLocaleTimeString()
+  }
+  const VERDICTS = { FORWARDED: 'allowed', DROPPED: 'dropped', AUDIT: 'audit: would have been dropped' }
+
   const mark = (b) => (b ? '✓' : '·')
   const ago = (t) => (t ? `${Math.max(0, Math.round(Date.now() / 1000 - t))}s ago` : 'never')
   const familyName = (f) => ({ ipv4: 'IPv4', ipv6: 'IPv6' })[f] || f
@@ -143,7 +185,7 @@
       {/each}
     </nav>
 
-    {#if tab === 'Endpoints' || tab === 'Services'}
+    {#if tab === 'Endpoints' || tab === 'Services' || tab === 'Flows'}
       <div class="bar">
         <input bind:value={search} placeholder="Search pods, addresses, interfaces, identities" aria-label="Search" />
         {#if tab === 'Endpoints'}
@@ -154,10 +196,25 @@
             </select>
           </label>
         {/if}
+        {#if tab === 'Flows'}
+          <label>Verdict
+            <select bind:value={verdict} aria-label="Verdict">
+              <option value="">all</option>
+              <option value="DROPPED">dropped</option>
+              <option value="AUDIT">audit</option>
+              <option value="FORWARDED">allowed</option>
+            </select>
+          </label>
+          <label>Newest
+            <select bind:value={flowLimit} aria-label="Newest">
+              {#each [100, 200, 1000, 4096] as n}<option value={n}>{n}</option>{/each}
+            </select>
+          </label>
+        {/if}
         <label>Project
           <select bind:value={ns} aria-label="Project">
             <option value="">all</option>
-            {#each namespaces as n}<option value={n}>{n}</option>{/each}
+            {#each tab === 'Flows' ? flowNamespaces : namespaces as n}<option value={n}>{n}</option>{/each}
           </select>
         </label>
       </div>
@@ -341,9 +398,52 @@
         </table>
       {/if}
     {:else if tab === 'Flows'}
-      <EmptyState icon="network" title="No flows yet" hint={data.flows} />
+      {#if flowsError}<p class="error">{flowsError}</p>{/if}
+      {#if !flows}
+        <p class="dim">Reading the agent's flows…</p>
+      {:else if !flows.served}
+        <EmptyState icon="network" title="No flows served" hint={flows.why} />
+      {:else}
+        <p class="dim small">
+          {data.flows}
+          The agent has judged {flows.seen?.toLocaleString() ?? '?'} and keeps {flows.kept?.toLocaleString() ?? '?'}; this asks for the newest {flows.limit}.
+          {#if flows.hidden}<span class="warn">{flows.hidden} hidden — {flows.note} A flow is shown only when both its sides may be.</span>{/if}
+        </p>
+        {#if !flows.flows.length}
+          <EmptyState icon="network" title="No flows" hint="The policy has judged nothing yet on this node{flows.hidden ? ' that you may see' : ''}." />
+        {:else}
+          <div class="table-wrap">
+            <table class="flows">
+              <thead><tr><th>Time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Direction</th><th>Verdict</th></tr></thead>
+              <tbody>
+                {#each shownFlows as f, i (i)}
+                  <tr class:bad-row={f.verdict === 'DROPPED'}>
+                    <td class="mono small" title={f.time}>{clock(f.time)}</td>
+                    {#each [f.source, f.destination] as x}
+                      <td>
+                        {#if x.kind === 'pod'}<a href="#/pod/{x.namespace}/{x.pod}">{x.namespace}/{x.pod}</a>{#if x.node} <span class="dim small">on {x.node}</span>{/if}
+                        {:else if x.kind === 'host'}this node
+                        {:else if x.kind === 'remote-node'}node {x.node || '(unnamed)'}
+                        {:else if x.kind === 'reserved'}{x.reserved}
+                        {:else}identity {x.identity ?? '?'}{/if}
+                        <div class="mono small dim">{hostPort(x)}{#if x.workloads?.length} · {x.workloads.join(', ')}{/if}</div>
+                      </td>
+                    {/each}
+                    <td>{f.protocol}</td>
+                    <td>{f.direction.toLowerCase()}</td>
+                    <td class:bad={f.verdict === 'DROPPED'} class:warn={f.verdict === 'AUDIT'}>
+                      {VERDICTS[f.verdict] || f.verdict}{#if f.drop_reason} <span class="dim small">{f.drop_reason.toLowerCase().replaceAll('_', ' ')}</span>{/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          {#if !shownFlows.length}<p class="dim">Nothing matches the filters.</p>{/if}
+        {/if}
+      {/if}
       {#if verdicts.length}
-        <h2 class="verdicts">What the policy decided</h2>
+        <h2 class="verdicts">What the policy decided, counted</h2>
         <p class="dim small">{data.verdicts_note}</p>
         <table class="verdicts">
           <thead><tr><th>Endpoint</th><th>Direction</th><th>Decision</th><th>Protocol</th><th>Port</th><th class="n">Packets</th><th class="n">Bytes</th></tr></thead>

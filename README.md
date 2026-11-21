@@ -459,8 +459,8 @@ on `stormdbase` (stormd on 9080, the console under it, liveness
   promote, demote and drain as `cluster.storm.io` objects (#63, #88), and
   stormcluster reconciles them. Changing a real node needs the node lifecycle
   API (stormcos#38, open), and the console has not been seen doing it on one.
-- **flowsdn flows** — flowsdn has no Hubble observer yet (flowsdn#293); the page's Flows tab says so, and shows
-  the counts of what the policy decided (`/v1/policy/verdicts`, flowsdn#379) meanwhile. **Another node's flowsdn agent** — its API
+- **flowsdn flows from a real agent** — the Flows tab reads flowsdn's `GET /v1/flows` (flowsdn#485, #235), seen
+  only over a stand-in agent in its documented shape. **Another node's flowsdn agent** — its API
   is loopback only, so each node's console shows its own. Endpoint and
   Service scoping by namespace is unit-tested and not yet run live against
   RBAC (the rig has no apiserver).
