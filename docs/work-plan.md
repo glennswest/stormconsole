@@ -2808,6 +2808,9 @@ console that made it; another node's sweep asked only "deleted or disabled?".
 - Not seen: two real pvetest nodes. The two consoles in verify-users.sh share one
   real rustkube, which is what two nodes share; a pvetest two-node run waits on
   sign-in being on there (stormcos#200) and a test identity able to reset a password.
+- 2026-11-21: still held. #200's registry `[api]` landed (first image after it 6a826c80c4c0, da14aa8), but #200
+  is open, no release carries that console (newest 12.97: 3f5f110), and pvetest2/pvetest3 answer nothing on
+  :9094. No console change; the two-node check runs once a release with sign-in is on two nodes sharing an apiserver
 
 ### Node services' own projects (#375, stormcos#1020) ✅ 2026-11-19
 Already the console's behaviour (#162): `/api/plugins/k8s/projects` returns the
