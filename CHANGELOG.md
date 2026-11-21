@@ -3,6 +3,8 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.42.0] — 2026-11-21
+
 ### 2026-11-20 — Groups in console login (#334)
 - **feat:** groups, on Admin → Users. The owner: "Make groups now. We need that for drive and hardware management." A group is ConfigMap `storm-users/<name>-group` (label `storm.io/group`, a description, its members one user a line). Each of its roles is ClusterRoleBinding `storm-group:<group>:<role>`, whose subjects are the members' ServiceAccounts, rewritten whenever the members change.
 - **feat:** a group's roles are its members' own on the apiserver, so giving the drive team `storage-admin` once lets each of them format, asked of the apiserver as them. Sign-in, the 30 s sweep and the storage guard need no change. A `Group` subject would have granted nobody anything, since a ServiceAccount's token carries only `system:serviceaccounts[:<ns>]`.
