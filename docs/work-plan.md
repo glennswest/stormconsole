@@ -2813,6 +2813,7 @@ console that made it; another node's sweep asked only "deleted or disabled?".
 - 2026-11-21: still held. #200's registry `[api]` landed (first image after it 6a826c80c4c0, da14aa8), but #200
   is open, no release carries that console (newest 12.97: 3f5f110), and pvetest2/pvetest3 answer nothing on
   :9094. No console change; the two-node check runs once a release with sign-in is on two nodes sharing an apiserver
+- 2026-11-21 (later): pvetest2 and pvetest3 answer again, both on release 12.97, plain HTTP on :9094, `auth/session` `required: false`, `/api/v1/users` "[api] user_namespace is not set": the console from before #200's sign-in. pvetest1 is down. Still held; no console change
 - 2026-11-21 (later): still held. stormcos#200 shipped sign-in on the console golden (6a826c80c4c0) but is still open.
   pvetest1–3 answer nothing (no ping; :9094 silent over http and https), and this stormcentral has no `[stormipmi]`
   cluster to show their power. #390 (fdc6fdb) now also ends the old password's tokens upstream, not only the sessions;
