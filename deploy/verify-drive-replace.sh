@@ -99,7 +99,7 @@ storm-b = "http://127.0.0.1:$D2"
 [stormblock]
 url = "http://127.0.0.1:$E"
 CONF
-  for s in fleet logs stormstorage sbregistry vmimages fastetcd vm stormipmi stormcluster flowsdn health history; do printf '[%s]\nenabled = false\n' "$s"; done
+  for s in fleet logs stormstorage sbregistry vmimages fastetcd vm stormipmi stormcluster flowsdn health history ironprom; do printf '[%s]\nenabled = false\n' "$s"; done
 } >"$W/c.toml"
 mkdir -p "$W/c"
 "$BIN" --config "$W/c.toml" >>"$W/c.log" 2>&1 &
