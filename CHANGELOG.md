@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-21 — The session cookie is Secure over TLS (#388, finding cdbd818726df)
+- **fix:** a sign-in over TLS set its session cookie without `Secure`, so a browser would send it on a later `http://` request to the same host (a typed URL, a link), and the session id crossed the network before the plain-HTTP gate turned the request away. It is now `Secure` whenever the sign-in came over TLS, and sign-out clears it with the same attributes. A console serving plain HTTP leaves `Secure` off, or nobody could stay signed in. The gate already runs before the session is read, so a plain request never uses a session.
+- **test:** a unit test of the cookie over TLS, in the clear and with no connection info; `deploy/verify-client-cert.sh` §6b on a real TLS listener: the token signs in over TLS with a `Secure`, `HttpOnly`, `SameSite=Strict` cookie that reads, sign-out clears it `Secure`, and a sign-in in the clear on the TLS port is a 403 that sets no cookie.
+
 ## [v0.42.0] — 2026-11-21
 
 ### 2026-11-20 — Groups in console login (#334)

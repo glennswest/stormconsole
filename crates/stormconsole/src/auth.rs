@@ -1,6 +1,6 @@
 //! stormd-compatible authentication: named users + optional bearer token,
-//! HttpOnly in-memory sessions (24 h). With no credentials configured, the
-//! gate never appears.
+//! HttpOnly in-memory sessions (24 h), Secure when signed in over TLS
+//! (#388). With no credentials configured, the gate never appears.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -728,18 +728,38 @@ pub async fn login(
     let user = user.as_str();
     state.audit.sign_in(user, from, true);
     let id = state.sessions.create(user, via);
-    let cookie = format!(
-        "{SESSION_COOKIE}={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
-        SESSION_TTL.as_secs()
-    );
+    let cookie = session_cookie(&id, over_tls(&extensions));
     ([(header::SET_COOKIE, cookie)], Json(json!({"user": user}))).into_response()
+}
+
+/// Did this request come over TLS? The session cookie is then `Secure`, so
+/// a browser never sends it on a later `http://` request to the same host,
+/// where it would cross the network before the transport gate turns the
+/// request away (#388, finding cdbd818726df).
+fn over_tls(extensions: &axum::http::Extensions) -> bool {
+    extensions.get::<axum::extract::ConnectInfo<crate::listen::Peer>>().is_some_and(|c| c.0.tls)
+}
+
+/// The session cookie a sign-in sets: `Secure` when it was made over TLS. A
+/// console serving plain HTTP leaves it off, or the browser would never send
+/// it back and nobody could stay signed in.
+fn session_cookie(id: &str, secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{SESSION_COOKIE}={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}{secure}", SESSION_TTL.as_secs())
+}
+
+/// The cookie a sign-out sets to clear it, with the same attributes as the
+/// one it replaces.
+fn cleared_cookie(secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}")
 }
 
 pub async fn logout(State(state): State<AppState>, req: Request) -> Response {
     if let Some(id) = cookie_session(&req) {
         state.sessions.remove(&id);
     }
-    let clear = format!("{SESSION_COOKIE}=; Path=/; HttpOnly; Max-Age=0");
+    let clear = cleared_cookie(over_tls(req.extensions()));
     ([(header::SET_COOKIE, clear)], Json(json!({"ok": true}))).into_response()
 }
 
@@ -773,6 +793,29 @@ pub async fn session(State(state): State<AppState>, req: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn over(tls: bool) -> axum::http::Extensions {
+        let mut e = axum::http::Extensions::new();
+        e.insert(axum::extract::ConnectInfo(crate::listen::Peer { tls_on: tls, tls, ..Default::default() }));
+        e
+    }
+
+    /// #388 (finding cdbd818726df): a sign-in over TLS sets a `Secure`
+    /// session cookie, so the browser never sends it in the clear; a sign-in
+    /// on a plain-HTTP console does not, or it could never be sent back.
+    #[test]
+    fn a_session_cookie_made_over_tls_is_secure() {
+        assert!(over_tls(&over(true)));
+        assert!(!over_tls(&over(false)));
+        assert!(!over_tls(&axum::http::Extensions::new()), "no connection info is not TLS");
+        let tls = session_cookie("abc", over_tls(&over(true)));
+        assert!(tls.starts_with("stormconsole_session=abc; ") && tls.ends_with("; Secure"), "{tls}");
+        assert!(tls.contains("; HttpOnly; SameSite=Strict; Max-Age=86400"), "{tls}");
+        let plain = session_cookie("abc", over_tls(&over(false)));
+        assert!(!plain.contains("Secure"), "{plain}");
+        assert_eq!(cleared_cookie(true), "stormconsole_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Secure");
+        assert!(!cleared_cookie(false).contains("Secure"));
+    }
 
     fn cluster(stamp: &str) -> Via {
         Via::Cluster { token: "t".into(), roles: vec!["view".into()], stamp: stamp.into() }

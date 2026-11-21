@@ -138,6 +138,18 @@ WC=$(code -H "Authorization: Bearer node-$$" -X POST -H 'content-type: applicati
 check "$([ "$WC" != 401 ] && [ "$WC" != 403 ] && echo past)" "past" "and writes ($WC)"
 check "$(code -H 'Authorization: Bearer nope' "$S/api/plugins/logs/events?last=5")" "401" "another token is refused"
 
+say "6b. a sign-in over TLS sets a Secure cookie (#388, finding cdbd818726df)"
+H=$(tls -s -D - -o /dev/null -c "$W/jar" -H 'content-type: application/json' -d "{\"username\":\"\",\"password\":\"node-$$\"}" "$S/api/v1/auth/login" | tr -d '\r')
+has "$H" "^HTTP/[0-9.]* 200" "the token signs in over TLS"
+has "$(printf '%s\n' "$H" | grep -i '^set-cookie: stormconsole_session=')" "; Secure$" "its session cookie is Secure"
+has "$(printf '%s\n' "$H" | grep -i '^set-cookie: stormconsole_session=')" "HttpOnly; SameSite=Strict" "and still HttpOnly, SameSite=Strict"
+check "$(code -b "$W/jar" "$S/api/plugins/logs/events?last=5")" "200" "the session reads over TLS"
+H=$(tls -s -D - -o /dev/null -b "$W/jar" -X POST "$S/api/v1/auth/logout" | tr -d '\r')
+has "$(printf '%s\n' "$H" | grep -i '^set-cookie: stormconsole_session=')" "Max-Age=0; Secure$" "sign-out clears it with the same attributes"
+H=$(curl -s -D - -o /dev/null -H 'content-type: application/json' -d "{\"username\":\"\",\"password\":\"node-$$\"}" "http://127.0.0.1:$P/api/v1/auth/login" | tr -d '\r')
+has "$H" "^HTTP/[0-9.]* 403" "a sign-in in the clear on the TLS port is refused"
+check "$(printf '%s\n' "$H" | grep -ci '^set-cookie:')" "0" "and no cookie is set"
+
 say "7. forge's CA goes, then comes back: no restart"
 rm -f "$W/forge.crt"
 check "$(ascode stormcentral "$S/api/plugins/logs/events?last=5")" "401" "without the CA no certificate is accepted"

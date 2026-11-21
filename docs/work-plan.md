@@ -2915,3 +2915,12 @@ documents that as the design (the role bounds them), and the finding wants every
   rack and host ports already refuse with no identity (`may_act_upstream`)
 - Asked on the issue (refuse all / split workload+project writes from component settings / keep it), recommending the
   split; `wait-owner`. Also asked: does New project stay possible with no identity. No code until answered
+
+### The session cookie is Secure over TLS (#388, finding cdbd818726df) — 2026-11-21
+A sign-in over TLS set `stormconsole_session` without `Secure`, so a browser sent it on a later `http://` request,
+crossing the network before `transport_gate` refused it. The gate is already the outer layer (a plain request never
+reaches the session), so the fix is the attribute.
+- [x] `auth.rs`: `session_cookie`/`cleared_cookie`, `Secure` when `Peer::tls`; sign-out clears with the same attributes;
+      plain-HTTP consoles unchanged
+- [x] Unit test `a_session_cookie_made_over_tls_is_secure`; `verify-client-cert.sh` §6b (real TLS listener)
+- [ ] sc-build; `sc-build deploy/verify-client-cert.sh`; close

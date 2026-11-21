@@ -2322,7 +2322,9 @@ create, rather than showing nothing.
   certificate a `[[api.client_roles]]` rule names by CN or O is
   `cert:<CN>` with that role, carried to handlers as `ConnectInfo<Peer>`.
   The pair, CA and CRL are re-read when their mtimes move; handshakes run
-  off the accept loop. HttpOnly in-memory sessions (24 h); everything except `/healthz`,
+  off the accept loop. HttpOnly in-memory sessions (24 h), their cookie `Secure` when
+  signed in over TLS (`Peer::tls`, #388), so a browser never sends it in the clear
+  where the transport gate would refuse it only after it crossed; everything except `/healthz`,
   `/readyz`, `/api/version`, `/api/summary`, the auth endpoints and static
   assets requires a session or bearer; comparisons in constant time. The
   write gate is one check by method (§Who may do what).
