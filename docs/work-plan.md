@@ -2811,6 +2811,10 @@ console that made it; another node's sweep asked only "deleted or disabled?".
 - 2026-11-21: still held. #200's registry `[api]` landed (first image after it 6a826c80c4c0, da14aa8), but #200
   is open, no release carries that console (newest 12.97: 3f5f110), and pvetest2/pvetest3 answer nothing on
   :9094. No console change; the two-node check runs once a release with sign-in is on two nodes sharing an apiserver
+- 2026-11-21 (later): still held. stormcos#200 shipped sign-in on the console golden (6a826c80c4c0) but is still open.
+  pvetest1–3 answer nothing (no ping; :9094 silent over http and https), and this stormcentral has no `[stormipmi]`
+  cluster to show their power. #390 (fdc6fdb) now also ends the old password's tokens upstream, not only the sessions;
+  image requested with it. The two-node check is still what closes this
 
 ### Node services' own projects (#375, stormcos#1020) ✅ 2026-11-19
 Already the console's behaviour (#162): `/api/plugins/k8s/projects` returns the
