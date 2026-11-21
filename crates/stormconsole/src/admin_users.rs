@@ -1,4 +1,5 @@
-//! Admin → Users (#266): `/api/v1/users`, an administrator's.
+//! Admin → Users (#266): `/api/v1/users`, and its groups (#334):
+//! `/api/v1/groups`, an administrator's.
 //!
 //! Every change is made **as the signed-in administrator** — their minted
 //! token, or the install token — so the apiserver's RBAC decides it, as it
@@ -27,6 +28,10 @@ pub fn routes(state: AppState) -> Router {
         .route("/api/v1/users/{name}/password", put(password))
         .route("/api/v1/users/{name}/disabled", put(disabled))
         .route("/api/v1/users/{name}/roles", put(roles))
+        .route("/api/v1/groups", get(groups).post(create_group))
+        .route("/api/v1/groups/{name}", axum::routing::delete(delete_group))
+        .route("/api/v1/groups/{name}/members", put(group_members))
+        .route("/api/v1/groups/{name}/roles", put(group_roles))
         .with_state(state)
 }
 
@@ -73,7 +78,11 @@ async fn list(State(state): State<AppState>, viewer: Viewer) -> Response {
     // The roles are an offer, not the page: a refusal to list them leaves
     // the users listed.
     let offered = users.offered_roles(&token).await.unwrap_or_default();
-    Json(json!({"namespace": users.ns, "users": rows, "roles": offered, "you": viewer.user})).into_response()
+    let groups = match users.groups(&token).await {
+        Ok(g) => g,
+        Err(f) => return failed(f),
+    };
+    Json(json!({"namespace": users.ns, "users": rows, "groups": groups, "roles": offered, "you": viewer.user})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -82,6 +91,8 @@ struct NewUser {
     password: String,
     #[serde(default)]
     roles: Vec<String>,
+    #[serde(default)]
+    groups: Vec<String>,
 }
 
 async fn create(State(state): State<AppState>, viewer: Viewer, Json(b): Json<NewUser>) -> Response {
@@ -89,9 +100,9 @@ async fn create(State(state): State<AppState>, viewer: Viewer, Json(b): Json<New
         Ok(x) => x,
         Err(r) => return r,
     };
-    match users.create(&token, &b.name, &b.password, &b.roles).await {
+    match users.create(&token, &b.name, &b.password, &b.roles, &b.groups).await {
         Ok(()) => {
-            tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), user = %b.name, roles = %b.roles.join(","), "users: created");
+            tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), user = %b.name, roles = %b.roles.join(","), groups = %b.groups.join(","), "users: created");
             (StatusCode::CREATED, Json(json!({"created": b.name}))).into_response()
         }
         Err(f) => failed(f),
@@ -201,6 +212,103 @@ async fn roles(State(state): State<AppState>, viewer: Viewer, Path(name): Path<S
                 state.sessions.set_roles(&name, &r);
             }
             tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), user = %name, roles = %b.roles.join(","), "users: roles set");
+            Json(json!({"roles": b.roles})).into_response()
+        }
+        Err(f) => failed(f),
+    }
+}
+
+/// Roles changed for these users: in effect for their sessions here now,
+/// elsewhere at the next sweep (30 s).
+async fn refresh(state: &AppState, users: &Users, who: &[String]) {
+    for u in who {
+        if let Ok(r) = users.roles(u).await {
+            state.sessions.set_roles(u, &r);
+        }
+    }
+}
+
+async fn groups(State(state): State<AppState>, viewer: Viewer) -> Response {
+    let (users, token) = match admin(&state, &viewer) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    match users.groups(&token).await {
+        Ok(g) => Json(json!({"namespace": users.ns, "groups": g})).into_response(),
+        Err(f) => failed(f),
+    }
+}
+
+#[derive(Deserialize)]
+struct NewGroup {
+    name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    members: Vec<String>,
+    #[serde(default)]
+    roles: Vec<String>,
+}
+
+async fn create_group(State(state): State<AppState>, viewer: Viewer, Json(b): Json<NewGroup>) -> Response {
+    let (users, token) = match admin(&state, &viewer) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    match users.create_group(&token, &b.name, &b.description, &b.members, &b.roles).await {
+        Ok(()) => {
+            refresh(&state, &users, &b.members).await;
+            tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), group = %b.name, members = %b.members.join(","), roles = %b.roles.join(","), "users: group created");
+            (StatusCode::CREATED, Json(json!({"created": b.name}))).into_response()
+        }
+        Err(f) => failed(f),
+    }
+}
+
+async fn delete_group(State(state): State<AppState>, viewer: Viewer, Path(name): Path<String>) -> Response {
+    let (users, token) = match admin(&state, &viewer) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    match users.delete_group(&token, &name).await {
+        Ok(was) => {
+            refresh(&state, &users, &was).await;
+            tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), group = %name, "users: group deleted");
+            Json(json!({"deleted": name})).into_response()
+        }
+        Err(f) => failed(f),
+    }
+}
+
+#[derive(Deserialize)]
+struct Members {
+    members: Vec<String>,
+}
+
+async fn group_members(State(state): State<AppState>, viewer: Viewer, Path(name): Path<String>, Json(b): Json<Members>) -> Response {
+    let (users, token) = match admin(&state, &viewer) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    match users.set_members(&token, &name, &b.members).await {
+        Ok(touched) => {
+            refresh(&state, &users, &touched).await;
+            tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), group = %name, members = %b.members.join(","), "users: group members set");
+            Json(json!({"members": b.members})).into_response()
+        }
+        Err(f) => failed(f),
+    }
+}
+
+async fn group_roles(State(state): State<AppState>, viewer: Viewer, Path(name): Path<String>, Json(b): Json<Roles>) -> Response {
+    let (users, token) = match admin(&state, &viewer) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    match users.set_group_roles(&token, &name, &b.roles).await {
+        Ok(members) => {
+            refresh(&state, &users, &members).await;
+            tracing::info!(by = viewer.user.as_deref().unwrap_or("?"), group = %name, roles = %b.roles.join(","), "users: group roles set");
             Json(json!({"roles": b.roles})).into_response()
         }
         Err(f) => failed(f),

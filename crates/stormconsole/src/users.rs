@@ -15,6 +15,9 @@
 //!   `<role>`, the same label. Roles are read from *any* binding naming the
 //!   account, which is how admin's `cluster-admin` shows.
 //!
+//! - **A group** (#334): see [`crate::groups`]. Its role is a binding naming
+//!   each member's account, so it reads here like any other.
+//!
 //! Signing in verifies the hash, then asks the apiserver for a token for the
 //! account (a TokenRequest). That token is the session's identity upstream,
 //! so the person acts as themselves and RBAC decides: no impersonation, and
@@ -41,7 +44,7 @@ pub const SECRET_TYPE: &str = "storm.io/user-password";
 pub const SEEDED_BY: &str = "storm.io/seeded-by";
 pub const SEEDED_HASH: &str = "storm.io/seeded-hash";
 pub const ADMIN: &str = "admin";
-const RBAC: &str = "/apis/rbac.authorization.k8s.io/v1";
+pub(crate) const RBAC: &str = "/apis/rbac.authorization.k8s.io/v1";
 /// A minted token lives as long as a session.
 pub const TOKEN_SECONDS: u64 = 24 * 3600;
 
@@ -165,7 +168,12 @@ pub enum Still {
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 pub struct Row {
     pub name: String,
+    /// Every ClusterRole bound to the account: its own and its groups'.
     pub roles: Vec<String>,
+    /// The roles of its own bindings (`storm-user:<name>:<role>`, and admin's).
+    pub own: Vec<String>,
+    /// The groups it is in (#334).
+    pub groups: Vec<String>,
     pub disabled: bool,
     pub password: bool,
     pub created: Option<String>,
@@ -174,7 +182,7 @@ pub struct Row {
 }
 
 pub struct Users {
-    kube: Client,
+    pub(crate) kube: Client,
     pub ns: String,
     admin_file: Option<PathBuf>,
     /// The install-config's other users (#372): `<name>.hash` + `<name>.role`.
@@ -204,11 +212,11 @@ pub fn secret_hash(secret: &Value) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
-fn annotation<'a>(o: &'a Value, key: &str) -> Option<&'a str> {
+pub(crate) fn annotation<'a>(o: &'a Value, key: &str) -> Option<&'a str> {
     o.pointer("/metadata/annotations").and_then(|a| a.get(key)).and_then(Value::as_str)
 }
 
-fn label<'a>(o: &'a Value, key: &str) -> Option<&'a str> {
+pub(crate) fn label<'a>(o: &'a Value, key: &str) -> Option<&'a str> {
     o.pointer("/metadata/labels").and_then(|a| a.get(key)).and_then(Value::as_str)
 }
 
@@ -712,6 +720,9 @@ impl Users {
         let accounts = self.get_as(&format!("/api/v1/namespaces/{}/serviceaccounts", self.ns), as_).await?;
         let secrets = self.get_as(&format!("/api/v1/namespaces/{}/secrets", self.ns), as_).await?;
         let bindings = self.get_as(&format!("{RBAC}/clusterrolebindings"), as_).await?;
+        let groups = self.get_as(&format!("/api/v1/namespaces/{}/configmaps", self.ns), as_).await?;
+        let groups = crate::groups::rows(&groups, &bindings);
+        let own = crate::groups::without_groups(&bindings);
         let with_password: Vec<String> = items(&secrets)
             .filter(|s| s.get("type").and_then(Value::as_str) == Some(SECRET_TYPE))
             .filter_map(|s| s.pointer("/metadata/name").and_then(Value::as_str))
@@ -723,6 +734,8 @@ impl Users {
                 (name == ADMIN || label(a, USER_LABEL) == Some(name)).then(|| Row {
                     name: name.to_string(),
                     roles: roles_in(&bindings, &self.ns, name),
+                    own: roles_in(&own, &self.ns, name),
+                    groups: groups.iter().filter(|g| g.members.iter().any(|m| m == name)).map(|g| g.name.clone()).collect(),
                     disabled: annotation(a, DISABLED) == Some("true"),
                     password: with_password.iter().any(|p| p == name),
                     created: a.pointer("/metadata/creationTimestamp").and_then(Value::as_str).map(str::to_string),
@@ -747,17 +760,21 @@ impl Users {
     }
 
     /// Make a user: the account, its password Secret owned by it, its
-    /// bindings. A role that is not a ClusterRole is refused before anything
-    /// is written.
-    pub async fn create(&self, as_: &str, name: &str, password: &str, roles: &[String]) -> Result<(), Fail> {
+    /// bindings, its groups. A role that is not a ClusterRole, or a group
+    /// that is not one, is refused before anything is written.
+    pub async fn create(&self, as_: &str, name: &str, password: &str, roles: &[String], groups: &[String]) -> Result<(), Fail> {
         check_name(name)?;
         if password.is_empty() {
             return Err(Fail::Bad("a password is required".into()));
         }
-        if roles.is_empty() {
-            return Err(Fail::Bad("give the user a role".into()));
+        if roles.is_empty() && groups.is_empty() {
+            return Err(Fail::Bad("give the user a role or a group".into()));
         }
+        self.not_admin(name, "made here")?;
         self.known_roles(as_, roles).await?;
+        for g in groups {
+            self.group(as_, g).await?;
+        }
         let phc = hash_off_thread(password).await?;
         let account = json!({
             "apiVersion": "v1",
@@ -781,15 +798,21 @@ impl Users {
         for r in roles {
             self.bind(as_, name, r).await?;
         }
+        for g in groups {
+            self.join(as_, g, name).await?;
+        }
         Ok(())
     }
 
-    /// Delete a user: their labelled bindings, the Secret, the account.
-    /// Admin is refused; `<name>-ssh-keys` is left alone, as sc does.
+    /// Delete a user: out of every group, their labelled bindings, the
+    /// Secret, the account. Admin is refused; `<name>-ssh-keys` is left
+    /// alone, as sc does.
     pub async fn delete(&self, as_: &str, name: &str) -> Result<(), Fail> {
         check_name(name)?;
         self.not_admin(name, "deleted")?;
         self.is_user(as_, name).await?;
+        // First, so a user made again under this name is in no group.
+        self.leave_every_group(as_, name).await?;
         for b in self.labelled_bindings(as_, name).await? {
             self.remove(&format!("{RBAC}/clusterrolebindings/{b}"), as_).await?;
         }
@@ -853,14 +876,15 @@ impl Users {
         }
     }
 
-    /// Make a user's labelled bindings exactly these roles.
+    /// Make a user's labelled bindings exactly these roles. None is right
+    /// for a user whose roles come from a group.
     pub async fn set_roles(&self, as_: &str, name: &str, roles: &[String]) -> Result<(), Fail> {
         check_name(name)?;
         self.not_admin(name, "given other roles")?;
-        if roles.is_empty() {
-            return Err(Fail::Bad("give the user a role".into()));
-        }
         self.is_user(as_, name).await?;
+        if roles.is_empty() && self.groups_of(as_, name).await?.is_empty() {
+            return Err(Fail::Bad("give the user a role, or put them in a group".into()));
+        }
         self.known_roles(as_, roles).await?;
         let prefix = format!("storm-user:{name}:");
         let have = self.labelled_bindings(as_, name).await?;
@@ -877,14 +901,14 @@ impl Users {
         Ok(())
     }
 
-    fn not_admin(&self, name: &str, what: &str) -> Result<(), Fail> {
+    pub(crate) fn not_admin(&self, name: &str, what: &str) -> Result<(), Fail> {
         if name == ADMIN {
             return Err(Fail::Bad(format!("admin is stormcos's account and is not {what} here")));
         }
         Ok(())
     }
 
-    async fn is_user(&self, as_: &str, name: &str) -> Result<Value, Fail> {
+    pub(crate) async fn is_user(&self, as_: &str, name: &str) -> Result<Value, Fail> {
         let a = self.get_as(&self.account(name), as_).await?;
         if name != ADMIN && label(&a, USER_LABEL) != Some(name) {
             return Err(Fail::Bad(format!("{}/{name} is a ServiceAccount, not a user", self.ns)));
@@ -892,7 +916,7 @@ impl Users {
         Ok(a)
     }
 
-    async fn known_roles(&self, as_: &str, roles: &[String]) -> Result<(), Fail> {
+    pub(crate) async fn known_roles(&self, as_: &str, roles: &[String]) -> Result<(), Fail> {
         for r in roles {
             match self.get_as(&format!("{RBAC}/clusterroles/{r}"), as_).await {
                 Ok(_) => {}
@@ -922,7 +946,7 @@ impl Users {
             .collect())
     }
 
-    async fn get_as(&self, path: &str, as_: &str) -> Result<Value, Fail> {
+    pub(crate) async fn get_as(&self, path: &str, as_: &str) -> Result<Value, Fail> {
         let resp = self.kube.get_raw_as(path, Some(as_)).await.map_err(|e| Fail::Upstream(e.to_string()))?;
         let status = resp.status().as_u16();
         let body: Value = resp.json().await.unwrap_or(Value::Null);
@@ -934,7 +958,7 @@ impl Users {
     }
 
     /// A create (POST to a collection), or with `replace` a PUT of the object.
-    async fn write(&self, replace: bool, path: &str, body: &Value, as_: &str) -> Result<Value, Fail> {
+    pub(crate) async fn write(&self, replace: bool, path: &str, body: &Value, as_: &str) -> Result<Value, Fail> {
         let r = if replace {
             self.kube.put_json(path, body, Some(as_)).await
         } else {
@@ -947,7 +971,7 @@ impl Users {
         }
     }
 
-    async fn remove(&self, path: &str, as_: &str) -> Result<(), Fail> {
+    pub(crate) async fn remove(&self, path: &str, as_: &str) -> Result<(), Fail> {
         match self.kube.delete(path, Some(as_)).await {
             Ok(s) if s.is_success() || s.as_u16() == 404 => Ok(()),
             Ok(s) => Err(Fail::from_status(s.as_u16(), &Value::Null)),
@@ -1000,11 +1024,11 @@ fn message(b: &Value) -> String {
     b.get("message").and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
-fn items(v: &Value) -> impl Iterator<Item = &Value> {
+pub(crate) fn items(v: &Value) -> impl Iterator<Item = &Value> {
     v.get("items").and_then(Value::as_array).into_iter().flatten()
 }
 
-fn check_name(name: &str) -> Result<(), Fail> {
+pub(crate) fn check_name(name: &str) -> Result<(), Fail> {
     if is_name(name) {
         Ok(())
     } else {

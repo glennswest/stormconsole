@@ -10,6 +10,7 @@ mod metrics;
 #[cfg(test)]
 mod rbac;
 mod users;
+mod groups;
 mod admin_users;
 mod server;
 

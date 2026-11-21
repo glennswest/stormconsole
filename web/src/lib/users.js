@@ -36,12 +36,36 @@ export function nameProblem(name) {
   return ''
 }
 
-/// What is wrong with a new user before it is sent; '' when nothing.
-export function newUserProblem({ name, password, again, roles }) {
+/// What is wrong with a new user before it is sent; '' when nothing. A
+/// group can stand in for a role (#334).
+export function newUserProblem({ name, password, again, roles, groups }) {
   return (
     nameProblem(name) ||
     (!password ? 'a password is required' : '') ||
     (password !== again ? 'the passwords differ' : '') ||
-    (!roles || !roles.length ? 'give the user a role' : '')
+    (!roles?.length && !groups?.length ? 'give the user a role or a group' : '')
   )
 }
+
+/// A group's name: a user's rule, less room for `-group` (#334).
+export function groupNameProblem(name) {
+  if (name && name.length > 57) return 'at most 57 characters'
+  return nameProblem(name)
+}
+
+/// The roles a user holds through their groups and not in their own right,
+/// each with the groups it comes from.
+export function viaGroups(user, groups) {
+  const out = new Map()
+  for (const g of groups || []) {
+    if (!(g.members || []).includes(user.name)) continue
+    for (const r of g.roles || []) {
+      if ((user.own || []).includes(r)) continue
+      out.set(r, [...(out.get(r) || []), g.name])
+    }
+  }
+  return [...out].map(([role, from]) => ({ role, from })).sort((a, b) => a.role.localeCompare(b.role))
+}
+
+/// Who may be put in a group: every user but stormcos's own admin.
+export const memberChoices = (users) => (users || []).filter((u) => !u.builtin).map((u) => u.name)
