@@ -129,7 +129,7 @@ the real upstreams it needs on dev and deleting them after:
 | `verify-history.sh` | the node history API and page (#121) — system-data written by the real writers (stormblock's `/init` block, stormpump's `Writer` and crash collection, stormdrive), a drive's past as a fixture in stormdrive's shape, real consoles (a token, a diskless node, a failed mount), Chromium |
 | `verify-client-cert.sh` | TLS on :9094 and forge-CA client certificates (#48, #127): openssl node, forge and stranger CAs; plain HTTP health only (308 for a GET, 403 for a POST); a viewer certificate reads the logs and is refused a write; an operator's write passes; another CA's, an expired, an unmapped and no certificate each 401 saying why; the token still admin; the CA removed and restored and the serving pair renewed with no restart; contradictions exit 78 |
 | `verify-logs-full.sh` | the log ring on a full disk (#128): a real console's ring on an 8 MiB tmpfs in an unprivileged user+mount namespace — a flood several times the volume stays under it, a filler file forces ENOSPC and the ring reopens (reads never say "Previous I/O error"), a restart on a full volume serves; bytes per entry on an ordinary disk |
-| `verify-users.sh` | users kept on the apiserver (#266): a real rustkube release and fastetcd with stormcos's `storm-users`, admin bound to `cluster-admin` and the storage roles; the console on exactly `deploy/rbac/stormconsole.yaml` — admin-password seeded from the install's hash, admin signs in as `storm-users/admin` and passes every guard, users made in sc#27's shape, a storage-admin passes the storage guard and nothing else, a hand-written (sc) user signs in, disable/password/roles/delete in effect at once and on another console within the sweep (a reset there and a hash written by hand, #374), reseeding by the rule, the apiserver down (503, the node bearer still in), Chromium on the login page and Admin → Users |
+| `verify-users.sh` | users kept on the apiserver (#266): a real rustkube release and fastetcd with stormcos's `storm-users`, admin bound to `cluster-admin` and the storage roles; the console on exactly `deploy/rbac/stormconsole.yaml` — admin-password seeded from the install's hash, admin signs in as `storm-users/admin` and passes every guard, users made in sc#27's shape, a storage-admin passes the storage guard and nothing else, a hand-written (sc) user signs in, disable/password/roles/delete in effect at once and on another console within the sweep (a reset there and a hash written by hand, #374), reseeding by the rule, the apiserver down (503, the node bearer still in); groups (#334): a group's storage-admin allows a member a format, asked of the apiserver as them, and is gone when they leave, a user made in a group, deleted out of it, a new one under the name inheriting nothing; Chromium on the login page and Admin → Users, a group made and deleted from the page |
 | `verify-install-token.sh` | `[api] install_token_file` (#66): one `token-auth.csv` in stormpump's format read by a real rustkube apiserver (`--token-auth-file`) and the console — no file → no sign-in; written → sign-in and bearer as `system:admin`, admin; a project made through the console requested by `system:admin`, not the console's credential; rewritten → the old session ends, the new token works; removed → refused; Chromium on the login page's token mode, alone and beside a user |
 | `verify-auth-file.sh` | `[api] auth_token_file` (#102): no file → closed (health only, the reason logged), minted → bearer and sign-in work, re-minted → the old bearer refused, removed → closed again, all without a restart; `auth_token` with it → exit 78 |
 | `verify-storage-token.sh` | stormstorage's write token through the proxy (#53): a real stormstorage with `[api] api_token` — with `token_file` the feed's actions pass its check, without it (or with the browser sending the token) 401, an unreadable file warned, a DELETE left to the storage guard |
@@ -317,6 +317,22 @@ warns about that on every start.
   resetting their own keeps the session they did it from), on every other console within the sweep. API: `GET|POST /api/v1/users`, `DELETE /api/v1/users/{name}`,
   `PUT /api/v1/users/{name}/password|disabled|roles`; audited as **Users**. The console's rights
   for this are in `docs/rbac.md`.
+- **Groups** (#334, on the Users page): give a team a role once, e.g. `storage-admin` to the
+  people who replace and format drives. A group is ConfigMap `storm-users/<name>-group`
+  (label `storm.io/group`, `data.description`, `data.members` one user a line); each of its roles
+  is ClusterRoleBinding `storm-group:<group>:<role>` whose subjects are **the members'
+  ServiceAccounts**, rewritten whenever the members change. A person signs in as their
+  ServiceAccount, whose token carries no group of ours, so a `Group` subject would grant nobody
+  anything; naming the accounts means the apiserver's RBAC gives each member the group's roles as
+  their own, and sign-in, the 30 s sweep and the storage guard read them unchanged. A user's row
+  shows their own roles, their groups and what comes from them; a user may be made in a group with
+  no role of their own. Members are users, never `admin`. Deleting a user takes them out of every
+  group first, so a user made again under the name inherits nothing; deleting a group leaves its
+  users. Changes are made as the signed-in administrator and are in effect for the members'
+  sessions here at once, elsewhere within the sweep. API: `GET|POST /api/v1/groups`,
+  `DELETE /api/v1/groups/{name}`, `PUT /api/v1/groups/{name}/members|roles`, and `groups` on
+  `POST /api/v1/users`; audited as **Users**. Hardware (BMC power) is still the console's `admin`
+  role, so a group grants it only through `cluster-admin`.
 - **The install-time API token** (#66, storminstall#1): the token
   `storminstall wait` prints with the console's URL signs in with no user
   name. The session is `system:admin` (the file's user), an `admin`, and

@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-20 — Groups in console login (#334)
+- **feat:** groups, on Admin → Users. The owner: "Make groups now. We need that for drive and hardware management." A group is ConfigMap `storm-users/<name>-group` (label `storm.io/group`, a description, its members one user a line). Each of its roles is ClusterRoleBinding `storm-group:<group>:<role>`, whose subjects are the members' ServiceAccounts, rewritten whenever the members change.
+- **feat:** a group's roles are its members' own on the apiserver, so giving the drive team `storage-admin` once lets each of them format, asked of the apiserver as them. Sign-in, the 30 s sweep and the storage guard need no change. A `Group` subject would have granted nobody anything, since a ServiceAccount's token carries only `system:serviceaccounts[:<ns>]`.
+- **feat:** the Users page: a Groups table (members, roles, edit each, delete by typing the name) and a New group form. Each user's row shows their own roles, their groups and the roles that come from them (dashed, naming the group). A new user can be put in groups, and may have no role of their own when they are in one.
+- **feat:** `GET|POST /api/v1/groups`, `DELETE /api/v1/groups/{name}`, `PUT /api/v1/groups/{name}/members|roles`, and `groups` on `POST /api/v1/users`, all admin only and done as the signed-in administrator. User rows carry `own` and `groups`. A change is in effect for the members' sessions here at once, and elsewhere within the sweep. Audited as **Users**.
+- **feat:** members are users, never `admin`. A user deleted leaves every group first, so a user made again under the name inherits nothing. Deleting a group leaves its users. A member, role or group that is not there is a 400, and nothing is written.
+- **test:** `groups.rs` unit tests, `users.test.mjs`, and `deploy/verify-users.sh` §8b against a real rustkube: the guard is allowed for a member and refused once they leave, a user is made in a group and deleted out of it, a new user under the old name inherits nothing, and the refusals. Chromium `users.cjs`: a group made from the form, shown on the member's row, a wrong name deleting nothing, then deleted.
+
 ## [v0.41.0] — 2026-11-20
 
 ### 2026-11-20 — Update page: Cancel before any node reboots (#196, stormupdate#36)

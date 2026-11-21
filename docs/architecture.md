@@ -537,7 +537,7 @@ what and how it ended, under `<data_dir>/audit.jsonl` (two files of 4 MiB at mos
 and never the query or body, since a console door's `?token=` is in the query. `#/audit` and
 `GET /api/v1/console/audit` are an administrator's. It records a console opening, not how long it stayed open.
 
-Users kept on the apiserver (#266, stormcos#802) are built: `[api] user_namespace` turns it on, the install's `admin_password_file` is seeded into `storm-users/admin-password`, the install-config's other users (`users/<name>.{hash,role}`, stormpump#242) are made as admin by the same rule (#372), and Admin → Users manages them (see README). `[[api.users]]` in a file still works. A console with no sign-in at all acts as root (#165).
+Users kept on the apiserver (#266, stormcos#802) are built: `[api] user_namespace` turns it on, the install's `admin_password_file` is seeded into `storm-users/admin-password`, the install-config's other users (`users/<name>.{hash,role}`, stormpump#242) are made as admin by the same rule (#372), and Admin → Users manages them (see README). `[[api.users]]` in a file still works. Groups (#334) give a team roles once: ConfigMap `<name>-group` and bindings `storm-group:<group>:<role>` whose subjects are the members' ServiceAccounts, not a `Group`, because a ServiceAccount's token carries only `system:serviceaccounts[:<ns>]` (rustkube `auth.rs`); so RBAC gives a member the group's roles as their own and nothing in sign-in changes. A console with no sign-in at all acts as root (#165).
 
 ### The network's view, inside the views people use
 

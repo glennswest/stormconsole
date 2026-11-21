@@ -132,6 +132,11 @@ With `[api] user_namespace = "storm-users"`, people sign in as users kept on the
 token is bound to `cluster-admin` by `89-storm-users.yaml`), so RBAC checks them as it checks `sc user`. The console
 never binds a role on its own credential, which would let its role grant anyone anything.
 
+**Groups (#334) need nothing more either.** A group's ConfigMap `<name>-group` and its bindings
+`storm-group:<group>:<role>` are read and written as the signed-in administrator, like the Users page's. The
+bindings name each member's ServiceAccount, so sign-in's `clusterrolebindings` get/list above already sees a
+member's group roles.
+
 **Install-config users (#372)** need nothing more either. For each `<name>.hash` + `<name>.role` stormpump#242
 writes under `users/`, the console reads the Secret, account and bindings on its own credential (the rows above), and
 when something must be written it mints a token for `storm-users/admin` (the `serviceaccounts/token` right above) and

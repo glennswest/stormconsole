@@ -303,6 +303,61 @@ check "$(sess js)" "True stor viewer" "stor's session reads, without signing in 
 check "$(as js POST /api/plugins/drive/format '{}')" 403 "the write gate refuses stor now"
 check "$(as ja PUT /api/v1/users/admin/roles '{"roles":["storage-viewer"]}')" 400 "admin's roles are stormcos's: 400"
 
+say "8b. groups (#334): a group's role is held by each member, upstream"
+G=/api/v1/namespaces/storm-users/configmaps
+check "$(as js POST /api/v1/groups '{"name":"drives","roles":["storage-admin"]}')" 403 "a non-admin makes no group"
+check "$(as ja POST /api/v1/groups '{"name":"drives","description":"replaces drives","members":["view"],"roles":["storage-admin"]}')" 201 "admin makes drives (storage-admin), view in it"
+check "$(k GET "$G/drives-group" | j '(d["metadata"]["labels"]["storm.io/group"], d["data"]["members"], d["data"]["description"])')" \
+  "('drives', 'view', 'replaces drives')" "ConfigMap drives-group: labelled, its members and description"
+check "$(k GET "$RBAC/clusterrolebindings/storm-group:drives:storage-admin" | j '(d["roleRef"]["name"], [(x["kind"], x["name"], x["namespace"]) for x in d["subjects"]], d["metadata"]["labels"]["storm.io/group"])')" \
+  "('storage-admin', [('ServiceAccount', 'view', 'storm-users')], 'drives')" "its binding names view's account"
+check "$(sess jv)" "True view storage-admin" "view's session holds it now, without signing in again"
+as jv GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format' >/dev/null
+check "$(j 'd["guard"]["allowed"]' < "$W/out")" True "the apiserver allows view a format: asked as storm-users/view, RBAC through the group"
+check "$(as jv POST /api/plugins/drive/format '{}')" 428 "past the write gate, to the typed word"
+as ja GET /api/v1/users >/dev/null
+check "$(j '[(u["name"], u["own"], u["groups"], u["roles"]) for u in d["users"] if u["name"]=="view"]' < "$W/out")" \
+  "[('view', ['storage-viewer'], ['drives'], ['storage-admin', 'storage-viewer'])]" "Users: view's own role, its group, and both"
+check "$(j '[(g["name"], g["members"], g["roles"]) for g in d["groups"]]' < "$W/out")" "[('drives', ['view'], ['storage-admin'])]" "and the group"
+check "$(as ja POST /api/v1/groups '{"name":"drives"}')" 409 "a taken group name: 409"
+check "$(as ja POST /api/v1/groups '{"name":"Drives"}')" 400 "a bad name: 400"
+check "$(as ja POST /api/v1/groups '{"name":"bad","members":["ghost"]}')" 400 "a member who is no user: 400 ($(cat "$W/out"))"
+check "$(as ja POST /api/v1/groups '{"name":"bad","roles":["storage-wizard"]}')" 400 "a role that is not there: 400"
+check "$(kcode GET "$G/bad-group")" 404 "and nothing of bad was written"
+check "$(as ja PUT /api/v1/groups/drives/members '{"members":["admin"]}')" 400 "admin is in no group"
+check "$(as ja PUT /api/v1/groups/drives/members '{"members":["default"]}')" 400 "nor an account that is no user"
+check "$(as ja PUT /api/v1/groups/drives/members '{"members":[]}')" 200 "view taken out"
+check "$(k GET "$RBAC/clusterrolebindings/storm-group:drives:storage-admin" | j 'len(d.get("subjects") or [])')" 0 "the binding names nobody"
+check "$(sess jv)" "True view viewer" "view reads again"
+as jv GET /api/v1/console/guard'?method=POST&path=/api/plugins/drive/format' >/dev/null
+check "$(j 'd["guard"]["allowed"]' < "$W/out")" False "and the apiserver refuses view a format"
+check "$(as ja PUT /api/v1/groups/drives/members '{"members":["view","stor"]}')" 200 "view and stor in drives"
+check "$(k GET "$RBAC/clusterrolebindings/storm-group:drives:storage-admin" | j 'sorted(x["name"] for x in d["subjects"])')" "['stor', 'view']" "the binding names both"
+check "$(sess js)" "True stor storage-admin" "stor holds storage-admin through drives"
+check "$(as ja PUT /api/v1/groups/drives/roles '{"roles":["storage-admin","view"]}')" 200 "drives gets view too"
+check "$(k GET "$RBAC/clusterrolebindings/storm-group:drives:view" | j 'sorted(x["name"] for x in d["subjects"])')" "['stor', 'view']" "a second binding, naming the members"
+check "$(as ja PUT /api/v1/groups/drives/roles '{"roles":["storage-admin"]}')" 200 "and loses it"
+check "$(kcode GET "$RBAC/clusterrolebindings/storm-group:drives:view")" 404 "that binding is gone"
+check "$(as ja PUT /api/v1/users/view/roles '{"roles":[]}')" 200 "a user in a group may have no role of their own"
+check "$(as ja PUT /api/v1/users/view/roles '{"roles":["storage-viewer"]}')" 200 "(view's own role back)"
+check "$(as ja POST /api/v1/users '{"name":"erin","password":"e-pw","groups":["drives"]}')" 201 "erin made in drives, with no role of her own"
+check "$(as ja POST /api/v1/users '{"name":"fay","password":"f-pw"}')" 400 "a user with neither: 400"
+check "$(as ja POST /api/v1/users '{"name":"fay","password":"f-pw","groups":["nosuch"]}')" 400 "a group that is not there: 400"
+check "$(kcode GET "$SAS/fay")" 404 "and nothing of fay was written"
+check "$(login je erin e-pw)" 200 "erin signs in"
+check "$(sess je)" "True erin storage-admin" "a storage-admin, through drives"
+check "$(as ja DELETE /api/v1/users/erin)" 200 "erin deleted"
+check "$(k GET "$G/drives-group" | j 'd["data"]["members"]')" "$(printf 'stor\nview')" "and out of drives"
+check "$(k GET "$RBAC/clusterrolebindings/storm-group:drives:storage-admin" | j 'sorted(x["name"] for x in d["subjects"])')" "['stor', 'view']" "and out of its binding"
+check "$(as ja POST /api/v1/users '{"name":"erin","password":"e-pw","roles":["view"]}')" 201 "a new erin"
+check "$(login je erin e-pw)$(sess je)" "200True erin viewer" "inherits nothing of the old one's group"
+check "$(as ja DELETE /api/v1/users/erin)" 200 "(erin deleted)"
+check "$(as ja DELETE /api/v1/groups/drives)" 200 "drives deleted"
+check "$(kcode GET "$G/drives-group")$(kcode GET "$RBAC/clusterrolebindings/storm-group:drives:storage-admin")" 404404 "its ConfigMap and binding are gone"
+check "$(sess js)$(sess jv)" "True stor viewerTrue view viewer" "its members read again; the users stay"
+check "$(as ja DELETE /api/v1/groups/drives)" 400 "a group that is not there: 400"
+grep -rqs 'groups/drives/members' "$W/d$P" && echo "  ok   the audit records a group's members set" || { echo "  FAIL no groups audit line"; FAILED=$((FAILED+1)); }
+
 say "9. another node's console: the sweep ends a deleted user's session there"
 conf "$W/c2.toml" "$P2" n2
 "$BIN" --config "$W/c2.toml" > "$W/c2.log" 2>&1 &
