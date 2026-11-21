@@ -421,18 +421,18 @@
                     <td class="mono small" title={f.time}>{clock(f.time)}</td>
                     {#each [f.source, f.destination] as x}
                       <td>
-                        {#if x.kind === 'pod'}<a href="#/pod/{x.namespace}/{x.pod}">{x.namespace}/{x.pod}</a>{#if x.node} <span class="dim small">on {x.node}</span>{/if}
+                        {#if x.kind === 'pod'}<a href="#/pod/{x.namespace}/{x.pod}">{x.namespace}/{x.pod}</a>{#if x.node}{' '}<span class="dim small">on {x.node}</span>{/if}
                         {:else if x.kind === 'host'}this node
                         {:else if x.kind === 'remote-node'}node {x.node || '(unnamed)'}
                         {:else if x.kind === 'reserved'}{x.reserved}
                         {:else}identity {x.identity ?? '?'}{/if}
-                        <div class="mono small dim">{hostPort(x)}{#if x.workloads?.length} · {x.workloads.join(', ')}{/if}</div>
+                        <div class="mono small dim">{hostPort(x)}{#if x.workloads?.length}{' · '}{x.workloads.join(', ')}{/if}</div>
                       </td>
                     {/each}
                     <td>{f.protocol}</td>
                     <td>{f.direction.toLowerCase()}</td>
                     <td class:bad={f.verdict === 'DROPPED'} class:warn={f.verdict === 'AUDIT'}>
-                      {VERDICTS[f.verdict] || f.verdict}{#if f.drop_reason} <span class="dim small">{f.drop_reason.toLowerCase().replaceAll('_', ' ')}</span>{/if}
+                      {VERDICTS[f.verdict] || f.verdict}{#if f.drop_reason}{' '}<span class="dim small">{f.drop_reason.toLowerCase().replaceAll('_', ' ')}</span>{/if}
                     </td>
                   </tr>
                 {/each}
