@@ -2822,6 +2822,10 @@ console that made it; another node's sweep asked only "deleted or disabled?".
   release 12.97: plain HTTP on :9094, `auth/session` `required: false`, `/api/v1/users` "[api] user_namespace is not
   set". No apiserver users to reset, so the two-node check cannot run; stormcos#200 still open. No console change
 
+- 2026-11-22: unchanged (pvetest2/3 on 12.97 without sign-in, pvetest1 silent, stormcos#200 open, no owner answer).
+  Queued so it comes back on its own: `--after stormcos#200`, `--after-install stormconsole>=fdc6fdb@any:pve` and
+  `rustkube>=a771982@any:pve` (#390's token half needs rustkube#182). The owner's call (close on the two-console
+  rig instead) still stands
 ### Node services' own projects (#375, stormcos#1020) ✅ 2026-11-19
 Already the console's behaviour (#162): `/api/plugins/k8s/projects` returns the
 `system` projects the apiserver lists for the viewer (rustkube: every
