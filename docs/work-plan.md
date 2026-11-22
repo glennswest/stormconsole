@@ -2977,6 +2977,8 @@ documents that as the design (the role bounds them), and the finding wants every
   rack and host ports already refuse with no identity (`may_act_upstream`)
 - Asked on the issue (refuse all / split workload+project writes from component settings / keep it), recommending the
   split; `wait-owner`. Also asked: does New project stay possible with no identity. No code until answered
+- 2026-11-22: no answer yet, and the item was still being handed out: `wait-owner` set again, now with
+  `needs-owner` on the issue, so it is in Needs you and comes back only on the owner's answer
 
 ### The session cookie is Secure over TLS (#388, finding cdbd818726df) ✅ 2026-11-21
 A sign-in over TLS set `stormconsole_session` without `Secure`, so a browser sent it on a later `http://` request,
