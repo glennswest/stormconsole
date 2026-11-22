@@ -3,6 +3,10 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-22 — #380 held after stormdrive#184; #396 filed
+- **docs:** stormdrive#80 (the firmware manifest, v0.58.0) closed, but it records drive and IOM goldens only. `Kind` is drive or iom, and an unknown kind rejects the file. A card's flash (`card.rs`) still takes `image.source` as typed text. So the SAS cards page's Flash dialog still has no recorded golden to pick from. The card entries are filed as stormdrive#184, and #380 waits on it. No console change: the dialog keeps the node's store and the typed URL (#376).
+- **docs:** #396 filed: show what the manifest offers each drive and IOM, and apply it with `manifest: true`. Nothing can be shown on a real node until the release ships a manifest (stormcos#1545).
+
 ### 2026-11-22 — stormview 0.5.0, and a web build with no warnings (#383)
 - **build:** `web/package-lock.json` takes stormview at main (0.5.0, d898402) instead of 0.4.0 (5ea5e60). Its root export has a `svelte` condition (stormview#14), so the web build no longer prints vite-plugin-svelte's "a svelte field in their package.json but no exports condition" warning. Only the stormview entry of the lock changed.
 - **what changes for the console from stormview:** a ComponentCard action that fails now says so under its buttons (stormview#30). Its button colours come from the action's tone, with danger, start and restart as before. `formatDuration` shows a negative duration (clock skew) as 0s. themes.css has `accent` and `muted` button tones. The DataGrid select-all and leaf-grid fixes and the LoginPanel's code steps are unused here: the console's grids are not selectable and set no `getChildren`, and its `login()` returns no `step`, so the panel never moves to a code step.

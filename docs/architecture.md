@@ -1401,7 +1401,9 @@ holds `cardoperations` create.
   source), reads the card as the same bearer (404 when it is not there, 409 when it is not
   present), and creates `<card>-<region>-<unix secs>` with stormdrive's spec. The image
   list in the dialog is the card's node's firmware store from the drive plugin's
-  `/firmware`; there is no golden registry yet (#380).
+  `/firmware`, and the source URL is typed. stormdrive's firmware manifest (stormdrive#80)
+  holds drive and IOM goldens only, none for a card; the picker over recorded goldens (#380)
+  waits on card entries (stormdrive#184). The drive and IOM manifest is #396.
 - Not here: `sc get/describe hba` (sc's generic get) and the flash verb (sc#156). SSC has no
   control in the public pages (stormdrive#164), so there is nothing to show for it.
 
@@ -2494,6 +2496,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormcluster | [#11](https://github.com/glennswest/stormcluster/issues/11) a dry-run plan's steps carry no description | the console copies `Step::describe` |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
+| stormdrive | [#184](https://github.com/glennswest/stormdrive/issues/184) card entries in the firmware manifest, offered on HostBusAdapter | the Flash dialog picking a recorded golden with its source and sha256 (#380) |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
 | stormconsole | #42 where SSH keys live; #266 login and users | — |

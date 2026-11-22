@@ -2905,12 +2905,13 @@ charts (stormcos#1466).
 - [x] `deploy/verify-drive-integrity.sh` (real rustkube + stormraid's CRD, the role, Chromium): 0 failed (sc-build-b685827593); clippy -D warnings, vite clean; v0.40.0 (3f728ce), image 45c3d14fdc72, shipped (proof: the node's SPA has `drives/integrity`)
 - [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466` (#385 done 2026-11-21, below)
 
-### Flash picker over recorded firmware goldens (#380) — 2026-11-22, held after stormdrive#80
-No registry to pick from. stormdrive#80 (the firmware manifest) is open, and stormdrive d9aa7af reads none: `card.rs`
-takes `image.source` typed and checks the store file's sha256. compliance-ops#23 closed by itself on 2026-11-20 (its
-stormdrive#29 decision closed) with nothing built. stormcentral's goldens are kernel modules and Fedora firmware, not
-vendor HBA or drive images. Said on the issue; proposed `--after stormdrive#80`. No console change: the Flash dialog
-keeps the node's firmware store and the typed URL (#376)
+### Flash picker over recorded firmware goldens (#380) — 2026-11-22, held after stormdrive#184
+Rechecked 2026-11-22: stormdrive#80 closed (v0.58.0, a634602): `src/fwmanifest.rs`, `/pallets/firmware/manifest.toml`.
+It records drive and IOM goldens only. `Kind` is `Drive | Iom`, and an unknown kind rejects the file. `card.rs`
+still takes `image.source` typed and checks the store sha256. So there is still no card golden to pick. Filed
+stormdrive#184 (`kind = "card"` per region, HostBusAdapter `firmwareAvailable`, the flash taking its source from the
+record). Filed #396 here for what #80 does enable: drive/IOM offers and `manifest: true`, with nothing to show live
+until stormcos#1545 ships a manifest. No console change for #380; proposed `--after stormdrive#184`
 
 ### stormview 0.5.0, and a web build with no warnings (#383) ✅ 2026-11-22
 - [x] lock: stormview main (0.5.0, d898402), from `npm update stormview` on a build VM; only its entry changed
