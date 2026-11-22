@@ -6,9 +6,44 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 // web/dist stay stable across builds.
 const target = process.env.STORMCONSOLE_URL || 'http://localhost:9094'
 
+// Zero warnings (#383, stormcentral#193): a build fails on a Svelte compiler warning in our code and on any of
+// vite-plugin-svelte's own (a package with a `svelte` field and no `svelte` export condition, as stormview@0.4.0
+// was). The plugin prints its own through console.warn as `[vite-plugin-svelte] WARNING: …`, from its config hook,
+// so a build records those as it prints them. Compiler warnings come through `onwarn`, which records and prints
+// each of our own (a package's own are left to the plugin, which shows them only when debugging, as before), so
+// none is counted twice. Every one is printed, and the build ends on them.
+const warned = []
+if (process.argv.includes('build')) {
+  const warn = console.warn.bind(console)
+  console.warn = (...args) => {
+    const text = args.map(String).join(' ')
+    if (text.includes('[vite-plugin-svelte]')) warned.push(text.replace(/\x1b\[[0-9;]*m/g, '').split('\n')[0])
+    warn(...args)
+  }
+}
+const strict = {
+  name: 'stormconsole-zero-warnings',
+  apply: 'build',
+  buildEnd(error) {
+    if (!error && warned.length) {
+      this.error(`the web build has ${warned.length} warning(s), and it must have none (#383):\n  ${warned.join('\n  ')}`)
+    }
+  },
+}
+
 export default defineConfig({
   base: '/',
-  plugins: [svelte()],
+  plugins: [
+    svelte({
+      onwarn(w, handle) {
+        if (w.filename?.includes('node_modules')) return handle(w)
+        const line = `svelte ${w.code}: ${w.filename}:${w.start?.line ?? '?'}:${w.start?.column ?? '?'} ${w.message.split('\n')[0]}`
+        warned.push(line)
+        console.error(`warning: ${line}${w.frame ? `\n${w.frame}` : ''}`)
+      },
+    }),
+    strict,
+  ],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

@@ -2901,6 +2901,14 @@ charts (stormcos#1466).
 - [x] `deploy/verify-drive-integrity.sh` (real rustkube + stormraid's CRD, the role, Chromium): 0 failed (sc-build-b685827593); clippy -D warnings, vite clean; v0.40.0 (3f728ce), image 45c3d14fdc72, shipped (proof: the node's SPA has `drives/integrity`)
 - [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466` (#385 done 2026-11-21, below)
 
+### stormview 0.5.0, and a web build with no warnings (#383) — 2026-11-22
+- [x] lock: stormview main (0.5.0, d898402), from `npm update stormview` on a build VM; only its entry changed
+- [x] read stormview 5ea5e60..main for what the console uses: ComponentCard (failure shown, tones), formatDuration
+      (negative → 0s), themes.css (accent, muted). DataGrid's select-all/getChildren: null and LoginPanel's code
+      steps are unused here (no selectable grid, no getChildren; `login()` returns no `step`)
+- [x] `vite.config.js`: a build fails on any Svelte compiler warning of ours and any vite-plugin-svelte warning
+- [ ] sc-build; web build clean; negative controls (old lock, an `<img>` with no alt); verify-users, verify-crd-grid; web/dist
+
 ### The drive's own counters on its Integrity panel (#384) ✅ 2026-11-21
 #384 waited on stormblock#648's `errors` block reaching the Drive object (stormdrive#160, open, not built). But
 `status.health.smart` is already there (stormdrive#22/#64/#81; the CRD keeps `status` unpruned): SAS log pages
