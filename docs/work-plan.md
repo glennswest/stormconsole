@@ -2901,7 +2901,7 @@ charts (stormcos#1466).
 - [x] `deploy/verify-drive-integrity.sh` (real rustkube + stormraid's CRD, the role, Chromium): 0 failed (sc-build-b685827593); clippy -D warnings, vite clean; v0.40.0 (3f728ce), image 45c3d14fdc72, shipped (proof: the node's SPA has `drives/integrity`)
 - [x] two follow-up issues filed and held: #384 `--after stormdrive#149`, #385 `--after stormcos#1466` (#385 done 2026-11-21, below)
 
-### The drive's own counters on its Integrity panel (#384) — 2026-11-21
+### The drive's own counters on its Integrity panel (#384) ✅ 2026-11-21
 #384 waited on stormblock#648's `errors` block reaching the Drive object (stormdrive#160, open, not built). But
 `status.health.smart` is already there (stormdrive#22/#64/#81; the CRD keeps `status` unpruned): SAS log pages
 (read/write/verify corrected and uncorrected), grown defects, ATA attributes, predicted failure. Built from that;
@@ -2909,7 +2909,11 @@ the PI/EEDP/sense errors, rates and level split to #394, proposed `--after storm
 - [x] `drivecounters.rs`: rows from `status.health.smart`, the day (10 min samples, 25 h); `GET /counters`
 - [x] the Integrity panel's "The drive" table (`integrity.js` model), with or without a RAID set
 - [x] tests: unit, `integrity.test.mjs`; `verify-drive-integrity.sh` §3b + the walk; stand-ins carry `status.health`
-- [ ] sc-build (build, every test), `sc-build deploy/verify-drive-integrity.sh`; web/dist rebuilt
+- [x] sc-build cba47c1 (build, every test) pass; clippy -D warnings clean, vite only #383's warning
+- [x] `sc-build deploy/verify-drive-integrity.sh` a52eac9: 0 failed (§3b and the walk). It first failed on cba47c1,
+      as `verify-drive-links.sh` did (sc-build filed #395): their consoles hear no fleet, so another node's charts
+      are a 503 sentence (#369, #385) Chromium logs as an error. `lib.cjs` `page.expect5xx`; both walks declare
+      those; `verify-drive-links.sh` a52eac9: 0 failed. web/dist rebuilt
 
 ### Integrity trend charts from ironprom (#385, stormcos#1466) ✅ 2026-11-21
 Unblocked: stormcos#1466 shipped (6c01569), so a node's ironprom scrapes stormraid's 127.0.0.1:9470 as job
