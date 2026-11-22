@@ -41,8 +41,15 @@ exports.walk = (name, fn) => {
         const page = await ctx.newPage()
         page.setDefaultTimeout(8000)
         const who = user || 'anonymous'
+        // `page.expect5xx(path)`: a 5xx this rig is built to answer, which the page shows as a sentence (#395: a
+        // console hearing no fleet charts no other node, 503). Neither its answer nor its console line (which
+        // names the resource in its location) is then a page error; any other 5xx still is.
+        page.expect5xx = null
+        const pathOf = (url) => (url || '').replace(/^https?:\/\/[^/]+/, '')
         page.on('response', (r) => {
-          if (r.status() >= 500 && r.status() !== 501) fivexx.push(`${who} ${r.request().method()} ${r.status()} ${r.url().replace(/^https?:\/\/[^/]+/, '')}`)
+          if (r.status() < 500 || r.status() === 501) return
+          const path = pathOf(r.url())
+          if (!page.expect5xx?.(path)) fivexx.push(`${who} ${r.request().method()} ${r.status()} ${path}`)
         })
         page.on('pageerror', (e) => errors.push(`${who} pageerror: ${e.message.split('\n')[0]}`))
         page.on('console', (m) => {
@@ -52,6 +59,7 @@ exports.walk = (name, fn) => {
           if (/the server responded with a status of (4\d\d|501)/.test(m.text())) return
           // A walk of an upstream that is down, where the 502 is what the page has to say.
           if (page.upstreamDown && /the server responded with a status of 502/.test(m.text())) return
+          if (/the server responded with a status of 5\d\d/.test(m.text()) && page.expect5xx?.(pathOf(m.location()?.url))) return
           errors.push(`${who} console: ${m.text().split('\n')[0]}`)
         })
         // confirm() is accepted; prompt() is answered with `page.answer`

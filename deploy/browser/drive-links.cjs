@@ -7,6 +7,9 @@ const { walk } = require('./lib.cjs')
 
 walk('drive links', async (t) => {
   const page = await t.page()
+  // This rig's console hears no fleet, so another node's charts are a 503 the page says in words (#369, #395):
+  // the drive's Link trend falls back to the samples kept, a set's trend says why it has none.
+  page.expect5xx = (path) => /^\/api\/plugins\/metrics\/charts\?.*\bon=/.test(path)
 
   // Any page: the bar.
   await page.goto(`${t.BASE}/#/`)

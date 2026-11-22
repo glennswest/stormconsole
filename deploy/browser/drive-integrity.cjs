@@ -6,6 +6,9 @@ const { walk } = require('./lib.cjs')
 
 walk('drive integrity', async (t) => {
   const page = await t.page()
+  // This rig's console hears no fleet, so another node's charts are a 503 the page says in words (#369, #395):
+  // the drive's Link trend falls back to the samples kept, a set's trend says why it has none.
+  page.expect5xx = (path) => /^\/api\/plugins\/metrics\/charts\?.*\bon=/.test(path)
 
   // Any page: the bar, red (rows past parity).
   await page.goto(`${t.BASE}/#/`)
@@ -35,6 +38,9 @@ walk('drive integrity', async (t) => {
   const members = page.getByTestId('integrity-members')
   const slot2 = await members.locator('tr[data-slot="2"]').innerText()
   t.check(/NET003/.test(slot2) && /\(\+3\)/.test(slot2), "slot 2 is NET003, with the day's 3 rewritten", slot2)
+  // md0 is on forge1, and this console hears no fleet: its trend says so, not an empty chart (#385, #395).
+  t.check(await t.until(async () => /does not hear the fleet/.test(await page.getByTestId('integrity-trend').innerText()), 15000), "md0's trend says why it cannot be read here", await page.getByTestId('integrity-trend').innerText().catch(() => ''))
+  t.check((await page.getByTestId('integrity-trend').locator('section.chart').count()) === 0, 'and draws no empty chart')
   await t.shot(page, 'integrity-set')
 
   // Every set: md1 on storm-b, clean, scrubbing.
