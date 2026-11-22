@@ -8,17 +8,19 @@ const target = process.env.STORMCONSOLE_URL || 'http://localhost:9094'
 
 // Zero warnings (#383, stormcentral#193): a build fails on a Svelte compiler warning in our code and on any of
 // vite-plugin-svelte's own (a package with a `svelte` field and no `svelte` export condition, as stormview@0.4.0
-// was). The plugin prints its own through console.warn as `[vite-plugin-svelte] WARNING: …`, from its config hook,
-// so a build records those as it prints them. Compiler warnings come through `onwarn`, which records and prints
-// each of our own (a package's own are left to the plugin, which shows them only when debugging, as before), so
-// none is counted twice. Every one is printed, and the build ends on them.
+// was). The plugin prints its own through console.warn as `[vite-plugin-svelte] WARNING: …`, from its config hook.
+// Its logger holds the console.warn it found when it was imported (before this file's body runs), so a build
+// watches what reaches stderr instead, where every console.warn lands, and records those lines as they pass.
+// Compiler warnings come through `onwarn`, which records and prints each of our own (a package's own are left to
+// the plugin, which shows them only when debugging, as before), so none is counted twice. Every one is printed,
+// and the build ends on them.
 const warned = []
 if (process.argv.includes('build')) {
-  const warn = console.warn.bind(console)
-  console.warn = (...args) => {
-    const text = args.map(String).join(' ')
-    if (text.includes('[vite-plugin-svelte]')) warned.push(text.replace(/\x1b\[[0-9;]*m/g, '').split('\n')[0])
-    warn(...args)
+  const write = process.stderr.write.bind(process.stderr)
+  process.stderr.write = (chunk, ...rest) => {
+    const text = String(chunk).replace(/\x1b\[[0-9;]*m/g, '')
+    for (const line of text.split('\n')) if (/\[vite-plugin-svelte[^\]]*\].*warn/i.test(line)) warned.push(line.trim())
+    return write(chunk, ...rest)
   }
 }
 const strict = {
