@@ -10,7 +10,7 @@
 # `[[api.client_roles]]`: stormcentral's certificate a viewer, an `ops`
 # organisation an operator. Checked: plain HTTP answers health only; a
 # viewer certificate reads the logs and is refused a write; an operator's
-# write passes the gate; a stranger's, an expired, an unmapped and no
+# write passes the gate, and an apply then needs a kubernetes identity (#387); a stranger's, an expired, an unmapped and no
 # certificate are each 401 saying why; the token still admits as admin;
 # forge's CA going away and coming back, and the serving pair renewed, all
 # with no restart; config contradictions exit 78.
@@ -116,8 +116,11 @@ has "$R" " 403$" "a write is refused"
 has "$R" "cert:stormcentral is signed in as a reader" "as a reader's is"
 
 say "4. an operator by organisation: past the write gate"
-WC=$(ascode ops -X POST -H 'content-type: application/yaml' --data-binary "$Y" "$S/api/plugins/k8s/apply?project=p")
-check "$([ "$WC" != 401 ] && [ "$WC" != 403 ] && echo past)" "past" "O=ops writes — past the gate, to an apply with no apiserver behind it ($WC)"
+# Past the console's write gate, then refused by the apply itself: a certificate carries no kubernetes identity, and a
+# workload write never goes on the console's credential (#387).
+R=$(as ops -w ' %{http_code}' -X POST -H 'content-type: application/yaml' --data-binary "$Y" "$S/api/plugins/k8s/apply?project=p")
+has "$R" " 403$" "O=ops: an apply is refused"
+has "$R" "no kubernetes identity" "for having no kubernetes identity — past the gate, which would say reader (#387)"
 
 say "5. certificates that are not credentials: 401, saying why"
 R=$(as stranger -w ' %{http_code}' "$S/api/plugins/logs/events?last=5")
@@ -134,8 +137,8 @@ has "$R" "no \[\[api.client_roles\]\] rule names the client certificate (CN nobo
 
 say "6. the per-node token still admits, as admin"
 check "$(code -H "Authorization: Bearer node-$$" "$S/api/plugins/logs/events?last=5")" "200" "the token reads"
-WC=$(code -H "Authorization: Bearer node-$$" -X POST -H 'content-type: application/yaml' --data-binary "$Y" "$S/api/plugins/k8s/apply?project=p")
-check "$([ "$WC" != 401 ] && [ "$WC" != 403 ] && echo past)" "past" "and writes ($WC)"
+R=$(tls -w ' %{http_code}' -H "Authorization: Bearer node-$$" -X POST -H 'content-type: application/yaml' --data-binary "$Y" "$S/api/plugins/k8s/apply?project=p")
+has "$R" "no kubernetes identity" "and is past the write gate; an apply needs a kubernetes identity, which the token is not (#387)"
 check "$(code -H 'Authorization: Bearer nope' "$S/api/plugins/logs/events?last=5")" "401" "another token is refused"
 
 say "6b. a sign-in over TLS sets a Secure cookie (#388, finding cdbd818726df)"
