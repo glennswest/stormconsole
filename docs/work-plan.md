@@ -2912,6 +2912,8 @@ still takes `image.source` typed and checks the store sha256. So there is still 
 stormdrive#184 (`kind = "card"` per region, HostBusAdapter `firmwareAvailable`, the flash taking its source from the
 record). Filed #396 here for what #80 does enable: drive/IOM offers and `manifest: true`, with nothing to show live
 until stormcos#1545 ships a manifest. No console change for #380; proposed `--after stormdrive#184`
+- 2026-11-23: rechecked, still held. stormdrive#184 is open, with no commit for it on main; at a634602 `fwmanifest.rs` `Kind` is
+  still `Drive | Iom`. Nothing to build here until it lands
 
 ### stormview 0.5.0, and a web build with no warnings (#383) ✅ 2026-11-22
 - [x] lock: stormview main (0.5.0, d898402), from `npm update stormview` on a build VM; only its entry changed
