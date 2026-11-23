@@ -2970,7 +2970,7 @@ selected by set and slot. ironprom keeps `stormraid_.*` 90 days (ironprom#53).
 - [x] RBAC-aware UI (#45: rows, project page, YAML Edit; the rest is #259)
 
 
-### Writes by someone with no kubernetes identity (#387, finding 39f446993b07) — 2026-11-21
+### Writes by someone with no kubernetes identity (#387, finding 39f446993b07) ✅ 2026-11-23
 `client.rs` `auth()` sends a viewer with no token upstream on the console's own credential. `rbac.md` §Two credentials
 documents that as the design (the role bounds them), and the finding wants every such write refused unless root.
 - Found: the role does not bound them in projects the console made: `self-provisioner` makes its ServiceAccount
@@ -2987,7 +2987,14 @@ documents that as the design (the role bounds them), and the finding wants every
       identity (`crate::own`); node verbs, rack, ports name `As::own` too. VM, stormcluster, keystore, new project:
       `As::within_role`. users.rs: `As::Console` / `As::Viewer`
 - [x] Unit tests (client.rs), `deploy/verify-write-identity.sh`, rbac.md §Two credentials
-- [ ] sc-build + `sc-build deploy/verify-write-identity.sh`; regressions: verify-client-cert, verify-projects, verify-pod-terminal
+- [x] sc-build 07a3fe1: build + every test pass (41 suites, 0 failed, no warnings), the 3 new tests among them.
+      `sc-build deploy/verify-write-identity.sh` 07a3fe1 (rustkube main): 0 failed. Negative control: the same script
+      over c7a1eda's `crates/` fails 43 checks: with no identity, dave made mallory admin, deleted pods and deleted shop
+- [x] verify-client-cert: the ops certificate's and the node token's apply is now 403 "no kubernetes identity"
+      (was "past the gate", to no apiserver); updated in 1c88bec, 0 failed. verify-projects, -no-signin, -pod-terminal,
+      -rbac: 0 failed
+- verify-day2 fails 8, identically at c7a1eda: rustkube#360 lets a Pending pod go with no budget and the rig runs no
+  kubelet. Filed as #398 (the rig), commented; not this change
 
 ### The session cookie is Secure over TLS (#388, finding cdbd818726df) ✅ 2026-11-21
 A sign-in over TLS set `stormconsole_session` without `Secure`, so a browser sent it on a later `http://` request,
