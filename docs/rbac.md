@@ -17,11 +17,23 @@ Every apiserver call goes out on one of two credentials:
 
 - **A signed-in user's own token, when they have one.** The apiserver's RBAC for that user then decides. This role
   does not apply.
-- **The console's own token, otherwise.** That covers everything the console does by itself, and every request
-  from someone with no kubernetes identity: a node with auth off, the node's bearer, or a client certificate
-  (`client.rs` `auth`). **This role is all such a person can do.** With auth off they are root and offered everything
-  (#165), so the Terminal, a project delete or a node's cordon are refused by the apiserver unless this credential
-  holds them.
+- **The console's own token, otherwise.** That covers everything the console does by itself, root (a node with auth
+  off, #165), and a component's settings asked for by someone with no kubernetes identity (the node's bearer, a
+  client certificate, a user with no token). **For those settings, this role is all such a person can do.** With
+  auth off they are root and offered everything, so the Terminal, a project delete or a node's cordon are refused by
+  the apiserver unless this credential holds them.
+
+A write names its credential (`client.rs` `As`); none falls back to the console's by omission (#387):
+
+| Write | With no kubernetes identity |
+|---|---|
+| A workload or a project: Import YAML (`/apply`), a YAML edit, a custom resource's save or delete, a pod delete, a raw delete, scale, a project's delete, members and isolation | **Refused, 403** "no kubernetes identity" (`As::own`). In a project the console made, `self-provisioner` makes its ServiceAccount `admin`, so this role would hold nobody back there |
+| The Terminal, a node's cordon, drain, rack and ports | Refused, as before (`may_act_upstream`) |
+| A component's setting: a VM's lifecycle, settings and snapshots, stormcluster (form, join, a member's role, drain, release), cloud images, a new project | The console's token, bounded by this role (`As::within_role`) |
+| A SAS card's flash | The bearer the storage gate chose (`As::chosen`) |
+
+A new project stays possible on a node nobody has signed in to. What goes in it then needs an identity, so the
+`admin` the console's ServiceAccount holds there is never lent to someone who has none.
 
 ## Reads
 

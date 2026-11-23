@@ -34,6 +34,7 @@ use axum::Json;
 use console_core::Viewer;
 use serde_json::{json, Value};
 
+use crate::client::As;
 use crate::{Inner, Need};
 
 pub const API: &str = "/apis/project.openshift.io/v1";
@@ -397,7 +398,9 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
     if inner.access.is_system(&name) {
         return err(StatusCode::BAD_REQUEST, format!("{name} is a system project's name: choose another"));
     }
-    let token = viewer.token.as_deref();
+    // A new project stays possible with no kubernetes identity, on the
+    // console's role (docs/rbac.md); what goes in it then needs one (#387).
+    let who = As::within_role(&viewer);
     let mut req = json!({
         "apiVersion": "project.openshift.io/v1",
         "kind": "ProjectRequest",
@@ -409,7 +412,7 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
     if !n.description.trim().is_empty() {
         req["description"] = json!(n.description.trim());
     }
-    let (status, body) = match client.post_json_as(&format!("{API}/projectrequests"), &req, token).await {
+    let (status, body) = match client.post_json_as(&format!("{API}/projectrequests"), &req, who).await {
         Ok(r) => r,
         Err(e) => return err(StatusCode::BAD_GATEWAY, e.to_string()),
     };
@@ -429,7 +432,7 @@ pub(crate) async fn create(State(inner): State<Arc<Inner>>, viewer: Viewer, Json
         annotations[DESCRIPTION] = json!(n.description.trim());
     }
     let ns = json!({"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": name, "annotations": annotations}});
-    match client.post_json_as("/api/v1/namespaces", &ns, token).await {
+    match client.post_json_as("/api/v1/namespaces", &ns, who).await {
         Ok((s, _)) if s.is_success() => Json(json!({
             "message": format!("project {name} created — this apiserver serves no project API, so nobody was made its admin"),
             "name": name,
@@ -447,9 +450,12 @@ pub(crate) async fn remove(State(inner): State<Arc<Inner>>, viewer: Viewer, Path
     if inner.access.is_system(&name) {
         return err(StatusCode::FORBIDDEN, format!("{name} is a system project and is not deleted from here"));
     }
-    let token = viewer.token.as_deref();
-    let status = match client.delete(&format!("{API}/projects/{name}"), token).await {
-        Ok(s) if s.as_u16() == 404 => client.delete(&format!("/api/v1/namespaces/{name}"), token).await,
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
+    let status = match client.delete(&format!("{API}/projects/{name}"), who).await {
+        Ok(s) if s.as_u16() == 404 => client.delete(&format!("/api/v1/namespaces/{name}"), who).await,
         other => other,
     };
     match status {
@@ -529,11 +535,15 @@ pub(crate) async fn add_member(
     if let Some(r) = crate::refuse_hidden(&inner, &viewer, &name).await {
         return r;
     }
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
     let body = match binding(&name, &m.who, &m.role) {
         Ok(b) => b,
         Err(e) => return err(StatusCode::BAD_REQUEST, e),
     };
-    match client.post_json_as(&format!("{RBAC}/namespaces/{name}/rolebindings"), &body, viewer.token.as_deref()).await {
+    match client.post_json_as(&format!("{RBAC}/namespaces/{name}/rolebindings"), &body, who).await {
         Ok((s, _)) if s.is_success() => {
             // Whoever was just let in should see it now, not in 30 seconds.
             inner.access.forget().await;
@@ -553,7 +563,11 @@ pub(crate) async fn remove_member(
     if let Some(r) = crate::refuse_hidden(&inner, &viewer, &name).await {
         return r;
     }
-    match client.delete(&format!("{RBAC}/namespaces/{name}/rolebindings/{binding}"), viewer.token.as_deref()).await {
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
+    match client.delete(&format!("{RBAC}/namespaces/{name}/rolebindings/{binding}"), who).await {
         Ok(s) if s.is_success() => {
             inner.access.forget().await;
             Json(json!({"message": format!("binding {binding} removed from {name}")})).into_response()
@@ -585,14 +599,18 @@ pub(crate) async fn isolate(
     if inner.access.is_system(&name) {
         return err(StatusCode::FORBIDDEN, format!("{name} is a system project; isolating it would cut the system off"));
     }
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
     let token = viewer.token.as_deref();
     let base = format!("{NETPOL}/namespaces/{name}/networkpolicies");
     // Replace, not add to: the DNS half comes and goes with the choice.
     for p in [ISOLATE, ISOLATE_DNS] {
-        let _ = client.delete(&format!("{base}/{p}"), token).await;
+        let _ = client.delete(&format!("{base}/{p}"), who).await;
     }
     for p in isolation(&name, i.dns) {
-        match client.post_json_as(&base, &p, token).await {
+        match client.post_json_as(&base, &p, who).await {
             Ok((s, _)) if s.is_success() => {}
             Ok((s, b)) => return refused(s, &b),
             Err(e) => return err(StatusCode::BAD_GATEWAY, e.to_string()),
@@ -618,11 +636,14 @@ pub(crate) async fn unisolate(State(inner): State<Arc<Inner>>, viewer: Viewer, P
     if let Some(r) = crate::refuse_hidden(&inner, &viewer, &name).await {
         return r;
     }
-    let token = viewer.token.as_deref();
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
     let base = format!("{NETPOL}/namespaces/{name}/networkpolicies");
     let mut removed = 0;
     for p in [ISOLATE, ISOLATE_DNS] {
-        if let Ok(s) = client.delete(&format!("{base}/{p}"), token).await {
+        if let Ok(s) = client.delete(&format!("{base}/{p}"), who).await {
             if s.is_success() {
                 removed += 1;
             }

@@ -33,7 +33,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use base64::Engine;
-use plugin_kubernetes::{Client, RkError};
+use plugin_kubernetes::{As, Client, RkError};
 use serde_json::{json, Value};
 
 pub const USER_LABEL: &str = "storm.io/user";
@@ -590,7 +590,7 @@ impl Users {
                 Key::Use(uid) => return Ok(uid),
                 Key::Replace(old) => {
                     let pre = json!({"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": {"uid": old}});
-                    match self.kube.delete_body(&path, &pre, None).await {
+                    match self.kube.delete_body(&path, &pre, As::Console).await {
                         Ok((s, _)) if s.is_success() || s.as_u16() == 404 => {
                             tracing::info!(user = name, "users: {name}-sessions made anew: the tokens of the old password end");
                         }
@@ -630,7 +630,7 @@ impl Users {
     /// Delete `<name>-sessions`: every token minted for the user stops
     /// working upstream (#390). A sign-in makes it again.
     pub async fn revoke(&self, name: &str) -> Result<(), String> {
-        match self.kube.delete(&self.key_path(name), None).await {
+        match self.kube.delete(&self.key_path(name), As::Console).await {
             Ok(s) if s.is_success() || s.as_u16() == 404 => Ok(()),
             Ok(s) => Err(format!("deleting {name}-sessions: {s}")),
             Err(e) => Err(format!("deleting {name}-sessions: {e}")),
@@ -688,7 +688,7 @@ impl Users {
                 let mut s = current.unwrap_or_default();
                 s["data"]["hash"] = json!(b64(&file));
                 s["metadata"]["annotations"][SEEDED_HASH] = json!(digest(&file));
-                match self.kube.put_json(&path_s, &s, None).await {
+                match self.kube.put_json(&path_s, &s, As::Console).await {
                     Ok((st, _)) if st.is_success() => Ok(Some("replaced")),
                     Ok((st, b)) => Err(format!("replacing admin-password: {st} {}", message(&b))),
                     Err(e) => Err(format!("replacing admin-password: {e}")),
@@ -1018,7 +1018,7 @@ impl Users {
         self.is_user(as_, name).await?;
         let patch = json!({"metadata": {"annotations": {DISABLED: if disabled { json!("true") } else { Value::Null }}}});
         let path = self.account(name);
-        match self.kube.patch_merge(&path, &patch, Some(as_)).await {
+        match self.kube.patch_merge(&path, &patch, As::Viewer(as_)).await {
             Ok((s, _)) if s.is_success() => {}
             Ok((s, b)) => return Err(Fail::from_status(s.as_u16(), &b)),
             Err(e) => return Err(Fail::Upstream(e.to_string())),
@@ -1114,9 +1114,9 @@ impl Users {
     /// A create (POST to a collection), or with `replace` a PUT of the object.
     pub(crate) async fn write(&self, replace: bool, path: &str, body: &Value, as_: &str) -> Result<Value, Fail> {
         let r = if replace {
-            self.kube.put_json(path, body, Some(as_)).await
+            self.kube.put_json(path, body, As::Viewer(as_)).await
         } else {
-            self.kube.post_json_as(path, body, Some(as_)).await
+            self.kube.post_json_as(path, body, As::Viewer(as_)).await
         };
         match r {
             Ok((s, b)) if s.is_success() => Ok(b),
@@ -1126,7 +1126,7 @@ impl Users {
     }
 
     pub(crate) async fn remove(&self, path: &str, as_: &str) -> Result<(), Fail> {
-        match self.kube.delete(path, Some(as_)).await {
+        match self.kube.delete(path, As::Viewer(as_)).await {
             Ok(s) if s.is_success() || s.as_u16() == 404 => Ok(()),
             Ok(s) => Err(Fail::from_status(s.as_u16(), &Value::Null)),
             Err(e) => Err(Fail::Upstream(e.to_string())),

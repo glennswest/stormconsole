@@ -16,6 +16,7 @@ use console_core::Viewer;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::client::{As, NO_IDENTITY};
 use crate::Inner;
 
 pub const LABEL: &str = "topology.storm.io/rack";
@@ -80,7 +81,8 @@ pub async fn write(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): 
         }
     }
     let Some(client) = &inner.client else { return refuse(StatusCode::SERVICE_UNAVAILABLE, "no apiserver".to_string()) };
-    match client.patch_merge(&format!("/api/v1/nodes/{name}"), &patch(rack), viewer.token.as_deref()).await {
+    let Some(who) = As::own(&viewer) else { return refuse(StatusCode::FORBIDDEN, NO_IDENTITY.to_string()) };
+    match client.patch_merge(&format!("/api/v1/nodes/{name}"), &patch(rack), who).await {
         Ok((status, saved)) if status.is_success() => {
             // Seen at once by the page's re-read, not when the watch catches up.
             inner.store.observe("node", saved).await;

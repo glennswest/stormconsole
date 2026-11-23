@@ -51,7 +51,7 @@ use axum::{Json, Router};
 use console_core::{
     Access, ComponentSummary, ConsolePlugin, Creator, Events, Health, NavSection, Viewer,
 };
-use plugin_kubernetes::{Client, KubeStore, NamespaceAccess, Need, ResourceSpec};
+use plugin_kubernetes::{As, Client, KubeStore, NamespaceAccess, Need, ResourceSpec};
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -640,7 +640,7 @@ async fn lifecycle_verb(
     if let Some(running) = plan.running {
         let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
         match client
-            .patch_merge(&path, &json!({"spec": {"running": running}}), viewer.token.as_deref())
+            .patch_merge(&path, &json!({"spec": {"running": running}}), As::within_role(&viewer))
             .await
         {
             Ok((status, _)) if status.is_success() => {}
@@ -654,7 +654,7 @@ async fn lifecycle_verb(
         match client
             .delete(
                 &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
-                viewer.token.as_deref(),
+                As::within_role(&viewer),
             )
             .await
         {
@@ -752,7 +752,7 @@ async fn delete_machine(
         match client
             .delete(
                 &format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}"),
-                viewer.token.as_deref(),
+                As::within_role(&viewer),
             )
             .await
         {
@@ -766,7 +766,7 @@ async fn delete_machine(
     match client
         .delete(
             &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
-            viewer.token.as_deref(),
+            As::within_role(&viewer),
         )
         .await
     {
@@ -892,7 +892,7 @@ async fn patch_machine(
 ) -> Response {
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
-    match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
+    match client.patch_merge(&path, &body, As::within_role(&viewer)).await {
         Ok((status, b)) if status.is_success() => {
             // Seen at once by the page's re-read, not when the watch catches up.
             inner.store.observe("vm", b).await;
@@ -1053,7 +1053,7 @@ async fn network_set(
 ) -> Response {
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
-    let saved = match client.patch_merge(&path, &body, viewer.token.as_deref()).await {
+    let saved = match client.patch_merge(&path, &body, As::within_role(&viewer)).await {
         Ok((status, b)) if status.is_success() => b,
         Ok((status, b)) => return from_apiserver(status, b, ""),
         Err(e) => return (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
@@ -1685,7 +1685,7 @@ async fn snapshot_delete(
     }
     let Some(client) = &inner.client else { return no_apiserver() };
     match client
-        .delete(&format!("{}/namespaces/{ns}/virtualmachinesnapshots/{snap}", snapshots::API), viewer.token.as_deref())
+        .delete(&format!("{}/namespaces/{ns}/virtualmachinesnapshots/{snap}", snapshots::API), As::within_role(&viewer))
         .await
     {
         Ok(s) if s.is_success() => Json(json!({"message": format!("snapshot {snap} deleted")})).into_response(),
@@ -1700,7 +1700,7 @@ async fn snapshot_delete(
 async fn create_as_viewer(inner: &Inner, viewer: &Viewer, ns: &str, plural: &str, body: &Value, done: String) -> Response {
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{}/namespaces/{ns}/{plural}", snapshots::API);
-    match client.post_json_as(&path, body, viewer.token.as_deref()).await {
+    match client.post_json_as(&path, body, As::within_role(&viewer)).await {
         Ok((status, b)) => from_apiserver(status, b, &done),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
     }

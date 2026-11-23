@@ -2970,7 +2970,7 @@ selected by set and slot. ironprom keeps `stormraid_.*` 90 days (ironprom#53).
 - [x] RBAC-aware UI (#45: rows, project page, YAML Edit; the rest is #259)
 
 
-### Writes by someone with no kubernetes identity (#387, finding 39f446993b07) — 2026-11-21, needs the owner
+### Writes by someone with no kubernetes identity (#387, finding 39f446993b07) — 2026-11-21
 `client.rs` `auth()` sends a viewer with no token upstream on the console's own credential. `rbac.md` §Two credentials
 documents that as the design (the role bounds them), and the finding wants every such write refused unless root.
 - Found: the role does not bound them in projects the console made: `self-provisioner` makes its ServiceAccount
@@ -2980,6 +2980,14 @@ documents that as the design (the role bounds them), and the finding wants every
   split; `wait-owner`. Also asked: does New project stay possible with no identity. No code until answered
 - 2026-11-22: no answer yet, and the item was still being handed out: `wait-owner` set again, now with
   `needs-owner` on the issue, so it is in Needs you and comes back only on the owner's answer
+- 2026-11-23: back as session work (stormcentral#1680: findings are session work). Fixed as the finding names it,
+  taking nothing the finding does not name: option 2's split, keeping New project on the console's role as rbac.md has it
+- [x] `client.rs`: `As` (Console | Viewer); every write names one, `auth()` gone; `As::own` / `within_role` / `chosen`
+- [x] `/apply`, YAML edit, CR save/delete, pod delete, raw delete, scale, project delete/members/isolate: 403 with no
+      identity (`crate::own`); node verbs, rack, ports name `As::own` too. VM, stormcluster, keystore, new project:
+      `As::within_role`. users.rs: `As::Console` / `As::Viewer`
+- [x] Unit tests (client.rs), `deploy/verify-write-identity.sh`, rbac.md §Two credentials
+- [ ] sc-build + `sc-build deploy/verify-write-identity.sh`; regressions: verify-client-cert, verify-projects, verify-pod-terminal
 
 ### The session cookie is Secure over TLS (#388, finding cdbd818726df) ✅ 2026-11-21
 A sign-in over TLS set `stormconsole_session` without `Secure`, so a browser sent it on a later `http://` request,

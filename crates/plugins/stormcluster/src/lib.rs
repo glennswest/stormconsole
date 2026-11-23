@@ -35,7 +35,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, patch, post};
 use axum::{Json, Router};
 use console_core::{ComponentSummary, ConsolePlugin, Feed, Health, NavSection, Viewer};
-use plugin_kubernetes::{Client, KubeStore};
+use plugin_kubernetes::{As, Client, KubeStore};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -296,7 +296,7 @@ async fn create_all(inner: &Inner, viewer: &Viewer, objs: &[Value]) -> Result<Ve
         let kind = o["kind"].as_str().unwrap_or("");
         let name = o.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
         let plural = if kind == "Cluster" { "clusters" } else { "clustermembers" };
-        match kube.post_json_as(&format!("{}/{plural}", objects::API), o, viewer.token.as_deref()).await {
+        match kube.post_json_as(&format!("{}/{plural}", objects::API), o, As::within_role(&viewer)).await {
             Ok((s, _)) if s.is_success() => made.push(format!("{kind} {name}")),
             Ok((s, b)) => {
                 let mut what = format!("{kind} {name}");
@@ -377,7 +377,7 @@ async fn change(
         Err(e) => return err(StatusCode::BAD_REQUEST, e),
     };
     let path = format!("{}/clustermembers/{node}", objects::API);
-    match kube.patch_merge(&path, &body, viewer.token.as_deref()).await {
+    match kube.patch_merge(&path, &body, As::within_role(&viewer)).await {
         Ok((s, o)) if s.is_success() => {
             inner.store.observe("smember", o).await;
             audit(&viewer, &format!("ClusterMember {node} spec {}", body["spec"]));
@@ -410,7 +410,7 @@ async fn dissolve(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): P
 
 async fn delete_object(inner: &Inner, viewer: &Viewer, plural: &str, kind: &str, name: &str, done: &str) -> Response {
     let Some(kube) = &inner.kube else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
-    match kube.delete(&format!("{}/{plural}/{name}", objects::API), viewer.token.as_deref()).await {
+    match kube.delete(&format!("{}/{plural}/{name}", objects::API), As::within_role(&viewer)).await {
         Ok(s) if s.is_success() => {
             audit(viewer, &format!("{kind} {name} deleted"));
             Json(json!({"message": done})).into_response()

@@ -22,6 +22,7 @@ use axum::Json;
 use console_core::Viewer;
 use serde_json::{json, Value};
 
+use crate::client::{As, NO_IDENTITY};
 use crate::Inner;
 
 fn refuse(code: StatusCode, why: impl Into<String>) -> Response {
@@ -88,8 +89,9 @@ pub async fn scale(
         Err(why) => return refuse(StatusCode::BAD_REQUEST, why),
     };
     let Some(client) = &inner.client else { return refuse(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
+    let Some(who) = As::own(&viewer) else { return refuse(StatusCode::FORBIDDEN, NO_IDENTITY) };
     let path = format!("/apis/apps/v1/namespaces/{ns}/{plural}/{name}/scale");
-    match client.patch_merge(&path, &json!({"spec": {"replicas": n}}), viewer.token.as_deref()).await {
+    match client.patch_merge(&path, &json!({"spec": {"replicas": n}}), who).await {
         Ok((status, _)) if status.is_success() => Json(json!({"message": format!("{name}: {n} replica{}", if n == 1 { "" } else { "s" }), "replicas": n})).into_response(),
         Ok((status, said)) => upstream(status, &said),
         Err(e) => refuse(StatusCode::BAD_GATEWAY, e.to_string()),
@@ -109,7 +111,8 @@ pub fn node_refusal(admin: bool, identity: bool) -> Option<&'static str> {
 
 async fn set_unschedulable(inner: &Inner, viewer: &Viewer, name: &str, on: bool) -> Result<(), Response> {
     let Some(client) = &inner.client else { return Err(refuse(StatusCode::SERVICE_UNAVAILABLE, "no apiserver")) };
-    match client.patch_merge(&format!("/api/v1/nodes/{name}"), &json!({"spec": {"unschedulable": on}}), viewer.token.as_deref()).await {
+    let Some(who) = As::own(viewer) else { return Err(refuse(StatusCode::FORBIDDEN, NO_IDENTITY)) };
+    match client.patch_merge(&format!("/api/v1/nodes/{name}"), &json!({"spec": {"unschedulable": on}}), who).await {
         Ok((status, saved)) if status.is_success() => {
             // Seen at once by the page's re-read, not when the watch catches up.
             inner.store.observe("node", saved).await;
@@ -271,6 +274,7 @@ pub async fn drain(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): 
     if let Err(r) = set_unschedulable(&inner, &viewer, &name, true).await {
         return r;
     }
+    let Some(who) = As::own(&viewer) else { return refuse(StatusCode::FORBIDDEN, NO_IDENTITY) };
     let (mut evicted, mut blocked, mut left) = (Vec::new(), Vec::new(), Vec::new());
     for p in &pods {
         let f = fate(p);
@@ -285,7 +289,7 @@ pub async fn drain(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): 
         let pod = p.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
         let eviction = json!({"apiVersion": "policy/v1", "kind": "Eviction", "metadata": {"name": pod, "namespace": ns}});
         let at = format!("/api/v1/namespaces/{ns}/pods/{pod}/eviction");
-        match client.post_json_as(&at, &eviction, viewer.token.as_deref()).await {
+        match client.post_json_as(&at, &eviction, who).await {
             // A 404 is a pod that went by itself, which is what was wanted.
             Ok((status, _)) if status.is_success() || status == reqwest::StatusCode::NOT_FOUND => evicted.push(row(p)),
             Ok((status, said)) => {

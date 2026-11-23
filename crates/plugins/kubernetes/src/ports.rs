@@ -22,6 +22,7 @@ use axum::Json;
 use console_core::{ComponentSummary, Health, Metric, Relation, Viewer};
 use serde_json::{json, Map, Value};
 
+use crate::client::{As, NO_IDENTITY};
 use crate::Inner;
 
 /// The cache's word for the kind (`cache::RESOURCES`).
@@ -308,7 +309,8 @@ pub async fn change(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name):
         return answer(StatusCode::NOT_FOUND, format!("no NetworkPort {name}"));
     }
     let Some(client) = &inner.client else { return answer(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
-    match client.patch_merge(&format!("{COLLECTION}/{name}"), &patch, viewer.token.as_deref()).await {
+    let Some(who) = As::own(&viewer) else { return answer(StatusCode::FORBIDDEN, NO_IDENTITY) };
+    match client.patch_merge(&format!("{COLLECTION}/{name}"), &patch, who).await {
         Ok((status, saved)) if status.is_success() => {
             // The page re-reads at once; the watch would catch up a moment later.
             inner.store.observe(KIND, saved.clone()).await;

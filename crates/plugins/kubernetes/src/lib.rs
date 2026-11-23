@@ -75,7 +75,7 @@ const CILIUM_AGENT_METRICS: &str = "http://127.0.0.1:9962/metrics";
 // same list+watch loop rather than growing a second one.
 pub use authz::{NamespaceAccess, Need};
 pub use cache::{watch_resource as watch, ResourceSpec, Store as KubeStore};
-pub use client::{RkClient as Client, RkError};
+pub use client::{As, RkClient as Client, RkError};
 
 struct Inner {
     server: Option<String>,
@@ -573,6 +573,13 @@ async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> R
     Json(json!({"network": netview::network_of(&snap), "items": netview::endpoints(&snap, hidden.as_ref())})).into_response()
 }
 
+/// The credential a workload or project write goes on: the viewer's own, or a
+/// 403 saying they have none (#387, [`As::own`]).
+pub(crate) fn own(viewer: &Viewer) -> Result<client::As<'_>, Response> {
+    client::As::own(viewer)
+        .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": client::NO_IDENTITY}))).into_response())
+}
+
 pub(crate) async fn refuse_hidden(inner: &Inner, viewer: &Viewer, ns: &str) -> Option<Response> {
     let (hidden, _) = inner.access.hidden(viewer).await?;
     hidden.contains(ns).then(|| {
@@ -839,8 +846,12 @@ async fn edit_object(
         )
             .into_response();
     }
+    let who = match own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
     let path = spec.object_path(&key);
-    match client.put_json(&path, doc, viewer.token.as_deref()).await {
+    match client.put_json(&path, doc, who).await {
         Ok((status, _)) if status.is_success() => {
             Json(json!({"message": format!("{kind} {key} saved")})).into_response()
         }
@@ -912,12 +923,16 @@ async fn delete_pod(
     if let Some(refusal) = refuse_hidden(&inner, &viewer, &ns).await {
         return refusal;
     }
+    let who = match own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
     };
     match client
-        .delete(&format!("/api/v1/namespaces/{ns}/pods/{name}"), viewer.token.as_deref())
+        .delete(&format!("/api/v1/namespaces/{ns}/pods/{name}"), who)
         .await
     {
         Ok(status) if status.is_success() => Json(json!({"deleted": format!("{ns}/{name}")}))
@@ -954,7 +969,11 @@ async fn raw_delete(
             return refusal;
         }
     }
-    match client.delete(&path, viewer.token.as_deref()).await {
+    let who = match own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
+    match client.delete(&path, who).await {
         Ok(status) if status.is_success() => Json(json!({"deleted": path})).into_response(),
         Ok(status) if status.as_u16() == 403 => {
             (StatusCode::FORBIDDEN, Json(json!({"error": format!("the apiserver says you may not delete {path}")}))).into_response()
@@ -986,6 +1005,10 @@ async fn apply_yaml(
     let Some(client) = &inner.client else {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "no apiserver"})))
             .into_response();
+    };
+    let who = match own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
     };
     let docs = match apply::parse_documents(&body) {
         Ok(d) => d,
@@ -1024,7 +1047,7 @@ async fn apply_yaml(
                 continue;
             }
         }
-        match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
+        match client.post_json_as(&path, &doc, who).await {
             Ok((status, _)) if status.is_success() => {
                 results.push(json!({"kind": kind, "name": name, "status": status.as_u16(), "created": true}))
             }

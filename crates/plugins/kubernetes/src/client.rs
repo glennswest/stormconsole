@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use console_core::Viewer;
 use console_core::apiserver::{Bearer, Conn, Trust};
 use futures_util::StreamExt;
 use serde_json::Value;
@@ -15,7 +16,7 @@ use serde_json::Value;
 /// see the whole cluster to serve anybody. A *write* is different: it
 /// should be subject to the same authorization as the read that showed
 /// the object, which means carrying the viewer's own bearer so the
-/// apiserver's RBAC decides. `as_viewer` is that override, and it is
+/// apiserver's RBAC decides. [`As`] says whose credential each write carries, and it is
 /// per-request rather than a second client, because a client per session
 /// is a connection pool per session.
 #[derive(Clone)]
@@ -24,6 +25,50 @@ pub struct RkClient {
     /// Who the console is to the apiserver and whose certificate it
     /// trusts (#33) — shared with every other apiserver caller.
     conn: Arc<Conn>,
+}
+
+/// Whose credential a write carries (#387). A write names it: there is no
+/// `None` that quietly becomes the console's token, which is how a viewer
+/// with no kubernetes identity once wrote workloads on the console's role.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum As<'a> {
+    /// The console's own token: what it does by itself, and root (#165).
+    Console,
+    /// The viewer's own bearer; the apiserver's RBAC for them decides.
+    Viewer(&'a str),
+}
+
+/// Why a write that has to be the viewer's own is refused to someone with no
+/// kubernetes identity (the node's bearer, a client certificate, a user with no token).
+pub const NO_IDENTITY: &str =
+    "This goes as you, and this sign-in has no kubernetes identity. Sign in as a user with one.";
+
+impl<'a> As<'a> {
+    /// A write that has to be the viewer's own — a workload or a project:
+    /// their token, or the console's for root. `None` for anyone else: in a
+    /// project the console made, its ServiceAccount is `admin`
+    /// (`self-provisioner`), so its role would hold nobody back there
+    /// (`docs/rbac.md` §Two credentials).
+    pub fn own(viewer: &'a Viewer) -> Option<Self> {
+        match viewer.token.as_deref() {
+            Some(t) => Some(As::Viewer(t)),
+            None if viewer.root => Some(As::Console),
+            None => None,
+        }
+    }
+
+    /// A component's setting — a VM, stormcluster, a cloud image, a new
+    /// project: the viewer's token, or with none the console's, whose role is
+    /// then all they may do (`docs/rbac.md` §Two credentials).
+    pub fn within_role(viewer: &'a Viewer) -> Self {
+        viewer.token.as_deref().map_or(As::Console, As::Viewer)
+    }
+
+    /// The bearer a gate already chose: `Some` the viewer's, `None` root's,
+    /// which is the console's (`console_core::storage::ActAs`).
+    pub fn chosen(token: Option<&'a str>) -> Self {
+        token.map_or(As::Console, As::Viewer)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,20 +101,24 @@ impl RkClient {
         &self.base
     }
 
-    /// The bearer a request carries: the viewer's when they have one,
-    /// otherwise the console's own.
-    fn auth(&self, as_viewer: Option<&str>) -> Option<String> {
-        as_viewer.map(str::to_string).or_else(|| self.conn.token())
+    /// The bearer a request carries.
+    fn bearer(&self, who: As<'_>) -> Option<String> {
+        match who {
+            As::Viewer(t) => Some(t.to_string()),
+            As::Console => self.conn.token(),
+        }
     }
 
-    fn request(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-        as_viewer: Option<&str>,
-    ) -> reqwest::RequestBuilder {
+    /// A read's credential: a viewer's bearer narrows what they see; with
+    /// none it is the console's read, which `access` filters before it is
+    /// served. Writes take an [`As`] and never come through here.
+    fn reader(as_viewer: Option<&str>) -> As<'_> {
+        as_viewer.map_or(As::Console, As::Viewer)
+    }
+
+    fn request(&self, method: reqwest::Method, path: &str, who: As<'_>) -> reqwest::RequestBuilder {
         let req = self.conn.http().request(method, format!("{}{}", self.base, path));
-        match self.auth(as_viewer) {
+        match self.bearer(who) {
             Some(t) => req.bearer_auth(t),
             None => req,
         }
@@ -80,7 +129,7 @@ impl RkClient {
     }
 
     pub async fn get_as(&self, path: &str, as_viewer: Option<&str>) -> Result<Value, RkError> {
-        let resp = self.request(reqwest::Method::GET, path, as_viewer).send().await?;
+        let resp = self.request(reqwest::Method::GET, path, Self::reader(as_viewer)).send().await?;
         if !resp.status().is_success() {
             return Err(RkError::Status(resp.status()));
         }
@@ -89,7 +138,7 @@ impl RkClient {
 
     /// A text body — a container's log, read as the console.
     pub async fn get_text(&self, path: &str) -> Result<String, RkError> {
-        let resp = self.request(reqwest::Method::GET, path, None).send().await?;
+        let resp = self.request(reqwest::Method::GET, path, As::Console).send().await?;
         if !resp.status().is_success() {
             return Err(RkError::Status(resp.status()));
         }
@@ -100,7 +149,7 @@ impl RkClient {
     /// passed through as it arrives (a followed log), and a refusal whose
     /// words are the apiserver's.
     pub async fn get_raw_as(&self, path: &str, as_viewer: Option<&str>) -> Result<reqwest::Response, RkError> {
-        Ok(self.request(reqwest::Method::GET, path, as_viewer).send().await?)
+        Ok(self.request(reqwest::Method::GET, path, Self::reader(as_viewer)).send().await?)
     }
 
     /// The console's own bearer, for a hop the apiserver does not proxy
@@ -113,16 +162,16 @@ impl RkClient {
     /// and body come back whatever they are — a 409 is the caller's to
     /// report, not an error here.
     pub async fn post_json(&self, path: &str, body: &Value) -> Result<(reqwest::StatusCode, Value), RkError> {
-        self.post_json_as(path, body, None).await
+        self.post_json_as(path, body, As::Console).await
     }
 
     pub async fn post_json_as(
         &self,
         path: &str,
         body: &Value,
-        as_viewer: Option<&str>,
+        who: As<'_>,
     ) -> Result<(reqwest::StatusCode, Value), RkError> {
-        let resp = self.request(reqwest::Method::POST, path, as_viewer).json(body).send().await?;
+        let resp = self.request(reqwest::Method::POST, path, who).json(body).send().await?;
         let status = resp.status();
         let body = resp.json().await.unwrap_or(Value::Null);
         Ok((status, body))
@@ -137,9 +186,9 @@ impl RkClient {
         &self,
         path: &str,
         body: &Value,
-        as_viewer: Option<&str>,
+        who: As<'_>,
     ) -> Result<(reqwest::StatusCode, Value), RkError> {
-        let resp = self.request(reqwest::Method::PUT, path, as_viewer).json(body).send().await?;
+        let resp = self.request(reqwest::Method::PUT, path, who).json(body).send().await?;
         let status = resp.status();
         let body = resp.json().await.unwrap_or(Value::Null);
         Ok((status, body))
@@ -152,10 +201,10 @@ impl RkClient {
         &self,
         path: &str,
         body: &Value,
-        as_viewer: Option<&str>,
+        who: As<'_>,
     ) -> Result<(reqwest::StatusCode, Value), RkError> {
         let resp = self
-            .request(reqwest::Method::PATCH, path, as_viewer)
+            .request(reqwest::Method::PATCH, path, who)
             .header(reqwest::header::CONTENT_TYPE, "application/merge-patch+json")
             .json(body)
             .send()
@@ -165,14 +214,14 @@ impl RkClient {
         Ok((status, body))
     }
 
-    pub async fn delete(&self, path: &str, as_viewer: Option<&str>) -> Result<reqwest::StatusCode, RkError> {
-        let resp = self.request(reqwest::Method::DELETE, path, as_viewer).send().await?;
+    pub async fn delete(&self, path: &str, who: As<'_>) -> Result<reqwest::StatusCode, RkError> {
+        let resp = self.request(reqwest::Method::DELETE, path, who).send().await?;
         Ok(resp.status())
     }
 
     /// Delete, with the apiserver's body: its refusal is in its own words (#348).
-    pub async fn delete_json(&self, path: &str, as_viewer: Option<&str>) -> Result<(reqwest::StatusCode, Value), RkError> {
-        let resp = self.request(reqwest::Method::DELETE, path, as_viewer).send().await?;
+    pub async fn delete_json(&self, path: &str, who: As<'_>) -> Result<(reqwest::StatusCode, Value), RkError> {
+        let resp = self.request(reqwest::Method::DELETE, path, who).send().await?;
         let status = resp.status();
         let body = resp.json().await.unwrap_or(Value::Null);
         Ok((status, body))
@@ -184,9 +233,9 @@ impl RkClient {
         &self,
         path: &str,
         options: &Value,
-        as_viewer: Option<&str>,
+        who: As<'_>,
     ) -> Result<(reqwest::StatusCode, Value), RkError> {
-        let resp = self.request(reqwest::Method::DELETE, path, as_viewer).json(options).send().await?;
+        let resp = self.request(reqwest::Method::DELETE, path, who).json(options).send().await?;
         let status = resp.status();
         let body = resp.json().await.unwrap_or(Value::Null);
         Ok((status, body))
@@ -223,7 +272,7 @@ impl RkClient {
         );
         // The cache's watch is the console's own read of the whole cluster,
         // so it carries the console's credential; a grid's is the viewer's.
-        let req = match self.auth(as_viewer) {
+        let req = match self.bearer(Self::reader(as_viewer)) {
             Some(t) => self.conn.http().get(url).bearer_auth(t),
             None => self.conn.http().get(url),
         };
@@ -254,5 +303,42 @@ impl RkClient {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn viewer(token: Option<&str>, root: bool) -> Viewer {
+        Viewer { user: Some("dave".into()), token: token.map(str::to_string), roles: vec!["operator".into()], root, ..Viewer::default() }
+    }
+
+    /// #387, finding 39f446993b07: a workload or project write with no
+    /// kubernetes identity has no credential to go on, never the console's.
+    #[test]
+    fn a_write_of_ones_own_never_borrows_the_consoles_credential() {
+        let v = viewer(Some("theirs"), false);
+        assert_eq!(As::own(&v), Some(As::Viewer("theirs")));
+        assert_eq!(As::own(&viewer(None, false)), None);
+        // Root has no bearer of its own and goes on the console's (#165).
+        assert_eq!(As::own(&viewer(None, true)), Some(As::Console));
+    }
+
+    #[test]
+    fn a_components_setting_falls_back_to_the_consoles_role_by_name() {
+        let v = viewer(Some("theirs"), false);
+        assert_eq!(As::within_role(&v), As::Viewer("theirs"));
+        assert_eq!(As::within_role(&viewer(None, false)), As::Console);
+        assert_eq!(As::chosen(Some("t")), As::Viewer("t"));
+        assert_eq!(As::chosen(None), As::Console);
+    }
+
+    #[test]
+    fn the_bearer_is_the_one_named() {
+        let c = RkClient::plain("https://127.0.0.1:1", Some("console"), true);
+        assert_eq!(c.bearer(As::Console).as_deref(), Some("console"));
+        assert_eq!(c.bearer(As::Viewer("theirs")).as_deref(), Some("theirs"));
+        assert_eq!(c.bearer(RkClient::reader(None)).as_deref(), Some("console"));
     }
 }

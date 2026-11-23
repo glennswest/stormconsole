@@ -32,7 +32,7 @@ use console_core::Viewer;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::client::RkError;
+use crate::client::{As, RkError};
 use crate::Inner;
 
 pub const HBAS: &str = "/apis/storage.storm.io/v1/hostbusadapters";
@@ -251,7 +251,7 @@ pub async fn flash(
     }
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let obj = object(&name, node, &req, now);
-    match client.post_json_as(OPS, &obj, token).await {
+    match client.post_json_as(OPS, &obj, As::chosen(token)).await {
         Ok((st, body)) if st.is_success() => {
             tracing::info!(user = viewer.user.as_deref().unwrap_or("root"), card = %name, op = %s(&body, "/metadata/name"), dry_run = req.dry_run, "hba: CardOperation created");
             (StatusCode::CREATED, Json(json!({"operation": operation(&body)}))).into_response()

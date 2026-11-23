@@ -859,7 +859,11 @@ pub async fn save(
         )
         .into_response();
     }
-    match client.put_json(&kind.object_path(ns, &obj), doc, viewer.token.as_deref()).await {
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
+    match client.put_json(&kind.object_path(ns, &obj), doc, who).await {
         Ok((s, _)) if s.is_success() => Json(json!({"message": format!("{} {obj} saved", kind.kind)})).into_response(),
         Ok((s, b)) => apiserver_words(s, &b),
         Err(e) => Refusal(StatusCode::BAD_GATEWAY, e.to_string()).into_response(),
@@ -880,7 +884,11 @@ pub async fn remove(
             return r;
         }
     }
-    match client.delete_json(&kind.object_path(ns, &obj), viewer.token.as_deref()).await {
+    let who = match crate::own(&viewer) {
+        Ok(w) => w,
+        Err(r) => return r,
+    };
+    match client.delete_json(&kind.object_path(ns, &obj), who).await {
         Ok((s, _)) if s.is_success() => Json(json!({"deleted": format!("{} {obj}", kind.kind)})).into_response(),
         Ok((s, b)) => apiserver_words(s, &b),
         Err(e) => Refusal(StatusCode::BAD_GATEWAY, e.to_string()).into_response(),

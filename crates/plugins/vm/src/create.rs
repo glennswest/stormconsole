@@ -37,6 +37,7 @@ use crate::images::{self, Catalogue};
 use serde_json::{json, Value};
 use tracing::{info, warn};
 
+use plugin_kubernetes::As;
 use crate::Inner;
 
 const CREATE: &str = "/api/plugins/vm/create";
@@ -561,7 +562,7 @@ pub async fn create(
         "stringData": {"userdata": cloud_init(&form)},
     });
     let secret_path = format!("/api/v1/namespaces/{ns}/secrets");
-    match client.post_json_as(&secret_path, &secret, viewer.token.as_deref()).await {
+    match client.post_json_as(&secret_path, &secret, As::within_role(&viewer)).await {
         // 409 is fine: recreating a machine of the same name reuses its seed.
         Ok((status, _)) if status.is_success() || status.as_u16() == 409 => {}
         Ok((status, body)) => {
@@ -616,7 +617,7 @@ pub async fn create(
     let key_count = form.lines.len() + usize::from(!form.ssh_key.trim().is_empty());
 
     let path = format!("{}/namespaces/{ns}/virtualmachines", crate::VM_API);
-    match client.post_json_as(&path, &doc, viewer.token.as_deref()).await {
+    match client.post_json_as(&path, &doc, As::within_role(&viewer)).await {
         Ok((status, body)) if status.is_success() => {
             let name = doc.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
             let _ = body;
