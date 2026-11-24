@@ -574,7 +574,9 @@ async fn network_endpoints(State(inner): State<Arc<Inner>>, viewer: Viewer) -> R
 }
 
 /// The credential a workload or project write goes on: the viewer's own, or a
-/// 403 saying they have none (#387, [`As::own`]).
+/// 403 saying they have none (#387, [`As::own`]). The error is the handler's
+/// answer itself, returned straight away, so it is not boxed (#401).
+#[allow(clippy::result_large_err)]
 pub(crate) fn own(viewer: &Viewer) -> Result<client::As<'_>, Response> {
     client::As::own(viewer)
         .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": client::NO_IDENTITY}))).into_response())
