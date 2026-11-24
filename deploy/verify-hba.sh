@@ -165,8 +165,8 @@ url = "http://127.0.0.1:$D0"
 [stormdrive.nodes]
 forge1 = "http://127.0.0.1:$D1"
 CONF
-  # metrics off: with logs off this console cannot place forge1, so its ironprom trend would be a 503 on the drive page
-  for s in fleet logs metrics stormstorage stormblock sbregistry vmimages fastetcd vm stormipmi stormcluster flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
+  # ironprom off: with logs off this console cannot place forge1, so its ironprom trend would be a 503 on the drive page
+  for s in fleet logs ironprom stormstorage stormblock sbregistry vmimages fastetcd vm stormipmi stormcluster flowsdn health history stormupdate; do printf '[%s]\nenabled = false\n' "$s"; done
 } >"$W/c.toml"
 "$BIN" --config "$W/c.toml" >"$W/c.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null "$C/healthz" && break; sleep 0.5; done
