@@ -253,8 +253,8 @@ export function manifestBody(region, image, dryRun) {
 export function opImage(op) {
   const m = op?.manifest
   const i = op?.image || {}
-  if (i.manifest) return { name: m?.file || 'the release manifest’s entry', sha256: m?.sha256 || i.sha256 || '', source: m?.source || '', manifest: true, version: m?.version || null }
-  return { name: i.name || '', sha256: i.sha256 || '', source: i.source || '', manifest: false, version: null }
+  if (i.manifest) return { name: m?.file || 'the release manifest’s entry', sha256: m?.sha256 || i.sha256 || '', source: m?.source || '', manifest: true, recorded: !!m?.file, version: m?.version || null }
+  return { name: i.name || '', sha256: i.sha256 || '', source: i.source || '', manifest: false, recorded: false, version: null }
 }
 
 /// Does the page need to read again soon (an operation of anybody's is going)?

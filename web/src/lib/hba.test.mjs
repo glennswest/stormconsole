@@ -118,7 +118,7 @@ assert.equal(requestWhy(mb), '')
 assert.match(requestWhy(manifestBody('bios', null, true)), /offers this card no image/)
 assert.match(requestWhy({ region: 'firmware', image: { manifest: true, sha256: sha, source: 'https://x' } }), /names its own/)
 // An operation's image: the node's record for a manifest flash, the typed golden otherwise.
-assert.deepEqual(opImage({ image: { manifest: true, sha256: sha }, manifest: { file: 'f.bin', sha256: sha, source: 'https://s', version: '1' } }), { name: 'f.bin', sha256: sha, source: 'https://s', manifest: true, version: '1' })
+assert.deepEqual(opImage({ image: { manifest: true, sha256: sha }, manifest: { file: 'f.bin', sha256: sha, source: 'https://s', version: '1' } }), { name: 'f.bin', sha256: sha, source: 'https://s', manifest: true, recorded: true, version: '1' })
 assert.equal(opImage({ image: { manifest: true, sha256: sha } }).name, 'the release manifest’s entry', 'before the node planned it')
 assert.equal(opImage({ image: { name: 'a', sha256: 'b', source: 'c' } }).source, 'c')
 

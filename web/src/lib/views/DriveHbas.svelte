@@ -220,7 +220,7 @@
                         {#if pr}<div class="bar" title={pr.text}><span style="width: {pr.fraction === null ? 100 : pr.fraction * 100}%" class:indef={pr.fraction === null}></span></div><span class="dim">{pr.text}</span>{/if}
                         {#if op.message}<div class="msg" class:err={phaseTone(op) === 'error'} data-testid="hba-op-message">{op.message}</div>{/if}
                       </td>
-                      <td>{op.region} · {im.name}{im.manifest ? ' (release manifest)' : ''}<div class="dim mono sha">{im.sha256}</div>{#if im.source}<div class="dim">from {im.source}</div>{/if}</td>
+                      <td>{op.region} · {im.name}{im.recorded ? ' (release manifest)' : ''}<div class="dim mono sha">{im.sha256}</div>{#if im.source}<div class="dim">from {im.source}</div>{/if}</td>
                       <td data-testid="hba-op-versions">{versions(op)}</td>
                       <td>{op.requester || '—'}</td>
                       <td>{at(op.started || op.created)}{op.finished ? ` → ${at(op.finished)}` : ''}</td>

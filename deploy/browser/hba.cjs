@@ -80,12 +80,12 @@ walk('hba', async (t) => {
 
   // The node runs it: progress, then before → after.
   const rec = { region: 'firmware', version: '16.17.01.00', file: 'hba330-16.17.01.00.bin', sha256: entrySha, source: 'https://dl.example/manifest/hba330-16.17.01.00.bin', golden: 'hba330-p16' }
-  t.check(/hba330-16\.17\.01\.00\.bin \(release manifest\)/.test(await ops.first().innerText()), 'listed as the release manifest’s', await ops.first().innerText())
+  t.check(/firmware · the release manifest’s entry/.test(await ops.first().innerText()) && (await ops.first().innerText()).includes(entrySha), 'listed as the release manifest’s entry, by its sha256, until the node records it', await ops.first().innerText())
   status(op, { phase: 'Running', step: 'download', bytesDone: 18432, bytesTotal: 73728, requester: 'alice', before: '16.17.00.03', imageVersion: '16.17.01.00', manifest: rec, started: '2026-11-19T12:00:00Z' })
   t.check(await t.until(async () => /download 25%/.test(await ops.first().innerText())), 'running: download 25%', await ops.first().innerText())
   t.check(/16\.17\.00\.03 → 16\.17\.01\.00/.test(await ops.first().locator('[data-testid=hba-op-versions]').innerText()), 'from → to while it runs')
   await t.shot(page, 'hba-running')
-  t.check(await t.until(async () => /from https:\/\/dl\.example\/manifest\/hba330/.test(await ops.first().innerText())), 'with the source the node took from the record', await ops.first().innerText())
+  t.check(await t.until(async () => /hba330-16\.17\.01\.00\.bin \(release manifest\)[\s\S]*from https:\/\/dl\.example\/manifest\/hba330/.test(await ops.first().innerText())), 'with the source the node took from the record', await ops.first().innerText())
   status(op, { phase: 'Succeeded', step: 'done', message: 'flashed: 16.17.01.00 running after the reset', requester: 'alice', before: '16.17.00.03', after: '16.17.01.00', manifest: rec, finished: '2026-11-19T12:01:30Z' })
   t.check(await t.until(async () => (await ops.first().getAttribute('data-phase')) === 'Succeeded'), 'succeeded')
   t.check(/16\.17\.00\.03 → 16\.17\.01\.00/.test(await ops.first().locator('[data-testid=hba-op-versions]').innerText()), 'before → after')
