@@ -640,7 +640,7 @@ async fn lifecycle_verb(
     if let Some(running) = plan.running {
         let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
         match client
-            .patch_merge(&path, &json!({"spec": {"running": running}}), As::within_role(&viewer))
+            .patch_merge(&path, &json!({"spec": {"running": running}}), As::within_role(viewer))
             .await
         {
             Ok((status, _)) if status.is_success() => {}
@@ -654,7 +654,7 @@ async fn lifecycle_verb(
         match client
             .delete(
                 &format!("{VM_API}/namespaces/{ns}/virtualmachineinstances/{name}"),
-                As::within_role(&viewer),
+                As::within_role(viewer),
             )
             .await
         {
@@ -892,7 +892,7 @@ async fn patch_machine(
 ) -> Response {
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
-    match client.patch_merge(&path, &body, As::within_role(&viewer)).await {
+    match client.patch_merge(&path, &body, As::within_role(viewer)).await {
         Ok((status, b)) if status.is_success() => {
             // Seen at once by the page's re-read, not when the watch catches up.
             inner.store.observe("vm", b).await;
@@ -1053,7 +1053,7 @@ async fn network_set(
 ) -> Response {
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{VM_API}/namespaces/{ns}/virtualmachines/{name}");
-    let saved = match client.patch_merge(&path, &body, As::within_role(&viewer)).await {
+    let saved = match client.patch_merge(&path, &body, As::within_role(viewer)).await {
         Ok((status, b)) if status.is_success() => b,
         Ok((status, b)) => return from_apiserver(status, b, ""),
         Err(e) => return (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
@@ -1700,7 +1700,7 @@ async fn snapshot_delete(
 async fn create_as_viewer(inner: &Inner, viewer: &Viewer, ns: &str, plural: &str, body: &Value, done: String) -> Response {
     let Some(client) = &inner.client else { return no_apiserver() };
     let path = format!("{}/namespaces/{ns}/{plural}", snapshots::API);
-    match client.post_json_as(&path, body, As::within_role(&viewer)).await {
+    match client.post_json_as(&path, body, As::within_role(viewer)).await {
         Ok((status, b)) => from_apiserver(status, b, &done),
         Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))).into_response(),
     }

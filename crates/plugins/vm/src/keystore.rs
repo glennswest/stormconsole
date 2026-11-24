@@ -45,14 +45,14 @@ async fn write(inner: &Inner, viewer: &Viewer, body: &Value, existing: Option<&V
     let ns = body["metadata"]["namespace"].as_str().unwrap_or("default");
     let name = body["metadata"]["name"].as_str().unwrap_or_default();
     let (status, b) = match existing {
-        None => client.post_json_as(&secrets(ns), body, As::within_role(&viewer)).await,
+        None => client.post_json_as(&secrets(ns), body, As::within_role(viewer)).await,
         Some(old) => {
             let mut body = body.clone();
             body["metadata"]["resourceVersion"] = old.pointer("/metadata/resourceVersion").cloned().unwrap_or(Value::Null);
             // A replace with `stringData` alone would leave the old `data`
             // items in place: a deleted key would survive its deletion.
             body["data"] = json!({});
-            client.put_json(&format!("{}/{name}", secrets(ns)), &body, As::within_role(&viewer)).await
+            client.put_json(&format!("{}/{name}", secrets(ns)), &body, As::within_role(viewer)).await
         }
     }
     .map_err(|e| e.to_string())?;

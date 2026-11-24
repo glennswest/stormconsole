@@ -296,7 +296,7 @@ async fn create_all(inner: &Inner, viewer: &Viewer, objs: &[Value]) -> Result<Ve
         let kind = o["kind"].as_str().unwrap_or("");
         let name = o.pointer("/metadata/name").and_then(Value::as_str).unwrap_or("");
         let plural = if kind == "Cluster" { "clusters" } else { "clustermembers" };
-        match kube.post_json_as(&format!("{}/{plural}", objects::API), o, As::within_role(&viewer)).await {
+        match kube.post_json_as(&format!("{}/{plural}", objects::API), o, As::within_role(viewer)).await {
             Ok((s, _)) if s.is_success() => made.push(format!("{kind} {name}")),
             Ok((s, b)) => {
                 let mut what = format!("{kind} {name}");
@@ -410,7 +410,7 @@ async fn dissolve(State(inner): State<Arc<Inner>>, viewer: Viewer, Path(name): P
 
 async fn delete_object(inner: &Inner, viewer: &Viewer, plural: &str, kind: &str, name: &str, done: &str) -> Response {
     let Some(kube) = &inner.kube else { return err(StatusCode::SERVICE_UNAVAILABLE, "no apiserver") };
-    match kube.delete(&format!("{}/{plural}/{name}", objects::API), As::within_role(&viewer)).await {
+    match kube.delete(&format!("{}/{plural}/{name}", objects::API), As::within_role(viewer)).await {
         Ok(s) if s.is_success() => {
             audit(viewer, &format!("{kind} {name} deleted"));
             Json(json!({"message": done})).into_response()
