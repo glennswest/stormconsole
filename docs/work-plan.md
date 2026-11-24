@@ -3042,3 +3042,13 @@ its engine's arrays (fault LEDs) but does not publish them. So: the finding's fa
       ran on 11-07) answered 503 with no ironprom. 3f4e476 turns `[ironprom]` off as verify-drive-volumes.sh does:
       0 failed, browser 0 failed, the #389 section's 4 checks ok. Closed
 - Left: stormdrive#183 (or #126) lifts this; until then a remote drive is updated from its own console
+
+### Secret scan: 14 false positives allowlisted (#399, stormcentral#1679) ✅ 2026-11-23
+stormcentral's nightly gitleaks 8.30.1 (defaults + the repo's `.gitleaks.toml`) found 14 at 9167227. Reproduced on a
+build VM with the same version: every one is a fixed stand-in value, none a credential: the RFC 6455 sample
+WebSocket key and a base64 of "stormconsole!" (5), stand-in bearer names in verify-*.sh (7, incl. history and runs-on,
+reported on the line before a multi-line curl), the pod page's Secret canary, a fixture disk WWN, and a minified
+xterm.js identifier. Nothing to rotate or report
+- [x] `.gitleaks.toml`: a top-level `[allowlist]` of anchored regexes, one per exact value; no paths
+- [x] gitleaks 8.30.1 on a build VM with stormcentral's config (`[extend] useDefault = true` + the file): 0 findings.
+      Negative control: a planted `Bearer console-own-37` and a Sec-WebSocket-Key of another value are still found

@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+### 2026-11-23 — Secret scan: 14 false positives allowlisted (#399, stormcentral#1679)
+- **security:** stormcentral's nightly secret scan (gitleaks 8.30.1) found 14 matches at 9167227. None is a secret: they are the RFC 6455 sample `Sec-WebSocket-Key` and a base64 of "stormconsole!" in the WebSocket verify scripts, the stand-in bearer names the `deploy/verify-*.sh` rigs start their stand-ins with, the base64 canary verify-pod-page.sh plants in a test Secret, a made-up disk WWN, and an identifier in vendored, minified xterm.js. Nothing to rotate or report.
+- **build:** `.gitleaks.toml` at the repo root: only a top-level `[allowlist]` of regexes anchored to each exact value, so no other value is let through.
+- **test:** gitleaks 8.30.1 on a build VM, with the config stormcentral builds (`[extend] useDefault = true` plus this file): 14 findings before, 0 after. A planted bearer and WebSocket key of other values are still found.
+
 ### 2026-11-23 — A workload or project write needs a kubernetes identity (#387, finding 39f446993b07)
 - **security:** `client.rs` `auth()` sent a write with no viewer token on the console's own credential. So an operator with no `kube_token`, the node's bearer or an operator client certificate could Import YAML, edit YAML, delete pods, raw-delete and change a project's members on the console's role. In a project the console made, that role is `admin` (rustkube's `self-provisioner`). These writes are now refused with a 403 "no kubernetes identity", as the Terminal and a node's verbs already were: `/apply`, a YAML edit, a custom resource's save and delete, a pod delete, a raw delete, scale, a project's delete, members and isolation. Root still goes on the console's credential.
 - **refactor:** a write names its credential (`As::Console`, `As::Viewer`), with no `Option` that quietly becomes the console's token. Workloads and projects use `As::own`. A component's settings use `As::within_role`, kept on the console's role as `docs/rbac.md` documents: VM lifecycle, settings and snapshots, stormcluster, cloud images and a new project. Reads are unchanged.

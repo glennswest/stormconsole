@@ -1,0 +1,26 @@
+# Secret-scan allowlist (stormcentral#1679, stormconsole#399): only false
+# positives, each anchored to the exact value so nothing else slips through.
+# A real secret is never listed here: rotate it, remove it and report it
+# (stormcentral deploy/sessions-CLAUDE.md, "Test secrets and secret scans").
+[allowlist]
+description = "stormconsole false positives: fixed stand-in values in deploy/verify-*.sh, and vendored xterm.js"
+regexes = [
+  # RFC 6455 §1.3's sample Sec-WebSocket-Key ("the sample nonce"), and a
+  # base64 of "stormconsole!": handshake nonces, not credentials.
+  '''^dGhlIHNhbXBsZSBub25jZQ==$''',
+  '''^c3Rvcm1jb25zb2xlIQ==$''',
+  # Bearer names the verify scripts' stand-ins are started with on a throwaway
+  # build VM; never issued anywhere real.
+  '''^console-own-(36|153)$''',
+  '''^own-15-secret$''',
+  '''^rig-admin-75$''',
+  '''^history-test-token$''',
+  '''^not-the-operators$''',
+  # base64 of "never-on-the-page-167": the canary verify-pod-page.sh plants in
+  # a test Secret to prove a Secret's value never reaches the pod page.
+  '''^bmV2ZXItb24tdGhlLXBhZ2UtMTY3$''',
+  # A made-up disk WWN, the key of a drive fixture in verify-history.sh.
+  '''^wwn-naa\.5000c500a1b2c3d4$''',
+  # Minified xterm.js (vendored, web/dist/assets/vendor/xterm.js): an identifier.
+  '''^r\.TwoKeyMap=void$''',
+]
