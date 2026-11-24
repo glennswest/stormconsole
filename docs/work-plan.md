@@ -2929,7 +2929,10 @@ until stormcos#1545 ships a manifest. No console change for #380; proposed `--af
         URL as the other way; DriveHbas: each region's offer, an operation's recorded file and source
   - [x] `verify-hba.sh` + `browser/hba.cjs`: the 409s, then `firmwareAvailable` patched on, the page's flash
         is the manifest's entry (spec `{manifest, sha256}` only), the bios fallback to the store
-  - [ ] sc-build + verify-hba.sh pass; close #380; request the image
+  - [x] verify-hba.sh on fc4a06f: 94 ok, browser rc 0 (sc-build-7dd87361dc). First runs: my test expected the
+        file before the node records it; a 503 from the drive page's ironprom trend (no fleet in the rig) → `[ironprom]`
+        off (first tried `[metrics]`, not a config section: the console did not start, sc-build filed #400)
+  - [x] web/dist rebuilt on a build VM (5f3d55d, 0 warnings); sc-build on the final commit; #380 and #400 closed; image requested
 
 ### stormview 0.5.0, and a web build with no warnings (#383) ✅ 2026-11-22
 - [x] lock: stormview main (0.5.0, d898402), from `npm update stormview` on a build VM; only its entry changed
