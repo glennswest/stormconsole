@@ -2916,6 +2916,8 @@ until stormcos#1545 ships a manifest. No console change for #380; proposed `--af
   still `Drive | Iom`. Nothing to build here until it lands
 - 2026-11-23 (later): rechecked again, unchanged. stormdrive#184 open, stormdrive main still a26548f (no commit since
   #80), `Kind` still `Drive | Iom`. No console change, no image requested
+- 2026-11-24: rechecked, unchanged. stormdrive#184 open (last updated 2026-11-22), main still a26548f, `Kind` still
+  `Drive | Iom`. No console change, no image requested
 
 ### stormview 0.5.0, and a web build with no warnings (#383) ✅ 2026-11-22
 - [x] lock: stormview main (0.5.0, d898402), from `npm update stormview` on a build VM; only its entry changed
