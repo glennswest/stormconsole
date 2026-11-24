@@ -1,6 +1,6 @@
 // node web/src/lib/hba.test.mjs
 import assert from 'node:assert/strict'
-import { body, busy, byNode, current, driveIdOf, drivesOnCards, flashWhy, gbit, limitText, phaseText, phaseTone, progress, rateText, requestWhy, running, slow, storeImages, versions } from './hba.js'
+import { body, busy, manifestBody, offer, offerText, offers, opImage, storeHolds, byNode, current, driveIdOf, drivesOnCards, flashWhy, gbit, limitText, phaseText, phaseTone, progress, rateText, requestWhy, running, slow, storeImages, versions } from './hba.js'
 
 // forge1's HBA330 as stormdrive v0.56.0 writes it (card.rs `object`), through the k8s plugin's /hbas.
 const sha = 'ab'.repeat(32)
@@ -89,5 +89,37 @@ assert.match(requestWhy(body('manufacturing', imgs[0], 'https://x/y', false)), /
 assert.match(requestWhy(body('firmware', null, 'https://x/y', false)), /firmware store/)
 assert.match(requestWhy(body('firmware', imgs[0], 'ftp://x/y', false)), /recorded from/)
 assert.match(requestWhy(body('firmware', { name: 'a', sha256: 'abc' }, 'https://x/y', false)), /64 hex/)
+
+// #380: the release manifest's offers (stormdrive#184), per region.
+assert.equal(offer(forge1, 'firmware'), null, 'no offers written: stormdrive older than v0.59.0')
+assert.equal(offers(forge1), null)
+const m = { ...forge1, status: { ...forge1.status, firmwareAvailable: {
+  firmware: { current: '16.17.00.03', flashable: true, image: { region: 'firmware', version: '16.17.01.00', file: 'hba330-16.17.01.00.bin', sha256: sha.toUpperCase(), source: 'https://dl.example/hba330.bin', golden: 'hba330-p16' } },
+  bios: { current: '08.37.00.00', flashable: true, image: null },
+  uefi: { current: null, flashable: false, image: null },
+  nvdata: { current: '0e.01.00.07', flashable: false, error: '2 images for HBA330 nvdata at 0e.01.00.07' },
+} } }
+const fo = offer(m, 'firmware')
+assert.deepEqual(fo.image, { version: '16.17.01.00', file: 'hba330-16.17.01.00.bin', sha256: sha, source: 'https://dl.example/hba330.bin', golden: 'hba330-p16' })
+assert.equal(offer(m, 'bios').image, null)
+assert.deepEqual(offers(m).map((o) => o.region), ['firmware', 'nvdata'], 'only regions with an entry or an error')
+assert.equal(offerText(fo), '16.17.01.00 (now 16.17.00.03)')
+assert.match(offerText(offers(m)[1]), /^not offered: 2 images/)
+assert.match(offerText({ region: 'nvdata', current: 'a', image: { version: 'b' }, flashable: false }), /inside the firmware image/)
+// Is it in the node's store?
+assert.deepEqual(storeHolds(m, fo.image, [{ node: 'forge1', name: 'copy.bin', sha256: sha }]), { held: true, text: 'In forge1’s firmware store as copy.bin, the same sha256.' })
+assert.match(storeHolds(m, fo.image, [{ node: 'forge1', name: 'hba330-16.17.01.00.bin', sha256: 'cd'.repeat(32) }]).text, /its sha256 is cdcd.*not the manifest’s/)
+assert.match(storeHolds(m, fo.image, [{ node: 'forge2', name: 'x', sha256: sha }]).text, /^Not in forge1’s firmware store: the node reads it beside the manifest/)
+assert.equal(storeHolds(m, null, []).held, false)
+// The manifest's request: only the pinned sha256.
+const mb = manifestBody('firmware', fo.image, false)
+assert.deepEqual(mb, { region: 'firmware', image: { manifest: true, sha256: sha }, dryRun: false })
+assert.equal(requestWhy(mb), '')
+assert.match(requestWhy(manifestBody('bios', null, true)), /offers this card no image/)
+assert.match(requestWhy({ region: 'firmware', image: { manifest: true, sha256: sha, source: 'https://x' } }), /names its own/)
+// An operation's image: the node's record for a manifest flash, the typed golden otherwise.
+assert.deepEqual(opImage({ image: { manifest: true, sha256: sha }, manifest: { file: 'f.bin', sha256: sha, source: 'https://s', version: '1' } }), { name: 'f.bin', sha256: sha, source: 'https://s', manifest: true, version: '1' })
+assert.equal(opImage({ image: { manifest: true, sha256: sha } }).name, 'the release manifest’s entry', 'before the node planned it')
+assert.equal(opImage({ image: { name: 'a', sha256: 'b', source: 'c' } }).source, 'c')
 
 console.log('hba.test.mjs: ok')

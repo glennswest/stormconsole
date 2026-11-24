@@ -10,7 +10,7 @@
   import { get } from '../api.js'
   import { route } from '../router.svelte.js'
   import { formatBytes } from '../drivemap.js'
-  import { busy, byNode, flashWhy, limitText, phaseText, phaseTone, progress, rateText, slow, versions } from '../hba.js'
+  import { busy, byNode, flashWhy, limitText, offers, offerText, opImage, phaseText, phaseTone, progress, rateText, slow, versions } from '../hba.js'
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import FlashDialog from '../components/FlashDialog.svelte'
@@ -189,6 +189,13 @@
             </table>
           </div>
           {#if st.firmware?.readAt}<p class="dim">Read back {at(st.firmware.readAt)}.</p>{/if}
+          {#if offers(c)?.length}
+            <ul class="offers" data-testid="hba-offers">
+              {#each offers(c) as o (o.region)}
+                <li data-region={o.region} class:dim={!!o.error || !o.flashable}>Release manifest, {o.region}: {offerText(o)}{#if o.image}<span class="dim"> · {o.image.file} · from <span class="mono">{o.image.source}</span></span>{/if}</li>
+              {/each}
+            </ul>
+          {/if}
           {#if st.lastFlash}
             <p class="dim" data-testid="hba-last-flash">Last flash: {st.lastFlash.region} with {st.lastFlash.image} ({st.lastFlash.before || '?'} → {st.lastFlash.after || '?'}), {at(st.lastFlash.finished)}: {st.lastFlash.result}</p>
           {/if}
@@ -205,6 +212,7 @@
                 <tbody>
                   {#each c.operations as op (op.name)}
                     {@const pr = progress(op)}
+                    {@const im = opImage(op)}
                     <tr data-testid="hba-op" data-name={op.name} data-phase={op.phase}>
                       <td class="mono">{op.name}{op.dryRun ? ' (dry run)' : ''}</td>
                       <td>
@@ -212,7 +220,7 @@
                         {#if pr}<div class="bar" title={pr.text}><span style="width: {pr.fraction === null ? 100 : pr.fraction * 100}%" class:indef={pr.fraction === null}></span></div><span class="dim">{pr.text}</span>{/if}
                         {#if op.message}<div class="msg" class:err={phaseTone(op) === 'error'} data-testid="hba-op-message">{op.message}</div>{/if}
                       </td>
-                      <td>{op.region} · {op.image?.name}<div class="dim mono sha">{op.image?.sha256}</div><div class="dim">from {op.image?.source}</div></td>
+                      <td>{op.region} · {im.name}{im.manifest ? ' (release manifest)' : ''}<div class="dim mono sha">{im.sha256}</div>{#if im.source}<div class="dim">from {im.source}</div>{/if}</td>
                       <td data-testid="hba-op-versions">{versions(op)}</td>
                       <td>{op.requester || '—'}</td>
                       <td>{at(op.started || op.created)}{op.finished ? ` → ${at(op.finished)}` : ''}</td>
@@ -259,6 +267,7 @@
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; font-size: var(--sc-t-meta); }
   .facts dt { color: var(--text-faint); }
   .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .offers { margin: 4px 0 8px; padding-left: 18px; font-size: var(--sc-t-meta); display: grid; gap: 2px; overflow-wrap: anywhere; }
   .findings { margin: 4px 0 8px; padding-left: 18px; font-size: var(--sc-t-meta); }
   .findings .warning { color: var(--warn-strong); }
   .scroll { overflow-x: auto; }

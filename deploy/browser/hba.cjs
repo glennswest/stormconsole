@@ -1,6 +1,7 @@
 // The SAS cards page and Flash in a browser (#376), over deploy/verify-hba.sh: forge1's HBA330 as a
 // HostBusAdapter, sdb at 12 Gbit and sdc held at 6 Gbit (link degraded) on phys 0 and 1, an earlier BIOS flash
-// and a dry run the node refused. STATUS is a command that writes a CardOperation's status as stormdrive's
+// and a dry run the node refused; the card carries stormdrive v0.59.0's manifest offers (#380): a firmware
+// entry that is the store's hba330-16.17.01.00.bin, no bios entry, an nvdata error. STATUS is a command that writes a CardOperation's status as stormdrive's
 // controller does: `STATUS <name> <json>`.
 const { execFileSync } = require('node:child_process')
 const { walk } = require('./lib.cjs')
@@ -32,6 +33,9 @@ walk('hba', async (t) => {
   t.check((await first.getAttribute('data-phase')) === 'Refused', 'the newest: the dry run, refused')
   t.check(/cordon the Node forge1/.test(await first.locator('[data-testid=hba-op-message]').innerText()), 'with the node’s words', await first.innerText())
   t.check(/08\.35\.00\.00 → 08\.37\.00\.00/.test(await ops.nth(1).innerText()), 'the BIOS flash: before → after')
+  const offered = card.locator('[data-testid=hba-offers]')
+  t.check(/firmware: 16\.17\.01\.00 \(now 16\.17\.00\.03\)/.test(await offered.innerText()) && /manifest\/hba330/.test(await offered.innerText()), '#380: the manifest’s firmware offer, from its source', await offered.innerText())
+  t.check(/nvdata: not offered: 2 images/.test(await offered.innerText()), 'and why nvdata is not offered')
   await t.shot(page, 'hba-card')
 
   // Flash: the dialog, the store's image with its sha256, the source asked for, the card's name typed.
@@ -40,12 +44,26 @@ walk('hba', async (t) => {
   await flash.click()
   const dlg = page.locator('[data-testid=flash-dialog]')
   t.check(await t.until(async () => dlg.isVisible()), 'the dialog')
+  // #380: the manifest's golden first, with its record; nothing typed.
+  t.check(await dlg.locator('[data-testid=flash-from-manifest]').isChecked(), 'the release manifest’s golden chosen by default')
+  const entrySha = await dlg.locator('[data-testid=flash-entry-sha]').innerText()
+  t.check(/^[0-9a-f]{64}$/.test(entrySha), 'its sha256 shown', entrySha)
+  t.check((await dlg.locator('[data-testid=flash-entry-source]').innerText()) === 'https://dl.example/manifest/hba330-16.17.01.00.bin', 'its source, from the record')
+  t.check(/16\.17\.01\.00 \(now 16\.17\.00\.03\)/.test(await dlg.locator('[data-testid=flash-entry]').innerText()), 'its version against the card’s')
+  t.check(/In forge1’s firmware store as hba330-16\.17\.01\.00\.bin, the same sha256/.test(await dlg.locator('[data-testid=flash-entry-store]').innerText()), 'the store holds it', await dlg.locator('[data-testid=flash-entry-store]').innerText())
+  t.check((await dlg.locator('[data-testid=flash-source]').count()) === 0, 'no source to type')
+  // BIOS: the manifest offers none, so the store and a typed source.
+  await dlg.locator('[data-testid=flash-region-bios]').check()
+  t.check(await t.until(async () => /offers no bios image for this card at 08\.37\.00\.00/.test(await dlg.locator('[data-testid=flash-no-entry]').innerText().catch(() => ''))), 'bios: the manifest offers none, said')
+  t.check((await dlg.locator('[data-testid=flash-from-manifest]').isDisabled()) && (await dlg.locator('[data-testid=flash-from-store]').isChecked()), 'so the store is the way')
   const opts = await dlg.locator('[data-testid=flash-image] option').allInnerTexts()
   t.check(opts.some((o) => /hba330-16\.17\.01\.00\.bin/.test(o)) && opts.some((o) => /mptsas3-uefi/.test(o)), 'forge1’s store images offered', opts.join(' | '))
-  await dlg.locator('[data-testid=flash-image]').selectOption('hba330-16.17.01.00.bin')
-  t.check(/sha256 [0-9a-f]{64}/.test(await dlg.locator('[data-testid=flash-sha]').innerText()), 'its sha256 shown')
-  t.check(/recorded from/.test(await dlg.locator('[data-testid=flash-why]').innerText()), 'the source is asked for', await dlg.locator('[data-testid=flash-why]').innerText().catch(() => ''))
-  await dlg.locator('[data-testid=flash-source]').fill('https://dl.example/hba330-16.17.01.00.bin')
+  await dlg.locator('[data-testid=flash-image]').selectOption('mptsas3-uefi-18.00.00.00.rom')
+  t.check(/sha256 [0-9a-f]{64}/.test(await dlg.locator('[data-testid=flash-sha]').innerText()), 'a store image’s sha256 shown')
+  t.check(/recorded from/.test(await dlg.locator('[data-testid=flash-why]').innerText()), 'its source is asked for', await dlg.locator('[data-testid=flash-why]').innerText().catch(() => ''))
+  // Back to firmware: the manifest's golden again.
+  await dlg.locator('[data-testid=flash-region-firmware]').check()
+  t.check(await t.until(async () => dlg.locator('[data-testid=flash-from-manifest]').isChecked()), 'firmware: the manifest’s golden again')
   await dlg.locator('[data-testid=flash-dry]').uncheck()
   t.check(await t.until(async () => (await dlg.locator('[data-testid=flash-word]').innerText().catch(() => '')) === CARD), 'the word is the card’s name')
   t.check(/Flash/.test(await dlg.locator('[data-testid=flash-go]').innerText()), 'the button says Flash, not Dry run')
@@ -61,11 +79,14 @@ walk('hba', async (t) => {
   t.check(await t.until(async () => /one flash at a time/.test(await card.locator('[data-testid=hba-flash-why]').innerText().catch(() => ''))), 'Flash withheld while it waits', await card.locator('[data-testid=hba-flash-why]').innerText().catch(() => ''))
 
   // The node runs it: progress, then before → after.
-  status(op, { phase: 'Running', step: 'download', bytesDone: 18432, bytesTotal: 73728, requester: 'alice', before: '16.17.00.03', imageVersion: '16.17.01.00', started: '2026-11-19T12:00:00Z' })
+  const rec = { region: 'firmware', version: '16.17.01.00', file: 'hba330-16.17.01.00.bin', sha256: entrySha, source: 'https://dl.example/manifest/hba330-16.17.01.00.bin', golden: 'hba330-p16' }
+  t.check(/hba330-16\.17\.01\.00\.bin \(release manifest\)/.test(await ops.first().innerText()), 'listed as the release manifest’s', await ops.first().innerText())
+  status(op, { phase: 'Running', step: 'download', bytesDone: 18432, bytesTotal: 73728, requester: 'alice', before: '16.17.00.03', imageVersion: '16.17.01.00', manifest: rec, started: '2026-11-19T12:00:00Z' })
   t.check(await t.until(async () => /download 25%/.test(await ops.first().innerText())), 'running: download 25%', await ops.first().innerText())
   t.check(/16\.17\.00\.03 → 16\.17\.01\.00/.test(await ops.first().locator('[data-testid=hba-op-versions]').innerText()), 'from → to while it runs')
   await t.shot(page, 'hba-running')
-  status(op, { phase: 'Succeeded', step: 'done', message: 'flashed: 16.17.01.00 running after the reset', requester: 'alice', before: '16.17.00.03', after: '16.17.01.00', finished: '2026-11-19T12:01:30Z' })
+  t.check(await t.until(async () => /from https:\/\/dl\.example\/manifest\/hba330/.test(await ops.first().innerText())), 'with the source the node took from the record', await ops.first().innerText())
+  status(op, { phase: 'Succeeded', step: 'done', message: 'flashed: 16.17.01.00 running after the reset', requester: 'alice', before: '16.17.00.03', after: '16.17.01.00', manifest: rec, finished: '2026-11-19T12:01:30Z' })
   t.check(await t.until(async () => (await ops.first().getAttribute('data-phase')) === 'Succeeded'), 'succeeded')
   t.check(/16\.17\.00\.03 → 16\.17\.01\.00/.test(await ops.first().locator('[data-testid=hba-op-versions]').innerText()), 'before → after')
   t.check(/alice/.test(await ops.first().innerText()), 'by alice')

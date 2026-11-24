@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Live check of the SAS cards page and Flash (#376, stormdrive#166), on a build VM:
+# Live check of the SAS cards page and Flash (#376, stormdrive#166), and Flash from the release firmware
+# manifest's golden (#380, stormdrive#184), on a build VM:
 #
 #   sc-build deploy/verify-hba.sh
 #
@@ -8,6 +9,8 @@
 # card.rs writes it, a stand-in stormdrive for forge1's drives, links and firmware store (deploy/hba.standins.py),
 # a real console with its SPA, and a headless Chromium. No card is touched: the rig plays the node's controller
 # by writing each CardOperation's status as stormdrive does (Refused, Running with bytes, Succeeded before/after).
+# Once the plain checks pass, the card's status gets stormdrive v0.59.0's `firmwareAvailable` (a firmware entry
+# that is the store's image, no bios entry, an nvdata error), and the page's flash is the manifest's entry.
 #
 #   alice  operator, storage-admin      bob   operator, storage-viewer      carol  operator, no storage role
 #   the console's own account reads everything and may create nothing, so an operation it carries to the
@@ -198,6 +201,9 @@ check "$(said)" "image sha256: 64 hex digits" "saying so"
 check "$(req alice "$FP" "$CARD" "{\"region\":\"manufacturing\",\"image\":{\"name\":\"a.bin\",\"sha256\":\"$SHA\",\"source\":\"https://x/a\"}}")" "400" "the manufacturing region: 400"
 check "$(req alice "$FP" "$CARD" "{\"region\":\"firmware\",\"image\":{\"name\":\"a.bin\",\"sha256\":\"$SHA\",\"source\":\"https://x/a\"},\"force\":true}")" "422" "a field stormdrive does not take: refused"
 check "$(req alice /api/plugins/k8s/hbas/forge9-0000-01-00-0/flash forge9-0000-01-00-0 "$FW,\"dryRun\":true}")" "404" "a card that is not there: 404"
+MF="{\"region\":\"firmware\",\"image\":{\"manifest\":true,\"sha256\":\"$SHA\"}"
+check "$(req alice "$FP" "$CARD" "$MF,\"dryRun\":true}")" "409" "#380: the manifest's entry, on a card with no offers written: 409"
+check "$(said)" "$CARD carries no firmware manifest offers: its node's stormdrive is older than v0.59.0 (stormdrive#184), or its CRD is" "saying stormdrive is older"
 check "$(ops 'len(d)')" "1" "none of it made an operation"
 
 say "a dry run, created as alice"
@@ -210,11 +216,29 @@ check "$(grep 'hba: CardOperation created' "$W/c.log" | grep -c alice || true)" 
 "$W/status.sh" "$DRY" '{"phase":"Refused","message":"sdb on this card hold(s) the node'"'"'s system slab: cordon the Node forge1 (maintenance) first","requester":"alice"}'
 check "$(hbas alice '[(o["phase"], o["message"]) for o in ops if o["name"]=="'"$DRY"'"]')" "[('Refused', \"sdb on this card hold(s) the node's system slab: cordon the Node forge1 (maintenance) first\")]" "the node's refusal comes back on it, in its words"
 
+say "#380: the release manifest's offers (stormdrive v0.59.0 status.firmwareAvailable)"
+FA=$(python3 -c 'import json,sys; sha=sys.argv[1]; print(json.dumps({"status": {"firmwareAvailable": {
+  "firmware": {"current": "16.17.00.03", "flashable": True, "image": {"region": "firmware", "version": "16.17.01.00", "file": "hba330-16.17.01.00.bin",
+               "sha256": sha, "source": "https://dl.example/manifest/hba330-16.17.01.00.bin", "golden": "hba330-p16"}},
+  "bios": {"current": "08.37.00.00", "flashable": True, "image": None},
+  "uefi": {"current": None, "flashable": False, "image": None},
+  "nvdata": {"current": "0e.01.00.07", "flashable": False, "error": "2 images for HBA330 nvdata at 0e.01.00.07"}}}}))' "$SHA")
+k PATCH "$G/hostbusadapters/$CARD/status" "$FA" application/merge-patch+json
+check "$(hbas alice 's["firmwareAvailable"]["firmware"]["image"]["version"]')" "16.17.01.00" "the offer reaches the console as stormdrive writes it"
+check "$(req alice "$FP" "$CARD" "{\"region\":\"firmware\",\"image\":{\"manifest\":true,\"sha256\":\"$(printf 'cd%.0s' $(seq 32))\"},\"dryRun\":true}")" "409" "a sha256 that is not the offer now: 409"
+check "$(said | grep -c 'is now hba330-16.17.01.00.bin 16.17.01.00.*open Flash again')" "1" "saying what it is now"
+check "$(req alice "$FP" "$CARD" "{\"region\":\"bios\",\"image\":{\"manifest\":true,\"sha256\":\"$SHA\"}}")" "409" "bios, which the manifest does not offer: 409"
+check "$(said)" "the release manifest offers $CARD no bios image at 08.37.00.00" "saying so"
+check "$(req alice "$FP" "$CARD" "{\"region\":\"firmware\",\"image\":{\"manifest\":true,\"sha256\":\"$SHA\",\"source\":\"https://typed\"}}")" "400" "a source typed beside manifest: 400"
+check "$(req bob "$FP" "$CARD" "$MF}")" "403" "bob, with the manifest's entry: still 403"
+check "$(ops 'len(d)')" "2" "none of it made an operation"
+
 say "the pages"
 RC=0
 deploy/browser/run.sh "$W" hba.cjs "$C" CARD="$CARD" STATUS="$W/status.sh" || RC=1
 FLASH=$(ops "sorted([o['metadata']['name'] for o in d if not o['spec'].get('dryRun') and o['spec']['region']=='firmware'])[-1:]")
-check "$(ops "[(o['spec']['image']['source'], o['spec'].get('dryRun')) for o in d if o['metadata']['name'] in $FLASH]")" "[('https://dl.example/hba330-16.17.01.00.bin', None)]" "the page's flash: the source typed, not a dry run"
+check "$(ops "[(o['spec']['image'], o['spec'].get('dryRun')) for o in d if o['metadata']['name'] in $FLASH]")" "[({'manifest': True, 'sha256': '$SHA'}, None)]" "#380: the page's flash: the manifest's entry, pinned by its sha256, no name or source typed, not a dry run"
+check "$(hbas alice "[(o['manifest'] or {}).get('source') for o in ops if o['name'] in $FLASH]")" "['https://dl.example/manifest/hba330-16.17.01.00.bin']" "the entry the node used, back on the operation"
 tar czf hba-shots.tgz -C "$W" shots 2>/dev/null || true
 
 say "console log"

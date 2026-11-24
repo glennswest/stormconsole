@@ -15,10 +15,20 @@
 //! name was typed — so the requester stormdrive re-checks is the person, never
 //! the console.
 //!
-//! The image is a golden by stormdrive's rule: a file in the node's firmware
-//! store with the sha256 named here, and the URL it was recorded from. The
-//! request is checked here as stormdrive checks it, so a malformed one never
-//! becomes an object; the node's own checks (the image against the card,
+//! The image is a golden, named one of two ways (stormdrive `card::ImageSpec`):
+//!
+//! - **the release manifest's entry** (#380, stormdrive#184): `{manifest:
+//!   true, sha256}`. The card's `status.firmwareAvailable` says, per region,
+//!   which entry applies at the version it runs, with its file, sha256 and
+//!   source; the node takes the name and source from that record, never from
+//!   typing. The sha256 pins the entry the person saw: the console refuses a
+//!   request whose entry is not the card's offer now, and the node refuses
+//!   one whose manifest changed after.
+//! - **typed** (#376): a file in the node's firmware store with the sha256
+//!   named here, and the URL it was recorded from.
+//!
+//! The request is checked here as stormdrive checks it, so a malformed one
+//! never becomes an object; the node's own checks (the image against the card,
 //! the system half, I/O in flight) come back on the operation's status.
 
 use std::sync::Arc;
@@ -88,6 +98,8 @@ pub fn operation(o: &Value) -> Value {
         "bytesDone": st.get("bytesDone"),
         "bytesTotal": st.get("bytesTotal"),
         "imageVersion": st.get("imageVersion"),
+        // The manifest entry the image is (stormdrive#184): version, file, sha256, source, golden.
+        "manifest": st.get("manifest").filter(|v| v.is_object()),
         "before": st.get("before"),
         "after": st.get("after"),
         "started": st.get("started"),
@@ -156,12 +168,19 @@ pub struct FlashRequest {
     pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+/// The image: typed in full (`name`, `sha256`, `source`), or `manifest: true`
+/// with the `sha256` of the entry the person was shown.
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Golden {
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
     pub sha256: String,
-    pub source: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub manifest: bool,
 }
 
 /// A firmware store name, as stormdrive takes one (`firmware::valid_image_name`).
@@ -177,16 +196,59 @@ pub fn check(r: &FlashRequest) -> Result<(), String> {
     if !REGIONS.contains(&r.region.as_str()) {
         return Err(format!("region {:?}: a flash writes firmware or bios", r.region));
     }
-    if !store_name(&r.image.name) {
-        return Err(format!("image {:?}: not a firmware store name (letters, digits, . _ - +, at most 128)", r.image.name));
-    }
     let sha = r.image.sha256.trim();
-    if sha.len() != 64 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+    let hex = sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit());
+    if r.image.manifest {
+        if r.image.name.is_some() || r.image.source.is_some() {
+            return Err("image: manifest: true takes the name and source from the release manifest's record; give only the sha256 you were shown".into());
+        }
+        if !hex {
+            return Err("image sha256: 64 hex digits, the manifest entry's you were shown".into());
+        }
+        return Ok(());
+    }
+    let name = r.image.name.as_deref().unwrap_or("");
+    if !store_name(name) {
+        return Err(format!("image {name:?}: not a firmware store name (letters, digits, . _ - +, at most 128)"));
+    }
+    if !hex {
         return Err("image sha256: 64 hex digits".into());
     }
-    let src = r.image.source.trim();
+    let src = r.image.source.as_deref().unwrap_or("").trim();
     if !(src.starts_with("https://") || src.starts_with("http://")) || src.len() < 10 || src.chars().any(char::is_whitespace) {
         return Err("image source: the http(s) URL the golden was recorded from (compliance-ops#23)".into());
+    }
+    Ok(())
+}
+
+/// A manifest request against the card as stormdrive last wrote it: its
+/// `status.firmwareAvailable` must offer this region an entry with this
+/// sha256, and a flash must write that region. A typed request passes.
+pub fn offered(card: &Value, r: &FlashRequest) -> Result<(), String> {
+    if !r.image.manifest {
+        return Ok(());
+    }
+    let name = s(card, "/metadata/name");
+    let Some(a) = card.pointer("/status/firmwareAvailable").filter(|v| v.is_object()) else {
+        return Err(format!("{name} carries no firmware manifest offers: its node's stormdrive is older than v0.59.0 (stormdrive#184), or its CRD is"));
+    };
+    let reg = &a[r.region.as_str()];
+    let now = reg.get("current").and_then(Value::as_str).unwrap_or("?");
+    let Some(img) = reg.get("image").filter(|v| v.is_object()) else {
+        let why = reg.get("error").and_then(Value::as_str).map(|e| format!(": {e}")).unwrap_or_default();
+        return Err(format!("the release manifest offers {name} no {} image at {now}{why}", r.region));
+    };
+    if reg.get("flashable").and_then(Value::as_bool) == Some(false) {
+        return Err(format!("{name}'s {} region is not written by a flash", r.region));
+    }
+    let have = img.get("sha256").and_then(Value::as_str).unwrap_or("").trim();
+    if !have.eq_ignore_ascii_case(r.image.sha256.trim()) {
+        return Err(format!(
+            "the release manifest's {} entry for {name} is now {} {} (sha256 {have}), not the one you were shown: open Flash again",
+            r.region,
+            img.get("file").and_then(Value::as_str).unwrap_or("?"),
+            img.get("version").and_then(Value::as_str).unwrap_or("?"),
+        ));
     }
     Ok(())
 }
@@ -201,7 +263,11 @@ pub fn object(card: &str, node: &str, r: &FlashRequest, now: u64) -> Value {
         "card": card,
         "op": "flash",
         "region": r.region,
-        "image": {"name": r.image.name, "sha256": r.image.sha256.trim().to_lowercase(), "source": r.image.source.trim()},
+        "image": if r.image.manifest {
+            json!({"manifest": true, "sha256": r.image.sha256.trim().to_lowercase()})
+        } else {
+            json!({"name": r.image.name, "sha256": r.image.sha256.trim().to_lowercase(), "source": r.image.source.as_deref().unwrap_or("").trim()})
+        },
     });
     if r.dry_run {
         spec["dryRun"] = json!(true);
@@ -249,11 +315,14 @@ pub async fn flash(
     if card.pointer("/status/present").and_then(Value::as_bool) == Some(false) {
         return err(StatusCode::CONFLICT, format!("{name} is not seen on {node} now: nothing to flash"));
     }
+    if let Err(why) = offered(&card, &req) {
+        return err(StatusCode::CONFLICT, why);
+    }
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let obj = object(&name, node, &req, now);
     match client.post_json_as(OPS, &obj, As::chosen(token)).await {
         Ok((st, body)) if st.is_success() => {
-            tracing::info!(user = viewer.user.as_deref().unwrap_or("root"), card = %name, op = %s(&body, "/metadata/name"), dry_run = req.dry_run, "hba: CardOperation created");
+            tracing::info!(user = viewer.user.as_deref().unwrap_or("root"), card = %name, op = %s(&body, "/metadata/name"), dry_run = req.dry_run, manifest = req.image.manifest, "hba: CardOperation created");
             (StatusCode::CREATED, Json(json!({"operation": operation(&body)}))).into_response()
         }
         Ok((st, body)) => {
@@ -282,7 +351,10 @@ mod tests {
             "status": {"phase": phase, "message": "m", "before": "16.17.00.03", "after": null}})
     }
     fn req(region: &str, name: &str, sha: &str, src: &str) -> FlashRequest {
-        FlashRequest { region: region.into(), image: Golden { name: name.into(), sha256: sha.into(), source: src.into() }, dry_run: false }
+        FlashRequest { region: region.into(), image: Golden { name: Some(name.into()), sha256: sha.into(), source: Some(src.into()), manifest: false }, dry_run: false }
+    }
+    fn mreq(region: &str, sha: &str) -> FlashRequest {
+        FlashRequest { region: region.into(), image: Golden { sha256: sha.into(), manifest: true, ..Default::default() }, dry_run: false }
     }
     const SHA: &str = "0123456789abcdef0123456789abcdef0123456789ABCDEF0123456789abcdef";
 
@@ -343,5 +415,43 @@ mod tests {
         assert!(bad.is_err());
         let ok: FlashRequest = serde_json::from_value(json!({"region": "bios", "image": {"name": "a", "sha256": "b", "source": "c"}, "dryRun": true})).unwrap();
         assert!(ok.dry_run);
+    }
+
+    /// #380: the manifest form carries only the pinned sha256; name and
+    /// source come from the record, so typing them beside it is refused.
+    #[test]
+    fn a_manifest_request_names_only_the_sha_it_was_shown() {
+        assert!(check(&mreq("firmware", SHA)).is_ok());
+        assert!(check(&mreq("firmware", "abc")).unwrap_err().contains("64 hex"));
+        assert!(check(&mreq("nvdata", SHA)).unwrap_err().contains("firmware or bios"));
+        let mut typed = mreq("firmware", SHA);
+        typed.image.source = Some("https://typed".into());
+        assert!(check(&typed).unwrap_err().contains("from the release manifest's record"));
+        let o = object("c", "n", &mreq("bios", SHA), 1);
+        assert_eq!(o["spec"]["image"], json!({"manifest": true, "sha256": SHA.to_lowercase()}));
+        let parsed: FlashRequest = serde_json::from_value(json!({"region": "firmware", "image": {"manifest": true, "sha256": SHA}})).unwrap();
+        assert!(parsed.image.manifest && parsed.image.name.is_none());
+        assert!(check(&parsed).is_ok());
+    }
+
+    /// #380: the console asks for the entry the card offers now, or says why not.
+    #[test]
+    fn a_manifest_request_is_the_cards_offer_now() {
+        let sha = SHA.to_lowercase();
+        let mut c = hba();
+        assert!(offered(&c, &req("firmware", "a.bin", SHA, "https://x/a.bin")).is_ok(), "a typed request is not the manifest's");
+        assert!(offered(&c, &mreq("firmware", SHA)).unwrap_err().contains("older than v0.59.0"));
+        c["status"]["firmwareAvailable"] = json!({
+            "firmware": {"current": "16.17.00.03", "flashable": true, "image": {"region": "firmware", "version": "16.17.01.00", "file": "HBA330-16.17.01.00.bin", "sha256": sha, "source": "https://dl.example/hba330.bin"}},
+            "bios": {"current": "08.37.00.00", "flashable": true, "image": null},
+            "nvdata": {"current": null, "flashable": false, "error": "2 images for HBA330 nvdata"},
+        });
+        assert!(offered(&c, &mreq("firmware", SHA)).is_ok(), "the sha in either case");
+        let stale = offered(&c, &mreq("firmware", &"cd".repeat(32))).unwrap_err();
+        assert!(stale.contains("is now HBA330-16.17.01.00.bin 16.17.01.00") && stale.contains("open Flash again"), "{stale}");
+        assert_eq!(offered(&c, &mreq("bios", SHA)).unwrap_err(), "the release manifest offers forge1-0000-01-00-0 no bios image at 08.37.00.00");
+        let op = json!({"metadata": {"name": "m"}, "spec": {"image": {"manifest": true, "sha256": sha}}, "status": {"phase": "Planned", "manifest": {"file": "HBA330-16.17.01.00.bin", "source": "https://dl.example/hba330.bin"}}});
+        assert_eq!(operation(&op)["manifest"]["file"], "HBA330-16.17.01.00.bin", "the entry the node used, on the operation");
+        assert!(operation(&json!({"status": {"manifest": null}}))["manifest"].is_null());
     }
 }

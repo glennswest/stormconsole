@@ -1393,17 +1393,31 @@ holds `cardoperations` create.
   reads again every 3 s while an operation is going, else every 10 s. A drive's detail
   names its card and phy (`drivesOnCards`), from the phys and, behind an expander, the
   device list.
-- **Flash**: `POST /api/plugins/k8s/hbas/{name}/flash {region, image {name, sha256, source},
-  dryRun}`. The storage guard classifies it as `cardoperations create`, confirmed by the
+- **Flash**: `POST /api/plugins/k8s/hbas/{name}/flash {region, image, dryRun}`, where
+  `image` is `{manifest: true, sha256}` (the release manifest's entry, #380) or `{name,
+  sha256, source}` (typed, #376). The storage guard classifies it as `cardoperations create`, confirmed by the
   card's name and keeping data; the host's gate reviews it as the viewer and puts the
   viewer's bearer on the request (`ActAs`). The handler checks the request as stormdrive
-  does (`deny_unknown_fields`, region firmware|bios, a store name, 64 hex, an http(s)
-  source), reads the card as the same bearer (404 when it is not there, 409 when it is not
-  present), and creates `<card>-<region>-<unix secs>` with stormdrive's spec. The image
-  list in the dialog is the card's node's firmware store from the drive plugin's
-  `/firmware`, and the source URL is typed. stormdrive's firmware manifest (stormdrive#80)
-  holds drive and IOM goldens only, none for a card; the picker over recorded goldens (#380)
-  waits on card entries (stormdrive#184). The drive and IOM manifest is #396.
+  does (`deny_unknown_fields`, region firmware|bios; typed: a store name, 64 hex, an http(s)
+  source; manifest: 64 hex and no name or source), reads the card as the same bearer (404
+  when it is not there, 409 when it is not present), and creates `<card>-<region>-<unix
+  secs>` with stormdrive's spec.
+- **The golden** (#380, stormdrive#184, v0.59.0): stormdrive writes the release firmware
+  manifest's offers on the card, `status.firmwareAvailable.<firmware|bios|uefi|nvdata> =
+  {current, image: {version, file, sha256, source, golden} | null, error?, flashable}`: at
+  most one entry per region, the one for the version the card runs. The dialog offers that
+  entry first, showing its version, file, sha256 and source, and whether the node's store
+  holds a file with that sha256 (the node reads it beside the manifest first, so a missing
+  store copy is said, not refused). The request carries only `{manifest: true, sha256}`:
+  the node takes the file and source from the record, and the sha256 pins the entry shown.
+  The handler answers 409 before any object when the card carries no offers (stormdrive
+  older than v0.59.0), the region has no entry (with the manifest's error when there is
+  one), or the entry's sha256 is no longer the one asked for; the node refuses a manifest
+  that changed after the create. The run's status carries the entry (`manifest`), shown on
+  the operation. Without an entry, the dialog keeps the store image and the typed URL
+  (#376). The card's page lists each region's offer, and why nvdata/uefi are listed but not
+  flashed (they come inside the firmware image and the BIOS option ROM). The drive and IOM
+  manifest is #396.
 - Not here: `sc get/describe hba` (sc's generic get) and the flash verb (sc#156). SSC has no
   control in the public pages (stormdrive#164), so there is nothing to show for it.
 
@@ -2496,7 +2510,6 @@ filed on its owner. The console says so on the page where the gap shows.
 | stormcluster | [#11](https://github.com/glennswest/stormcluster/issues/11) a dry-run plan's steps carry no description | the console copies `Step::describe` |
 | stormvm | #16 pod network, #18 device verb, #19 memory resize, #41 accessCredentials, #45 snapshot step/disks/size | VMs under isolation; hotplug; memory changes; keys into a running guest; the Backup tab's detail |
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
-| stormdrive | [#184](https://github.com/glennswest/stormdrive/issues/184) card entries in the firmware manifest, offered on HostBusAdapter | the Flash dialog picking a recorded golden with its source and sha256 (#380) |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
 | stormconsole | #42 where SSH keys live; #266 login and users | — |
