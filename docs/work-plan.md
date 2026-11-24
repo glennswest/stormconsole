@@ -2914,6 +2914,8 @@ record). Filed #396 here for what #80 does enable: drive/IOM offers and `manifes
 until stormcos#1545 ships a manifest. No console change for #380; proposed `--after stormdrive#184`
 - 2026-11-23: rechecked, still held. stormdrive#184 is open, with no commit for it on main; at a634602 `fwmanifest.rs` `Kind` is
   still `Drive | Iom`. Nothing to build here until it lands
+- 2026-11-23 (later): rechecked again, unchanged. stormdrive#184 open, stormdrive main still a26548f (no commit since
+  #80), `Kind` still `Drive | Iom`. No console change, no image requested
 
 ### stormview 0.5.0, and a web build with no warnings (#383) ✅ 2026-11-22
 - [x] lock: stormview main (0.5.0, d898402), from `npm update stormview` on a build VM; only its entry changed
