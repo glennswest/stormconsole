@@ -3074,3 +3074,16 @@ xterm.js identifier. Nothing to rotate or report
 - [x] `.gitleaks.toml`: a top-level `[allowlist]` of anchored regexes, one per exact value; no paths
 - [x] gitleaks 8.30.1 on a build VM with stormcentral's config (`[extend] useDefault = true` + the file): 0 findings.
       Negative control: a planted `Bearer console-own-37` and a Sec-WebSocket-Key of another value are still found
+
+### Hardware management grantable to a group: `hardware-admin` (#391, from #334)
+stormipmi's writes (power, releases, locations, test marks, adopting a host, the SOL keyboard) passed only `admin`,
+which comes only from `cluster-admin`. Two gates stood in the way, not one: the plugin's `allowed`, and before it
+`auth::refuse_read_only`, which refuses every plugin write by someone without `operator`.
+- [ ] `users::console_roles`: ClusterRole `hardware-admin` → console role `hardware-admin`
+- [ ] `refuse_read_only`: a hardware-admin writes through `/api/plugins/ipmi/` and nothing else (as storage-admin
+      writes destructive storage and nothing else)
+- [ ] stormipmi: `allowed`, `/me` and the SOL keyboard pass `admin` or `hardware-admin`; the page's words
+- [ ] A test per gate; `verify-users.sh`: a group with `hardware-admin` lets a member power-cycle through a stand-in
+      stormipmi (BMC), a viewer refused, the member refused anything outside it
+- [ ] stormcos issue: ship the `hardware-admin` ClusterRole as `storage-admin` is
+- [ ] Docs: README, docs/rbac.md, CHANGELOG; sc-build; close
