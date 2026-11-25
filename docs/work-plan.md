@@ -3095,3 +3095,19 @@ which comes only from `cluster-admin`. Two gates stood in the way, not one: the 
 - [x] sc-build 7eb981f: build + every test pass (41 suites, 0 failed); `sc-build deploy/verify-users.sh` 7eb981f:
       0 failed (§8c's 27 checks, the browser walk); clippy -D warnings a2557fc: clean; web dist 59e2955 (0 warnings). Closed
 - Left: stormcos#1628 ships the ClusterRole; until then a cluster has `hardware-admin` only if someone makes it
+
+### The drive's PI/EEDP checks, sense errors and error level (#394, from #384) — 2026-11-25
+Unblocked: stormdrive#160 shipped in v0.60.0 (f1b7129): the Drive object's `status.health.errors` is stormblock#648's
+block, camelCase (`level`, `since`, `streak`, `why`, `drive`, `sense`, `perMin` keyed by the engine's kind names,
+`defectsPerDay`, `pendingPerDay`), with conditions `DriveErrorsDegraded`/`DriveErrorsFailing` (message = `why`,
+lastTransitionTime = `since`) and a `drive errors` feed metric when not ok.
+- [ ] `drivecounters.rs`: the row carries `errors` and those two conditions (a drive with only `errors` still has a
+      row); the engine's counters (PI guard/app/ref, EEDP ×3, medium/recovered/hardware, retry-corrected ×3,
+      non-medium) get their own day, kept apart so an engine restart does not cost the drive's own day
+- [ ] alarm `drive:alarm:drive-errors:<drive>` from the conditions, as `links.rs` does (failing red, degraded amber,
+      clearing an hour after ok), in the feed → alarm bar
+- [ ] the Integrity panel: the level with its since/streak/why, the new rows, a per-minute column, defects per day
+- [ ] the map: `errorsLevel` per drive (the object's, else the feed's `drive errors`), a "Drive errors" colour mode,
+      filter and chip, a bar along the bay's top in other modes, group totals
+- [ ] tests: unit, `integrity.test.mjs`, `drivemap.test.mjs`; `verify-drive-integrity.sh` stand-ins carry `errors`
+- [ ] sc-build, clippy, verify script; web dist; docs; close
