@@ -3096,7 +3096,7 @@ which comes only from `cluster-admin`. Two gates stood in the way, not one: the 
       0 failed (§8c's 27 checks, the browser walk); clippy -D warnings a2557fc: clean; web dist 59e2955 (0 warnings). Closed
 - Left: stormcos#1628 ships the ClusterRole; until then a cluster has `hardware-admin` only if someone makes it
 
-### The drive's PI/EEDP checks, sense errors and error level (#394, from #384) — 2026-11-25
+### The drive's PI/EEDP checks, sense errors and error level (#394, from #384) ✅ 2026-11-25
 Unblocked: stormdrive#160 shipped in v0.60.0 (f1b7129): the Drive object's `status.health.errors` is stormblock#648's
 block, camelCase (`level`, `since`, `streak`, `why`, `drive`, `sense`, `perMin` keyed by the engine's kind names,
 `defectsPerDay`, `pendingPerDay`), with conditions `DriveErrorsDegraded`/`DriveErrorsFailing` (message = `why`,
@@ -3112,5 +3112,8 @@ lastTransitionTime = `since`) and a `drive errors` feed metric when not ok.
 - [x] tests: unit, `integrity.test.mjs`, `drivemap.test.mjs`; `verify-drive-integrity.sh` stand-ins carry `errors`
 - [x] built in 95fb39b. stormdrive dates its off conditions at `since` too, so "was on" for the clearing alarm
       is what the console saw (`Seen::was`), not a transition time; docs (architecture, README, CHANGELOG)
-- [ ] sc-build 95fb39b (build, tests, clippy, JS models); `verify-drive-integrity.sh` (§3c, §7, the walk);
-      `verify-drive-links.sh` (shared stand-ins); web dist; close
+- [x] sc-build 95fb39b: build, every test (41 suites, 0 failed, the 4 new `drivecounters` tests), clippy -D warnings
+      clean, `integrity`/`drivemap`/`drivelink` .test.mjs PASS; `sc-build deploy/verify-drive-integrity.sh` 95fb39b:
+      0 failed (93 checks: §3c, §7, the walk's panel, NET004, map mode/mark/chip); `verify-drive-links.sh` 95fb39b:
+      0 failed (the shared stand-ins); web dist 24ba9bf (0 warnings). Closed
+- Not checked against a live engine: stormdrive#160 itself has not been; the rig's block is its `project()` shape
