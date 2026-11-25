@@ -330,7 +330,7 @@
       <div class="cbar">
         <span class="mono">{consoleFor.tag} · {consoleFor.host.namespace}/{consoleFor.host.name}</span>
         <span class="state {consoleState}">{consoleState}</span>
-        <span class="dim">{me.admin ? 'you can type' : 'watching — typing is for administrators'}</span>
+        <span class="dim">{me.admin ? 'you can type' : 'watching — typing is for administrators and hardware-admins'}</span>
         <button onclick={() => { closeConsole(); consoleFor = null }}>Close</button>
       </div>
       <pre class="screen" bind:this={screen}>{@html ansiToHtml(consoleText)}</pre>

@@ -36,6 +36,10 @@
 #                  a new install's hash replaces it, an admin's change stays
 #   reseed         a reinstall's new hash replaces it; an admin's change stays
 #                  changed; a joining node never overwrites it
+#   hardware-admin a group holding it (#391) lets a member power-cycle a machine
+#                  through a stand-in stormipmi and BMC (deploy/ipmi-bmc.standin.py,
+#                  which takes a write only with stormipmi's token) and nothing
+#                  else; a viewer is refused, and so is the member once out
 #   apiserver down the user sign-in says so (503); the node's bearer still gets in
 #   Chromium       the login page and Admin → Users (deploy/browser/users.cjs)
 set -euo pipefail
@@ -50,7 +54,7 @@ FAILED=0
 check() { if [ "$1" = "$2" ]; then echo "  ok   $3"; else echo "  FAIL $3 — got: $1"; FAILED=$((FAILED+1)); fi; }
 HERE=$(pwd)
 port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
-EP=$(port); PP=$(port); MP=$(port); AP=$(port); P=$(port); P2=$(port)
+EP=$(port); PP=$(port); MP=$(port); AP=$(port); P=$(port); P2=$(port); IP=$(port)
 KAPI=https://127.0.0.1:$AP
 C=http://127.0.0.1:$P
 C2=http://127.0.0.1:$P2
@@ -122,6 +126,12 @@ k POST "$RBAC/clusterroles" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind"
   "metadata":{"name":"storage-admin"},"rules":[{"apiGroups":["storage.storm.io"],"resources":["*"],"verbs":["*"]}]}' >/dev/null
 k POST "$RBAC/clusterroles" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole",
   "metadata":{"name":"storage-viewer"},"rules":[{"apiGroups":["storage.storm.io"],"resources":["*"],"verbs":["get","list","watch"]}]}' >/dev/null
+# The hardware role (#391), in the shape asked of stormcos: the Machine and
+# MachineBoot objects. The console's gate is what this run checks; stormipmi's
+# writes go on its own token, not as the person.
+k POST "$RBAC/clusterroles" '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole",
+  "metadata":{"name":"hardware-admin"},"rules":[{"apiGroups":["storm.io"],"resources":["machines"],"verbs":["*"]},
+  {"apiGroups":["metal.storm.io"],"resources":["machineboots"],"verbs":["*"]}]}' >/dev/null
 check "$(kcode GET "$RBAC/clusterroles/cluster-admin")" 200 "cluster-admin is there"
 
 say "the console's role, applied from deploy/rbac/stormconsole.yaml"
@@ -166,6 +176,11 @@ userfile ghost "g-pw" no-such-role
 printf 'not-a-hash' > "$UD/junk.hash"; printf viewer > "$UD/junk.role"
 check "$(tail -c1 "$HF" | od -An -c | tr -d ' ')" "$(printf %s "$(tail -c1 "$HF")")" "no trailing newline"
 printf '%s' "$SA" > "$W/sa.token"
+# stormipmi and its BMC, stood in (#391): a write only with this token.
+openssl rand -hex 16 > "$W/ipmi.token"
+python3 "$HERE/deploy/ipmi-bmc.standin.py" "$IP" "$W/ipmi.token" "$W/bmc.log" &
+for _ in $(seq 30); do curl -sf -o /dev/null "http://127.0.0.1:$IP/readyz" && break; sleep 0.5; done
+: > "$W/bmc.log"
 conf() { # <file> <port> <node>
   cat > "$1" <<EOF
 listen_addr = "127.0.0.1:$2"
@@ -181,7 +196,8 @@ token_file = "$W/sa.token"
 ca_file = "$W/ca.crt"
 EOF
   printf '[logs]\nmcast_group = "239.255.42.46:%s"\n' "$2" >> "$1"
-  for s in fleet stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormipmi stormcluster flowsdn health history; do printf '[%s]\nenabled = false\n' "$s" >> "$1"; done
+  printf '[stormipmi]\nurl = "http://127.0.0.1:%s"\ntoken_file = "%s"\n' "$IP" "$W/ipmi.token" >> "$1"
+  for s in fleet stormdrive stormstorage stormblock sbregistry vm vmimages fastetcd stormcluster flowsdn health history; do printf '[%s]\nenabled = false\n' "$s" >> "$1"; done
   mkdir -p "$W/d$2"
 }
 conf "$W/c.toml" "$P" n1
@@ -373,6 +389,40 @@ check "$(kcode GET "$G/drives-group")$(kcode GET "$RBAC/clusterrolebindings/stor
 check "$(sess js)$(sess jv)" "True stor viewerTrue view viewer" "its members read again; the users stay"
 check "$(as ja DELETE /api/v1/groups/drives)" 400 "a group that is not there: 400"
 grep -rqs 'groups/drives/members' "$W/d$P" && echo "  ok   the audit records a group's members set" || { echo "  FAIL no groups audit line"; FAILED=$((FAILED+1)); }
+
+say "8c. hardware-admin (#391): a group grants hardware management, and only that"
+CYCLE=/api/plugins/ipmi/proxy/api/v1/machines/SIM1/power/cycle
+bmc() { wc -l < "$W/bmc.log" | tr -d ' '; }
+as ja GET /api/v1/users >/dev/null
+check "$(j '"hardware-admin" in d["roles"]' < "$W/out")" True "hardware-admin is on offer: the cluster has it"
+check "$(login jsc2 stormcentral "$SCPW")$(sess jsc2)" "200True stormcentral viewer" "a viewer, for the refusals"
+check "$(as jsc2 GET /api/plugins/ipmi/me)$(j 'd["admin"]' < "$W/out")" 200False "the viewer is offered no buttons"
+check "$(as jsc2 POST "$CYCLE")" 403 "the viewer may not power-cycle: 403"
+check "$(as jv POST "$CYCLE")" 403 "nor may view, before the group"
+check "$(bmc)" 0 "and nothing reached the BMC"
+check "$(as ja POST /api/v1/groups '{"name":"hardware","description":"racks and power","members":["view"],"roles":["hardware-admin"]}')" 201 "admin makes hardware (hardware-admin), view in it"
+check "$(k GET "$RBAC/clusterrolebindings/storm-group:hardware:hardware-admin" | j '(d["roleRef"]["name"], [x["name"] for x in d["subjects"]])')" \
+  "('hardware-admin', ['view'])" "its binding names view's account"
+check "$(sess jv)" "True view hardware-admin" "view holds hardware-admin now, without signing in again"
+check "$(as jv GET /api/plugins/ipmi/me)$(j '(d["admin"], d["why"])' < "$W/out")" "200(True, '')" "the Machines page offers view its buttons"
+check "$(as jv GET /api/plugins/ipmi/proxy/api/v1/machines)$(j 'd["machines"][0]["power"]' < "$W/out")" 200on "view reads SIM1: on"
+check "$(as jv POST "$CYCLE")$(j 'd["power"]' < "$W/out")" 200on "view power-cycles SIM1 through the console"
+check "$(tail -1 "$W/bmc.log")" "POST /api/v1/machines/SIM1/power/cycle on" "the BMC took it, on stormipmi's token"
+check "$(as jv POST /api/plugins/ipmi/proxy/api/v1/machines/SIM1/power/off)$(as jv GET /api/plugins/ipmi/proxy/api/v1/machines)$(j 'd["machines"][0]["power"]' < "$W/out")" 200200off "and powers it off"
+check "$(as jv POST /api/plugins/ipmi/proxy/api/v1/machines/SIM1/power/on)" 200 "and on again"
+grep -qs 'refused' "$W/bmc.log" && { echo "  FAIL a write reached the BMC without stormipmi's token"; FAILED=$((FAILED+1)); } || echo "  ok   no write reached the BMC without stormipmi's token"
+sed 's/\x1b\[[0-9;]*m//g' "$W/c.log" | grep -qs 'machines: acting through stormipmi.*user=view' && echo "  ok   logged as view" || { echo "  FAIL the power-cycle was not logged as view"; FAILED=$((FAILED+1)); }
+check "$(as jv POST /api/plugins/drive/format '{}')" 403 "but hardware-admin formats no drive: 403"
+check "$(as jv POST /api/plugins/k8s/projects '{"name":"by-hw"}')" 403 "nor writes anything else: 403"
+check "$(as jv GET /api/v1/users)" 403 "nor reads Users"
+check "$(as jv POST /api/plugins/ipmi/proxy/metrics)" 404 "and the proxy forwards only the Machines surface"
+n=$(bmc)
+check "$(as jsc2 POST "$CYCLE")$(bmc)" "403$n" "the viewer is still refused, and nothing reaches the BMC"
+check "$(as ja PUT /api/v1/groups/hardware/members '{"members":[]}')" 200 "view taken out of hardware"
+check "$(sess jv)" "True view viewer" "view reads again"
+check "$(as jv POST "$CYCLE")$(bmc)" "403$n" "and is refused the power-cycle: 403, nothing reaches the BMC"
+check "$(as ja DELETE /api/v1/groups/hardware)" 200 "hardware deleted"
+check "$(kcode GET "$RBAC/clusterrolebindings/storm-group:hardware:hardware-admin")" 404 "its binding is gone"
 
 say "9. another node's console: the sweep ends a deleted user's session there"
 conf "$W/c2.toml" "$P2" n2

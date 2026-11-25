@@ -4,6 +4,8 @@ import { means, offer, nameProblem, newUserProblem, groupNameProblem, viaGroups,
 assert.equal(means('cluster-admin'), 'administrator: every action, every page')
 assert.equal(means('storage-admin'), 'format drives and RAID sets, as themselves')
 assert.equal(means('storage-viewer'), 'reads')
+assert.equal(means('hardware-admin'), 'power machines, repoint what they boot, type on their consoles')
+assert.deepEqual(offer(['view', 'hardware-admin', 'storage-admin']), ['storage-admin', 'hardware-admin', 'view'], 'hardware-admin after storage (#391)')
 assert.deepEqual(offer(['zeta', 'view', 'storage-admin', 'alpha']), ['storage-admin', 'view', 'alpha', 'zeta'], 'suggested first, only those there')
 assert.deepEqual(offer(undefined), [])
 assert.equal(nameProblem('alice'), '')

@@ -1,8 +1,8 @@
 // Admin → Users (#266), apart from the page so plain node can test it.
 
-/// The roles worth offering first: what stormcos ships for storage, then
-/// the kubernetes ones a console role follows from.
-export const SUGGESTED = ['storage-admin', 'storage-viewer', 'cluster-admin', 'edit', 'view']
+/// The roles worth offering first: what stormcos ships for storage and
+/// hardware (#391), then the kubernetes ones a console role follows from.
+export const SUGGESTED = ['storage-admin', 'storage-viewer', 'hardware-admin', 'cluster-admin', 'edit', 'view']
 
 /// What a ClusterRole lets a person do on this console. The apiserver
 /// decides every request made as them; this is what the console offers.
@@ -12,6 +12,8 @@ export function means(role) {
       return 'administrator: every action, every page'
     case 'storage-admin':
       return 'format drives and RAID sets, as themselves'
+    case 'hardware-admin':
+      return 'power machines, repoint what they boot, type on their consoles'
     case 'operator':
     case 'edit':
       return 'changes things'

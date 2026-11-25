@@ -11,13 +11,17 @@
 //! - Reads are open to anyone who can see the console, as they are on
 //!   stormipmi.
 //! - Every write — power, repointing a release, the default image, a test
-//!   mark, adopting a host, boot intent — is `admin` only. Powering off the
-//!   wrong machine, or pointing it at the wrong release, is not an operator's
-//!   everyday mistake to be allowed to make.
+//!   mark, adopting a host, boot intent — is for `admin` or `hardware-admin`
+//!   (#391: a ClusterRole a group can hold, so hardware management is
+//!   granted without granting everything). Powering off the wrong machine,
+//!   or pointing it at the wrong release, is not an operator's everyday
+//!   mistake to be allowed to make.
 //! - stormipmi's own write token (`api.tokenFile`) is held here and added
 //!   server-side; the browser never sees it or stormipmi's address.
 //! - The SOL console is relayed by tag's host, read-only unless the viewer
-//!   is an admin: a serial console is a root shell on most machines.
+//!   is an admin or hardware-admin: a serial console is a root shell on most
+//!   machines. (A hardware-admin can already boot any release on it, so the
+//!   keyboard grants nothing more.)
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,6 +41,10 @@ use tokio_tungstenite::tungstenite::Message as UpMessage;
 use tokio_util::sync::CancellationToken;
 
 pub const NAME: &str = "ipmi";
+
+/// The console role (and the ClusterRole it comes from, #391) that
+/// manages hardware: every write here, and nothing anywhere else.
+pub const ROLE: &str = "hardware-admin";
 
 /// stormipmi's stormd on a node (the console's port layout: :9097 + 100).
 const STORMD_PORT: u16 = 9197;
@@ -74,10 +82,25 @@ impl StormipmiPlugin {
     }
 }
 
+/// May this viewer manage hardware: power, releases, locations, test marks,
+/// adopting hosts, the SOL keyboard? An administrator or a hardware-admin.
+pub fn may_manage(viewer: &Viewer) -> bool {
+    viewer.has_role("admin") || viewer.has_role(ROLE)
+}
+
 /// May this viewer do this to a machine? Reads, yes; anything else only as
-/// an administrator.
+/// an administrator or a hardware-admin.
 pub fn allowed(method: &Method, viewer: &Viewer) -> bool {
-    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) || viewer.has_role("admin")
+    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) || may_manage(viewer)
+}
+
+/// Is this a hardware-admin's write to this plugin? The host's read-only
+/// gate lets exactly these through for a viewer who is not an operator
+/// (#391), as it does destructive storage for a storage-admin; [`allowed`]
+/// still decides here.
+pub fn hardware_write(viewer: &Viewer, path: &str) -> bool {
+    viewer.has_role(ROLE)
+        && path.strip_prefix("/api/plugins/").and_then(|p| p.strip_prefix(NAME)).is_some_and(|p| p.starts_with('/'))
 }
 
 /// The only upstream paths the proxy forwards: the Machines API, the hosts
@@ -136,10 +159,12 @@ impl ConsolePlugin for StormipmiPlugin {
 /// What the page needs to know about the viewer: whether to offer the
 /// buttons at all. The proxy enforces it either way.
 async fn me(viewer: Viewer) -> Response {
+    let may = may_manage(&viewer);
     Json(json!({
-        "admin": viewer.has_role("admin"),
-        "why": if viewer.has_role("admin") { "" } else {
-            "power, releases, locations, test marks and adopting hosts are for administrators"
+        // `admin` is what the page reads: may this viewer act here.
+        "admin": may,
+        "why": if may { "" } else {
+            "power, releases, locations, test marks and adopting hosts are for administrators and hardware-admins"
         },
     }))
     .into_response()
@@ -163,7 +188,8 @@ async fn proxy(
             StatusCode::FORBIDDEN,
             Json(json!({"error": format!(
                 "{who} is not an administrator: powering machines, repointing what they boot, \
-                 recording where they are, test marks and adopting hosts need the admin role"
+                 recording where they are, test marks and adopting hosts need the admin or \
+                 hardware-admin role"
             )})),
         )
             .into_response();
@@ -199,7 +225,8 @@ pub fn ws_url(base: &str, path: &str) -> String {
 }
 
 /// A machine's SOL console, relayed. Everybody who may see the page may
-/// watch; only an administrator's keystrokes reach the machine.
+/// watch; only an administrator's or hardware-admin's keystrokes reach the
+/// machine.
 async fn console(
     State(inner): State<Arc<Inner>>,
     viewer: Viewer,
@@ -212,7 +239,7 @@ async fn console(
     if let Some(t) = &inner.token {
         url.push_str(&format!("?token={t}"));
     }
-    let write = viewer.has_role("admin");
+    let write = may_manage(&viewer);
     ws.on_upgrade(move |socket| relay(socket, url, write)).into_response()
 }
 
@@ -297,8 +324,31 @@ mod tests {
             assert!(!allowed(&m, &viewer(&["operator"])), "{m}");
             assert!(!allowed(&m, &viewer(&["viewer"])), "{m}");
             assert!(allowed(&m, &viewer(&["admin"])), "{m}");
+            assert!(allowed(&m, &viewer(&["hardware-admin"])), "{m}");
+            assert!(!allowed(&m, &viewer(&["storage-admin"])), "{m}");
         }
         assert!(allowed(&Method::GET, &viewer(&["viewer"])));
+    }
+
+    /// #391: the SOL keyboard and the page's buttons follow the same gate.
+    #[test]
+    fn a_hardware_admin_manages_machines() {
+        assert!(may_manage(&viewer(&["hardware-admin"])));
+        assert!(may_manage(&viewer(&["admin"])));
+        for r in [&["operator"][..], &["viewer"], &["storage-admin"], &[]] {
+            assert!(!may_manage(&viewer(r)), "{r:?}");
+        }
+    }
+
+    /// Only this plugin's own paths, and only for the role.
+    #[test]
+    fn the_host_lets_a_hardware_admin_write_only_here() {
+        let ha = viewer(&["hardware-admin"]);
+        assert!(hardware_write(&ha, "/api/plugins/ipmi/proxy/api/v1/machines/A/power/on"));
+        assert!(!hardware_write(&ha, "/api/plugins/ipmix/proxy/api/v1/machines"));
+        assert!(!hardware_write(&ha, "/api/plugins/drive/format"));
+        assert!(!hardware_write(&ha, "/api/v1/users"));
+        assert!(!hardware_write(&viewer(&["operator"]), "/api/plugins/ipmi/proxy/api/v1/machines/A/power/on"));
     }
 
     #[test]

@@ -468,6 +468,10 @@ changing rather than an exception worth carving. Namespace scoping
 
 **The engine's token (#30).** `engine::find_token`: `[stormblock] token_file`, then what the engine's own client looks for, `$STORMBLOCK_API_TOKEN`, then for an engine on this machine `$STORMBLOCK_TOKEN_FILE`, `/etc/stormblock/api_token` and `/var/lib/stormblock/api_token`, looked at again each time so a token minted later is picked up. As in the engine's `token_for`, a token from one of those files is this node's and never goes to another machine. The console holds no `admin_token`: the engine keeps it in `/run/stormblock-admin`, away from what its callers mount, and a destructive verb goes with a person's reviewed bearer (stormblock#274, #82). On a node today the gate is in audit mode (stormcos#296), so the node token still passes for root (#165); when it enforces, a console with no sign-in is refused those verbs.
 
+#### Hardware management: hardware-admins (#391)
+
+The Machines page's writes (stormipmi: power, the release a machine boots, the default image, locations, test marks, adopting a host) and the SOL keyboard pass `admin` or `hardware-admin`, a console role taken by name from the ClusterRole of that name (stormcos#1628), so a group (#334) can grant hardware management without `cluster-admin`. Two gates read it: the host's reader gate (`auth::refuse_read_only`) lets a hardware-admin's write through for `/api/plugins/ipmi/` and nowhere else (`plugin_stormipmi::hardware_write`), as it does destructive storage for a storage-admin, and the plugin's own `allowed`/`may_manage` then decide the write, `/me`'s buttons and the keyboard. The writes go on stormipmi's own write token, as an admin's do, so the role's rules matter only where a person reaches the Machine objects directly. A hardware-admin can already boot any release on a machine, so the SOL keyboard grants nothing more.
+
 #### Destructive storage: storage-admins only (#82)
 
 **No sign-in is root (owner, #165, 2026-11-06).** A console with no authentication has one switch, `Viewer::root`, set by the host: whoever reaches it holds every role, and nothing refuses for want of a kubernetes identity. That covers this guard (its typed confirmation stays), the Terminal, a node's verbs and rack, deletes, YAML, projects, drive and VM actions, and it is offered all of them (#45's review is not asked). Requests go on the console's own credential, so the apiserver and each component's own gate can still refuse, and say so. Once a console has sign-ins nobody is root, and the rules in this section and elsewhere apply, to an administrator with no identity and to the node's bearer as well. Real login follows in #266 and stormcos#802.
@@ -2512,6 +2516,7 @@ filed on its owner. The console says so on the page where the gap shows.
 | rustkube-node | #53 snapshot controller | a snapshot being taken |
 | stormblock | #152 committed bytes per slab | committed and headroom per drive and pool |
 | stormcos | [#525](https://github.com/glennswest/stormcos/issues/525) bind `/run/stormpump` and `/system-data` into the console's unit | the API health page reading PID 1's summary (its own probes, the engine's first) and the kept history |
+| stormcos | [#1628](https://github.com/glennswest/stormcos/issues/1628) ship the `hardware-admin` ClusterRole | granting hardware management to a group on a real cluster (#391; the console honours the role already) |
 | stormconsole | #42 where SSH keys live; #266 login and users | — |
 
 ## Phasing (history)

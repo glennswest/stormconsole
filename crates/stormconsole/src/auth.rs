@@ -613,6 +613,11 @@ fn refuse_read_only(who: &Viewer, req: &Request) -> Option<Response> {
     {
         return None;
     }
+    // A hardware-admin (#391) writes the Machines page and nothing else;
+    // the stormipmi plugin's own gate passes them too.
+    if plugin_stormipmi::hardware_write(who, path) {
+        return None;
+    }
     Some(
         (
             StatusCode::FORBIDDEN,
@@ -992,6 +997,33 @@ mod tests {
         assert!(refuse_read_only(&sa, &req(Method::DELETE, "/api/plugins/sb/proxy/api/v1/volumes/v1")).is_none());
         assert!(refuse_read_only(&sa, &req(Method::DELETE, "/api/plugins/vm/machines/default/web-1")).is_some());
         assert!(refuse_read_only(&sa, &req(Method::POST, "/api/plugins/k8s/apply")).is_some());
+    }
+
+    /// A hardware-admin (#391) passes the write gate for the Machines page
+    /// (stormipmi) only, and is a reader everywhere else — destructive
+    /// storage included.
+    #[test]
+    fn a_hardware_admin_writes_machines_and_nothing_else() {
+        let ha = Viewer { user: Some("h".into()), roles: vec!["hardware-admin".into()], ..Viewer::anonymous() };
+        for (m, path) in [
+            (Method::POST, "/api/plugins/ipmi/proxy/api/v1/machines/ABC123/power/cycle"),
+            (Method::PUT, "/api/plugins/ipmi/proxy/api/v1/machines/ABC123/release"),
+            (Method::DELETE, "/api/plugins/ipmi/proxy/api/v1/machines/ABC123/test"),
+        ] {
+            assert!(refuse_read_only(&ha, &req(m, path)).is_none(), "{path}");
+        }
+        for (m, path) in [
+            (Method::POST, "/api/plugins/drive/format"),
+            (Method::DELETE, "/api/plugins/sb/proxy/api/v1/volumes/v1"),
+            (Method::POST, "/api/plugins/k8s/apply"),
+            (Method::POST, "/api/plugins/ipmix/proxy/api/v1/machines"),
+            (Method::POST, "/api/plugins/fleet/proxy/9080/api/v1/restart"),
+        ] {
+            assert!(refuse_read_only(&ha, &req(m, path)).is_some(), "{path}");
+        }
+        // A reader is still refused the Machines page's writes here.
+        let p = "/api/plugins/ipmi/proxy/api/v1/machines/ABC123/power/cycle";
+        assert!(refuse_read_only(&reader(), &req(Method::POST, p)).is_some());
     }
 
     /// Signing in is a POST made by somebody who holds no roles yet, and

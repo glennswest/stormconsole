@@ -141,7 +141,7 @@ With `[api] user_namespace = "storm-users"`, people sign in as users kept on the
 | cluster | clusterrolebindings | get, list | which ClusterRoles the account holds |
 
 **The Users page needs nothing more.** Creating, deleting, disabling a user, setting a password and binding
-`storage-admin`, `storage-viewer` or any other ClusterRole are all done **as the signed-in administrator** (admin's
+`storage-admin`, `storage-viewer`, `hardware-admin` or any other ClusterRole are all done **as the signed-in administrator** (admin's
 token is bound to `cluster-admin` by `89-storm-users.yaml`), so RBAC checks them as it checks `sc user`. The console
 never binds a role on its own credential, which would let its role grant anyone anything.
 
@@ -149,6 +149,12 @@ never binds a role on its own credential, which would let its role grant anyone 
 `storm-group:<group>:<role>` are read and written as the signed-in administrator, like the Users page's. The
 bindings name each member's ServiceAccount, so sign-in's `clusterrolebindings` get/list above already sees a
 member's group roles.
+
+**`hardware-admin` (#391) is read, not acted as.** Holding it (in one's own right or through a group) is what lets a
+person past the console's gates for the Machines page: power, releases, locations, test marks, adopting a host and the
+SOL keyboard. Those writes go to stormipmi on **its** write token (`[stormipmi] token_file`), as an admin's do; the
+apiserver is not asked about them as the person, so the role's own rules (the Machine and MachineBoot objects) matter
+only where the person reaches those objects directly, e.g. the generic grid. The console needs no new right for it.
 
 **Install-config users (#372)** need nothing more either. For each `<name>.hash` + `<name>.role` stormpump#242
 writes under `users/`, the console reads the Secret, account and bindings on its own credential (the rows above), and

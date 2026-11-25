@@ -76,6 +76,10 @@ pub fn is_name(s: &str) -> bool {
 /// - `storage-admin` is kept by name: it passes the console's write gate
 ///   for destructive storage only, which the storage guard then asks the
 ///   apiserver about as them (#82).
+/// - `hardware-admin` is kept by name: it passes the console's write gate
+///   for the Machines page's writes only (stormipmi: power, releases,
+///   locations, test marks, adopting a host, the SOL keyboard), so a group
+///   can grant hardware management without granting everything (#391).
 /// - anything else reads.
 pub fn console_roles(cluster_roles: &[String]) -> Vec<String> {
     let mut out: Vec<String> = vec![];
@@ -84,6 +88,7 @@ pub fn console_roles(cluster_roles: &[String]) -> Vec<String> {
             "cluster-admin" => "admin",
             "operator" | "edit" => "operator",
             "storage-admin" => "storage-admin",
+            "hardware-admin" => "hardware-admin",
             _ => "viewer",
         };
         if !out.iter().any(|o| o == r) {
@@ -1249,8 +1254,9 @@ mod tests {
         assert_eq!(cluster_role_for("viewer"), "view");
         assert_eq!(cluster_role_for("operator"), "edit");
         assert_eq!(cluster_role_for("storage-admin"), "storage-admin");
+        assert_eq!(cluster_role_for("hardware-admin"), "hardware-admin");
         // The inverse of console_roles for each word.
-        for w in ["admin", "viewer", "operator", "storage-admin"] {
+        for w in ["admin", "viewer", "operator", "storage-admin", "hardware-admin"] {
             assert_eq!(console_roles(&[cluster_role_for(w).to_string()]), vec![w.to_string()]);
         }
     }
@@ -1309,6 +1315,11 @@ mod tests {
         assert_eq!(r(&["storage-admin", "storage-viewer"]), ["storage-admin"]);
         assert_eq!(r(&["storage-viewer"]), ["viewer"]);
         assert_eq!(r(&["edit", "storage-admin"]), ["operator", "storage-admin"]);
+        // #391: kept by name, beside the others, and folded into admin.
+        assert_eq!(r(&["hardware-admin"]), ["hardware-admin"]);
+        assert_eq!(r(&["hardware-admin", "view"]), ["hardware-admin"]);
+        assert_eq!(r(&["storage-admin", "hardware-admin"]), ["storage-admin", "hardware-admin"]);
+        assert_eq!(r(&["hardware-admin", "cluster-admin"]), ["admin"]);
         assert_eq!(r(&[]), ["viewer"]);
     }
 
