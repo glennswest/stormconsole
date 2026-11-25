@@ -3075,7 +3075,7 @@ xterm.js identifier. Nothing to rotate or report
 - [x] gitleaks 8.30.1 on a build VM with stormcentral's config (`[extend] useDefault = true` + the file): 0 findings.
       Negative control: a planted `Bearer console-own-37` and a Sec-WebSocket-Key of another value are still found
 
-### Hardware management grantable to a group: `hardware-admin` (#391, from #334)
+### Hardware management grantable to a group: `hardware-admin` (#391, from #334) ✅ 2026-11-25
 stormipmi's writes (power, releases, locations, test marks, adopting a host, the SOL keyboard) passed only `admin`,
 which comes only from `cluster-admin`. Two gates stood in the way, not one: the plugin's `allowed`, and before it
 `auth::refuse_read_only`, which refuses every plugin write by someone without `operator`.
@@ -3084,8 +3084,14 @@ which comes only from `cluster-admin`. Two gates stood in the way, not one: the 
       writes destructive storage and nothing else)
 - [x] stormipmi: `allowed`, `/me` and the SOL keyboard pass `admin` or `hardware-admin`; the page's words
 - [x] Users/Groups pages offer it after the storage roles (`users.js`); Machines page wording
-- [ ] A test per gate (written: auth, stormipmi, users, users.test.mjs); `verify-users.sh`: a group with `hardware-admin` lets a member power-cycle through a stand-in
-      stormipmi (BMC), a viewer refused, the member refused anything outside it
+- [x] A test per gate: `a_hardware_admin_writes_machines_and_nothing_else` (host), `a_hardware_admin_manages_machines`,
+      `the_host_lets_a_hardware_admin_write_only_here` (plugin), the role mapping, `users.test.mjs`
+- [x] `verify-users.sh` §8c on rustkube main: a group's hardware-admin power-cycles SIM1 through a stand-in stormipmi
+      + BMC (`deploy/ipmi-bmc.standin.py`, a write only on stormipmi's token); refused format, project, Users; a
+      viewer refused and the member once out, nothing reaching the BMC
 - [x] stormcos#1628: ship the `hardware-admin` ClusterRole as `storage-admin` is (rules proposed: storm.io machines,
       metal.storm.io machineboots; the name is the contract)
-- [ ] Docs: README, docs/rbac.md, CHANGELOG; sc-build; close
+- [x] Docs: README, docs/rbac.md, architecture §Hardware management + the stormcos#1628 gap, CHANGELOG
+- [x] sc-build 7eb981f: build + every test pass (41 suites, 0 failed); `sc-build deploy/verify-users.sh` 7eb981f:
+      0 failed (§8c's 27 checks, the browser walk); clippy -D warnings a2557fc: clean; web dist 59e2955 (0 warnings). Closed
+- Left: stormcos#1628 ships the ClusterRole; until then a cluster has `hardware-admin` only if someone makes it
