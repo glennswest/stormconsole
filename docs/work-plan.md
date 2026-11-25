@@ -3079,11 +3079,13 @@ xterm.js identifier. Nothing to rotate or report
 stormipmi's writes (power, releases, locations, test marks, adopting a host, the SOL keyboard) passed only `admin`,
 which comes only from `cluster-admin`. Two gates stood in the way, not one: the plugin's `allowed`, and before it
 `auth::refuse_read_only`, which refuses every plugin write by someone without `operator`.
-- [ ] `users::console_roles`: ClusterRole `hardware-admin` → console role `hardware-admin`
-- [ ] `refuse_read_only`: a hardware-admin writes through `/api/plugins/ipmi/` and nothing else (as storage-admin
+- [x] `users::console_roles`: ClusterRole `hardware-admin` → console role `hardware-admin`
+- [x] `refuse_read_only`: a hardware-admin writes through `/api/plugins/ipmi/` and nothing else (as storage-admin
       writes destructive storage and nothing else)
-- [ ] stormipmi: `allowed`, `/me` and the SOL keyboard pass `admin` or `hardware-admin`; the page's words
-- [ ] A test per gate; `verify-users.sh`: a group with `hardware-admin` lets a member power-cycle through a stand-in
+- [x] stormipmi: `allowed`, `/me` and the SOL keyboard pass `admin` or `hardware-admin`; the page's words
+- [x] Users/Groups pages offer it after the storage roles (`users.js`); Machines page wording
+- [ ] A test per gate (written: auth, stormipmi, users, users.test.mjs); `verify-users.sh`: a group with `hardware-admin` lets a member power-cycle through a stand-in
       stormipmi (BMC), a viewer refused, the member refused anything outside it
-- [ ] stormcos issue: ship the `hardware-admin` ClusterRole as `storage-admin` is
+- [x] stormcos#1628: ship the `hardware-admin` ClusterRole as `storage-admin` is (rules proposed: storm.io machines,
+      metal.storm.io machineboots; the name is the contract)
 - [ ] Docs: README, docs/rbac.md, CHANGELOG; sc-build; close
