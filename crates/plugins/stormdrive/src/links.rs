@@ -160,11 +160,11 @@ pub struct Alarm {
     pub text: String,
 }
 
-fn cond<'a>(conds: &'a [Value], kind: &str) -> Option<&'a Value> {
+pub(crate) fn cond<'a>(conds: &'a [Value], kind: &str) -> Option<&'a Value> {
     conds.iter().find(|c| c.get("type").and_then(Value::as_str) == Some(kind))
 }
 
-fn on(c: Option<&Value>) -> bool {
+pub(crate) fn on(c: Option<&Value>) -> bool {
     c.and_then(|c| c.get("status")).and_then(Value::as_str) == Some("True")
 }
 
@@ -175,7 +175,7 @@ fn changed(c: Option<&Value>) -> Option<&str> {
 }
 
 /// Where the drive is, in the words of the room.
-fn place(r: &Value) -> String {
+pub(crate) fn place(r: &Value) -> String {
     let name = r["name"].as_str().filter(|s| !s.is_empty());
     let serial = r["serial"].as_str().filter(|s| !s.is_empty());
     let mut s = String::new();
@@ -195,7 +195,7 @@ fn place(r: &Value) -> String {
     s
 }
 
-fn minutes(secs: u64) -> String {
+pub(crate) fn minutes(secs: u64) -> String {
     match secs / 60 {
         0 => "under a minute".into(),
         1 => "1 min".into(),

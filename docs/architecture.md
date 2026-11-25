@@ -1924,9 +1924,37 @@ probe. `crates/plugins/apihealth` (name `health`) shows them:
   counter gone back starts over). `GET /api/plugins/drive/counters`; the
   Integrity panel's "The drive" table (lifetime and the day; an uncorrected
   rise red, a remap amber, a corrected one never coloured), for any node's
-  drive, whether or not it is in a RAID set. Not here yet: the PI/EEDP
-  checks, sense-line errors and the level from stormblock#648, which reach
-  the Drive object with stormdrive#160 (#394).
+  drive, whether or not it is in a RAID set.
+- **The engine's word on the drive (#394, stormblock#648, stormdrive#160).**
+  Each node's engine samples every drive behind its SAS card every 30 s:
+  the PI guard, application-tag and reference-tag checks the drive failed,
+  the same failed by the card (EEDP), the medium, recovered and hardware
+  errors in the kernel's sense lines, the retry-corrected (log page
+  "corrected with delay") and non-medium errors, each kind's rate per
+  minute, defects grown per day, and a level (`settling|ok|degraded|failing`)
+  with `since`, `streak` and `why`. stormdrive v0.60.0 joins it into the
+  Drive object as `status.health.errors` and sets `DriveErrorsDegraded`/
+  `DriveErrorsFailing` from the level (message the engine's `why`). The
+  console never re-derives the level. `drivecounters.rs` carries the block
+  and the two conditions on the drive's `/counters` row (a drive with the
+  block and no `smart` still has a row), and keeps the engine's counters' day
+  apart from the drive's own: the sense counts start again with the engine,
+  and that must not cost the drive's own day. The alarm
+  (`drive:alarm:drive-errors:<drive>`, "Drive errors failing: bay 3 of
+  shelf0 on forge1 (NET003) — pi_guard 0.5/min") comes from the conditions,
+  as a link's does: red failing, amber degraded, and amber "ok again" for an
+  hour after. stormdrive dates its off conditions at the engine's `since`
+  too, so "was on" is what the console saw on, not a transition time; a
+  console restarted inside that hour does not repeat it. The Integrity
+  panel marks the level in its heading, says the line (level, since, the
+  streak, defects a day, the why) and lists the engine's rows under "Seen by
+  its node's engine" (counted, the day, the rate now, a PI/EEDP/medium rise
+  red, the rest amber), and gives the drive's own rows their rate too. On the
+  map: `colour by Drive errors`, a bar along the bay's head in other modes
+  (the link's is along its foot), each shelf's line, a `drive errors`
+  chip/filter (`#/drives?filter=errors`), the list's `drive errors` metric.
+  Without `/counters` the level comes from stormdrive's feed metric
+  `drive errors`.
 - **The integrity trend (#385, stormcos#1466).** The same counters over
   time, under the counters on a set's page (`?set=`, or the list when it
   has one set; a longer list links to each) and on the drive's Integrity

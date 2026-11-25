@@ -240,7 +240,7 @@
     actNote = { ok: !failed, text: `${a.label}: ${on.length - failed} of ${on.length} done${failed ? `, ${failed} failed` : ''}` }
   }
 
-  const model = $derived(build(feed.components, { usage, placement, links }))
+  const model = $derived(build(feed.components, { usage, placement, links, counters }))
   const poolRows = $derived(poolsOf(model.records))
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—')
   /// Where a component id leads, by the rule ResourceTable uses.
@@ -252,6 +252,7 @@
   const shelves = $derived(model.shelves)
   const all = $derived(totals(records))
   const linkBad = $derived(all.linkFailing + all.linkDegraded)
+  const errorsBad = $derived(all.errorsFailing + all.errorsDegraded)
   const shown = $derived(groupBy(records, { by, filter, search }))
   const shownCount = $derived(shown.reduce((n, g) => n + g.drives.length, 0))
   const shelfCount = $derived(new Set(records.map(shelfKey)).size)
@@ -274,6 +275,8 @@
       // The SAS link with its rate (#339): failing red, degraded amber, ok nothing.
       const lm = listMetric(d.linkLevel, d.link?.link)
       if (lm) metrics = [lm, ...metrics.filter((m) => m.label !== 'link errors')]
+      // The drive's own errors (#394): the engine's level, failing red, degraded amber.
+      if (d.errorsLevel === 'degraded' || d.errorsLevel === 'failing') metrics = [{ label: 'drive errors', value: d.errorsLevel, tone: d.errorsLevel === 'failing' ? 'error' : 'warn' }, ...metrics.filter((m) => m.label !== 'drive errors')]
       return metrics === c.metrics ? c : { ...c, metrics }
     }),
   )
@@ -418,6 +421,10 @@
         <button class="chip {all.linkFailing ? 'error' : linkBad ? 'warn' : ''}" class:on={filter === 'link'} disabled={!linkBad && filter !== 'link'} onclick={() => (filter = filter === 'link' ? '' : 'link')} data-testid="link-chip">
           {linkBad} link{all.linkFailing ? ` (${all.linkFailing} failing)` : ''}
         </button>
+        <!-- The drive's own errors (#394): its node's engine's level. -->
+        <button class="chip {all.errorsFailing ? 'error' : errorsBad ? 'warn' : ''}" class:on={filter === 'errors'} disabled={!errorsBad && filter !== 'errors'} onclick={() => (filter = filter === 'errors' ? '' : 'errors')} data-testid="errors-chip">
+          {errorsBad} drive errors{all.errorsFailing ? ` (${all.errorsFailing} failing)` : ''}
+        </button>
       </span>
     </div>
 
@@ -469,6 +476,13 @@
           <span><i style="background: var(--error)"></i>link failing</span>
         {:else}
           <span><i class="linkfail-key"></i>link failing / degraded (#339)</span>
+        {/if}
+        {#if mode === 'errors'}
+          <span><i style="background: var(--ok)"></i>drive errors ok</span>
+          <span><i style="background: var(--warn-strong)"></i>drive errors degraded</span>
+          <span><i style="background: var(--error)"></i>drive errors failing</span>
+        {:else}
+          <span><i class="errfail-key"></i>drive errors failing / degraded (#394)</span>
         {/if}
         {#if selecting}<span><i class="chosen-key"></i>selected</span>{/if}
       </div>
@@ -688,6 +702,8 @@
               {#if g.totals.rebuilding}<span class="warn"> · {g.totals.rebuilding} rebuilding</span>{/if}
               {#if g.totals.linkFailing}<span class="error" data-testid="group-link-failing"> · {g.totals.linkFailing} link failing</span>{/if}
               {#if g.totals.linkDegraded}<span class="warn"> · {g.totals.linkDegraded} link degraded</span>{/if}
+              {#if g.totals.errorsFailing}<span class="error" data-testid="group-errors-failing"> · {g.totals.errorsFailing} drive errors failing</span>{/if}
+              {#if g.totals.errorsDegraded}<span class="warn"> · {g.totals.errorsDegraded} drive errors degraded</span>{/if}
             </span>
             {#if selecting}
               <button class="selgroup" onclick={() => chooseAll(g.drives)}>{g.drives.every((d) => chosen[d.id]) ? 'Unselect' : 'Select'} {by === 'chassis' ? 'shelf' : by}</button>
@@ -727,8 +743,10 @@
                           class:chosen={!!chosen[d.id]}
                           class:linkwarn={mode !== 'link' && d.linkLevel === 'degraded'}
                           class:linkfail={mode !== 'link' && d.linkLevel === 'failing'}
+                          class:errwarn={mode !== 'errors' && d.errorsLevel === 'degraded'}
+                          class:errfail={mode !== 'errors' && d.errorsLevel === 'failing'}
                           style={h.css ? `background: ${h.css}` : ''}
-                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}{d.controllerFailed && mode !== 'health' ? ' · Failed by the controller' : ''}{mode !== 'link' && (d.linkLevel === 'degraded' || d.linkLevel === 'failing') ? ` · link ${d.linkLevel}` : ''}"
+                          title="{d.bay !== null ? `bay ${d.bay} · ` : ''}{d.c.label} · {h.text}{d.health !== 'ok' ? ` · ${d.health}` : ''}{d.member ? ` · ${d.member}` : ''}{d.use?.in_use ? ` · in use: ${d.use.badge || 'in use'}` : ''}{d.controllerFailed && mode !== 'health' ? ' · Failed by the controller' : ''}{mode !== 'link' && (d.linkLevel === 'degraded' || d.linkLevel === 'failing') ? ` · link ${d.linkLevel}` : ''}{mode !== 'errors' && (d.errorsLevel === 'degraded' || d.errorsLevel === 'failing') ? ` · drive errors ${d.errorsLevel}` : ''}"
                           aria-label="{d.c.label}, {h.text}{d.use?.in_use ? `, in use: ${d.use.badge || 'in use'}` : ''}"
                           aria-pressed={selecting ? !!chosen[d.id] : undefined}
                           data-drive={d.c.label}
@@ -840,6 +858,11 @@
   /* The SAS link (#339), in every colour mode: a bar along the bay's foot. */
   .bay.linkfail::before, .bay.linkwarn::before, .legend i.linkfail-key::before { content: ''; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 3px; border-radius: 1px; background: var(--error); }
   .bay.linkwarn::before { background: var(--warn-strong); }
+  /* The drive's own errors (#394), in every colour mode: a bar along the bay's head,
+     layered over whatever colours the bay (its inline background is the mode's). */
+  .bay.errfail, .legend i.errfail-key { background-image: linear-gradient(to bottom, var(--error) 0 3px, transparent 3px) !important; }
+  .bay.errwarn { background-image: linear-gradient(to bottom, var(--warn-strong) 0 3px, transparent 3px) !important; }
+  .legend i.errfail-key { border: 1px solid var(--border); }
   .bay.rebuild { outline: 2px solid var(--accent); outline-offset: 0; }
   .bay.sel { outline: 2px solid var(--text); outline-offset: 1px; }
   .bay:focus-visible { outline: 2px solid var(--text); }

@@ -7,7 +7,11 @@
   // plugin reads once a minute and keeps a day of. A drive in no set says so.
   // Above it, the drive's own counters (#384): what it could not correct, what
   // it remapped and what it corrected, from its Drive object's status.health.
-  import { counterRows, whereLine, dayWords, memberOf, rotting, at, memberTrend, TREND_WINDOW, driveCountersOf, driveRows, sourceWords } from '../integrity.js'
+  // With them (#394), what its node's engine samples (stormblock#648, joined by
+  // stormdrive#160 as status.health.errors): PI and EEDP check failures, the
+  // sense errors, retry-corrected and non-medium errors, each one's rate now,
+  // defects a day, and the engine's level with its since, streak and why.
+  import { counterRows, whereLine, dayWords, memberOf, rotting, at, memberTrend, TREND_WINDOW, driveCountersOf, driveRows, sourceWords, engineRows, errorsLevelWords, errorsTone, errorsLine, perMinute } from '../integrity.js'
   import EntityCharts from './EntityCharts.svelte'
 
   // `answer`: GET /api/plugins/drive/integrity; `counters`: GET /api/plugins/drive/counters;
@@ -16,6 +20,8 @@
 
   const own = $derived(driveCountersOf(counters, component))
   const ownRows = $derived(driveRows(own))
+  const errs = $derived(own?.errors?.level ? own.errors : null)
+  const engRows = $derived(engineRows(own))
   const inSets = $derived(!!answer?.kube && !!(memberOf(answer, component) || (answer?.sets || []).length))
 
   const found = $derived(memberOf(answer, component))
@@ -32,6 +38,7 @@
       Integrity
       {#if set && rotting(set)}<span class="level warn" data-testid="drive-integrity-bitrot">BitRot</span>{/if}
       {#if own?.predictedFailure}<span class="level error" data-testid="drive-own-predicted">predicts its failure</span>{/if}
+      {#if errorsTone(errs?.level)}<span class="level {errorsTone(errs.level)}" data-testid="drive-errors-level" title={errorsLevelWords(errs.level)}>errors {errs.level}</span>{/if}
     </h3>
     {#if own}
       <div class="own" data-testid="drive-own">
@@ -42,20 +49,44 @@
         </p>
         {#if own.predictedFailure}<p class="error" data-testid="drive-own-failure">The drive predicts its own failure: {own.predictedFailure}.</p>{/if}
         {#if own.ieWarning}<p class="warn" data-testid="drive-own-warning">The drive warns: {own.ieWarning}.</p>{/if}
-        {#if !ownRows.length}
+        {#if errs}
+          <p class="errline {errorsTone(errs.level)}" data-testid="drive-errors-line" title={errorsLevelWords(errs.level)}>
+            Its node’s engine: {errorsLine(errs)}.
+            {#if errs.why?.length && errs.level !== 'ok'}<span data-testid="drive-errors-why">Why: {errs.why.join('; ')}.</span>{/if}
+          </p>
+        {/if}
+        {#if !ownRows.length && !engRows.length}
           <p class="dim">The drive gives no error or defect counters.</p>
         {:else}
           <table class="counters" data-testid="drive-own-counters">
-            <thead><tr><th></th><th class="n">Lifetime</th><th class="n">{dayWords(own.day)}</th></tr></thead>
-            <tbody>
-              {#each ownRows as r (r.key)}
-                <tr data-key={r.key}>
-                  <td title={r.title}>{r.word}</td>
-                  <td class="n mono">{r.life}</td>
-                  <td class="n mono {r.tone}">{r.day === null ? '—' : r.day}</td>
-                </tr>
-              {/each}
-            </tbody>
+            {#if ownRows.length}
+              <thead><tr><th></th><th class="n">Lifetime</th><th class="n">{dayWords(own.day)}</th>{#if errs}<th class="n">Now</th>{/if}</tr></thead>
+              <tbody>
+                {#each ownRows as r (r.key)}
+                  <tr data-key={r.key}>
+                    <td title={r.title}>{r.word}</td>
+                    <td class="n mono">{r.life}</td>
+                    <td class="n mono {r.tone}">{r.day === null ? '—' : r.day}</td>
+                    {#if errs}<td class="n mono dim">{perMinute(r.rate)}</td>{/if}
+                  </tr>
+                {/each}
+              </tbody>
+            {/if}
+            {#if engRows.length}
+              <thead data-testid="drive-errors-head">
+                <tr><th title="PI and EEDP checks and sense errors are the kernel’s log lines for the drive, counted by its node’s engine since it began reading them: the drive keeps no count of them">Seen by its node’s engine</th><th class="n">Counted</th><th class="n">{dayWords(own.errorsDay)}</th><th class="n">Now</th></tr>
+              </thead>
+              <tbody data-testid="drive-errors-counters">
+                {#each engRows as r (r.key)}
+                  <tr data-key={r.key}>
+                    <td title={r.title}>{r.word}</td>
+                    <td class="n mono">{r.life}</td>
+                    <td class="n mono {r.tone}">{r.day === null ? '—' : r.day}</td>
+                    <td class="n mono {r.rate ? r.tone : 'dim'}">{perMinute(r.rate)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            {/if}
           </table>
         {/if}
       </div>
@@ -103,6 +134,9 @@
   .own h4 { margin: 6px 0 4px; font-size: var(--sc-t-body); font-weight: 600; }
   p.error, .level.error { color: var(--error); border-color: var(--error); }
   p.warn, span.warn { color: var(--warn-strong); }
+  p.errline { margin: 4px 0; font-size: var(--sc-t-meta); }
+  p.errline.error { color: var(--error); }
+  p.errline:not(.error):not(.warn) { color: var(--text-dim); }
   .trend h4 { margin: 10px 0 6px; font-size: var(--sc-t-body); font-weight: 600; }
   h3 { display: flex; gap: 8px; align-items: baseline; }
   .level { font-size: var(--sc-t-meta); padding: 0 6px; border-radius: 3px; border: 1px solid var(--border); font-weight: 600; }

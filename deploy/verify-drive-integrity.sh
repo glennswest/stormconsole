@@ -19,8 +19,12 @@
 #   /counters      each drive's own counters from its Drive object's status.health.smart (#384): NET003's
 #                  LOG SENSE pages and grown defects, storm-b's BEE001's ATA SMART and predicted failure,
 #                  none for the drives that give none; one uncorrected read and two defects more: the day
+#   /counters      the node engine's word on a drive (#394, stormdrive#160): NET003's status.health.errors
+#   + the alarm    failing (PI guard checks two samples running): its PI/EEDP/sense/retry counters, rates
+#                  and a day of their own; DriveErrorsFailing raises a red alarm with the engine's why;
+#                  NET004 with only the engine's block still has a row; ok 2 min ago: clearing; an hour: gone
 #   Chromium       the alarm bar, the Integrity page, a member's drive, the drive page's Integrity panel
-#                  with the drive's own table
+#                  with the drive's own table and the engine's rows and level; the map's Drive errors mode
 set -euo pipefail
 
 FASTETCD_VER=${FASTETCD_VER:-v1.2.0}
@@ -213,6 +217,41 @@ for _ in $(seq 80); do [ "$(DC | j "$N3"'["counts"]["grownDefects"]')" = 7 ] && 
 check "$(DC | j "$N3"'["day"]["full"], '"$N3"'["day"]["counts"]["readUncorrected"], '"$N3"'["day"]["counts"]["grownDefects"], '"$N3"'["day"]["counts"]["readCorrected"]')" \
   "(False, 1, 2, 30)" "the day: 1 uncorrected read, 2 defects grown, 30 corrected, since the console began"
 
+say "3c. the node engine's word on the drive (#394): status.health.errors, DriveErrorsFailing"
+# The block as stormdrive v0.60.0 writes it (src/driveerrors.rs project()): PI guard checks two samples running.
+errs() {  # level since-seconds-ago pi_guard why
+  python3 -c 'import json,sys,time
+lv, ago, pi, why = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), [w for w in sys.argv[4].split(";") if w]
+moving = lv in ("degraded", "failing")
+print(json.dumps({"bay": int(sys.argv[5]), "errors": {
+  "level": lv, "since": int(time.time()) - ago, "at": int(time.time()), "streak": 2 if lv == "failing" else 0, "why": why,
+  "piChecks": pi + 1, "eedpChecks": 1, "uncorrected": 3, "mediumErrors": 1, "grownDefects": 7, "defectsPerDay": 2 if moving else 0, "pendingPerDay": None,
+  "drive": {"read": {"correctedFast": 148, "correctedDelayed": 2, "retries": 2, "corrected": 150, "uncorrected": 3},
+            "write": {"correctedFast": 4, "correctedDelayed": 0, "retries": 0, "corrected": 4, "uncorrected": 0},
+            "verify": None, "nonMedium": 3, "exception": "0x00/0x00", "grownDefects": 7, "reallocated": None, "pending": None, "offlineUncorrectable": None},
+  "sense": {"piGuard": pi, "piAppTag": 0, "piRefTag": 1, "eedpGuard": 1, "eedpAppTag": 0, "eedpRefTag": 0, "mediumError": 1, "recoveredError": 0, "hardwareError": 0},
+  "perMin": {"pi_guard": 0.5 if moving else 0.0, "read_uncorrected": 0.03 if lv == "failing" else 0.0, "read_corrected": 2.0, "grown": 0.0}}}))' "$@"
+}
+seterrs() { curl -sf -o /dev/null -X POST "http://127.0.0.1:$D1/_set" -d "$(errs "$@")"; }
+seterrs failing 120 2 'pi_guard 0.5/min;read_uncorrected 0.0/min' 3
+seterrs ok 600 0 '' 4
+# The local node is named by its hostname (the build VM's): said as HOST.
+ERR() { F | j '[(c["health"], __import__("re").sub(r" on \S+ \(NET", " on HOST (NET", c["detail"]), c["link"]) for c in d if c["kind"]=="alarm" and ":alarm:drive-errors:" in c["id"]]'; }
+for _ in $(seq 80); do [ "$(DC | j "$N3"'["errors"]["level"]' 2>/dev/null)" = failing ] && break; sleep 1; done
+check "$(DC | j "$N3"'["errors"]["level"], '"$N3"'["errors"]["streak"], '"$N3"'["errors"]["perMin"]["pi_guard"], [c["type"] for c in '"$N3"'["conditions"] if c["status"]=="True"]')" \
+  "('failing', 2, 0.5, ['DriveErrorsDegraded', 'DriveErrorsFailing'])" "NET003 failing, two samples running, PI guard 0.5/min, both conditions on"
+check "$(DC | j "[$N3['errorCounts'][k] for k in ('piGuard', 'piRefTag', 'eedpGuard', 'mediumError', 'readRetryCorrected', 'nonMedium')], 'verifyRetryCorrected' in $N3['errorCounts']")" \
+  "([2, 1, 1, 1, 2, 3], False)" "the engine's counters: PI guard 2, ref tag 1, EEDP 1, medium 1, retry-corrected reads 2, non-medium 3; no verify page"
+check "$(DC | j "$N3"'["counts"]["readUncorrected"], '"$N3"'["day"]["counts"]["readUncorrected"]')" "(3, 1)" "the drive's own counters and their day stand beside them"
+check "$(DC | j '[(x["counts"], x["errors"]["level"]) for x in d["drives"] if x["serial"]=="NET004"]')" "[({}, 'ok')]" "NET004 gives no counters of its own, but the engine's block: a row"
+for _ in $(seq 30); do [ "$(ERR | j 'len(d)' 2>/dev/null)" = 1 ] && break; sleep 1; done
+check "$(ERR)" "[('error', 'Drive errors failing: bay 3 of shelf0 on HOST (NET003) — pi_guard 0.5/min; read_uncorrected 0.0/min', '#/drives?drive=drive:drive:5000cca26a819e69')]" \
+  "a red alarm naming the bay, with the engine's why, opening the drive; NET004 at ok raises none"
+seterrs failing 120 4 'pi_guard 0.5/min;read_uncorrected 0.0/min' 3
+for _ in $(seq 80); do [ "$(DC | j "$N3"'["errorCounts"]["piGuard"]')" = 4 ] && break; sleep 1; done
+check "$(DC | j "$N3"'["errorsDay"]["counts"]["piGuard"], '"$N3"'["errorsDay"]["counts"]["eedpGuard"], '"$N3"'["day"]["counts"]["readUncorrected"]')" \
+  "(2, 0, 1)" "the engine's day: 2 PI guard checks more since the console began; the drive's own day unchanged"
+
 say "4. the browser"
 set +e
 bash "$HERE/deploy/browser/run.sh" "$W" drive-integrity.cjs "$C"
@@ -230,6 +269,15 @@ say "6. off over an hour: gone"
 setstatus md0 "{\"rot\": \"False\", \"since\": \"$(date -u -d '-61 min' +%Y-%m-%dT%H:%M:%SZ)\"}"
 for _ in $(seq 80); do [ "$(F | j 'len([c for c in d if ":alarm:bitrot:" in c["id"]])')" = 0 ] && break; sleep 1; done
 check "$(F | j 'len([c for c in d if ":alarm:bitrot:" in c["id"]])')" 0 "md0's alarm is gone"
+
+say "7. the drive's errors ok 2 min ago: clearing; an hour: gone (#394)"
+seterrs ok 120 4 '' 3
+for _ in $(seq 80); do ERR | grep -q 'ok again' && break; sleep 1; done
+check "$(ERR | python3 -c 'import ast,re,sys; r=ast.literal_eval(sys.stdin.read()); print([(h, re.sub(r"for [234] min", "for N min", d)) for h, d, l in r])')" \
+  "[('warn', 'Drive errors ok again for N min: bay 3 of shelf0 on HOST (NET003) (was failing; the alarm clears after an hour ok)')]" "amber, saying it was failing"
+seterrs ok 3700 4 '' 3
+for _ in $(seq 80); do [ "$(ERR | j 'len(d)')" = 0 ] && break; sleep 1; done
+check "$(ERR | j 'len(d)')" 0 "an hour ok: gone"
 
 say "console warnings"
 grep -hE ' (WARN|ERROR) ' "$W/c.log" | grep -iv 'forbidden' | head -5 || true

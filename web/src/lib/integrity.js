@@ -124,6 +124,16 @@ export function bitrotAlarms(components) {
     .map((c) => ({ id: c.id, text: c.detail, href: c.link || '#/drives/integrity', tone: c.health === 'error' ? 'error' : 'warn' }))
 }
 
+// The drive-errors alarms in the feed (#394: the drive plugin's `alarm` rows from
+// DriveErrorsDegraded/Failing), red first.
+export function errorsAlarms(components) {
+  const rank = { error: 0, warn: 1 }
+  return components
+    .filter((c) => c.kind === 'alarm' && c.id.includes(':alarm:drive-errors:'))
+    .sort((a, b) => (rank[a.health] ?? 2) - (rank[b.health] ?? 2) || a.detail.localeCompare(b.detail))
+    .map((c) => ({ id: c.id, text: c.detail, href: c.link || '#/drives', tone: c.health === 'error' ? 'error' : 'warn' }))
+}
+
 // The trend (#385): stormraid's counters over days, from the ironprom of the set's node, asked by name of the
 // metrics plugin (`entity=raidset` for the set, `entity=member` for one slot of it). `null` with the reason
 // when it cannot be asked: the series are labelled by set and slot, and kept on the set's node.
@@ -164,6 +174,84 @@ export const DRIVE_COUNTERS = [
   ['verifyCorrected', 'Verify errors, corrected', 'Verifies the drive corrected', ''],
 ]
 
+// The engine's name for each of the drive's own counters (stormblock#648's `per_min`
+// keys, which stormdrive#160 carries as `errors.perMin`): the rate it moves at now.
+const DRIVE_RATE = {
+  readUncorrected: 'read_uncorrected', writeUncorrected: 'write_uncorrected', verifyUncorrected: 'verify_uncorrected',
+  readCorrected: 'read_corrected', writeCorrected: 'write_corrected', verifyCorrected: 'verify_corrected',
+  grownDefects: 'grown', reallocated: 'reallocated', pending: 'pending', offlineUncorrectable: 'offline_uncorrectable',
+}
+
+// What the node's engine sees of the drive (#394, stormblock#648 via the Drive object's
+// status.health.errors, stormdrive#160): `[key, word, title, bad, rate key]`. A PI or EEDP
+// check failure or a medium error is red when it rises (two samples running is the
+// engine's `failing`); the rest amber, as they make it `degraded`. The sense counts are
+// the kernel's log lines the engine has read: the drive keeps no count of them itself.
+export const ENGINE_COUNTERS = [
+  ['piGuard', 'PI guard check failures', 'Blocks whose T10 PI guard (CRC) the drive failed: the data did not match its checksum', 'bad', 'pi_guard'],
+  ['piAppTag', 'PI application tag failures', 'Blocks whose T10 PI application tag the drive failed', 'bad', 'pi_app_tag'],
+  ['piRefTag', 'PI reference tag failures', 'Blocks whose T10 PI reference tag (the LBA) the drive failed: a block written to or read from the wrong place', 'bad', 'pi_ref_tag'],
+  ['eedpGuard', 'EEDP guard failures (card)', 'The same guard check, failed by the SAS card (end-to-end data protection), not the drive', 'bad', 'eedp_guard'],
+  ['eedpAppTag', 'EEDP application tag failures (card)', 'The application tag check, failed by the SAS card', 'bad', 'eedp_app_tag'],
+  ['eedpRefTag', 'EEDP reference tag failures (card)', 'The reference tag check, failed by the SAS card', 'bad', 'eedp_ref_tag'],
+  ['mediumError', 'Medium errors', 'MEDIUM ERROR in the kernel’s sense lines: the drive could not read or write a block', 'bad', 'medium_error'],
+  ['hardwareError', 'Hardware errors', 'HARDWARE ERROR in the kernel’s sense lines', 'warn', 'hardware_error'],
+  ['recoveredError', 'Recovered errors', 'RECOVERED ERROR in the kernel’s sense lines: the command succeeded after the drive recovered', 'warn', 'recovered_error'],
+  ['readRetryCorrected', 'Read errors, retry-corrected', 'Reads the drive corrected only with delay (rereads), not ECC on the fly', 'warn', 'read_corrected_delayed'],
+  ['writeRetryCorrected', 'Write errors, retry-corrected', 'Writes the drive corrected only with delay (rewrites)', 'warn', 'write_corrected_delayed'],
+  ['verifyRetryCorrected', 'Verify errors, retry-corrected', 'Verifies the drive corrected only with delay', 'warn', 'verify_corrected_delayed'],
+  ['nonMedium', 'Non-medium errors', 'Errors not of the medium: the drive’s electronics, its interface (log page 0x06)', 'warn', 'non_medium'],
+]
+
+// The rows of the engine's part: only the counters it gives, each with its rise over the
+// day the console has kept of them and its rate now.
+export function engineRows(row) {
+  const counts = row?.errorCounts
+  if (!counts) return []
+  const per = row.errors?.perMin || {}
+  return ENGINE_COUNTERS.filter(([k]) => counts[k] !== undefined && counts[k] !== null).map(([key, word, title, bad, rk]) => {
+    const life = counts[key]
+    const rose = row.errorsDay?.counts ? (row.errorsDay.counts[key] ?? 0) : null
+    const rate = per[rk] ?? null
+    return { key, word, title, life, day: rose, rate, tone: rose || rate ? (bad === 'bad' ? 'error' : bad) : '' }
+  })
+}
+
+// The engine's level, in words, for the panel and a bay's tooltip.
+export function errorsLevelWords(level) {
+  return (
+    {
+      ok: 'ok: nothing that matters moving',
+      settling: 'settling: the first sample, no rate yet',
+      degraded: 'degraded: a retry-corrected, non-medium, recovered, hardware or medium error, a PI check, or a defect grown in the last day',
+      failing: 'failing: an uncorrected error, a PI check or medium error two samples running, or 10 defects grown in a day',
+    }[level] || 'not reported'
+  )
+}
+
+// The tone a level is shown in: ok and settling say nothing.
+export function errorsTone(level) {
+  return { degraded: 'warn', failing: 'error' }[level] || ''
+}
+
+// A rate per minute: 0 reads 0, a fraction keeps two digits (an error a minute is a lot).
+export function perMinute(v) {
+  if (v === null || v === undefined) return '—'
+  if (v === 0) return '0'
+  return v >= 10 ? `${Math.round(v)}/min` : `${v.toFixed(v < 0.1 ? 2 : 1)}/min`
+}
+
+// The engine's word on the drive, in a line: level, since when, the streak, defects a day.
+export function errorsLine(e) {
+  if (!e?.level) return ''
+  const parts = [e.level]
+  if (e.since) parts.push(`since ${at(new Date(e.since * 1000).toISOString())}`)
+  if (e.streak) parts.push(`${e.streak} sample${e.streak === 1 ? '' : 's'} running with a PI check or medium error`)
+  const defects = (e.defectsPerDay ?? 0) + (e.pendingPerDay ?? 0)
+  if (e.defectsPerDay !== null && e.defectsPerDay !== undefined) parts.push(`${defects} defect${defects === 1 ? '' : 's'} grown in the last day`)
+  return parts.join(' · ')
+}
+
 // The drive's row in the counters answer, by its feed id.
 export function driveCountersOf(answer, component) {
   return (answer?.drives || []).find((d) => d.component === component) || null
@@ -176,7 +264,9 @@ export function driveRows(row) {
   return DRIVE_COUNTERS.filter(([k]) => counts[k] !== undefined && counts[k] !== null).map(([key, word, title, bad]) => {
     const life = counts[key]
     const rose = row.day?.counts ? (row.day.counts[key] ?? 0) : null
-    return { key, word, title, life, day: rose, tone: rose ? (bad === 'bad' ? 'error' : bad) : '' }
+    // The rate now, when the node's engine samples the drive (#394).
+    const rate = row.errors?.perMin?.[DRIVE_RATE[key]] ?? null
+    return { key, word, title, life, day: rose, rate, tone: rose ? (bad === 'bad' ? 'error' : bad) : '' }
   })
 }
 

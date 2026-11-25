@@ -100,3 +100,43 @@ console.log('integrity: ok')
   assert.match(sourceWords('log_sense'), /LOG SENSE/)
   assert.match(sourceWords('ata_smart'), /SMART/)
 }
+
+// What the node's engine sees of the drive (#394, stormdrive#160): its counters with their own day and rate,
+// a PI/EEDP/medium rise red and the rest amber, the level in a line, its alarms in the feed.
+{
+  const { engineRows, driveRows, errorsLine, errorsTone, errorsLevelWords, perMinute, errorsAlarms } = await import('./integrity.js')
+  const row = {
+    component: 'drive:drive:5000cca26a819e69', source: 'log_sense',
+    counts: { readUncorrected: 1, grownDefects: 4 },
+    day: { since: 1000, full: true, counts: { readUncorrected: 1, grownDefects: 0 } },
+    errors: {
+      level: 'failing', since: 1763899940, streak: 2, why: ['pi_guard 0.5/min', 'read_uncorrected 0.0/min'],
+      defectsPerDay: 1, pendingPerDay: null, perMin: { pi_guard: 0.5, read_uncorrected: 0.03, recovered_error: 0, grown: 0 },
+    },
+    errorCounts: { piGuard: 2, piAppTag: 0, piRefTag: 1, eedpGuard: 1, eedpAppTag: 0, eedpRefTag: 0, mediumError: 1, recoveredError: 0, hardwareError: 0, readRetryCorrected: 2, writeRetryCorrected: 0, nonMedium: 3 },
+    errorsDay: { since: 2000, full: false, counts: { piGuard: 2, piRefTag: 0, eedpGuard: 0, readRetryCorrected: 1 } },
+  }
+  const rows = engineRows(row)
+  assert.deepEqual(rows.map((r) => r.key), ['piGuard', 'piAppTag', 'piRefTag', 'eedpGuard', 'eedpAppTag', 'eedpRefTag', 'mediumError', 'hardwareError', 'recoveredError', 'readRetryCorrected', 'writeRetryCorrected', 'nonMedium'], 'what it gives, PI first; no verify page, no row')
+  const by = Object.fromEntries(rows.map((r) => [r.key, r]))
+  assert.deepEqual([by.piGuard.life, by.piGuard.day, by.piGuard.rate, by.piGuard.tone], [2, 2, 0.5, 'error'])
+  assert.deepEqual([by.piRefTag.day, by.piRefTag.tone], [0, ''], 'counted before, nothing new: plain')
+  assert.equal(by.readRetryCorrected.tone, 'warn', 'retry-corrected rose: amber')
+  assert.equal(by.recoveredError.rate, 0)
+  assert.equal(by.nonMedium.day, 0, 'not in the day: none rose')
+  assert.deepEqual(engineRows({ counts: {} }), [], 'no engine block: no rows')
+  const own = Object.fromEntries(driveRows(row).map((r) => [r.key, r.rate]))
+  assert.deepEqual(own, { readUncorrected: 0.03, grownDefects: 0 }, 'the drive\'s own counters get the engine\'s rate')
+  assert.equal(errorsLine(row.errors), `failing · since ${new Date(1763899940000).toISOString().replace('T', ' ').replace(/(\.\d+)?Z$/, ' UTC')} · 2 samples running with a PI check or medium error · 1 defect grown in the last day`)
+  assert.equal(errorsLine({ level: 'ok', since: 0, streak: 0 }), 'ok')
+  assert.equal(errorsLine(null), '')
+  assert.deepEqual([errorsTone('failing'), errorsTone('degraded'), errorsTone('ok'), errorsTone('settling')], ['error', 'warn', '', ''])
+  assert.match(errorsLevelWords('failing'), /two samples running/)
+  assert.deepEqual([perMinute(0), perMinute(0.03), perMinute(0.5), perMinute(12.4), perMinute(null)], ['0', '0.03/min', '0.5/min', '12/min', '—'])
+  const alarms = errorsAlarms([
+    { id: 'drive:alarm:drive-errors:a', kind: 'alarm', health: 'warn', detail: 'Drive errors degraded: bay 1', link: '#/drives?drive=a' },
+    { id: 'drive:alarm:link:x', kind: 'alarm', health: 'error', detail: 'Drive link failing: bay 2' },
+    { id: 'drive:alarm:drive-errors:b', kind: 'alarm', health: 'error', detail: 'Drive errors failing: bay 3', link: '#/drives?drive=b' },
+  ])
+  assert.deepEqual(alarms.map((a) => [a.tone, a.href]), [['error', '#/drives?drive=b'], ['warn', '#/drives?drive=a']], 'red first, not the link\'s')
+}

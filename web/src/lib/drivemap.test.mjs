@@ -286,4 +286,26 @@ console.log(`build ${(t1 - t0).toFixed(1)} ms · three groupings ${(t2 - t1).toF
   assert.equal(heat(by['drive:drive:a'], 'link').css, 'var(--ok)')
   assert.equal(heat(build([drive('drive:drive:z', 5)]).records[0], 'link').css, null, 'no link reported: hatched, not green')
 }
+// The drive's own errors (#394): the engine's level from the counters answer, else the feed's word.
+{
+  const drive = (id, bay, word) => ({
+    id, kind: 'drive', label: `sd${bay}`, health: 'ok', detail: '',
+    metrics: [{ label: 'node', value: 'forge1' }, { label: 'bay', value: String(bay) }, ...(word ? [{ label: 'drive errors', value: word }] : [])],
+  })
+  const comps = [drive('drive:drive:a', 0), drive('drive:drive:b', 1, 'degraded'), drive('drive:drive:c', 3), drive('drive:drive:d', 4)]
+  const counters = { drives: [{ component: 'drive:drive:c', errors: { level: 'failing' } }, { component: 'drive:drive:a', errors: { level: 'ok' } }, { component: 'drive:drive:d', errors: null, counts: {} }] }
+  const { records } = build(comps, { counters })
+  const by = Object.fromEntries(records.map((r) => [r.id, r]))
+  assert.equal(by['drive:drive:c'].errorsLevel, 'failing', 'from the Drive object')
+  assert.equal(by['drive:drive:b'].errorsLevel, 'degraded', 'from the feed alone')
+  assert.equal(by['drive:drive:a'].errorsLevel, 'ok')
+  assert.equal(by['drive:drive:d'].errorsLevel, null, 'counters with no engine block: no level')
+  assert.deepEqual(records.filter((r) => passes(r, 'errors')).map((r) => r.id).sort(), ['drive:drive:b', 'drive:drive:c'])
+  const t = totals(records)
+  assert.deepEqual([t.errorsFailing, t.errorsDegraded, t.linkFailing], [1, 1, 0])
+  assert.equal(heat(by['drive:drive:c'], 'errors').css, 'var(--error)')
+  assert.equal(heat(by['drive:drive:b'], 'errors').text, 'drive errors degraded')
+  assert.equal(heat(by['drive:drive:a'], 'errors').css, 'var(--ok)')
+  assert.equal(heat(by['drive:drive:d'], 'errors').css, null, 'none reported: hatched, not green')
+}
 console.log('PASS')

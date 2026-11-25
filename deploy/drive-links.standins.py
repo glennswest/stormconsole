@@ -12,6 +12,9 @@ whenever it is read, so a console reading once a minute keeps a trend.
   GET  /apis/storage.storm.io/v1/drives     the Drive objects, status.link + conditions
   POST /_set {"bay": 3, "level": "ok", "okFor": 120}   bay 3 ok again, okFor seconds ago
   POST /_set {"bay": 3, "smart": {...}}                 bay 3's own counters now (#384)
+  POST /_set {"bay": 3, "errors": {...}}                bay 3's status.health.errors now (#394): the
+       node engine's block as stormdrive v0.60.0 joins it (stormdrive#160, src/driveerrors.rs), with
+       DriveErrorsDegraded/Failing set from its level and the feed's `drive errors`; none by default
 
 Each Drive object's status.health is stormdrive's HealthReport (src/drive.rs), with `smart` its
 SmartCounters (src/smart/mod.rs): NET001 and NET003 from LOG SENSE (NET003 with 2 uncorrected
@@ -52,6 +55,8 @@ def health(d):
          "messages": [], "collected_at": {"secs_since_epoch": int(time.time()) - 30, "nanos_since_epoch": 0}}
     if d["smart"] is not None:
         h["smart"] = d["smart"]
+    if d.get("errors"):
+        h["errors"] = d["errors"]
     return h
 
 
@@ -98,7 +103,19 @@ def conditions(d, l):
         return {"type": kind, "status": "True" if on else "False", "reason": reason if on else "LinkOk",
                 "message": (l["message"] + (f" — {l['recommendation']}" if l.get("recommendation") else "")) if on else f"link {d['level']}",
                 "lastTransitionTime": rfc(since) if since else "1970-01-01T00:00:00Z"}
-    return [{"type": "Ready", "status": "True"}, c("LinkDegraded", d["degraded"], "ErrorsMoving"), c("LinkFailing", d["failing"], "SyncLost")]
+    out = [{"type": "Ready", "status": "True"}, c("LinkDegraded", d["degraded"], "ErrorsMoving"), c("LinkFailing", d["failing"], "SyncLost")]
+    return out + error_conditions(d.get("errors"))
+
+
+def error_conditions(e):
+    """stormdrive v0.60.0's driveerrors::conditions(): none while settling; both dated at the engine's since."""
+    if not e or e.get("level") not in ("ok", "degraded", "failing"):
+        return []
+    level, why = e["level"], "; ".join(e.get("why") or [])
+    def c(kind, on, reason):
+        return {"type": kind, "status": "True" if on else "False", "reason": reason if on else "DriveErrorsOk",
+                "message": (why or f"drive errors {level}") if on else f"drive errors {level}", "lastTransitionTime": rfc(e["since"])}
+    return [c("DriveErrorsDegraded", level in ("degraded", "failing"), "ErrorsMoving"), c("DriveErrorsFailing", level == "failing", "ErrorsFailing")]
 
 
 def obj(d):
@@ -116,6 +133,9 @@ def card(d):
         metrics.append({"label": "link errors", "value": "degraded", "tone": "warn"})
     if d["level"] == "failing":
         metrics.append({"label": "link errors", "value": "failing", "tone": "error"})
+    lv = (d.get("errors") or {}).get("level")
+    if lv in ("degraded", "failing"):
+        metrics.append({"label": "drive errors", "value": lv, "tone": "warn" if lv == "degraded" else "error"})
     return {"id": f"drive:{d['id']}", "kind": "drive", "label": f"{d['name']} · X378_HLBRE10TA07", "health": "ok",
             "detail": "out of fleet · idle", "metrics": metrics, "actions": [], "relations": []}
 
@@ -155,6 +175,9 @@ def stormdrive(port):
                 now = int(time.time())
                 if "smart" in body:
                     d["smart"] = body["smart"]
+                    return self.send(200, {"ok": True})
+                if "errors" in body:
+                    d["errors"] = body["errors"]
                     return self.send(200, {"ok": True})
                 d["level"] = body["level"]
                 if body["level"] == "ok":

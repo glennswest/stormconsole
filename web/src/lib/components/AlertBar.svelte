@@ -16,9 +16,13 @@
   // A RAID set's `BitRot` (#368, stormraid#80) the same way: amber while a
   // member's mismatches or repairs rose in the last scrub pass or day, red
   // with rows past parity (data lost) in the last day, kept an hour after.
+  //
+  // A drive's own errors (#394) the same way: its node's engine's level
+  // (stormblock#648), as stormdrive's DriveErrorsDegraded / DriveErrorsFailing
+  // condition on the Drive (stormdrive#160), kept an hour after it is ok.
   import { feed } from '../stores.svelte.js'
   import { linkAlarms } from '../drivelink.js'
-  import { bitrotAlarms } from '../integrity.js'
+  import { bitrotAlarms, errorsAlarms } from '../integrity.js'
 
   const apis = $derived(
     feed.components.filter((c) => c.kind === 'api' && c.id.startsWith('health:api:') && c.health === 'error'),
@@ -35,8 +39,9 @@
   )
   const drives = $derived(linkAlarms(feed.components))
   const rot = $derived(bitrotAlarms(feed.components))
+  const errs = $derived(errorsAlarms(feed.components))
   // Red first: a stalled API or a failing link before a degraded one.
-  const alerts = $derived([...apiAlerts, ...drives, ...rot].sort((a, b) => (a.tone === 'error' ? 0 : 1) - (b.tone === 'error' ? 0 : 1)))
+  const alerts = $derived([...apiAlerts, ...drives, ...errs, ...rot].sort((a, b) => (a.tone === 'error' ? 0 : 1) - (b.tone === 'error' ? 0 : 1)))
   const tone = $derived(alerts.some((a) => a.tone === 'error') ? 'error' : 'warn')
   let open = $state(false)
 </script>
@@ -59,6 +64,7 @@
     </div>
     {#if apiAlerts.length}<a class="all" href="#/health">API health</a>{/if}
     {#if drives.length}<a class="all" href="#/drives?filter=link">Drive links</a>{/if}
+    {#if errs.length}<a class="all" href="#/drives?filter=errors">Drive errors</a>{/if}
     {#if rot.length}<a class="all" href="#/drives/integrity">Integrity</a>{/if}
   </div>
 {/if}

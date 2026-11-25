@@ -290,6 +290,8 @@ impl ConsolePlugin for DrivesPlugin {
         // A set's BitRot (#368), the same way.
         let sets = self.inner.integrity.read().await;
         out.extend(sets.rows.iter().filter_map(|r| integrity::alarm(r, now)).map(|a| integrity::component(&a, NAME)));
+        // A drive's own errors (#394, stormdrive#160): the engine's level, the same way.
+        out.extend(self.inner.counters.read().await.alarms(now).iter().map(|a| drivecounters::component(a, NAME)));
         out
     }
 
@@ -522,8 +524,9 @@ async fn integrity_route(State(inner): State<Arc<Inner>>) -> Response {
     Json(v).into_response()
 }
 
-/// `GET /counters` (#384): every drive's own error and defect counters, lifetime and
-/// for the last day, from its Drive object's `status.health.smart`, as last read.
+/// `GET /counters` (#384, #394): every drive's own error and defect counters, lifetime and
+/// for the last day, from its Drive object's `status.health.smart`, and the node's engine's
+/// (`status.health.errors`: PI/EEDP checks, sense errors, rates, level) with a day of its own.
 async fn counters_route(State(inner): State<Arc<Inner>>) -> Response {
     Json(inner.counters.read().await.answer()).into_response()
 }

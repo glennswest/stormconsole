@@ -22,7 +22,10 @@
 //     drive they sit on (stormblock#136), each with its consumer;
 //   - `links`: `/api/plugins/drive/links` — each SAS drive's link, both sides,
 //     from its Drive object (#339, stormdrive#149). Without it a drive's level
-//     still comes from the feed (stormdrive's `link errors` metric).
+//     still comes from the feed (stormdrive's `link errors` metric);
+//   - `counters`: `/api/plugins/drive/counters` — each drive's own counters and
+//     its node's engine's level for them (#394, stormdrive#160). Without it the
+//     level still comes from the feed (stormdrive's `drive errors` metric).
 
 import { failedMetric } from './controllers.js'
 import { engineDrives, offerFor } from './driveoffer.js'
@@ -128,6 +131,7 @@ export function build(components, extra = {}) {
   }
   const usageBy = new Map((extra.usage?.drives || []).map((r) => [r.component, r]))
   const linkBy = new Map((extra.links?.drives || []).map((r) => [r.component, r]))
+  const errorsBy = new Map((extra.counters?.drives || []).map((r) => [r.component, r]))
   const offers = engineDrives(components)
   const onDrive = extra.placement?.drives || {}
   const records = drives.map((c) => {
@@ -204,9 +208,21 @@ export function build(components, extra = {}) {
       // The SAS link (#339): the Drive object's, else the feed's word for it.
       link: linkBy.get(c.id) || null,
       linkLevel: linkLevel(linkBy.get(c.id), metric(c, 'link errors')),
+      // The drive's own errors (#394): its node's engine's level, the Drive object's, else the feed's.
+      errorsLevel: errorsLevel(errorsBy.get(c.id), metric(c, 'drive errors')),
     }
   })
   return { records, shelves, byId }
+}
+
+/// The level of a drive's own errors (#394): the Drive object's `status.health.errors`
+/// as the counters answer carries it, else the feed's word (`drive errors`: degraded or
+/// failing; ok says nothing there).
+export function errorsLevel(row, feedWord) {
+  const l = row?.errors?.level
+  if (l) return l
+  if (feedWord === 'degraded' || feedWord === 'failing') return feedWord
+  return null
 }
 
 export const FILTERS = [
@@ -218,6 +234,7 @@ export const FILTERS = [
   ['full', 'Full (90%+)'],
   ['hot', 'Hot (50 °C+)'],
   ['link', 'Link degraded or failing'],
+  ['errors', 'Drive errors degraded or failing'],
   ['out', 'Out of fleet'],
   ['spare', 'Spares'],
   ['offered', 'Offered'],
@@ -243,6 +260,8 @@ export function passes(d, filter) {
       return d.temp !== null && d.temp >= 50
     case 'link':
       return d.linkLevel === 'degraded' || d.linkLevel === 'failing'
+    case 'errors':
+      return d.errorsLevel === 'degraded' || d.errorsLevel === 'failing'
     case 'out':
       return d.outOfFleet
     case 'spare':
@@ -337,7 +356,7 @@ export function enclosures(records) {
 }
 
 export function totals(list) {
-  const t = { drives: 0, capacity: 0, failing: 0, degraded: 0, rebuilding: 0, draining: 0, full: 0, hot: 0, linkFailing: 0, linkDegraded: 0, nodes: new Set(), withUsage: 0, used: 0, slab: 0, left: 0, usageCapacity: 0 }
+  const t = { drives: 0, capacity: 0, failing: 0, degraded: 0, rebuilding: 0, draining: 0, full: 0, hot: 0, linkFailing: 0, linkDegraded: 0, errorsFailing: 0, errorsDegraded: 0, nodes: new Set(), withUsage: 0, used: 0, slab: 0, left: 0, usageCapacity: 0 }
   for (const d of list) {
     t.drives++
     t.capacity += d.capacity
@@ -350,6 +369,8 @@ export function totals(list) {
     if (passes(d, 'hot')) t.hot++
     if (d.linkLevel === 'failing') t.linkFailing++
     else if (d.linkLevel === 'degraded') t.linkDegraded++
+    if (d.errorsLevel === 'failing') t.errorsFailing++
+    else if (d.errorsLevel === 'degraded') t.errorsDegraded++
     if (d.usage) {
       t.withUsage++
       t.used += d.usage.used
@@ -407,6 +428,7 @@ export const MODES = [
   ['wear', 'Wear'],
   ['usage', 'Usage'],
   ['link', 'SAS link'],
+  ['errors', 'Drive errors'],
 ]
 
 /// A cell's colour for a mode: a CSS colour, and the value it stands for.
@@ -429,6 +451,12 @@ export function heat(d, mode) {
       const css = { ok: 'var(--ok)', degraded: 'var(--warn-strong)', failing: 'var(--error)' }[d.linkLevel]
       if (!css) return none(d.linkLevel === 'settling' ? 'link settling: the first sample since a reset' : 'no SAS link reported')
       return { css, value: d.linkLevel, text: `link ${d.linkLevel}` }
+    }
+    case 'errors': {
+      // The engine's level for the drive's own errors (#394), as the link's.
+      const css = { ok: 'var(--ok)', degraded: 'var(--warn-strong)', failing: 'var(--error)' }[d.errorsLevel]
+      if (!css) return none(d.errorsLevel === 'settling' ? 'drive errors settling: the first sample, no rate yet' : 'no drive errors reported (not behind a SAS card its node’s engine samples)')
+      return { css, value: d.errorsLevel, text: `drive errors ${d.errorsLevel}` }
     }
     default: {
       if (d.controllerFailed) return { css: 'var(--error)', value: 'error', text: 'Failed by the controller' }
