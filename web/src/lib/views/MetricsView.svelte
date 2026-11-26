@@ -8,7 +8,7 @@
   import PageHeader from '../components/PageHeader.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import EntityCharts from '../components/EntityCharts.svelte'
-  import { chartNode } from '../charts.js'
+  import { chartNode, levelHref } from '../charts.js'
 
   const q = route.current.query
   const entity = q.get('entity') || ''
@@ -55,8 +55,9 @@
 
   <nav class="tabs" aria-label="Metrics sections">
     <button class:active={!entity && !level} onclick={() => navigate('#/metrics')}>Targets</button>
+    <!-- A level stays on the node it is charting (#386); Targets are this node's. -->
     {#each targets?.levels || [] as l (l.id)}
-      <button class:active={level === l.id} onclick={() => navigate(`#/metrics?level=${l.id}`)}>{l.title}</button>
+      <button class:active={level === l.id} onclick={() => navigate(levelHref(l.id, on))}>{l.title}</button>
     {/each}
   </nav>
 

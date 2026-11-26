@@ -3117,3 +3117,19 @@ lastTransitionTime = `since`) and a `drive errors` feed metric when not ok.
       0 failed (93 checks: §3c, §7, the walk's panel, NET004, map mode/mark/chip); `verify-drive-links.sh` 95fb39b:
       0 failed (the shared stand-ins); web dist 24ba9bf (0 warnings). Closed
 - Not checked against a live engine: stormdrive#160 itself has not been; the rig's block is its `project()` shape
+
+### The node's optional cadvisor series, charted (#386, cadvisor#40, ironprom#74) — 2026-11-25
+Unblocked: cadvisor#40 built the groups (golden argv has `--enable_metrics …,percpu,sched,tcp,udp,hugetlb` since
+2026-11-24); ironprom#74 closed, no code change (protobuf scrape, all families stored); stormcos main scrapes
+`cadvisor` over TLS with ironprom's token (#143). Series: `container_network_{tcp,tcp6}_usage_total{tcp_state}`
+(gauges, 11 states), `container_network_{udp,udp6}_usage_total{udp_state}` (listen = sockets, rx/txqueued = bytes,
+dropped = per-socket drops of open sockets), `container_cpu_schedstat_{run_seconds,runqueue_seconds,run_periods}_total`,
+`container_hugetlb_{usage_bytes,max_usage_bytes,failcnt}{pagesize}`. **percpu: cgroup v2 has none** (cadvisor#40's own
+words: do not plan per-CPU graphs from cadvisor), and the node has no other per-CPU source (no node_exporter job in
+`ironprom-node.yml`), so the level says so rather than drawing nothing. cgroup v2's root has no `hugetlb.*` files:
+hugepages are summed over the top-level cgroups.
+- [x] metrics: Node level panels tcp, udp_sockets, udp_queued, udp_dropped, sched_wait, sched_latency, sched_wait_by,
+      hugetlb, hugetlb_failures (job `cadvisor`, `id="/"` or top-level only); the note says why no per-CPU
+- [x] web: node page **Charts** → `#/metrics?level=node&on=<node>`; Metrics tabs keep `on`; Network page's charts link names its node
+- [x] tests: unit, `charts.test.mjs`, `deploy/verify-node-charts.sh` + `node-charts.cjs`; architecture, README, CHANGELOG
+- [ ] sc-build (build, every test, clippy -D warnings); `sc-build deploy/verify-node-charts.sh`; web/dist; image

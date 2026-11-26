@@ -18,6 +18,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import StatusPill from '../components/StatusPill.svelte'
   import Icon from '../components/Icon.svelte'
+  import { levelHref } from '../charts.js'
   import NodeRack from './NodeRack.svelte'
   import NodeVerification from './NodeVerification.svelte'
   import NodeDrain from './NodeDrain.svelte'
@@ -90,6 +91,9 @@
       </a>
       <a class="sc-btn" href={`#/node/${encodeURIComponent(host)}/network`}>
         <Icon name="network" size={13} /> Network
+      </a>
+      <a class="sc-btn" href={levelHref('node', isLocal ? '' : host)} title="TCP and UDP, scheduler latency, hugepages and disks, from this node's cadvisor">
+        <Icon name="overview" size={13} /> Charts
       </a>
       <button onclick={refresh} disabled={busy} title="Probe this node again">
         <Icon name="refresh" size={13} /> {busy ? 'Probing…' : 'Refresh'}

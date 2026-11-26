@@ -103,7 +103,7 @@ pub const LEVELS: &[Level] = &[
     Level {
         id: "node",
         title: "Node",
-        note: "This node's disks, whole devices cadvisor can name, from the root cgroup's io.stat.",
+        note: "This node, from its cadvisor: disks are the whole devices the root cgroup's io.stat names; TCP and UDP are the host's network; scheduler time is every process. There is no per-CPU chart: cgroup v2 keeps no CPU time per CPU, so cadvisor has only the total (cadvisor#40). Hugepages read 0 where none are reserved.",
         panels: &[
             // cadvisor's `/` also has rows for every mounted partition and tmpfs, whose counters read 0
             // (cadvisor#30), so operations are narrowed to the devices io.stat knows.
@@ -115,6 +115,29 @@ pub const LEVELS: &[Level] = &[
                 query: r#"sum by (device) (rate(container_fs_reads_total{job="cadvisor",id="/",device!=""}[5m])) and on (device) sum by (device) (container_fs_reads_bytes_total{job="cadvisor",id="/",device!=""})"#, legend: &["device"] },
             Panel { id: "disk_write_ops", title: "Node disk write operations", unit: "per_sec", job: "cadvisor",
                 query: r#"sum by (device) (rate(container_fs_writes_total{job="cadvisor",id="/",device!=""}[5m])) and on (device) sum by (device) (container_fs_writes_bytes_total{job="cadvisor",id="/",device!=""})"#, legend: &["device"] },
+            // cadvisor's optional groups (#386, cadvisor#40). `/` is the node: its network is the host's
+            // (pid 1's), and its schedstat is every process on it. IPv4 and IPv6 are one line per state.
+            Panel { id: "tcp", title: "TCP connections, by state", unit: "count", job: "cadvisor",
+                query: r#"sum by (tcp_state) ({__name__=~"container_network_tcp6?_usage_total",job="cadvisor",id="/"})"#, legend: &["tcp_state"] },
+            Panel { id: "udp_sockets", title: "UDP sockets", unit: "count", job: "cadvisor",
+                query: r#"sum by (udp_state) ({__name__=~"container_network_udp6?_usage_total",job="cadvisor",id="/",udp_state="listen"})"#, legend: &["udp_state"] },
+            Panel { id: "udp_queued", title: "UDP bytes queued, receive and send", unit: "bytes", job: "cadvisor",
+                query: r#"sum by (udp_state) ({__name__=~"container_network_udp6?_usage_total",job="cadvisor",id="/",udp_state=~"rxqueued|txqueued"})"#, legend: &["udp_state"] },
+            // The kernel counts drops per socket, so a closed socket's are gone: this is the open sockets' total.
+            Panel { id: "udp_dropped", title: "UDP packets dropped, on open sockets", unit: "count", job: "cadvisor",
+                query: r#"sum by (udp_state) ({__name__=~"container_network_udp6?_usage_total",job="cadvisor",id="/",udp_state="dropped"})"#, legend: &["udp_state"] },
+            Panel { id: "sched_wait", title: "CPU time spent waiting to run", unit: "cores", job: "cadvisor",
+                query: r#"sum(rate(container_cpu_schedstat_runqueue_seconds_total{job="cadvisor",id="/"}[5m]))"#, legend: &[] },
+            Panel { id: "sched_latency", title: "Scheduler latency: average wait per timeslice", unit: "seconds", job: "cadvisor",
+                query: r#"sum(rate(container_cpu_schedstat_runqueue_seconds_total{job="cadvisor",id="/"}[5m])) / sum(rate(container_cpu_schedstat_run_periods_total{job="cadvisor",id="/"}[5m]))"#, legend: &[] },
+            // The top-level cgroups (services, kubepods), which hold every pod's time without naming a project.
+            Panel { id: "sched_wait_by", title: "Waiting to run, by top-level cgroup", unit: "cores", job: "cadvisor",
+                query: r#"topk(10, rate(container_cpu_schedstat_runqueue_seconds_total{job="cadvisor",id=~"/[^/]+"}[5m]))"#, legend: &["id"] },
+            // cgroup v2's root has no hugetlb files, so the node's use is the top-level cgroups' (each holds its children's).
+            Panel { id: "hugetlb", title: "Hugepages in use, by page size", unit: "bytes", job: "cadvisor",
+                query: r#"sum by (pagesize) (container_hugetlb_usage_bytes{job="cadvisor",id=~"/[^/]+"})"#, legend: &["pagesize"] },
+            Panel { id: "hugetlb_failures", title: "Hugepage allocations refused at a limit", unit: "per_min", job: "cadvisor",
+                query: r#"sum by (pagesize) (rate(container_hugetlb_failcnt{job="cadvisor",id=~"/[^/]+"}[5m])) * 60"#, legend: &["pagesize"] },
         ],
     },
     Level {
@@ -556,7 +579,7 @@ mod tests {
         let e = Entity::Pod { ns: "a".into(), name: "b".into() };
         for p in LEVELS.iter().flat_map(|l| l.panels) {
             let q = query(p, None, None).unwrap();
-            assert!(!q.contains("__"), "{q}");
+            assert!(!q.replace("__name__", "").contains("__"), "{q}");
             assert!(q.contains(&format!(r#"job="{}""#, p.job)), "{q}");
         }
         for p in [DRIVE, POD, VM, PORT, RAIDSET, MEMBER].into_iter().flatten() {
@@ -564,6 +587,32 @@ mod tests {
             assert!(!q.contains("__THE__"), "{q}");
             assert!(q.contains(&format!(r#"job="{}""#, p.job)), "{q}");
         }
+    }
+
+    #[test]
+    fn the_node_charts_cadvisors_optional_groups_node_wide() {
+        // #386 (cadvisor#40): tcp, udp, sched and hugetlb, from the node's own cadvisor, never a project's cgroup.
+        for id in ["tcp", "udp_sockets", "udp_queued", "udp_dropped", "sched_wait", "sched_latency", "sched_wait_by", "hugetlb", "hugetlb_failures"] {
+            let p = panel("node", id);
+            assert_eq!(p.job, "cadvisor", "{id}");
+            assert!(p.query.contains(r#"id="/""#) || p.query.contains(r#"id=~"/[^/]+""#), "{id}: {}", p.query);
+            assert!(!p.query.contains("__NS__") && !p.query.contains("namespace"), "{id}");
+        }
+        // Both address families, one line per state.
+        for id in ["tcp", "udp_sockets", "udp_queued", "udp_dropped"] {
+            assert!(panel("node", id).query.contains(r#"__name__=~"container_network_"#), "{id}");
+            assert!(panel("node", id).query.contains(r#"6?_usage_total""#), "{id}");
+        }
+        assert_eq!(panel("node", "tcp").legend, ["tcp_state"]);
+        // The latency is waiting over timeslices, both rates of `/`.
+        let l = panel("node", "sched_latency").query;
+        assert!(l.contains("runqueue_seconds_total") && l.contains("run_periods_total") && l.contains(" / "), "{l}");
+        // The root has no hugetlb files on cgroup v2: the top-level cgroups, each counted once.
+        assert!(panel("node", "hugetlb").query.contains(r#"id=~"/[^/]+""#));
+        // No per-CPU chart, and the level says why.
+        let node = LEVELS.iter().find(|l| l.id == "node").unwrap();
+        assert!(!node.panels.iter().any(|p| p.query.contains(r#"cpu!="total""#) || p.id.contains("percpu")));
+        assert!(node.note.contains("per-CPU") && node.note.contains("cadvisor#40"), "{}", node.note);
     }
 
     #[test]

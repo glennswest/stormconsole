@@ -14,6 +14,13 @@ export function chartNode(query) {
   return p.get('on') || (['port', 'raidset'].includes(p.get('entity')) ? p.get('node') || '' : '')
 }
 
+/** A Metrics level's page for a node (#386): `on` names it, and '' is this node's. */
+export function levelHref(level, node) {
+  const p = new URLSearchParams({ level })
+  if (node) p.set('on', node)
+  return `#/metrics?${p}`
+}
+
 /** Where a chart's series came from, in the page's words. */
 export function fromWords(node) {
   return node ? `From ${node}’s ironprom` : 'From this node’s ironprom'

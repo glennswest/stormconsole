@@ -1,6 +1,6 @@
 // node web/src/lib/charts.test.mjs
 import assert from 'node:assert/strict'
-import { chartQuery, chartNode, fromWords } from './charts.js'
+import { chartQuery, chartNode, fromWords, levelHref } from './charts.js'
 
 let n = 0
 const t = (name, f) => { f(); n++; console.log(`  ok   ${name}`) }
@@ -24,5 +24,11 @@ t('the Metrics page says whose charts they are', () => {
   assert.equal(chartNode('level=drives'), '')
   assert.equal(fromWords('storm-b'), 'From storm-b’s ironprom')
   assert.equal(fromWords(''), 'From this node’s ironprom')
+})
+t('a level is charted for the node it names (#386)', () => {
+  assert.equal(levelHref('node', 'storm-b'), '#/metrics?level=node&on=storm-b')
+  assert.equal(levelHref('network', ''), '#/metrics?level=network')
+  assert.equal(chartNode(levelHref('node', 'storm-b').split('?')[1]), 'storm-b', 'and the page says whose')
+  assert.equal(levelHref('node', 'a&level=x'), '#/metrics?level=node&on=a%26level%3Dx', 'a name cannot add a key')
 })
 console.log(`charts: ${n} ok`)

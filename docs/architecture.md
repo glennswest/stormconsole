@@ -2355,7 +2355,7 @@ a node moves: stormcos changes the engine's URL and CA together when its pair is
 
 The node's ironprom (#46, stormcos#64, `[ironprom]`, :9091): `/api/v1/targets` every 15 s, `/api/v1/query_range` when a page asks.
 `#/metrics` has **Targets** (every job with `up` and its last error, down first) and a tab of **charts per level**: drives, volumes,
-containers, API server, datastore, VMs, network (with the node's host ports, #336). `?entity=drive|pod|vm|port` is one object's series,
+containers, the node (disks, TCP/UDP, scheduler, hugepages; #386), API server, datastore, VMs, network (with the node's host ports, #336). `?entity=drive|pod|vm|port` is one object's series,
 linked from the Drives page, the pod page's Stats tab, the VM page and a node's Network page.
 
 - **Disk I/O, reads and writes apart (#265).** Bytes/s and operations/s, four charts each, never a total. A node's disks come from cadvisor (`job="cadvisor"`, `id="/"`), the root cgroup's `io.stat`, whole devices it can name; a row it cannot name is left out rather than read as a total. A container's and a pod's come from the kubelet in cAdvisor's names, which it does not export yet (rustkube-node#323); the standalone cadvisor has them only by cgroup path, which can't be limited to a project. A drive's bytes are SMART's for NVMe only, and every kind's bytes and operations wait on stormdrive#120. A VM's come from stormvm. A volume's are by operation across the engine (stormblock#536). A chart with nothing names what it waits on; the pod page's Stats tab has these four charts too.
@@ -2375,6 +2375,16 @@ linked from the Drives page, the pod page's Stats tab, the VM page and a node's 
   not heard of is a 404, one with no address yet a 503, and one whose ironprom does not answer a 502 naming the node and
   the address: said on the page, never an empty chart. The answer carries `node`, and the page says whose ironprom it
   read. The VM page passes the node it runs on, a drive its node, a pod its node; the Targets tab is this node's.
+- **The node, from its own cadvisor (#386, cadvisor#40, ironprom#74).** The Node level (`?level=node`, and
+  `&on=<node>` from a node's page, its **Charts** button) charts cadvisor's optional groups as the golden enables them
+  (`--enable_metrics …,percpu,sched,tcp,udp,hugetlb`), scraped by the node's ironprom as job `cadvisor`: TCP
+  connections by state and UDP sockets, queues and drops, from `/` (the host's network, IPv4 and IPv6 summed per
+  state); time waiting to run and the average wait per timeslice (runqueue seconds over run periods), from `/`'s
+  schedstat (every process); waiting by top-level cgroup; hugepages in use and refused by page size, summed over the
+  top-level cgroups, since cgroup v2's root has no `hugetlb.*` files. Nothing below the top level, so no project's
+  cgroup is named on a level any admin reads. **No per-CPU chart:** cgroup v2 keeps no per-CPU usage, so cadvisor has
+  only `cpu="total"`; the level says so. UDP drops are the kernel's per-socket counts summed over open sockets, so a
+  socket closing takes its drops with it. A Metrics tab keeps the node it charts.
 - **A RAID set and a member (#385)**: `?entity=raidset&node=&set=`, from the set's node, and `?entity=member&set=&slot=`
   (`on=` the set's node), over stormraid's integrity counters; see the drive plugin's integrity trend.
 - **Not per volume.** The engine's IO series carry only `op` (stormblock#536), so the Volumes level is engine-wide and a volume has no link.

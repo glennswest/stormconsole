@@ -14,6 +14,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import Icon from '../components/Icon.svelte'
   import EntityCharts from '../components/EntityCharts.svelte'
+  import { levelHref } from '../charts.js'
   import {
     portRows, wantWord, moduleLines, appliedWords, counterRows, draftOf, changeOf, changeLine, lastChangeLine,
   } from '../ports.js'
@@ -138,7 +139,7 @@
       {#if port}
         <button onclick={() => pick('')}><Icon name="table" size={13} /> All ports</button>
       {/if}
-      <a class="sc-btn" href={`#/metrics?level=network`}>Network charts</a>
+      <a class="sc-btn" href={levelHref('network', host)}>Network charts</a>
     {/snippet}
   </PageHeader>
   <p class="lead">
