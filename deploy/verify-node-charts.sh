@@ -19,7 +19,8 @@
 set -euo pipefail
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/verify-nc.XXXXXX")
-cleanup() { kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "${W:?}"; }
+logs() { for f in cadvisor udp ironprom c; do [ -s "$W/$f.log" ] && { echo "--- $f"; tail -20 "$W/$f.log"; }; done; }
+cleanup() { rc=$?; [ "$rc" = 0 ] || logs; kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "${W:?}"; exit "$rc"; }
 trap cleanup EXIT
 say() { printf '\n=== %s\n' "$*"; }
 FAILED=0
@@ -63,7 +64,8 @@ GROUPS=cpu,cpuLoad,memory,disk,diskIO,network,oom_event,percpu,sched,tcp,udp,hug
 "$W/bin/cadvisor" --listen-ip 127.0.0.1 --port "$CP" --enable_metrics "$GROUPS" > "$W/cadvisor.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null "http://127.0.0.1:$CP/healthz" && break; sleep 0.5; done
 for _ in $(seq 60); do curl -s "http://127.0.0.1:$CP/metrics" | grep -q '^container_cpu_schedstat_run_seconds_total{.*id="/"' && break; sleep 0.5; done
-M=$(curl -s "http://127.0.0.1:$CP/metrics")
+M=$(curl -s "http://127.0.0.1:$CP/metrics" || true)
+[ -n "$M" ] || { echo "  FAIL cadvisor does not answer on 127.0.0.1:$CP"; exit 1; }
 holds "$M" 'container_network_tcp_usage_total{' "cadvisor serves tcp"
 holds "$M" 'container_network_udp_usage_total{' "and udp"
 holds "$M" 'container_cpu_schedstat_runqueue_seconds_total{' "and schedstat"
@@ -132,8 +134,5 @@ fi
 BR=0; env HUGE="$HUGE" "$HERE/deploy/browser/run.sh" "$W" node-charts.cjs "$C" || BR=1; check "$BR" 0 "the page"
 
 [ -z "${SHOTS_OUT:-}" ] || tar czf "$SHOTS_OUT" -C "$W" shots 2>/dev/null || true
-if [ "$FAILED" != 0 ]; then
-  echo; echo "--- cadvisor"; tail -20 "$W/cadvisor.log"; echo "--- ironprom"; tail -10 "$W/ironprom.log"; echo "--- console"; grep -i -E "warn|error" "$W/c.log" | tail -10
-fi
 echo; echo "verify-node-charts: $FAILED failed"
 exit "$FAILED"
