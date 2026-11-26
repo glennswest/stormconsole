@@ -35,7 +35,8 @@ py() { python3 -c "$1"; }
 
 say "the console from this commit"
 cargo build -q -p stormconsole
-BIN="$(pwd)/${CARGO_TARGET_DIR:-target}/debug/stormconsole"
+T=${CARGO_TARGET_DIR:-target}; case $T in /*) ;; *) T="$(pwd)/$T";; esac
+BIN="$T/debug/stormconsole"
 
 say "stormd at $STORMD_REF"
 git clone -q https://github.com/glennswest/stormd "$W/stormd-src"
