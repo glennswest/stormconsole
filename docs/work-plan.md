@@ -2731,7 +2731,8 @@ registry is the owner's setting: this session's token is refused, both for `comp
 - [x] `deploy/verify-api-probes.sh`: a real stormd probes a node-shaped console with those blocks. `sc-build
       deploy/verify-api-probes.sh` 1d6f39b passed, 0 failed, stormd d2cf426: console=healthy logs=healthy,
       logs-no-token=down, logs-plain=healthy (the 308 trap); the :9194 proof's regex holds on that stormd
-- [ ] the master's `component edit` (sent on #150), then `component build stormconsole`; shipped with the :9194 proof
+- [x] the master's `component edit` (2026-11-26; export shows both, https, logs with the bearer) and image build
+      0ba28c364b61; shipped `--commit 1b19922` with the :9194 proof. Closes when a test machine on a release carrying it shows it
 
 ### A format's method and error log, live (#335) — 2026-11-19
 stormdrive#140 (v0.47.0) is closed: `status.format` carries `method`, `methodUsed`, `fastSkipped`, `already` and the
