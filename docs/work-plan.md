@@ -3118,7 +3118,7 @@ lastTransitionTime = `since`) and a `drive errors` feed metric when not ok.
       0 failed (the shared stand-ins); web dist 24ba9bf (0 warnings). Closed
 - Not checked against a live engine: stormdrive#160 itself has not been; the rig's block is its `project()` shape
 
-### The node's optional cadvisor series, charted (#386, cadvisor#40, ironprom#74) — 2026-11-25
+### The node's optional cadvisor series, charted (#386, cadvisor#40, ironprom#74) ✅ 2026-11-25
 Unblocked: cadvisor#40 built the groups (golden argv has `--enable_metrics …,percpu,sched,tcp,udp,hugetlb` since
 2026-11-24); ironprom#74 closed, no code change (protobuf scrape, all families stored); stormcos main scrapes
 `cadvisor` over TLS with ironprom's token (#143). Series: `container_network_{tcp,tcp6}_usage_total{tcp_state}`
@@ -3132,4 +3132,10 @@ hugepages are summed over the top-level cgroups.
       hugetlb, hugetlb_failures (job `cadvisor`, `id="/"` or top-level only); the note says why no per-CPU
 - [x] web: node page **Charts** → `#/metrics?level=node&on=<node>`; Metrics tabs keep `on`; Network page's charts link names its node
 - [x] tests: unit, `charts.test.mjs`, `deploy/verify-node-charts.sh` + `node-charts.cjs`; architecture, README, CHANGELOG
-- [ ] sc-build (build, every test, clippy -D warnings); `sc-build deploy/verify-node-charts.sh`; web/dist; image
+- [x] sc-build 1146df3 (build, every test, clippy -D warnings clean; `plugin-metrics` 23 passed with the new test);
+      `sc-build deploy/verify-node-charts.sh` 911e77a: 0 failed, twice (cadvisor 4babf92, ironprom 8fd4cc9: TCP
+      LISTEN 9 / ESTABLISHED 6, the UDP socket's queue 7680 B and drops 11294 → 26344, wait 7e-6 s per slice, top-level
+      cgroups only; the build VM has no hugepages, said; Chromium 0 failed); web dist from 911e77a (0 warnings)
+- The rig's first runs: `GROUPS` is bash's gid array (#403, #404), and `tmp/` missing here for the shots (#405)
+- Not seen: a real node's series. That needs a release with cadvisor's `--enable_metrics` argv (cadvisor#40's proof)
+  and this console. The build VM has no hugepages reserved, so the hugepage lines were not seen drawn.
