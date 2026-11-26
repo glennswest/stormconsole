@@ -2728,8 +2728,10 @@ registry is the owner's setting: this session's token is refused, both for `comp
   `console` → `https://127.0.0.1:9094/api/summary`; `logs` → `https://127.0.0.1:9094/api/plugins/logs/events?last=1`
   with `token_file = "/data/stormcert/console-admin.token"` (the console's own `auth_token_file`). Proof moved to the
   console's stormd, which answers anonymously (as stormupdate's and stormipmi's do): `get:http://{node}:9194/api/v1/health/apis`
-- [x] `deploy/verify-api-probes.sh`: a real stormd probes a node-shaped console with those blocks
-- [ ] sc-build of it; the master's `component edit`; `component build stormconsole`; shipped with the :9194 proof
+- [x] `deploy/verify-api-probes.sh`: a real stormd probes a node-shaped console with those blocks. `sc-build
+      deploy/verify-api-probes.sh` 1d6f39b passed, 0 failed, stormd d2cf426: console=healthy logs=healthy,
+      logs-no-token=down, logs-plain=healthy (the 308 trap); the :9194 proof's regex holds on that stormd
+- [ ] the master's `component edit` (sent on #150), then `component build stormconsole`; shipped with the :9194 proof
 
 ### A format's method and error log, live (#335) — 2026-11-19
 stormdrive#140 (v0.47.0) is closed: `status.format` carries `method`, `methodUsed`, `fastSkipped`, `already` and the
