@@ -2840,6 +2840,9 @@ console that made it; another node's sweep asked only "deleted or disabled?".
   Queued so it comes back on its own: `--after stormcos#200`, `--after-install stormconsole>=fdc6fdb@any:pve` and
   `rustkube>=a771982@any:pve` (#390's token half needs rustkube#182). The owner's call (close on the two-console
   rig instead) still stands
+- 2026-11-26: 14.06 has sign-in on (pvetest3 `required:true`), but every pvetest is its own SNO, and only the paired
+  `cluster-test` forms two nodes on one apiserver (a session holds no stormcluster admin pair to do it by hand). Filed
+  stormcentral#1809 (the reset check as a step after `join`); re-parked `--after stormcentral#1809`
 ### Node services' own projects (#375, stormcos#1020) ✅ 2026-11-19
 Already the console's behaviour (#162): `/api/plugins/k8s/projects` returns the
 `system` projects the apiserver lists for the viewer (rustkube: every
