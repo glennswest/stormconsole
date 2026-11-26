@@ -91,7 +91,14 @@ $(api logs-no-token "https://127.0.0.1:$P/api/plugins/logs/events?last=1" 100 10
 $(api logs-plain "http://127.0.0.1:$P/api/plugins/logs/events?last=1" 100 1000 "$W/console-admin.token")
 EOF
 "$STORMD" --config "$W/stormd.toml" > "$W/stormd.log" 2>&1 &
-for _ in $(seq 60); do curl -sf -o /dev/null "http://127.0.0.1:$D/api/v1/health" && curl -skf -o /dev/null "https://127.0.0.1:$P/healthz" && break; sleep 0.5; done
+logs() {
+  echo "--- stormd log"; tail -40 "$W/stormd.log"
+  for f in "$W"/stormd-logs/*; do [ -f "$f" ] && { echo "--- $f"; tail -40 "$f"; }; done
+  return 0
+}
+UP=0
+for _ in $(seq 120); do curl -sf -o /dev/null "http://127.0.0.1:$D/api/v1/health" && curl -skf -o /dev/null "https://127.0.0.1:$P/healthz" && { UP=1; break; }; sleep 0.5; done
+if [ "$UP" != 1 ]; then echo "  FAIL stormd or the console did not come up in 60 s"; logs; exit 1; fi
 
 say "the console as a node's: TLS, authentication on"
 check "$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:$P/api/summary")" "200" "/api/summary needs no credential"
@@ -99,8 +106,13 @@ check "$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:$P/api/plugi
 check "$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer console-admin-$$" "https://127.0.0.1:$P/api/plugins/logs/events?last=1")" "200" "and reads with the admin bearer"
 check "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$P/api/plugins/logs/events?last=1")" "308" "plain http is sent to https"
 
+cat > "$W/states.py" <<'PY'
+import json, sys
+items = sorted(json.load(sys.stdin)["items"], key=lambda i: i["api"])
+print(" ".join(f'{i["api"]}={i["state"]}' for i in items if i.get("checks", 0) >= 2))
+PY
 say "stormd's probes (GET :$D/api/v1/health/apis)"
-states() { curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | py 'import json,sys; print(" ".join(f"{i[\"api\"]}={i[\"state\"]}" for i in sorted(json.load(sys.stdin)["items"], key=lambda i: i["api"]) if i.get("checks",0) >= 2))'; }
+states() { curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | python3 "$W/states.py" || true; }
 WANT="console=healthy logs=healthy logs-no-token=down logs-plain=healthy"
 for _ in $(seq 40); do [ "$(states)" = "$WANT" ] && break; sleep 0.5; done
 S=$(states)
@@ -108,15 +120,15 @@ echo "  $S"
 for kv in $WANT; do
   check "$(printf '%s\n' $S | grep -x "${kv%%=*}=.*" || echo "${kv%%=*}=none")" "$kv" "${kv%%=*}"
 done
-check "$(curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | py 'import json,sys; print([i.get("last_error") for i in json.load(sys.stdin)["items"] if i["api"] in ("console","logs")])')" \
+check "$(curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | py 'import json,sys; print([i.get("last_error") for i in json.load(sys.stdin)["items"] if i["api"] in ("console","logs")])' || true)" \
   "[None, None]" "the two declared probes carry no error"
 echo "  (logs-plain is the trap: a 308 counts as an answer, so it is healthy whether the ring reads or not)"
 echo "  the proof's shape, on this stormd:"
-curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | grep -oE '"api":"logs",[^}]*"process":"console"[^}]*"state":"healthy"[^}]*' | head -1 | cut -c1-300 | sed 's/^/    /'
-check "$(curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | grep -cE '"api":"logs",[^}]*"state":"healthy"[^}]*"url":"https://127.0.0.1:[0-9]+/api/plugins/logs/events')" "1" "the proof's regex holds here"
+{ curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | grep -oE '"api":"logs",[^}]*' | head -1 | cut -c1-400 | sed 's/^/    /'; } || true
+check "$(curl -sf "http://127.0.0.1:$D/api/v1/health/apis" | grep -cE '"api":"logs",[^}]*"state":"healthy"[^}]*"url":"https://127.0.0.1:[0-9]+/api/plugins/logs/events' || true)" "1" "the proof's regex holds here"
 
 say "result"
 if [ "$FAILED" -ne 0 ]; then
-  echo "$FAILED failed"; echo "--- stormd log"; tail -30 "$W/stormd.log"; exit 1
+  echo "$FAILED failed"; logs; exit 1
 fi
 echo "0 failed"
