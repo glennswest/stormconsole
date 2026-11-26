@@ -60,8 +60,8 @@ while True:  # never read: the queue fills and the rest is dropped
 PY_END
 
 say "cadvisor with the golden's groups, ironprom scraping it as the cadvisor job"
-GROUPS=cpu,cpuLoad,memory,disk,diskIO,network,oom_event,percpu,sched,tcp,udp,hugetlb
-"$W/bin/cadvisor" --listen-ip 127.0.0.1 --port "$CP" --enable_metrics "$GROUPS" > "$W/cadvisor.log" 2>&1 &
+ENABLE=cpu,cpuLoad,memory,disk,diskIO,network,oom_event,percpu,sched,tcp,udp,hugetlb
+"$W/bin/cadvisor" --listen-ip 127.0.0.1 --port "$CP" --enable_metrics "$ENABLE" > "$W/cadvisor.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null "http://127.0.0.1:$CP/healthz" && break; sleep 0.5; done
 for _ in $(seq 60); do curl -s "http://127.0.0.1:$CP/metrics" | grep -q '^container_cpu_schedstat_run_seconds_total{.*id="/"' && break; sleep 0.5; done
 M=$(curl -s "http://127.0.0.1:$CP/metrics" || true)
